@@ -44,8 +44,6 @@ fn on_localhost(address: &str) -> String {
 #[test]
 #[ignore = "Needs a packaged browser engine; see the module docs"]
 fn without_passkeys_a_frame_is_turned_down_and_another_origins_refused_for_its_origin() {
-    // How a page's own requests are answered is the app's engine test's
-    // (`koyo/src/browser/host_tests/passkeys.rs`); here, frames, other credentials.
     let launch = launch("passkeys-off");
     let mut session = Session::start(&launch);
     open(&mut session, &on_localhost(&serve(PAGE)), "passkeys");
@@ -190,7 +188,6 @@ fn with_passkeys_the_app_is_asked_and_its_answer_or_a_withdrawal_follows() {
     let framed = open_and_ask(&mut session);
     answer_a_creation(&mut session);
 
-    // An aborted request is withdrawn; so is the frame's, as the page goes.
     let (aborting, _) = asking(
         &mut session,
         1002,
@@ -199,7 +196,6 @@ fn with_passkeys_the_app_is_asked_and_its_answer_or_a_withdrawal_follows() {
              signal: stop_it.signal }).catch((error) => error.name);
          1",
     );
-    // Aborted: withdrawn from the app, which can hear of it before the script's reply.
     let params = serde_json::json!({"expression": "stop_it.abort()"});
     crate::agents::cdp(&mut session, 1003, "Runtime.evaluate", params);
     let (mut replied, mut withdrawn) = (false, Vec::new());

@@ -246,8 +246,6 @@ impl Simulator {
     pub fn follow(&mut self, ring: &Ring) -> Result<bool, String> {
         let quarters = match (self.faces(), self.told) {
             (Ok(quarters), _) => quarters,
-            // Unread (for minutes after a first boot, its display's service may not answer):
-            // the way it was told to face, as the Simulator app shows it, rather than no turn.
             (Err(why), Some(told)) if told != self.quarters => {
                 self.teller.log(LogLevel::Warn, format!("which way it faces: {why}; turned as it was told"));
                 told

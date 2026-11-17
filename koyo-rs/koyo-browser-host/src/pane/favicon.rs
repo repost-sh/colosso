@@ -32,7 +32,6 @@ fn try_next(pane: PaneId, browser: Browser, first: String, mut left: Vec<String>
     };
     let url = CefString::from(left.remove(0).as_str());
     let mut fetched = Fetched::new(pane, browser, first, left);
-    // An icon: no cookies go with it, and the engine's cache serves it when it can.
     host.download_image(Some(&url), 1, SIZE, 0, Some(&mut fetched));
 }
 
@@ -44,9 +43,7 @@ wrap_download_image_callback! {
     struct Fetched {
         pane: PaneId,
         browser: Browser,
-        // The page's first icon, which the app knows its icon by.
         first: String,
-        // The icons to try after this one, best first.
         left: Vec<String>,
     }
 
@@ -57,7 +54,6 @@ wrap_download_image_callback! {
             _http_status_code: c_int,
             image: Option<&mut Image>,
         ) {
-            // The engine answers nothing for a PNG unless it's told where to put its size.
             let (mut width, mut height) = (0, 0);
             let png = image
                 .and_then(|image| image.as_png(1., 1, Some(&mut width), Some(&mut height)))

@@ -75,7 +75,6 @@ fn a_tab_dragged_onto_a_side_of_the_shown_one_splits_with_it_and_leaves_again(
         );
     });
 
-    // Its header takes it back out into a tab of its own.
     let mut vcx = VisualTestContext::from_window(window, cx);
     let own = vcx
         .debug_bounds(selector(format!("pane-own-tab-{dragged}")))
@@ -148,7 +147,6 @@ fn devtools_dock_at_every_side_detach_into_a_split_and_close_with_their_page(
     assert_eq!(shown(&shell, cx).1, None, "docked again, their pane goes");
     assert_eq!(docked(cx), Some(Dock::Right));
 
-    // The next ones open where the last ones went; closing the page's tab takes them along.
     page.update(cx, |page, cx| {
         page.dock_devtools(Dock::Detached, cx);
         page.close_devtools(cx);
@@ -187,7 +185,6 @@ fn drag_dock_divider(window: AnyWindowHandle, by: f32, cx: &mut TestAppContext) 
     let none = Modifiers::default();
     let from = divider.center();
     vcx.simulate_mouse_down(from, MouseButton::Left, none);
-    // The first move, past gpui's few pixels, picks the divider up; those after carry it.
     vcx.simulate_mouse_move(
         from + point(px(0.), px(5. * by.signum())),
         Some(MouseButton::Left),
@@ -222,7 +219,6 @@ fn docked_devtools_take_the_room_their_divider_is_dragged_to_and_keep_it(cx: &mu
         "dragged 80 px up from {before}, they're {taller} tall"
     );
 
-    // However far it goes, page and DevTools each keep some room.
     drag_dock_divider(window, 5000., cx);
     assert!((height(cx) - DOCK_MIN).abs() < 0.5, "{}", height(cx));
     drag_dock_divider(window, -5000., cx);
@@ -237,7 +233,6 @@ fn docked_devtools_take_the_room_their_divider_is_dragged_to_and_keep_it(cx: &mu
         "{tallest} of a {window_height} px window"
     );
 
-    // The size is the next DevTools' too.
     let divider_at = |window: AnyWindowHandle, cx: &mut TestAppContext| {
         let mut vcx = VisualTestContext::from_window(window, cx);
         let divider = vcx
@@ -276,7 +271,6 @@ fn the_divider_of_a_split_shares_its_room_as_dragged(cx: &mut TestAppContext) {
     let divider = vcx.debug_bounds("split-[]").expect("the split's divider");
     let none = Modifiers::default();
     vcx.simulate_mouse_down(divider.center(), MouseButton::Left, none);
-    // The first move picks the divider up; those after carry it.
     let start = divider.center() + point(px(0.), px(5.));
     vcx.simulate_mouse_move(start, Some(MouseButton::Left), none);
     let lower = divider.center() + point(px(0.), px(60.));

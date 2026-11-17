@@ -20,8 +20,6 @@ pub fn list(grants: &[Scope], launches: bool) -> Vec<Tool> {
         .map(terminal)
         .collect();
     for descriptor in catalog() {
-        // The app's catalog keeps clear of the terminals' names (its tests say so); a build
-        // where they met would call the terminal tool, so the app's isn't listed.
         if is_terminal(descriptor.name) || descriptor.name == APP_LAUNCH {
             log::warn!(
                 "the app's {} has the name of another tool, so it isn't listed",
@@ -91,7 +89,6 @@ pub fn app_success(name: &str, mut output: Value) -> CallToolResult {
         .filter(|mime| mime.starts_with("image/") && output["data"].is_string())
         .map(str::to_owned);
     if let Some(mime) = mime {
-        // Summed up while it still holds the image, whose size the summary says.
         let summary = summarize(name, &output).unwrap_or_else(|| format!("{name} done"));
         let Value::String(data) =
             std::mem::replace(&mut output["data"], Value::String(String::new()))

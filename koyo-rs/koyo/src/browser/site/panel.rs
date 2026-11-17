@@ -57,7 +57,6 @@ pub(super) struct Tones {
 
 impl Tones {
     pub(super) fn of(p: Palette) -> Tones {
-        // The theme's text says which it is: light on a dark one.
         if p.text.l > 0.5 {
             Tones {
                 glass: theme::gray(0.2, 0.62),
@@ -116,9 +115,6 @@ impl SitePanel {
         at: menu::Trigger,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Drawn again as the host says how the site's settings stand, or what an extension
-        // set its icon or badge to, and only then: a page's view changes far more often, with
-        // its cursor and its tone.
         let page_changed = page.upgrade().map(|page| {
             cx.observe(&page, |panel: &mut Self, page, cx| {
                 let listed = page.read(cx).site.clone().unwrap_or_default();
@@ -439,7 +435,6 @@ mod tests {
     fn the_popover_is_as_tall_as_what_it_lists() {
         let bare = height(0, None);
         assert!((height(2, None) - bare - (APART + TITLE + 4. + 2. * ROW)).abs() < f32::EPSILON);
-        // The top row and the foot are there with nothing listed.
         assert!(bare > ACTION + FOOT);
     }
 
@@ -447,11 +442,9 @@ mod tests {
     fn the_extensions_row_takes_a_line_for_every_seven_buttons() {
         let bare = height(0, None);
         let line = |lines: f32| APART + lines * EXTENSION + (lines - 1.) * EXTENSION_GAP;
-        // With no extension there's the "+" alone; six and it fill a line, seven start another.
         assert!((height(0, Some(0)) - bare - line(1.)).abs() < f32::EPSILON);
         assert!((height(0, Some(6)) - bare - line(1.)).abs() < f32::EPSILON);
         assert!((height(0, Some(7)) - bare - line(2.)).abs() < f32::EPSILON);
-        // Seven buttons and the gaps between fit the popover's width.
         assert!(PER_LINE as f32 * EXTENSION + (PER_LINE - 1) as f32 * EXTENSION_GAP <= WIDTH - 2. * PAD);
     }
 

@@ -42,7 +42,6 @@ fn in_orca_the_button_is_in_the_top_rail_at_its_left(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn in_arc_the_button_is_in_the_sidebars_foot(cx: &mut TestAppContext) {
     let button = button_in(Layout::Arc, cx);
-    // The shell's test window is 900 high: the foot is its last row.
     assert!(button.top() > px(800.), "{button:?}");
     assert!(button.left() < px(200.), "{button:?}");
 }

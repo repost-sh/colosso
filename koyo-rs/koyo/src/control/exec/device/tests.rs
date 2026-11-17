@@ -48,11 +48,9 @@ fn the_limit_counts_what_the_set_has_booted() {
     assert!(full.message.starts_with("2 simulators run already (iPhone A, iPhone B)") && !full.retryable, "{}", full.message);
     assert!(room_in(&two, &none, Some("A")).is_ok(), "one already running is no more");
     assert!(room_in(&two, &none, None).is_err(), "a new one is one more");
-    // The person's limit raised to three: room for one more.
     assert!(room_in(&two, &room(&[], 3), None).is_ok());
     let one = [simulator("A", true), simulator("C", false)];
     assert!(room_in(&one, &none, Some("C")).is_ok());
-    // One booted and one starting that hasn't booted yet: two, counted together.
     let starting = room(&[("D", "iPhone D")], 2);
     assert!(room_in(&one, &starting, Some("C")).is_err());
     assert!(room_in(&one, &starting, Some("D")).is_ok(), "the one starting is no more");

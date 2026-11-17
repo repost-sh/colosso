@@ -71,10 +71,8 @@ fn progress(line: &str) -> Result<()> {
 
 fn wait(mut child: Child, limit: Duration) -> Result<Outcome> {
     let started = Instant::now();
-    // Stderr is drained as the run goes, so a full pipe never stalls it.
     let stderr = child.stderr.take();
     let stderr = thread::spawn(move || read_all(stderr));
-    // Stdout closes when the run exits, which is what the wait is for.
     let (sender, receiver) = mpsc::channel();
     let stdout = child.stdout.take();
     thread::spawn(move || sender.send(read_all(stdout)));
@@ -104,7 +102,6 @@ fn wait(mut child: Child, limit: Duration) -> Result<Outcome> {
 fn read_all(pipe: Option<impl Read>) -> String {
     let mut text = String::new();
     if let Some(mut pipe) = pipe {
-        // A read error leaves what was read, which is all a report can be anyway.
         let _ = pipe.read_to_string(&mut text);
     }
     text

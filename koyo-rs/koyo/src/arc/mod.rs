@@ -77,8 +77,6 @@ impl Look {
         if cx.theme().mode.is_dark() {
             Look {
                 p,
-                // As Arc's: white laid thin over the colours, so the pill takes their hue and
-                // stands out by lightness, with no shadow to muddy it.
                 field: gray(1., 0.1),
                 tile: gray(1., 0.1),
                 tile_hover: gray(1., 0.15),
@@ -129,17 +127,11 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
     let look = Look::of(cx);
     let width = crate::settings::get(cx).sidebar_width();
     let projects = shell.space_projects(cx);
-    // While a tile's light or a row's pill passes to the next, it's drawn again each frame.
     let now = cx.background_executor().now();
     if shell.swipe.glides.moving(now) {
         window.request_animation_frame();
     }
-    // What's in hand that the pinned or the loose pages take, once it has left where it was
-    // taken from: worked out once, for both.
     let (pins, loosens) = shell.taken_elsewhere(cx);
-    // The space moves as two fingers or the spring have it (`swipe.rs`): its loose pages, its
-    // project's name and worktrees, and its projects' tiles under them, fainter the further it's
-    // from where it rests.
     let space = div()
         .flex_1()
         .min_h_0()
@@ -162,7 +154,6 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .on_scroll(cx.listener(Shell::swipe))
         .on_mouse_down(MouseButton::Right, cx.listener(Shell::show_space_menu))
         .child(top::address_bar(shell, look, window, cx))
-        // Outside the space, so they stay where they are as it swipes away.
         .children(pinned::region(shell, pins, look, cx))
         .child(space)
         .child(foot::bar(shell, window, cx))

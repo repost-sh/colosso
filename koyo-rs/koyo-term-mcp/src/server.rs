@@ -128,8 +128,6 @@ impl Inner {
             welcome.actor,
             &self.config.grants,
         ));
-        // The daemon's events are read as they come, the inbox having no bound, and tell
-        // subscribers what changed.
         let watch = Arc::clone(&self.watch);
         let following = Arc::clone(&executor);
         let followed = std::thread::Builder::new()
@@ -304,8 +302,6 @@ impl ServerHandler for Server {
         context: RequestContext<RoleServer>,
     ) -> Result<(), ErrorData> {
         let uri = subscribable(&request.uri)?;
-        // Forwarding starts first, so an update that comes as soon as the resource is
-        // followed reaches the client.
         self.forward(context.peer.clone());
         if self.inner.subscribed.lock().insert(uri.clone())
             && let Err(error) = self.watch(vec![uri.clone()], false, &context).await

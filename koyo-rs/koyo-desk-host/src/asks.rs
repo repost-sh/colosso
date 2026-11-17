@@ -56,7 +56,6 @@ impl Host {
                 timeout_ms,
             } => {
                 let now = Instant::now();
-                // The picture is only watched from now on: what came before doesn't count.
                 self.changed = now;
                 self.waits.push(Waiting {
                     request,
@@ -134,8 +133,6 @@ impl Host {
                 with_menus.push(app.pid);
                 snapshot.heading(&format!("- menubar of {}", app.name));
                 if let Some(bar) = app.element().and_then(|app| app.element("AXMenuBar")) {
-                    // But for the first: the Apple menu is the person's session's (Log Out,
-                    // Shut Down, Sleep), not the app's.
                     for item in bar.children().into_iter().skip(1) {
                         snapshot.walk(&item, 1, 1);
                     }
@@ -180,7 +177,6 @@ impl Host {
                     .and_then(|element| element.element("AXCloseButton"))
                     .is_some_and(|button| button.act("AXPress") != Done::No);
                 if !pressed {
-                    // No close button to press: the app's own shortcut for it.
                     let target = self.target_of(&listed);
                     self.aim(target);
                     self.poster
@@ -195,7 +191,6 @@ impl Host {
                         let message = format!("no app {pid} that the agent opened");
                         Refusal::new(RefusalCode::NotFound, message)
                     })?;
-                // The person's own goes back to them as it is; the agent's is quit.
                 if app.lent {
                     self.give_back(pid, Back::Quiet);
                 } else {

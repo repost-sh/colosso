@@ -15,7 +15,6 @@ pub fn output(mut command: Command, limit: Duration) -> Result<String, String> {
     let mut child = command.spawn().map_err(|error| error.to_string())?;
     let mut out = child.stdout.take();
     let mut err = child.stderr.take();
-    // The pipes are read beside the wait, so a child that writes a lot never blocks on them.
     let (said, heard) = mpsc::channel();
     std::thread::spawn(move || {
         let mut text = String::new();

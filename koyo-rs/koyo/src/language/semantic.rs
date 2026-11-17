@@ -283,7 +283,6 @@ mod tests {
         );
         assert_eq!(mapping.documentation, 0b10);
         let kind = |name| index(name).unwrap();
-        // UTF-16 positions: the crab counts two there, one to the editor.
         let text = IndexedText::new("/// doc\nlet s = \"héllo 🦀\"; let n\n".to_owned());
         let for_editor = |range| text.range(text.offsets(range, Encoding::Utf16), Encoding::Utf32);
         let tokens = [

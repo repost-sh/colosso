@@ -171,9 +171,7 @@ pub(super) fn tile_frame(
         .when(!selected, |tile| {
             tile.bg(look.tile).hover(|style| style.bg(look.tile_hover))
         })
-        // In hand, it's lifted off the grid, over the tiles it passes.
         .when(lifted, |tile| tile.bg(look.tile_selected).shadow_md())
-        // Where it's drawn, for its card; which comes a moment after the pointer rests on it.
         .on_prepaint(shell.arc_hover.noting(hovered))
         .on_hover(cx.listener(move |this, over: &bool, window, cx| {
             this.hover(hovered, *over, window, cx);
@@ -213,8 +211,6 @@ fn tile(
         hand.take(key, grab);
         cx.new(|_| DraggedTile)
     })
-    // Under the picture: its part of the light passing, laid over the unlit tile so it shows as
-    // a lit one does.
     .children(passing.and_then(|lit| {
         let colour = glide::over(look.tile, look.tile_selected);
         let light = glide::light(lit, Axis::Horizontal, colour)?;

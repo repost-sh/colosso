@@ -84,7 +84,6 @@ fn what_the_host_says_is_how_the_desk_stands(cx: &mut TestAppContext) {
         assert_eq!(desk.size(), Some(size));
         assert_eq!(desk.windows.len(), 2);
     });
-    // A host of another version of the link isn't talked to.
     says(
         &desk,
         FromHost::Hello {
@@ -118,7 +117,6 @@ fn an_ask_gets_the_answer_with_its_number(cx: &mut TestAppContext) {
         .collect();
     assert_eq!(numbers.len(), 2);
     assert_ne!(numbers[0], numbers[1]);
-    // Answered out of order, each ask gets its own.
     let waited = Answer::Waited {
         still: true,
         millis: 510,
@@ -199,7 +197,6 @@ fn what_is_asked_while_the_host_starts_is_asked_once_it_runs(cx: &mut TestAppCon
         assert!(desk.started(desk.starts, Ok(Running::stand_in(tell)), cx));
     });
     let told: Vec<ToHost> = told.try_iter().collect();
-    // The tab was drawn before the host ran: it's told once, as it is now.
     assert_eq!(told.first(), Some(&ToHost::Visible { visible: true }));
     assert!(
         told.iter()
@@ -252,7 +249,6 @@ fn a_start_overtaken_has_its_host_told_to_quit_and_changes_nothing(cx: &mut Test
     let (desk, told) = running(cx);
     let (late, told_late) = channel();
     desk.update(cx, |desk, cx| {
-        // A start numbered before the one that counts comes to its end only now.
         desk.starts += 1;
         let stale = desk.starts - 1;
         assert!(!desk.started(stale, Ok(Running::stand_in(late)), cx));
@@ -353,7 +349,6 @@ fn a_loader_inside_koyos_bundle_is_run_from_a_copy_standing_alone() {
     );
     assert_eq!(read("libkoyo_desk_host.dylib"), "host, build one");
 
-    // A new build brings a new library; the loader's copy stays the file it was.
     let placed = std::fs::metadata(copy.join("Contents/Info.plist")).unwrap();
     std::fs::write(
         frameworks.join("libkoyo_desk_host.dylib"),
@@ -365,7 +360,6 @@ fn a_loader_inside_koyos_bundle_is_run_from_a_copy_standing_alone() {
     let kept = std::fs::metadata(copy.join("Contents/Info.plist")).unwrap();
     assert_eq!(placed.modified().unwrap(), kept.modified().unwrap());
 
-    // One that isn't inside another app is run where it is.
     assert_eq!(super::host::standing_alone(&copy, &state).unwrap(), copy);
 }
 
@@ -383,7 +377,6 @@ fn the_desktop_is_an_agents_while_it_acts_and_the_persons_once_they_do(cx: &mut 
         assert_eq!(desk.control.agent(), Some(&agent));
     });
 
-    // The person acts in the tab: theirs while they're at it, the agent waiting, named.
     let input = Input::Text { text: "x".into() };
     desk.update(cx, |desk, cx| {
         desk.input(input, cx);
@@ -393,7 +386,6 @@ fn the_desktop_is_an_agents_while_it_acts_and_the_persons_once_they_do(cx: &mut 
         let implicit = Mode::Implicit;
         assert!(matches!(refused, Refused::PersonHasControl { mode, .. } if mode == implicit));
     });
-    // Left alone, it goes back by itself.
     cx.executor()
         .advance_clock(IMPLICIT_HOLD + Duration::from_millis(100));
     cx.run_until_parked();
@@ -402,7 +394,6 @@ fn the_desktop_is_an_agents_while_it_acts_and_the_persons_once_they_do(cx: &mut 
         assert_eq!(desk.agent_acts(agent.clone(), cx), Ok(()));
     });
 
-    // Asked for, it's theirs until they give it back.
     desk.update(cx, |desk, cx| desk.person_acts(Mode::Explicit, cx));
     cx.executor().advance_clock(IMPLICIT_HOLD * 3);
     cx.run_until_parked();
@@ -414,7 +405,6 @@ fn the_desktop_is_an_agents_while_it_acts_and_the_persons_once_they_do(cx: &mut 
         assert_eq!(desk.agent_acts(agent.clone(), cx), Ok(()));
     });
 
-    // An agent that rests has let the desktop go.
     cx.executor()
         .advance_clock(RESTS_AFTER + Duration::from_millis(100));
     cx.run_until_parked();
@@ -442,10 +432,8 @@ fn the_setup_takes_the_grants_one_at_a_time_as_the_host_reports_them(cx: &mut Te
         desk.ask_grant(Grant::Accessibility, cx);
         assert!(desk.expecting(), "asked for: looked for from now on");
     });
-    // The asking is a process of the loader's own, not the host's: the host is told nothing.
     assert_eq!(told.try_iter().count(), 0);
 
-    // Given: the host says so by itself, and the next one is due.
     let grants = FromHost::Grants {
         accessibility: true,
         screen_recording: false,
@@ -455,7 +443,6 @@ fn the_setup_takes_the_grants_one_at_a_time_as_the_host_reports_them(cx: &mut Te
         assert_eq!(desk.step(), Step::Needs(Grant::ScreenRecording));
     });
 
-    // A host started with both makes the desktop: ready.
     says(&desk, hello(true, true), cx);
     desk.read_with(cx, |desk, _| assert_eq!(desk.step(), Step::Starting));
     let size = Size {

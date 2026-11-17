@@ -57,7 +57,6 @@ mod tests {
         sheet(&folder, "A Pad", &["iPad13,18", "iPad13,19"], 25);
         assert_eq!(corner_among(&folder, "iPhone15,2"), Some(55.));
         assert_eq!(corner_among(&folder, "iPad13,18"), Some(25.));
-        // The same model with cellular: no sheet of its own, named by its sibling's.
         assert_eq!(corner_among(&folder, "iPad13,19"), Some(25.));
         assert_eq!(corner_among(&folder, "iPhone99,9"), None);
         assert_eq!(corner_among(&folder.join("none"), "iPhone15,2"), None);

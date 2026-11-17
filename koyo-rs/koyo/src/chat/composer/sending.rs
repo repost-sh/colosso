@@ -42,7 +42,6 @@ impl ChatComposer {
     fn typed_answers(&self) -> bool {
         match &self.asked {
             Asked::Approval { .. } => true,
-            // With all of it answered, and on its way, what's typed is just the next message.
             Asked::Question(drawer) => drawer.shown().is_some(),
             _ => false,
         }
@@ -104,7 +103,6 @@ impl ChatComposer {
             _ => {}
         }
         let attachments = self.take_attached();
-        // The same message sent again keeps its id, so it can't go twice if it did go the first time.
         let message_id = (self.unsent.take())
             .filter(|failed| failed.text == text && failed.attachments == attachments)
             .map_or_else(MessageId::fresh, |failed| failed.message_id);

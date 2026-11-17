@@ -92,7 +92,6 @@ fn a_picture_opens_as_a_picture_and_the_pointer_zooms_it_about_itself(cx: &mut T
         "no editor over a picture"
     );
     assert!(cx.read(|cx| matches!(viewer.read(cx).state, State::Open)));
-    // Smaller than the pane, it's shown at its own size, and has the keyboard.
     assert_eq!(zoom(&viewer, cx), (1., true));
     let focused = cx
         .update_window(window, |_, window, cx| file.read(cx).has_focus(window, cx))
@@ -104,7 +103,6 @@ fn a_picture_opens_as_a_picture_and_the_pointer_zooms_it_about_itself(cx: &mut T
         .debug_bounds("viewer-pages")
         .expect("the pages on screen");
     let middle = pages.center();
-    // ⌘ and the wheel up zoom in, about the pointer.
     visual.simulate_event(ScrollEvent {
         position: middle,
         delta: ScrollDelta::Pixels(point(px(0.), px(200.))),
@@ -114,7 +112,6 @@ fn a_picture_opens_as_a_picture_and_the_pointer_zooms_it_about_itself(cx: &mut T
     let (zoomed, fit) = zoom(&viewer, cx);
     assert!((zoomed - 2.).abs() < 0.01, "zoomed to {zoomed}");
     assert!(!fit, "zoomed, it no longer follows the pane");
-    // A pinch out zooms out by as much as it says.
     visual.simulate_event(PinchEvent {
         position: middle,
         delta: -0.5,
@@ -123,7 +120,6 @@ fn a_picture_opens_as_a_picture_and_the_pointer_zooms_it_about_itself(cx: &mut T
     });
     let (pinched, _) = zoom(&viewer, cx);
     assert!((pinched - 1.).abs() < 0.01, "pinched to {pinched}");
-    // Zoomed past the pane, the wheel alone moves the picture about rather than zooming.
     visual.simulate_event(ScrollEvent {
         position: middle,
         delta: ScrollDelta::Pixels(point(px(0.), px(600.))),
@@ -149,7 +145,6 @@ fn a_picture_opens_as_a_picture_and_the_pointer_zooms_it_about_itself(cx: &mut T
         (30., 40.),
         "it moves by the wheel's deltas"
     );
-    // ⌘0 fits it again.
     visual.simulate_keystrokes("cmd-=");
     assert!(zoom(&viewer, cx).0 > 1.01, "⌘= zooms in");
     visual.simulate_keystrokes("cmd-0");
@@ -171,7 +166,6 @@ fn a_drawing_shows_its_text_on_asking_and_itself_again(cx: &mut TestAppContext) 
     until(window, cx, |cx| cx.read(|cx| viewer.read(cx).is_drawn()));
     let file = shown_file(&shell, cx);
     assert!(cx.read(|cx| !file.read(cx).shows_text()));
-    // Its text, asked for, is made an editor of and shown, with the keyboard.
     (cx.update_window(window, |_, window, cx| {
         file.update(cx, |file, cx| file.show_text(true, window, cx));
     }))
@@ -193,7 +187,6 @@ fn a_drawing_shows_its_text_on_asking_and_itself_again(cx: &mut TestAppContext) 
     }))
     .unwrap();
     assert!(focused, "the editor has the keyboard");
-    // And the drawing again, the same editor kept for next time.
     (cx.update_window(window, |_, window, cx| {
         file.update(cx, |file, cx| file.show_text(false, window, cx));
     }))
@@ -245,10 +238,7 @@ fn a_link_to_a_file_opens_it_in_a_tab(cx: &mut TestAppContext) {
         ["[lib.rs*]"]
     );
     assert_eq!(open(&root.join("shot.png"), None, cx), ["[shot.png*]"]);
-    // A path to nothing opens nothing.
     assert_eq!(open(&root.join("gone.png"), None, cx), ["[shot.png*]"]);
-    // A picture outside the checkout, as one pasted into a terminal is kept in the temporary
-    // folder and Claude Code links its `[Image #1]` to it, opens too, shown as what it is.
     let elsewhere = crate::test_support::scratch("viewer-tab-link-pasted");
     picture(&elsewhere, "koyo-paste-1.png", 30, 20);
     assert_eq!(

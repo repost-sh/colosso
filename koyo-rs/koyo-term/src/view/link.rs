@@ -76,7 +76,6 @@ impl TerminalView {
         self.exited = record.exit;
         self.link = Link::Waiting;
         cx.emit(TerminalEvent::Opened(record));
-        // Laid out already while the daemon opened it.
         if let Some(grid) = self.fill.get() {
             self.attach(size_of(grid), cx);
         }
@@ -336,7 +335,6 @@ impl TerminalView {
             },
             Update::Lagging => {}
             Update::Disconnected => {
-                // The daemon went away; attach again, which starts it if need be.
                 self.link = Link::Waiting;
                 self.updates = None;
                 if let Some(grid) = self.fill.get() {

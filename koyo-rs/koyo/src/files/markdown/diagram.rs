@@ -263,9 +263,6 @@ fn config(p: Palette, paper: Hsla, dark: bool) -> Value {
     set(&["pieOpacity"], "1");
     set(&["pieTitleTextSize"], "17px");
     set(&["pieSectionTextSize"], "13px");
-    // The charts' slices, a mind map's branches, a git graph's lanes: the colours code is in,
-    // which go together in either theme; a branch underlined in its own colour, whole, where
-    // Mermaid would take the slice's inverse.
     let c = p.code;
     let slices = [
         c.function,
@@ -316,7 +313,6 @@ pub fn draw(source: &str, look: &Look) -> Result<Svg, SharedString> {
             .map_err(|why| why.to_string())?,
         None => SvgEnvironment::deterministic(),
     };
-    // What GPUI's SVG renderer can paint: labels as SVG text, not HTML.
     let request = SvgRequest {
         environment,
         pipeline: Some(SvgPipeline::resvg_safe()),

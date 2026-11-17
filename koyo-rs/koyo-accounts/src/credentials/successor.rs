@@ -210,9 +210,6 @@ impl CredentialStore {
         if verdict == ManifestVerdict::Unreadable
             || (verdict == ManifestVerdict::Corrupt && self.stash_entry_files_exist())
         {
-            // Not "nothing stashed": every row is the sole record of a spent generation, and
-            // a corrupt manifest with no entry files falls through so the next manifest write
-            // can set the bad file aside, its only repair.
             return Err(AccountsError::CredentialRead(format!(
                 "the unclaimed manifest is {} and stashed entry files exist; deferring account \
                  {account_num}'s adoption rather than POSTing a generation a stashed successor \
@@ -220,11 +217,8 @@ impl CredentialStore {
                 verdict.as_str()
             )));
         }
-        // A row unreadable THIS instant must not stop the scan before a readable sibling on
-        // the same generation is tried.
         let mut deferred_entry_id: Option<&str> = None;
         for (entry_id, row) in &manifest {
-            // A row that isn't an object names no slot.
             let Some(row) = row.as_object() else {
                 continue;
             };
@@ -234,8 +228,6 @@ impl CredentialStore {
             let reason = str_at(row, REASON).and_then(StashReason::parse);
             if str_at(row, CONSUMED_FP) != Some(consumed_fp) {
                 if reason == Some(StashReason::CasConflict) {
-                    // A conflict's row can never match: the store moved off the generation it
-                    // superseded and only moves forward.
                     self.retire_dead(
                         entry_id,
                         account_num,
@@ -243,8 +235,6 @@ impl CredentialStore {
                         "its generation was superseded by the writer that won the race",
                     );
                 } else if self.read_unclaimed_credential(entry_id) == (String::new(), false) {
-                    // No bytes and no matching generation: what a failed retire leaves. An
-                    // unreadable row reads `("", true)` and survives.
                     self.retire_dead(
                         entry_id,
                         account_num,
@@ -260,7 +250,6 @@ impl CredentialStore {
                 continue;
             }
             if credentials.is_empty() {
-                // Absent or corrupt: the bytes are gone for good, so nothing can adopt it.
                 self.retire_dead(
                     entry_id,
                     account_num,

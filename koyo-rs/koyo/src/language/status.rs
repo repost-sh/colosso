@@ -56,7 +56,6 @@ pub fn register(cx: &mut App) {
             let server = registry.server(*kind, root);
             let log = server.and_then(|server| server.read(cx).log().path().map(Path::to_path_buf));
             match log {
-                // Console follows the file as the server adds to it.
                 Some(log) if log.exists() => cx.open_with_system(&log),
                 _ => log::warn!("{} has no log for {} yet", kind.name(), root.display()),
             }
@@ -238,7 +237,6 @@ impl Shown {
             State::Failed(_) | State::Crashed(_) if !self.restarting => {
                 (IconName::CircleX, Some(p.danger))
             }
-            // Busy, which a spinner shows instead.
             State::Starting | State::Indexing { .. } | State::Crashed(_) => {
                 (IconName::Braces, Some(p.modified))
             }

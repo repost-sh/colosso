@@ -41,7 +41,6 @@ impl Render for ActivityPanel {
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
                     .on_scroll(cx.listener(|this, event: &ScrollEvent, _, cx| {
-                        // Scrolling back through the rows stops following the newest.
                         if event.delta.pixel_delta(px(16.)).y > px(0.) && this.following {
                             this.following = false;
                             cx.notify();
@@ -294,7 +293,6 @@ fn activity_row(entry: &ActivityEntry, index: usize, open: bool, p: Palette) -> 
         p.text
     };
     let is_agent = entry.actor.kind == ActorKind::Agent;
-    // A refusal's code ends its action, so the words wrap across the row.
     let code = (entry.error)
         .and_then(|error| serde_json::to_value(error).ok())
         .and_then(|code| code.as_str().map(str::to_owned));
@@ -312,14 +310,12 @@ fn activity_row(entry: &ActivityEntry, index: usize, open: bool, p: Palette) -> 
                         .font_weight(FontWeight::MEDIUM)
                         .child(format!("{prefix} {}", entry.actor.label)),
                 )
-                // The action takes the room the row has, so a long one wraps across it.
                 .child(div().flex_1().min_w_0().text_color(tone).child(action))
                 .when(entry.duration_ms > 0, |line| {
                     line.child(duration(entry.duration_ms))
                 }),
         )
         .when(open, |row| {
-            // A person's rows show what they printed, never a command line.
             row.when(is_agent && !entry.command.is_empty(), |row| {
                 row.child(mono(format!("$ {}", entry.command), p).text_color(p.muted))
             })

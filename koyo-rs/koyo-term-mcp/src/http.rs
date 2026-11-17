@@ -54,7 +54,6 @@ impl HttpServer {
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port)))?;
         listener.set_nonblocking(true)?;
         let port = listener.local_addr()?.port();
-        // Multi-threaded: the catalogs' calls block, and run on the runtime's blocking threads.
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("mcp-http")
@@ -66,7 +65,6 @@ impl HttpServer {
             .name("mcp-http".into())
             .spawn(move || {
                 runtime.block_on(serve(listener, port, config, connect, serving));
-                // Calls still waiting on the person finish on their own.
                 runtime.shutdown_background();
             })?;
         Ok(HttpServer {
@@ -133,7 +131,6 @@ async fn serve(
     );
     while let Some(accepted) = stop.run_until_cancelled(listener.accept()).await {
         let Ok((stream, _)) = accepted else {
-            // A failing accept, such as running out of descriptors, mustn't spin.
             tokio::time::sleep(Duration::from_millis(100)).await;
             continue;
         };

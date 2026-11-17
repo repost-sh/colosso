@@ -127,7 +127,6 @@ impl Activity {
     /// The chat works, or doesn't, from now: the line fades in or out from wherever it's got to.
     pub(super) fn set_working(&mut self, working: bool, cx: &mut Context<Self>) {
         let now = cx.background_executor().now();
-        // Back from nothing it sets off afresh, from beside the send button.
         if working && self.fade.level(now) <= 0. {
             self.set_off = now;
         }
@@ -157,20 +156,16 @@ impl Render for Activity {
         {
             self.renders += 1;
         }
-        // The executor's clock, which a test moves on as it likes.
         let now = cx.background_executor().now();
         let changing = self.fade.changing(now);
         let activity = settings::get(cx).chat_activity;
-        // Whichever app is in front: a chat works on while its person is elsewhere.
         let look = Look::of(activity).filter(|_| !cx.reduce_motion());
         let shows = activity != ChatActivity::Off && (self.fade.is_on() || changing);
-        // A step is taken while it moves or fades, in place of any that's waiting.
         self.next = (shows && (look.is_some() || changing)).then(|| step_later(cx));
         let edge = div().absolute().inset_0();
         if !shows {
             return edge.into_any_element();
         }
-        // The faint edge's colour, the theme's tint, made more opaque.
         let (colour, level) = (theme::palette(cx).glass_edge, self.fade.level(now));
         let travelled = SPEED * now.saturating_duration_since(self.set_off).as_secs_f32();
         let placement = self.placement.clone();
@@ -216,7 +211,6 @@ fn paint_line(outline: &Outline, head: f32, look: Look, colour: Hsla, window: &m
     let parts = outline.parts();
     for at in 0..PIECES {
         let start = head - look.length + piece * at as f32;
-        // Brightest midway, and nothing at its ends.
         let middle = (at as f32 + 0.5) / PIECES as f32;
         let colour = colour.opacity((PI * middle).sin().powi(2));
         let (part, along) = outline.part(start);
@@ -258,7 +252,6 @@ impl Outline {
             top: f32::from(bounds.origin.y) + inset,
             width,
             height,
-            // As GPUI rounds the element: no more than half its shorter side.
             radius: (radius - inset).clamp(0., width.min(height) / 2.),
         }
     }
@@ -321,7 +314,6 @@ impl Outline {
                 (left + r, top + r),
             ];
             let (x, y) = centres[side];
-            // A quarter turn about its centre, from where the edge before it ends.
             let angle = FRAC_PI_2 * (side as f32 - 1.) + if r > 0. { along / r } else { 0. };
             (x + r * angle.cos(), y + r * angle.sin())
         };
@@ -364,7 +356,6 @@ mod tests {
         let outline = outline();
         let [across, corner, down, ..] = outline.parts();
         assert!(close(outline.at(0.), (10.5 + 17.5, 20.5)));
-        // Halfway round the top-right corner, it's that far in from both edges.
         let diagonal = 17.5 - 17.5 * std::f32::consts::FRAC_1_SQRT_2;
         let mid_corner = outline.at(across + corner / 2.);
         assert!(close(mid_corner, (209.5 - diagonal, 20.5 + diagonal)));
@@ -374,7 +365,6 @@ mod tests {
             (209.5, 79.5 - 17.5)
         ));
         assert!(close(outline.at(outline.length()), (10.5 + 17.5, 20.5)));
-        // Behind where it started is the end of the lap before.
         let before = outline.at(outline.length() - corner / 2.);
         assert!(close(
             outline.at(-corner / 2.),
@@ -418,7 +408,6 @@ mod tests {
         let top = outline.band(10., 4., 1.);
         assert!(close(top.origin, (10.5 + 17.5 + 10., 20.)));
         assert!(close(top.bottom_right(), (10.5 + 17.5 + 14., 21.)));
-        // Down the right edge, and back leftwards along the bottom.
         let right = outline.band(across + corner + 2., 4., 1.);
         assert!(close(right.origin, (209., 20.5 + 17.5 + 2.)));
         assert!(close(right.bottom_right(), (210., 20.5 + 17.5 + 6.)));

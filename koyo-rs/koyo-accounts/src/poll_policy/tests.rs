@@ -41,8 +41,6 @@ fn interval(input: &PlanInput<'_>) -> f64 {
     plan_after_fetch(input).1
 }
 
-// TestIntervalAdaptation
-
 #[test]
 fn first_fetch_uses_defaults() {
     let new = usage(10., None);
@@ -104,8 +102,6 @@ fn unknown_pct_uses_the_default() {
     assert_eq!(planned, CANDIDATE_DEFAULT_INTERVAL_S);
 }
 
-// TestUrgentMode
-
 fn urgent<'a>(prev: &'a Value, new: &'a Value) -> PlanInput<'a> {
     PlanInput {
         prev_interval_s: Some(MIN_INTERVAL_S),
@@ -155,7 +151,6 @@ fn recent_429_suppresses_urgency() {
 
 #[test]
 fn urgent_then_unmoved_snaps_back_to_the_floor() {
-    // Once movement stops the next interval is the normal floor, never a sub-floor decay.
     let (prev, new) = (usage(78., None), usage(78., None));
     let planned = interval(&PlanInput {
         prev_interval_s: Some(URGENT_INTERVAL_S),
@@ -163,8 +158,6 @@ fn urgent_then_unmoved_snaps_back_to_the_floor() {
     });
     assert_eq!(planned, MIN_INTERVAL_S);
 }
-
-// TestPost429Floor
 
 #[test]
 fn recent_429_floors_the_cadence() {
@@ -189,8 +182,6 @@ fn slower_learned_cadence_survives_the_floor() {
     assert!((planned - 590. * POST_429_BACKOFF_MULT).abs() < 1e-9);
     assert!(planned > POST_429_MIN_INTERVAL_S);
 }
-
-// TestPost429Aimd
 
 fn after_429(prev_interval_s: Option<f64>, recent_429: bool) -> f64 {
     let (prev, new) = (usage(10., None), usage(10., None));
@@ -260,8 +251,6 @@ fn without_recency_the_interval_is_capped_at_the_narrow_ceiling() {
     const { assert!(CANDIDATE_MAX_INTERVAL_S < POST_429_MAX_INTERVAL_S) };
 }
 
-// TestResetCapping
-
 #[test]
 fn poll_never_scheduled_past_a_future_reset() {
     let reset_ts = NOW + 90.;
@@ -312,8 +301,6 @@ fn active_at_limit_uses_same_bounded_recovery_probe() {
     assert!(approx(next_poll, NOW + planned));
 }
 
-// TestJitter
-
 #[test]
 fn jitter_bounds() {
     let new = usage(10., None);
@@ -332,8 +319,6 @@ fn jitter_bounds() {
         assert!((0. ..1.).contains(&draw));
     }
 }
-
-// TestBudgetInvariants: relationships the measured limit asks of the constants.
 
 #[test]
 fn sustained_floor_stays_under_the_hourly_cap() {
@@ -355,8 +340,6 @@ fn urgent_episode_alone_fits_inside_the_window_cap() {
     const { assert!(ESCALATION_MARGIN_PCT / MOVEMENT_DELTA_PCT < 27.) };
 }
 
-// TestPerWindowUrgency
-
 fn active(prev: &Value, new: &Value, threshold: f64, weekly: Option<f64>, models: &[&str]) -> f64 {
     interval(&PlanInput {
         prev_interval_s: Some(MIN_INTERVAL_S),
@@ -377,7 +360,6 @@ fn the_existing_urgent_plan_is_unchanged_with_weekly_unset() {
 
 #[test]
 fn a_non_max_window_rising_in_its_band_goes_urgent() {
-    // 5h 76 -> 78 under a flat 7d 85 max.
     let planned = active(&usage7(76., 85.), &usage7(78., 85.2), 90., None, &[]);
     assert_eq!(planned, URGENT_INTERVAL_S);
 }
@@ -386,7 +368,6 @@ fn a_non_max_window_rising_in_its_band_goes_urgent() {
 fn s10_the_5h_rising_under_a_flat_weekly_binding() {
     let (prev, new) = (usage7(80., 94.), usage7(84., 94.));
     assert_eq!(active(&prev, &new, 85., Some(97.), &[]), URGENT_INTERVAL_S);
-    // A candidate never goes urgent; its unmoved max decays as before.
     let planned = interval(&PlanInput {
         prev_interval_s: Some(300.),
         prev_usage: Some(&prev),
@@ -458,6 +439,5 @@ fn a_scoped_window_rises_against_the_weekly_line() {
         active(&prev, &new, 85., Some(97.), &["Fable"]),
         URGENT_INTERVAL_S
     );
-    // Unconfigured, the scoped window is invisible to the planner too.
     assert_eq!(active(&prev, &new, 85., Some(97.), &[]), 270.);
 }

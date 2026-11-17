@@ -108,8 +108,6 @@ pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
     let tree = Tree::new();
     let mut rows = Rows::default();
     rows.reset(&tree);
-    // Every folder of `src/` open: the big tree the other folders are opened, closed and
-    // listed anew in.
     rows.expand("src", &tree);
     for package in 0..PACKAGES {
         let package = format!("src/pkg-{package:03}");
@@ -207,8 +205,6 @@ impl Run {
                 matches!(at, Reveal::Shown(_)),
                 "the file wasn't shown: {at:?}"
             );
-            // Closed from the bottom up, so each is shown when it's closed and none is
-            // left open for the next reveal to find.
             for folder in folders.iter().rev() {
                 rows.collapse(folder);
             }

@@ -26,7 +26,6 @@ pub(super) fn open(heard: fn(String)) -> Option<String> {
         .spawn(move || each_message(BufReader::new(ours_to_read), heard))
         .ok()?;
     WRITER.set(Mutex::new(Some(ours_to_write))).ok()?;
-    // Chromium's ends are its own from here on: it closes them as it stops.
     Some(format!("{},{}", theirs_to_read.into_raw_fd(), theirs_to_write.into_raw_fd()))
 }
 
@@ -69,7 +68,6 @@ fn each_message(mut pipe: impl BufRead, mut heard: impl FnMut(String)) {
         if message.last() == Some(&0) {
             message.pop();
         }
-        // The protocol is JSON: anything else is dropped.
         if let Ok(text) = String::from_utf8(std::mem::take(&mut message))
             && !text.is_empty()
         {
@@ -87,7 +85,6 @@ mod tests {
         let wire: &[u8] = b"{\"id\":1}\0{\"method\":\"a.b\"}\0\0{\"cut";
         let mut heard = Vec::new();
         each_message(wire, |message| heard.push(message));
-        // The last one has no zero after it yet the pipe ended: it's what was written.
         assert_eq!(heard, ["{\"id\":1}", "{\"method\":\"a.b\"}", "{\"cut"]);
     }
 

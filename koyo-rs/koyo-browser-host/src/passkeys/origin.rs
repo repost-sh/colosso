@@ -100,7 +100,6 @@ pub(crate) fn suffix_of_or_equal(suffix: &str, host: &str) -> bool {
         return false;
     }
     let public = |domain: &str| psl::suffix_str(domain).unwrap_or(domain).to_owned();
-    // A public suffix itself, or a part of the host's: shared by sites that aren't one.
     suffix != public(suffix) && !public(host).ends_with(&dotted)
 }
 

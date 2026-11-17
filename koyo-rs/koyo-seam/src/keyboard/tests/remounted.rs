@@ -21,8 +21,6 @@ fn a_page_that_lost_the_first_responder_unheard_has_it_back_on_the_next_turn() {
     fake.page_in(PAGE, Some(WINDOW));
     set_in(WINDOW, Surface::Page(PAGE), Cause::Click);
     assert_eq!(fake.first_responder(WINDOW), Responder::Page(PAGE));
-    // The views are taken out and put back: the window has the first responder, and nothing
-    // told the keyboard.
     fake.tells.set(false);
     fake.moved(WINDOW, Responder::Window);
     fake.tells.set(true);
@@ -31,7 +29,6 @@ fn a_page_that_lost_the_first_responder_unheard_has_it_back_on_the_next_turn() {
     assert_eq!(turns.next(), 1);
     assert_eq!(fake.first_responder(WINDOW), Responder::Page(PAGE));
     assert_eq!(held(WINDOW).unwrap().0, Holder::Page(PAGE));
-    // The next key finds nothing to heal.
     hooks::at_key(WINDOW);
     assert_eq!(written("healed"), 0);
     assert_eq!(written("views were put back"), 1);

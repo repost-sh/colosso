@@ -25,7 +25,6 @@ fn an_agent_in_a_koyo_terminal_is_welcomed_without_asking(cx: &mut TestAppContex
     let welcome = hello(&terminal("term_1"), cx).unwrap();
     assert_eq!(welcome.grant, Scope::AGENT.to_vec());
     assert!(!cx.has_pending_prompt(), "nobody was asked");
-    // A terminal Koyo doesn't run doesn't pass for one, however the client names it.
     let refused = hello(&terminal("term_gone"), cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::TerminalNotFound);
 }
@@ -54,7 +53,6 @@ fn a_chats_agent_is_welcomed_without_asking_once_the_window_knows_the_chat(
 ) {
     let root = repo("control-hello-chat", &[("README.md", "hi\n")]);
     let rig = controlled("control-hello-chat", &[&root], cx);
-    // Before the window has heard its chats from the host, a chat may yet be one of them.
     let early = hello(&chat("019a"), cx).unwrap_err();
     assert_eq!(early.code, ErrorCode::NotFound);
     assert!(early.retryable);
@@ -62,7 +60,6 @@ fn a_chats_agent_is_welcomed_without_asking_once_the_window_knows_the_chat(
     let chats = read_shell(&rig, cx, |shell, _| shell.chats().clone());
     let listed = vec![summary("019a", &root, "2026-11-06T10:00:00Z")];
     chats.update(cx, |chats, cx| chats.hear_list(listed, cx));
-    // External control is off, and nobody is asked: the chat is Koyo's own.
     let welcome = hello(&chat("019a"), cx).unwrap();
     assert_eq!(welcome.grant, Scope::AGENT.to_vec());
     assert!(!cx.has_pending_prompt(), "nobody was asked");
@@ -76,12 +73,10 @@ fn a_chats_agent_is_welcomed_without_asking_once_the_window_knows_the_chat(
         "the log names the chat"
     );
 
-    // A chat the window doesn't know doesn't pass for one, now that it has heard them all.
     let refused = hello(&chat("019b"), cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::NotFound);
     assert!(!refused.retryable);
 
-    // With Koyo tools off, the chat is refused, and so are the calls of one let in before.
     cx.update(|cx| crate::settings::update(cx, |settings| settings.koyo_tools = false));
     let off = hello(&chat("019a"), cx).unwrap_err();
     assert_eq!(off.code, ErrorCode::ControlDisabled);
@@ -117,7 +112,6 @@ fn the_person_allows_a_client_once_for_every_hello_waiting(cx: &mut TestAppConte
         .expect("the client is allowed");
     assert_eq!(allowed.scopes, Scope::DEFAULT_GRANT.to_vec());
     assert!(allowed.last_used.is_some());
-    // Allowed, it's welcomed without asking again.
     assert!(hello(&external("Claude Code"), cx).is_ok());
     assert!(!cx.has_pending_prompt());
     let decisions: Vec<_> = activity(cx)
@@ -162,7 +156,6 @@ fn a_denied_client_is_refused_without_asking_until_the_denial_passes(cx: &mut Te
     cx.simulate_prompt_answer("Deny");
     cx.run_until_parked();
     assert!(taken(&asked).unwrap().is_err());
-    // The person changes their mind in Settings.
     cx.update(|cx| allow_denied("Cursor", cx));
     assert!(hello(&external("Cursor"), cx).is_ok());
     assert!(cx.read(denied).is_empty());
@@ -181,7 +174,6 @@ fn a_client_the_person_doesnt_answer_about_is_declined_and_asked_again(cx: &mut 
         taken(&asked).unwrap().unwrap_err().code,
         ErrorCode::UserDeclined
     );
-    // An answer past the time changes nothing.
     cx.simulate_prompt_answer("Allow");
     cx.run_until_parked();
     assert!(cx.read(policy).client("Zed").is_none());

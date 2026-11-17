@@ -82,9 +82,6 @@ impl MarkdownPlugin for MermaidPlugin {
 
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = self.p;
-        // A row, its diagram as wide as it's drawn or narrowed to fit, and as tall as the
-        // width it ends up makes it: in a column its height would follow the column's width,
-        // and from a width of its own, the width it's drawn at.
         let mut card = div()
             .debug_selector(|| "mermaid-card".into())
             .w_full()
@@ -99,8 +96,6 @@ impl MarkdownPlugin for MermaidPlugin {
             return card.into_any_element();
         };
         let key = (source.clone(), self.look.clone());
-        // Drawn off the main thread; this view's drawn again once it is. Still, not spinning,
-        // as each frame something spins would draw the whole page again.
         let content: AnyElement = match window.use_asset::<Diagram>(&key, cx) {
             None => div()
                 .h(px(DRAWING - 2. * PADDING))

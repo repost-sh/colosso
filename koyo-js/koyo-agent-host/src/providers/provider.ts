@@ -1,8 +1,3 @@
-// The seam between a thread's actor and whoever runs the agent (docs/chat.md C6, 4.6): the
-// actor speaks in these terms only, never in a provider's SDK types. Claude is the first
-// provider, a scripted fake the second; another (Codex) plugs in here, and the actor branches
-// on its capabilities, never on its name.
-
 import type { UUID } from "node:crypto";
 
 import type { Catalog, FilesBack, Params, ProviderStatus } from "../protocol/methods";

@@ -77,7 +77,6 @@ impl MarkdownPreview {
     /// A preview of a file in `folder`, showing nothing until it's given its text.
     pub fn new(folder: PathBuf, cx: &mut Context<Self>) -> Self {
         let state = cx.new(|cx| TextViewState::markdown("", cx).selectable(true));
-        // Closed, it lets go of the diagrams it showed.
         cx.on_release(|this, cx| {
             let seen = mem::take(&mut *this.seen.lock().unwrap_or_else(PoisonError::into_inner));
             diagram::showing(&this.kept, &seen, None, cx);

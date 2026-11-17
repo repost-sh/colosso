@@ -169,7 +169,6 @@ impl Painter<'_> {
             let y = self.row_y(usize::from(*row)) + metrics.underline;
             for col in cols.clone() {
                 let col = usize::from(col);
-                // A wide character's tail is drawn in the colour of its head.
                 let cell = match shown.cells.get(col) {
                     Some(cell) if cell.width == Width::SpacerTail && col > 0 => {
                         shown.cells.get(col - 1)
@@ -209,7 +208,6 @@ impl Painter<'_> {
         let covered = Bounds::new(area.origin, size(width, area.size.height));
         window.paint_quad(fill(covered, hsla(self.frame.background)));
         let metrics = self.grid.metrics;
-        // A line as tall as the cell centres its text as the cell's metrics do.
         if let Err(error) = line.paint(
             area.origin,
             metrics.cell_height,

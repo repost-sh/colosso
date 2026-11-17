@@ -52,7 +52,6 @@ impl Picture {
         let number = |value: u32| CFNumber::new_i64(i64::from(value));
         let (width, height, element) = (number(WIDTH), number(HEIGHT), number(4));
         let row = number((WIDTH * 4).next_multiple_of(64));
-        // Blue, green, red and alpha, a byte each, as a frame's pixels are.
         let format = number(kCVPixelFormatType_32BGRA);
         // SAFETY: the keys are IOSurface's own property names.
         let keys: [&CFString; 5] = unsafe {
@@ -223,9 +222,7 @@ mod tests {
         let on = |x: f32, y: f32, width: f32, height: f32| {
             Bounds::new(point(px(x), px(y)), size(px(width), px(height)))
         };
-        // Taller than a picture's shape, 312 by 196: all its width, from its top.
         assert_eq!(framed(on(300., 40., 624., 900.)), on(300., 40., 624., 392.));
-        // Wider: all its height, across its middle.
         assert_eq!(framed(on(0., 0., 1000., 196.)), on(344., 0., 312., 196.));
     }
 }

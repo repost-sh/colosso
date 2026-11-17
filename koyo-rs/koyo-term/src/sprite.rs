@@ -23,29 +23,29 @@ fn arms(c: char) -> Option<[u8; 4]> {
 
 /// U+250C to U+254B: corners, tees and crosses, in code order.
 const CORNERS: [[u8; 4]; 64] = [
-    *b"0110", *b"0210", *b"0120", *b"0220", // ┌ ┍ ┎ ┏
-    *b"0011", *b"0012", *b"0021", *b"0022", // ┐ ┑ ┒ ┓
-    *b"1100", *b"1200", *b"2100", *b"2200", // └ ┕ ┖ ┗
-    *b"1001", *b"1002", *b"2001", *b"2002", // ┘ ┙ ┚ ┛
-    *b"1110", *b"1210", *b"2110", *b"1120", // ├ ┝ ┞ ┟
-    *b"2120", *b"2210", *b"1220", *b"2220", // ┠ ┡ ┢ ┣
-    *b"1011", *b"1012", *b"2011", *b"1021", // ┤ ┥ ┦ ┧
-    *b"2021", *b"2012", *b"1022", *b"2022", // ┨ ┩ ┪ ┫
-    *b"0111", *b"0112", *b"0211", *b"0212", // ┬ ┭ ┮ ┯
-    *b"0121", *b"0122", *b"0221", *b"0222", // ┰ ┱ ┲ ┳
-    *b"1101", *b"1102", *b"1201", *b"1202", // ┴ ┵ ┶ ┷
-    *b"2101", *b"2102", *b"2201", *b"2202", // ┸ ┹ ┺ ┻
-    *b"1111", *b"1112", *b"1211", *b"1212", // ┼ ┽ ┾ ┿
-    *b"2111", *b"1121", *b"2121", *b"2112", // ╀ ╁ ╂ ╃
-    *b"2211", *b"1122", *b"1221", *b"2212", // ╄ ╅ ╆ ╇
-    *b"1222", *b"2122", *b"2221", *b"2222", // ╈ ╉ ╊ ╋
+    *b"0110", *b"0210", *b"0120", *b"0220",
+    *b"0011", *b"0012", *b"0021", *b"0022",
+    *b"1100", *b"1200", *b"2100", *b"2200",
+    *b"1001", *b"1002", *b"2001", *b"2002",
+    *b"1110", *b"1210", *b"2110", *b"1120",
+    *b"2120", *b"2210", *b"1220", *b"2220",
+    *b"1011", *b"1012", *b"2011", *b"1021",
+    *b"2021", *b"2012", *b"1022", *b"2022",
+    *b"0111", *b"0112", *b"0211", *b"0212",
+    *b"0121", *b"0122", *b"0221", *b"0222",
+    *b"1101", *b"1102", *b"1201", *b"1202",
+    *b"2101", *b"2102", *b"2201", *b"2202",
+    *b"1111", *b"1112", *b"1211", *b"1212",
+    *b"2111", *b"1121", *b"2121", *b"2112",
+    *b"2211", *b"1122", *b"1221", *b"2212",
+    *b"1222", *b"2122", *b"2221", *b"2222",
 ];
 
 /// U+2574 to U+257F: half lines.
 const HALVES: [[u8; 4]; 12] = [
-    *b"0001", *b"1000", *b"0100", *b"0010", // ╴ ╵ ╶ ╷
-    *b"0002", *b"2000", *b"0200", *b"0020", // ╸ ╹ ╺ ╻
-    *b"0201", *b"1020", *b"0102", *b"2010", // ╼ ╽ ╾ ╿
+    *b"0001", *b"1000", *b"0100", *b"0010",
+    *b"0002", *b"2000", *b"0200", *b"0020",
+    *b"0201", *b"1020", *b"0102", *b"2010",
 ];
 
 /// Draws `c` in `cell` (`cells` wide) in `color`; `false` when it isn't a sprite.
@@ -54,14 +54,12 @@ pub fn paint(c: char, cell: Bounds<Pixels>, color: Hsla, window: &mut Window) ->
     let snap = |v: Pixels| px((f32::from(v) * scale).round() / scale);
     let device = px(1. / scale);
     if let Some(arms) = arms(c) {
-        // A light line is about an eighth of the cell's width, at least a device pixel.
         let light = snap(cell.size.width / 8.).max(device);
         let heavy = light * 2.;
         let (left, top) = (cell.origin.x, cell.origin.y);
         let (width, height) = (cell.size.width, cell.size.height);
         let (mid_x, mid_y) = (snap(left + width / 2.), snap(top + height / 2.));
         let thick = |weight: u8| if weight == 2 { heavy } else { light };
-        // How far past the centre an arm reaches, so arms of either weight meet squarely.
         let reach = arms
             .iter()
             .map(|&weight| {
@@ -224,7 +222,6 @@ mod tests {
         assert_eq!(arms('╋'), Some([2, 2, 2, 2]));
         assert_eq!(arms('┡'), Some([2, 2, 1, 0]));
         assert_eq!(arms('╿'), Some([2, 0, 1, 0]));
-        // Arcs, dashes and double lines are the font's.
         assert_eq!(arms('╭'), None);
         assert_eq!(arms('┄'), None);
         assert_eq!(arms('═'), None);

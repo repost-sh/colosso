@@ -1,7 +1,3 @@
-// What a thread's actor holds of its thread (docs/chat.md 4.5): the rows that decide what it
-// does next, read once and then followed through every commit; the turn a session works on,
-// which lives as long as its run does; and the clients told of each commit as it's made.
-
 import type { MessageId, RequestId, RunId } from "../protocol/ids";
 import type { Delivered, Rows, ThreadSnapshot } from "../protocol/methods";
 import type {
@@ -267,8 +263,6 @@ export class ThreadState {
       }
     }
     if (committed.runs.some((run) => run.status === "removed")) {
-      // What ended last, what waits for the person and what was said last may be among
-      // what's gone.
       const state = this.#store.state(this.#thread.id);
       this.#ended = state.ended;
       this.#pending = state.pending;
@@ -276,7 +270,6 @@ export class ThreadState {
     }
     const turn = this.#turn;
     turn?.remember(committed.items);
-    // Ended once the commit has its items whole, so it keeps nothing stale.
     const ends = (run: Run): boolean => run.id === turn?.runId && isSettled(run);
     if (committed.runs.some(ends)) {
       turn?.end();
@@ -292,7 +285,6 @@ export class ThreadState {
         requests: [...committed.requests],
       }));
     }
-    // A subagent's thread shows where it started, not in the lists.
     if (this.#thread.parent === null) {
       const shown = this.summary();
       if (!Bun.deepEquals(shown, this.#told)) {
@@ -305,7 +297,6 @@ export class ThreadState {
   /** What's said of the turn, that only its rows follow, while one runs. */
   heard(event: Heard): void {
     if (event.type === "limits") {
-      // The account's, whatever runs (docs/claude-accounts.md 4).
       this.#limited(event.limits);
       return;
     }
@@ -316,7 +307,6 @@ export class ThreadState {
     }
     switch (event.type) {
       case "session.ready": {
-        // A run that chose no mode or no model keeps the ones it ran with, as the session says.
         this.#mode = event.mode;
         const permission = live.permission ?? event.mode;
         const model = live.model ?? event.model;
@@ -327,7 +317,6 @@ export class ThreadState {
       }
       case "turn.started": {
         if (live.status === "starting" && event.promptId === turn.runId) {
-          // Where it went on from is its conversation's latest now, with this turn on it.
           const { resumeAt } = this.#thread;
           const thread = resumeAt === null ? null : { ...this.#thread, resumeAt: null };
           this.commit({ thread, runs: [moved(live, "running")] });
@@ -344,7 +333,6 @@ export class ThreadState {
         return;
       }
       case "item.appended": {
-        // Streamed text is told as it comes, and kept by the turn (4.5.8).
         const grown = turn.append(event.key, event.text);
         if (grown !== undefined) {
           const params = { threadId: live.threadId, itemId: grown.id, text: event.text };
@@ -364,10 +352,8 @@ export class ThreadState {
       const stop = run.stop ?? stopBy("host", at);
       return settled(run, "interrupted", [], { at, stop }).run;
     });
-    // A background subagent's row outlives its run, so this looks past the runs that were live.
     const items = this.#store.openItems(this.#thread.id).map((item) => lost(item, at));
     const requests = this.#pending.flatMap((request) => orphaned(request, at) ?? []);
-    // What ran in the background went with the host's sessions.
     const thread = this.#quieted(this.holding());
     if (runs.length > 0 || items.length > 0 || requests.length > 0 || thread !== null) {
       this.commit({ thread, runs, items, requests });

@@ -17,7 +17,6 @@ const greeted = handlers({
   },
   "shutdown": () => ({}),
   "threads.read": () => ({}),
-  // Answered at once, with what a later step tells the client, as an actor's next commit.
   "queue.resume": ({ threadId }, client) => {
     queueMicrotask(() => {
       client.send(eventLine("thread.removed", { threadId }));
@@ -28,7 +27,6 @@ const greeted = handlers({
     throw new HostError("thread_not_found", "There is no such thread.");
   },
   "threads.delete": async () => await Promise.reject(new Error("the disk is gone")),
-  // A result far larger than a socket takes at once.
   "catalog": () => ({
     models: [],
     commands: Array.from({ length: 6 }, (_, index) => ({

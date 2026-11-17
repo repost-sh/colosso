@@ -66,7 +66,6 @@ pub fn run() -> ExitCode {
 fn check() -> Result<Vec<String>> {
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;
     let mut lines = Vec::new();
-    // A new chat, nearly all of it its prompt, which is on glass.
     let shell = drawn.shell.clone();
     (drawn.cx).update(|cx| shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx)));
     drawn.pause()?;
@@ -81,18 +80,14 @@ fn check() -> Result<Vec<String>> {
             })
             .map_err(|error| error.to_string())?;
         drawn.pause()?;
-        // The frame that shows the tab, presented, takes its picture.
         taken(&mut drawn)?;
     }
     lines.push(cost(&mut drawn)?);
 
-    // ⌃⇥: the switcher is up on the three tabs, the one before picked, its panel unseen.
     drawn.cx.simulate_keystrokes(drawn.window, "ctrl-tab");
     drawn.cx.run_until_parked();
     let panel =
         (drawn.cx.read(|cx| popup::window(Kind::Switcher, cx))).ok_or("⌃⇥ opened no switcher")?;
-    // The check's app is never the one in front, and a window that hides while it isn't would
-    // stay unseen whatever the switcher did.
     native(&mut drawn, panel, |window| {
         window.setHidesOnDeactivate(false);
     })?;
@@ -105,7 +100,6 @@ fn check() -> Result<Vec<String>> {
     drawn.cx.run_until_parked();
     expect(&seen(&mut drawn, panel)?, &unseen, "just before the hold")?;
 
-    // ⌃ held: it shows, and still hasn't the keyboard.
     drawn.cx.advance_clock(NOT_YET);
     drawn.cx.run_until_parked();
     expect(&seen(&mut drawn, panel)?, &(true, false), "after the hold")?;
@@ -113,7 +107,6 @@ fn check() -> Result<Vec<String>> {
     let picture = drawn.save_window(panel, "switcher.png")?;
     lines.push(format!("saved {}", picture.display()));
 
-    // ⌃⇥ again, heard in the window behind, moves the pick on; ⌃ let go there shows the tab.
     drawn.cx.simulate_keystrokes(drawn.window, "ctrl-tab");
     expect(&state(&drawn)?, &(titles(), 2, true), "after ⌃⇥ again")?;
     let released = ModifiersChangedEvent {
@@ -194,7 +187,6 @@ fn on_pane(picture: &RgbaImage, fill: [u8; 3]) -> (usize, usize) {
 /// presents, and read once the GPU has drawn it.
 fn taken(drawn: &mut Drawn) -> Result<RgbaImage> {
     let key = shown(drawn)?;
-    // A tab shown for the first time has none to empty until the frame presented makes it.
     drawn.cx.read(|cx| pictures::blank(key, cx));
     present(drawn, key)?;
     let started = Instant::now();

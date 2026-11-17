@@ -82,17 +82,14 @@ fn moving_to_a_chat_never_puts_the_keyboard_in_its_prompt(cx: &mut TestAppContex
         assert!(shown == first || shown == second, "a chat is shown: {how}");
     };
 
-    // Its tab picked in the sidebar, from the other chat's prompt.
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
     at_window("its tab picked", cx);
-    // Pressed in its prompt, the person types there; ⌃⇥ to the other chat, and they don't.
     press_prompt(window, cx);
     assert_eq!(
         typing_in(window, &shell, cx),
         Some(first),
         "pressed in its prompt"
     );
-    // ⌃⇥ tapped: ⌃ let go at once shows the tab before, without the switcher's panel.
     cx.simulate_keystrokes(window, "ctrl-tab");
     crate::files::tests::let_go(window, cx);
     assert_eq!(
@@ -101,19 +98,16 @@ fn moving_to_a_chat_never_puts_the_keyboard_in_its_prompt(cx: &mut TestAppContex
         "the other chat is shown"
     );
     at_window("switched to with ⌃⇥", cx);
-    // Asked for by its pane, as the launcher's list of open tabs asks.
     (cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| shell.focus_pane(first, keyboard::Intent::Launcher, window, cx));
     }))
     .unwrap();
     at_window("asked for by its pane", cx);
-    // The settings left from its prompt.
     press_prompt(window, cx);
     cx.simulate_keystrokes(window, "cmd-,");
     draw(window, cx);
     cx.simulate_keystrokes(window, "escape");
     at_window("back from the settings", cx);
-    // The chat after it closed from its own prompt, and opened again.
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 1, cx));
     press_prompt(window, cx);
     assert_eq!(typing_in(window, &shell, cx), Some(second));
@@ -133,11 +127,9 @@ fn a_tab_closed_with_the_keyboard_in_it_hands_it_to_the_tab_shown_in_its_place(
     let third = new_page(window, &shell, cx);
     assert_eq!(typing_in(window, &shell, cx), Some(third), "a new page");
 
-    // ⌘W in the page: the page shown in its place has the keyboard.
     cx.simulate_keystrokes(window, "cmd-w");
     assert_eq!(typing_in(window, &shell, cx), Some(second));
 
-    // With the keyboard at the window, the tab shown next leaves it there.
     keys_to_window(window, &shell, cx);
     cx.update_window(window, |_, window, cx| {
         window.dispatch_action(Box::new(CloseTab), cx);
@@ -150,7 +142,6 @@ fn a_tab_closed_with_the_keyboard_in_it_hands_it_to_the_tab_shown_in_its_place(
     let shown = shell.read_with(cx, |shell, _| shell.shown_tab_key().unwrap());
     assert_eq!(shown, first);
 
-    // ⌘⇧T brings a tab back with the keyboard in it.
     cx.simulate_keystrokes(window, "cmd-shift-t");
     assert_eq!(typing_in(window, &shell, cx), Some(second), "opened again");
 }
@@ -161,13 +152,11 @@ fn the_settings_give_the_keyboard_back_to_the_pane_that_had_it(cx: &mut TestAppC
     let page = new_page(window, &shell, cx);
     assert_eq!(typing_in(window, &shell, cx), Some(page));
 
-    // ⌘, from the page and Esc on the settings page: back in the page.
     cx.simulate_keystrokes(window, "cmd-,");
     assert_eq!(typing_in(window, &shell, cx), None, "on a settings page");
     cx.simulate_keystrokes(window, "escape");
     assert_eq!(typing_in(window, &shell, cx), Some(page), "back from them");
 
-    // With the keyboard at the window they leave it there.
     keys_to_window(window, &shell, cx);
     cx.simulate_keystrokes(window, "cmd-,");
     draw(window, cx);
@@ -195,7 +184,6 @@ fn another_project_shown_leaves_the_keyboard_at_the_window(cx: &mut TestAppConte
         "typing in the app's new chat"
     );
 
-    // The other project's tile pressed, and the first's again: neither tab takes it.
     shell.update(cx, |shell, cx| shell.select_project(1, cx));
     assert!(
         keyboard_at_window(window, &shell, cx),
@@ -216,7 +204,6 @@ fn a_page_takes_the_keyboard_when_its_tab_is_picked_in_the_sidebar(cx: &mut Test
     select(&shell, &root, cx);
     let pane = open_page(window, &shell, Some("https://example.com/"), cx);
     let page_has_keyboard = |cx: &mut TestAppContext| {
-        // Drawn, the tab asked to takes the keyboard; drawn again, its keys are bound.
         for _ in 0..3 {
             draw(window, cx);
         }
@@ -233,8 +220,6 @@ fn a_page_takes_the_keyboard_when_its_tab_is_picked_in_the_sidebar(cx: &mut Test
     };
     assert_eq!(page_has_keyboard(cx), Some(true), "a new tab at an address");
 
-    // A chat takes the keyboard; its tab left for the page's, as a click on its row leaves
-    // it, the page has it again.
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
     assert_eq!(page_has_keyboard(cx), Some(false));
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
@@ -252,7 +237,6 @@ fn the_keyboard_comes_back_to_the_file_the_person_was_in_not_to_the_chat_beside_
     let root = repo("shell-file-keyboard", &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
-    // A chat on the left, the file on its right; and a tab after them.
     cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
             shell.new_tab(PaneKind::Chat, cx);
@@ -283,8 +267,6 @@ fn the_keyboard_comes_back_to_the_file_the_person_was_in_not_to_the_chat_beside_
         });
         focused.unwrap()
     };
-    // Leaving the tab and coming back, as a click on its row does: a file only looked at
-    // leaves the keyboard to the chat.
     let away_and_back = |cx: &mut TestAppContext| {
         shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
         draw(window, cx);
@@ -293,7 +275,6 @@ fn the_keyboard_comes_back_to_the_file_the_person_was_in_not_to_the_chat_beside_
     away_and_back(cx);
     assert_eq!(settled(cx), Some(chat));
 
-    // In the file, as a press in it puts them: it has the keyboard again on the way back.
     shell.update(cx, |shell, cx| shell.enter_pane(file, cx));
     away_and_back(cx);
     assert_eq!(settled(cx), Some(file), "the file they were in");
@@ -369,7 +350,6 @@ fn a_pane_closed_with_the_keyboard_at_the_window_leaves_it_there(cx: &mut TestAp
 #[gpui_kit::test]
 fn the_keyboards_holder_follows_the_page_in_and_out(cx: &mut TestAppContext) {
     let (window, shell) = shell("shell-page-holder", cx);
-    // Heard only in the key window, as GPUI tells focus moves only there.
     (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
     cx.run_until_parked();
     let pane = new_page(window, &shell, cx);

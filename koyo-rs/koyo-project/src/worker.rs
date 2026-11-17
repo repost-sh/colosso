@@ -37,7 +37,6 @@ const PUBLISH_EVERY: Duration = Duration::from_millis(100);
 /// Watches and scans the checkout `options` names until the project is dropped.
 pub(crate) fn run(shared: Arc<Shared>, options: &Options) {
     let places = Places::new(&options.root, options.git.as_ref());
-    // Watching is registered first, so nothing written while the scan goes on is missed.
     let watching = watch(&shared, places);
     let mut worker = Worker::new(shared, options);
     worker.first_scan();
@@ -129,7 +128,6 @@ impl Worker {
         } = batch;
         let mut jobs = self.loads(&loads);
         if written == Written::Everything {
-            // The excludes may be what changed.
             self.base = Ignores::excludes(&self.shared.root, &self.excludes);
             jobs.push(self.root(&self.shared.tree(), true));
         } else {
@@ -245,7 +243,6 @@ fn file(tree: &mut Tree, read: Read, update: &mut Update, next: &mut Vec<Job>) {
         rules,
         entries,
     } = read;
-    // Its parent was found gone while it was being read: it went with it.
     let orphaned = !job.dir.is_empty() && !tree.dirs.contains_key(parent(&job.dir));
     let Some(entries) = entries.filter(|_| !orphaned) else {
         for gone in tree.remove(&job.dir) {
@@ -256,7 +253,6 @@ fn file(tree: &mut Tree, read: Read, update: &mut Update, next: &mut Vec<Job>) {
     let mut gone: Vec<Arc<str>> = Vec::new();
     let mut deep = job.deep;
     if let Some(old) = tree.dirs.get(&job.dir) {
-        // Its own `.gitignore` changed: what's under it is matched anew.
         deep |= old.rules.own(&job.dir) != rules.own(&job.dir);
         for folder in old.entries.iter().filter(|entry| entry.kind == Kind::Dir) {
             let kept = find(&entries, &folder.name).is_some_and(|entry| entry.kind == Kind::Dir);

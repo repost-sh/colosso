@@ -83,7 +83,6 @@ pub(crate) fn pane(shell: &Shell, pane: &Pane, focused: bool, cx: &App) -> PaneI
         kind,
         title: pane.title.to_string(),
         url: pane.address(cx),
-        // A file brought back with the window and not shown yet is the one it opens then.
         file: (pane.file_path(cx)).map(|path| path.display().to_string()),
         unsaved: file.map(FilePane::is_dirty),
         terminal: terminal.map(|handle| handle.to_string()),

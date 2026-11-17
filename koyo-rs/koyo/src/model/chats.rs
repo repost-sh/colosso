@@ -153,7 +153,6 @@ mod tests {
         assert_eq!(title(&workspace), "How");
         workspace.close_chat_panes(&thread("t"));
         assert!(shown(&workspace).is_empty());
-        // What it shared the tab with stays.
         let unit = workspace.branch().unwrap();
         assert_eq!(unit.tabs[0].first().id, terminal.id);
     }

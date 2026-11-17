@@ -71,7 +71,6 @@ impl CredentialStore {
             let generation = self.registry_generation();
             let mut state = self.state();
             if generation != state.backup_read_cache_gen {
-                // The registry changed: an entry may describe a slot that moved or was re-added.
                 state.backup_read_cache.clear();
                 state.backup_read_cache_epoch += 1;
                 state.backup_read_cache_gen = generation;
@@ -110,7 +109,6 @@ impl CredentialStore {
             .unwrap_or_default();
         if let Some(epoch) = epoch {
             let mut state = self.state();
-            // Stored only when nothing was dropped while `security` ran.
             if epoch == state.backup_read_cache_epoch {
                 state.backup_read_cache.insert(key, (value.clone(), now));
             }
@@ -193,8 +191,6 @@ impl CredentialStore {
     ) -> (String, bool) {
         match self.kc_read_backup(account_num, email, cached) {
             Ok(value) => (value, false),
-            // An expected skip, announced once when the cooldown began: unreadable, but not a
-            // new failure to warn about on every lookup.
             Err(BackupReadError::BackedOff) => (String::new(), true),
             Err(BackupReadError::Keychain(error)) => {
                 log::warn!("Failed to read credentials from Keychain: {error}");
@@ -264,7 +260,6 @@ impl CredentialStore {
     pub fn retain_previous_backup(&self, account_num: &str, email: &str, new_credentials: &str) {
         let (current, unreadable) = self.read_account_credentials_ex(account_num, email, false);
         if unreadable {
-            // INFO: the read already warned (or the cooldown announced itself once).
             log::info!(
                 "Could not retain previous credential generation for account {account_num}: the \
                  current backup exists but could not be read (not absent) — no .prev recovery \

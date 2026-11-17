@@ -37,7 +37,6 @@ pub(crate) fn call(pending: Pending, cx: &mut App) {
             .begin(&key, request_id, &pending.command)
         {
             Lookup::New => {}
-            // A repeat acts no more, so it isn't logged again either.
             Lookup::Replay(result) => return (pending.reply)(result),
             Lookup::Conflict(error) => return finish(pending, None, Err(error), cx),
         }

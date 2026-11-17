@@ -73,7 +73,6 @@ pub fn spawn(udid: String, name: String, ring: Ring, teller: Teller, stats: bool
     let (commands, taken) = tokio::sync::mpsc::unbounded_channel();
     let (told, events) = mpsc::channel();
     let said = teller.clone();
-    // Should the thread not start, the host hears so, rather than wait on it for good.
     let fallback = told.clone();
     let thread = std::thread::Builder::new().name("device-session".into()).spawn(move || {
         let tell = |event| {
@@ -160,16 +159,11 @@ impl Session<'_> {
     }
 
     async fn run(&self, commands: UnboundedReceiver<Command>, ring: &Ring, stats: bool) -> Result<(), Ending> {
-        // Asked while the tunnel is made: `devicectl` takes a second or so.
         let udid = self.udid.to_owned();
         let asked = tokio::task::spawn_blocking(move || checks::locked(&udid));
         let first = tokio::time::timeout(CONNECTS_WITHIN, self.connect(ring, stats)).await;
         let locked = asked.await.ok().flatten().unwrap_or(false);
         let connected = match first {
-            // After a restart the device's developer services aren't loaded, and nothing of the
-            // stream or the input is there. What was asked of `devicectl` above (its displays,
-            // when it's unlocked) loads them, and is answered by now: once more. Unnamed too:
-            // by the time the list was read for the failure's name, they may have been up.
             Ok(Err((Missing::DeveloperImage | Missing::Other, _))) => {
                 self.teller.log(LogLevel::Info, "its developer services were asked for: connecting once more");
                 match tokio::time::timeout(CONNECTS_WITHIN, self.connect(ring, stats)).await {
@@ -182,8 +176,6 @@ impl Session<'_> {
         };
         let Connected { provider, mut live, info, display, stalled } = connected;
         let outcome = self.serve(&mut live, Serving { commands, ring, provider: &provider, info, display, stalled, locked }).await;
-        // However it ended, the device's stream is told to stop with this end: else the device
-        // keeps its session, and itself awake, long after (QR6). Unplugged, there's none to stop.
         if let Some(running) = live.pump.take() {
             running.abort();
         }
@@ -230,7 +222,6 @@ impl Session<'_> {
         let Serving { mut commands, ring, provider, mut info, mut display, mut stalled, locked } = serving;
         let mut input = Input::connect(&mut live.adapter, &mut live.handshake).await.map_err(|why| self.missing(why))?;
         let mut lock = lock::watch(provider, self.udid);
-        // Xcode's sheets are read off this thread, which the stream is read on.
         let model = super::model::named(&live.handshake);
         let corner = tokio::task::spawn_blocking(move || super::model::corner(model.as_deref())).await;
         let corner = corner.unwrap_or_else(|_| Err("its model's sheet wasn't read".into())).unwrap_or_else(|why| {
@@ -262,7 +253,6 @@ impl Session<'_> {
                         running.abort();
                     }
                     self.teller.log(LogLevel::Warn, "the stream stalled: no picture decodable for two seconds of asking");
-                    // A stall can be the cable pulled: then it's gone, not started again.
                     if lost(self.udid).await {
                         self.unplugged(live);
                         return Ok(());
@@ -286,9 +276,6 @@ impl Session<'_> {
                     None => (self.tell)(Event::Noticed),
                     Some(now) => (self.tell)(Event::Locked(now)),
                 },
-                // Whether the picture is wanted is asked at each tick: as the branch's condition
-                // it would be read only when the loop last woke, and a turn would go unseen until
-                // something else woke it.
                 _ = turned.tick() => {
                     if ring.wanted() {
                         self.turn_read(live, &mut info, &mut display, &mut resting).await;
@@ -456,7 +443,6 @@ impl Input {
             }
             Command::Button { page, usage, down } => self.buttons.send_button(*page, *usage, state(*down)).await,
             Command::Key { usage, down } => self.buttons.send_keyboard(*usage, state(*down)).await,
-            // The session ends on it before it gets here.
             Command::Quit => Ok(()),
         }
     }

@@ -92,7 +92,6 @@ impl Chats {
                 .filter(|summary| summary.tab_open)
                 .map(|summary| summary.id.clone())
                 .collect();
-            // In the order they were made, as the host's ids sort, so they come back the same.
             tabs.sort();
             tabs
         });
@@ -100,7 +99,6 @@ impl Chats {
             .map(|summary| (summary.id.clone(), summary))
             .collect();
         self.connection = Connection::Connected;
-        // What the host offers has Koyo's settings in it, which the connection told it first.
         self.refresh_catalogs(cx);
         for thread in self.threads.values().filter_map(WeakEntity::upgrade) {
             self.open(thread, cx);

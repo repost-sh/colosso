@@ -114,8 +114,6 @@ pub fn cells_in(room: (f32, f32), metrics: Metrics) -> (u16, u16) {
     let count = |room: f32, cell: Pixels| {
         let cell = f32::from(cell).max(f32::EPSILON);
         let mut count = (room / cell).floor();
-        // The fit measures the cells times the cell, so a count that a rounding puts past
-        // the room would draw smaller.
         while count > 0. && count * cell > room {
             count -= 1.;
         }
@@ -202,7 +200,6 @@ mod tests {
             width <= 910. && height <= 700.,
             "{width}x{height} at {font}"
         );
-        // A step bigger would overflow.
         let (width, height) = grid_at(cells)(font + STEP);
         assert!(
             width > 910. || height > 700.,
@@ -223,8 +220,6 @@ mod tests {
     fn a_size_that_overflowed_isnt_tried_again_until_the_layout_changes() {
         let mut fitting = Fitting::default();
         let cells = (100, 30);
-        // At 10.25 px the grid overflows though a step's arithmetic says it fits, as a font's
-        // metrics rounding up makes it.
         let rounding = |font: f32| {
             let up = if font.to_bits() == 10.25f32.to_bits() {
                 1.05
@@ -235,12 +230,9 @@ mod tests {
         };
         let room = layout((620., 400.), cells);
         let font = fitting.fit(room, rounding);
-        // 10.25 overflowed, so the step under it.
         same(font, 10.);
-        // Asked again for the same layout, it doesn't go back to 10.25.
         same(fitting.fit(room, rounding), 10.);
         same(fitting.step(room, rounding(10.)), 10.);
-        // A new room forgets what overflowed.
         let wider = layout((621., 400.), cells);
         same(fitting.fit(wider, |font| (font * 60., font * 36.)), 10.25);
     }
@@ -276,7 +268,6 @@ mod tests {
         assert_eq!(centred, point(px(100. + 180.), px(50.)));
         let wide = origin(bounds, (200, 24), cell, 2.);
         assert_eq!(wide, point(px(100.), px(50.)));
-        // Snapped to device pixels: 81 columns of 8.25 px leave 165.875 px a side, 166 at 2x.
         let odd = origin(bounds, (81, 24), metrics(8.25, 16.), 2.);
         assert_eq!(odd.x, px(100. + 166.));
     }
@@ -298,7 +289,6 @@ mod tests {
             grid.cell_at(inside),
             koyo_term_engine::GridPoint { col: 10, row: 3 }
         );
-        // Left of the grid and below it clamp to its first column and last row.
         let outside = point(px(1.), px(590.));
         assert_eq!(
             grid.cell_at(outside),
@@ -315,7 +305,6 @@ mod tests {
 
     #[test]
     fn the_cells_a_room_holds_are_drawn_there_at_the_persons_font() {
-        // A 968×520 room at 8×16 cells holds 121×32.
         let room = (968., 520.);
         let cells = cells_in(room, metrics(8., 16.));
         assert_eq!(cells, (121, 32));
@@ -326,7 +315,6 @@ mod tests {
         };
         same(fitting.fit(layout(room, cells), at), 13.);
         assert_eq!(fitting.percent(), 100);
-        // A room too small for two cells still holds the least a pin has.
         assert_eq!(cells_in((3., 3.), metrics(8., 16.)), (2, 2));
     }
 

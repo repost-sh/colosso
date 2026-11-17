@@ -36,7 +36,6 @@ pub(crate) fn parse_list(output: &str) -> Vec<Worktree> {
     let mut worktrees = Vec::new();
     let mut record = Vec::new();
     let mut records = 0;
-    // Each attribute ends in a NUL and an empty attribute ends each record.
     for field in output.split('\0') {
         if !field.is_empty() {
             record.push(field);

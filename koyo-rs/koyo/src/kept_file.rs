@@ -150,7 +150,6 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(read(&path), Some(vec!["one".to_owned(), "two".to_owned()]));
 
-        // Written on the way out, the write that was due finds nothing to do.
         cx.update(|cx| {
             say("three", cx);
             let words = cx.global_mut::<Words>();

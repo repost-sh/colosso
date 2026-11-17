@@ -171,13 +171,9 @@ pub fn plan_after_fetch(input: &PlanInput<'_>) -> (f64, f64) {
         (Some(prev), Some(new)) if (new - prev).abs() >= MOVEMENT_DELTA_PCT => {
             MIN_INTERVAL_S.max(base / 2.)
         }
-        // Floored, so a sub-floor base (urgent mode's 60 s) snaps back to the normal cadence
-        // once movement stops instead of decaying through 90 s and 135 s polls.
         (Some(_), Some(_)) => ceiling.min(MIN_INTERVAL_S.max(base * 1.5)),
         _ => default,
     };
-    // Per window, by label, rising only: the window that matters may not be the max (5h
-    // climbing under a flat higher 7d), and one that just dropped into the band rolled over.
     let prev_windows = oauth::relevant_windows(input.prev_usage, models);
     let rising_in_band = oauth::relevant_windows(input.new_usage, models)
         .iter()
@@ -194,16 +190,12 @@ pub fn plan_after_fetch(input: &PlanInput<'_>) -> (f64, f64) {
         interval = URGENT_INTERVAL_S;
     }
     if input.recent_429 {
-        // AIMD: grow from the last interval toward the wider 429 ceiling, floored for the
-        // first 429.
         let increased = (base * POST_429_BACKOFF_MULT).max(POST_429_MIN_INTERVAL_S);
         interval = POST_429_MAX_INTERVAL_S.min(interval.max(increased));
     }
     let exhausted =
         oauth::account_headroom(input.new_usage, models).is_some_and(|headroom| headroom <= 0.);
     if exhausted {
-        // Keep probing: quota can be granted before the advertised time. A wider post-429
-        // interval stands.
         interval = interval.max(EXHAUSTED_INTERVAL_S);
     }
     let mut next_poll = input.now + jittered(interval, input.rng);

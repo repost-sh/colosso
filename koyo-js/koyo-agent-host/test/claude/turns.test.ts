@@ -94,7 +94,6 @@ describe("a turn", () => {
     first.query.send(success([first.promptId]));
     await settle();
     const before = made.sink.events.length;
-    // As recorded: a turn the CLI starts as a task ends has no echo, and its result an origin.
     const origin: SDKMessageOrigin = { kind: "task-notification" };
     first.query.send(
       stream(messageStart("w1")),
@@ -109,7 +108,6 @@ describe("a turn", () => {
       "turn.finished",
     ]);
     expect(after.at(-1)).toMatchObject({ outcome: "completed" });
-    // It's over, so the next turn starts as any does.
     const second = await made.turn("And now?");
     second.query.send(stream(messageStart("m2"), { echo: [second.promptId] }));
     await settle();
@@ -290,7 +288,6 @@ describe("a stop", () => {
     query.send(failed([promptId], ["[ede_diagnostic] result_type=user"], "aborted_streaming"));
     await settle();
     expect(made.sink.of("turn.finished").map((event) => event.outcome)).toEqual(["interrupted"]);
-    // Past the time a stop has to end: nothing closes a process whose turn did end.
     await Bun.sleep(80);
     expect(query.closed).toBe(false);
     const next = await made.turn("Reply with just 'ok'.");
@@ -361,7 +358,6 @@ describe("a tool the CLI asks to run", () => {
     const answer = query.options.canUseTool?.("AskUserQuestion", QUESTIONS, toolRequest());
     await settle();
     expect(made.sink.asked[0]?.payload).toMatchObject({ kind: "question", live: true });
-    // The question stands in the timeline for the call, which has no item of its own.
     expect(made.sink.of("item.started")).toEqual([]);
     const answers = { "Do you prefer tabs or spaces?": ["Tabs"] };
     made.sink.asked[0]?.answer({ kind: "question", answers });
@@ -393,7 +389,6 @@ describe("plan mode", () => {
   test("a denied ExitPlanMode left the CLI in is left before the next turn", async () => {
     const made = bench(spec({ permission: "ask" }));
     const { promptId, query } = await made.turn();
-    // The CLI stays in plan mode after it entered it and its ExitPlanMode was denied.
     query.send(
       init("default", { echo: [promptId] }),
       status(null, { permissionMode: "plan" }),

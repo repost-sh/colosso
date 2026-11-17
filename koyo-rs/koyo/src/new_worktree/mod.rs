@@ -106,7 +106,6 @@ impl NewWorktreeDialog {
                 }
                 Self::input_event(this, filter, event, window, cx);
             }),
-            // Up and down move through the branches from either field.
             cx.intercept_keystrokes(move |event, window, cx| {
                 let keystroke = &event.keystroke;
                 let step = match keystroke.key.as_str() {
@@ -264,7 +263,6 @@ impl NewWorktreeDialog {
         cx.notify();
         let creating = create(shell, project_path, repo, request, true, cx);
         cx.spawn_in(window, async move |this, cx| {
-            // The shell hears about the worktree even if the dialog was closed meanwhile.
             let Err(error) = creating.await else {
                 this.update_in(cx, |_, window, cx| modal::dismiss(window, cx))
                     .ok();
@@ -279,7 +277,6 @@ impl NewWorktreeDialog {
                 );
                 cx.notify();
             });
-            // With the dialog closed meanwhile, the window behind says what went wrong.
             if shown.is_err() {
                 behind
                     .update(cx, |_, window, cx| {

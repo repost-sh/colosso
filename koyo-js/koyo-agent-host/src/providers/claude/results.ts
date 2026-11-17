@@ -1,8 +1,3 @@
-// How a turn ended and what it used (docs/chat.md 4.7). A result is classified on what it
-// carries, never on `subtype: "success"`, which the SDK also gives API failures (T3 adapter
-// pitfall 21): an error flag, an API status of 429 or 529, or an error terminal reason fail
-// the run, and an aborted one interrupts it.
-
 import type {
   ModelUsage,
   SDKResultMessage,
@@ -69,7 +64,6 @@ export function classify(result: SDKResultMessage, signs: Signs): Ending {
   if (!failing) {
     return { outcome: "completed", failure: null };
   }
-  // A stop the person asked for ends the turn with an error result of its own.
   if (signs.interrupted && result.subtype === "error_during_execution") {
     return { outcome: "interrupted", failure: null };
   }

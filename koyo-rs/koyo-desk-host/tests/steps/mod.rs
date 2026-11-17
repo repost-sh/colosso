@@ -33,7 +33,6 @@ pub fn moves_a_window_by_its_bar(driver: &mut Driver, scene: &Scene) {
     let near =
         |(ax, ay): (f64, f64), (bx, by): (f64, f64)| (ax - bx).abs() <= 1. && (ay - by).abs() <= 1.;
 
-    // An agent's drag.
     act(
         driver,
         Act::Drag {
@@ -51,7 +50,6 @@ pub fn moves_a_window_by_its_bar(driver: &mut Driver, scene: &Scene) {
         place(driver)
     );
 
-    // The person's, in the tab: back to where it was.
     let held = by(bar, 60., 40.);
     let down = Input::Down {
         at: held,
@@ -78,7 +76,6 @@ pub fn moves_a_window_by_its_bar(driver: &mut Driver, scene: &Scene) {
     driver.tell(&ToHost::Input { input: up });
     driver.until(Duration::from_secs(3), |driver| near(place(driver), (x, y)));
     assert!(near(place(driver), (x, y)), "{:?}", place(driver));
-    // The agent is held off for a while after the person's hand: wait it out.
     driver.rest(Duration::from_millis(300));
     assert!(
         driver.backdrop.is_some(),
@@ -99,7 +96,6 @@ pub fn drives_a_panel_another_process_draws(driver: &mut Driver, scene: &Scene) 
     driver.until(Duration::from_secs(5), |driver| panel(driver).is_some());
     let opened = panel(driver).expect("no Open panel came up");
     driver.rest(Duration::from_millis(600));
-    // The document's own file is in the panel's list: typing its name selects it there.
     typed(driver, "probe", None);
     driver.rest(Duration::from_millis(600));
     let tree = snapshot(driver, opened.id);
@@ -163,7 +159,6 @@ pub fn saves_through_a_sheet_with_nobody_watching(driver: &mut Driver, scene: &S
     let text = std::fs::read_to_string(&saved).unwrap_or_default();
     assert!(text.contains("A new document"), "saved: {text:?}");
 
-    // The document is closed again, saved as it is: the scene is as it was.
     keys(driver, "cmd+w", None);
     driver.until(wait, |driver| driver.windows.len() == before);
     assert_eq!(driver.windows.len(), before, "{:?}", driver.windows);

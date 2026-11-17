@@ -29,8 +29,6 @@ fn real_roots() -> &'static [PathBuf] {
             ] {
                 roots.push(home.join(name));
             }
-            // The app's folder, and the one it had under the koyo.dev id: the store stays
-            // there until a newer Koyo has moved it.
             for app in ["codes.koyo.desktop", "dev.koyo.desktop"] {
                 let support = home.join("Library/Application Support");
                 roots.push(support.join(app).join("claude-accounts"));
@@ -50,7 +48,6 @@ fn real_roots() -> &'static [PathBuf] {
 fn spellings(path: &Path) -> Vec<PathBuf> {
     let lexical = lexical(path);
     let mut out = vec![lexical.clone()];
-    // The deepest ancestor that exists, resolved, with the rest put back on.
     let mut existing = lexical.as_path();
     let mut rest = Vec::new();
     while let Some(parent) = existing.parent() {
@@ -138,7 +135,6 @@ mod tests {
             check(&env, &outside),
             Err(AccountsError::Guarded(_))
         ));
-        // `..` can't climb out.
         let climbing = sandbox.root().join("store/../../elsewhere.json");
         assert!(check(&env, &climbing).is_err());
     }

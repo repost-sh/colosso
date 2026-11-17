@@ -71,8 +71,6 @@ fn an_element_is_inspected_again_while_the_tools_are_open(cx: &mut TestAppContex
         tools.is_some_and(|tools| tools.read_with(cx, super::BrowserView::is_open))
     });
     assert!(open, "the tools open");
-    // The page asks its open tools, as its own menu's Inspect does: it's being updated as
-    // it asks, and the tools once read it for that.
     view.update(cx, |view, cx| view.inspect(Some(at), cx));
     view.read_with(cx, |view, _| assert!(view.devtools().is_some(), "still open"));
     finish(cx, scratch);

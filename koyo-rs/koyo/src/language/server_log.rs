@@ -56,7 +56,6 @@ impl Log {
             return;
         };
         let time = chrono::Local::now().format("%H:%M:%S");
-        // In one write, so the server's stderr, added to the same file, doesn't land inside it.
         let whole = format!("[koyo {time}] {line}\n");
         let added = OpenOptions::new()
             .create(true)

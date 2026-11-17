@@ -87,7 +87,6 @@ impl Link {
             return;
         }
         self.misses = misses;
-        // Not running and saying a step: its words follow the list's.
         if !self.running_or_starting() && matches!(self.said, Some(Said::Unavailable { .. })) {
             self.held_back(cx);
         }

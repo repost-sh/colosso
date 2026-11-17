@@ -32,7 +32,6 @@ pub fn is_passive(mut bytes: &[u8]) -> bool {
             let fields = &report[..end];
             let button = (fields.split(|&b| b == b';').next())
                 .and_then(|field| std::str::from_utf8(field).ok()?.parse::<u16>().ok());
-            // Shift, alt and ctrl add 4, 8 and 16 to the button.
             if !button.is_some_and(|button| (64..=67).contains(&(button & !0b1_1100))) {
                 return false;
             }
@@ -138,7 +137,6 @@ impl Session {
             return Err(self.refusal(actor));
         }
         let until = now_ms() + LEASE_MS;
-        // Lists see the lease move a second at a time, not at every keystroke.
         let moved = until.saturating_sub(*lease_until_ms) >= 1000;
         *lease_until_ms = until;
         if moved {

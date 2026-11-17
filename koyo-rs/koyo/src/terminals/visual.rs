@@ -58,7 +58,6 @@ fn draw() -> Result<Vec<String>> {
     let data = std::env::var_os("KOYO_DATA_DIR")
         .map(PathBuf::from)
         .ok_or("set KOYO_DATA_DIR, so the check's daemon stays out of the app's")?;
-    // The folder is cleared, so it must be the check's own.
     if !data.starts_with(checkout()?) {
         return Err("KOYO_DATA_DIR must be a folder in this checkout".into());
     }
@@ -80,8 +79,6 @@ fn draw() -> Result<Vec<String>> {
     }
     let mut said = Vec::new();
     let found = run_shell(&mut drawn, &mut said);
-    // The check's daemon goes with it, whatever happened, stopped through the app's own
-    // client so the views that lose it don't start it again.
     let client = drawn
         .cx
         .update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
@@ -91,7 +88,6 @@ fn draw() -> Result<Vec<String>> {
     if let Err(error) = client.shutdown() {
         said.push(format!("couldn't stop the check's daemon: {error}"));
     }
-    // It takes its socket away last, once its shells are gone.
     let socket = TermDir::at(term).socket();
     if let Err(error) = drawn.until(Duration::from_secs(10), |_| Ok(!socket.exists())) {
         said.push(format!("the check's daemon didn't stop: {error}"));
@@ -124,7 +120,6 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     stop::stop(drawn, said)?;
     delete::delete(drawn, said)?;
 
-    // Held no longer than this: the check later waits for the tab's view to go.
     let view = terminal(drawn)?;
     (drawn.cx).update(|cx| view.update(cx, |view, _| view.paste_text(COLOURS.into())));
     drop(view);
@@ -134,7 +129,6 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     })?;
     said.push(format!("{}", drawn.save("colours.png")?.display()));
 
-    // Another font picked while it runs, and back: the grid takes it in as it is.
     let code_font = |drawn: &mut Drawn, family: Option<&str>| {
         let family = family.map(str::to_owned);
         (drawn.cx).update(|cx| settings::update(cx, |settings| settings.fonts.code = family));
@@ -165,8 +159,6 @@ fn keys(drawn: &mut Drawn) -> Result<()> {
     wait(drawn, "sleep to start", |text| {
         text.ends_with("sleep 30") || text.ends_with("sleep 30\n")
     })?;
-    // Pressed the instant Enter is, Ctrl-C reaches the shell before its job holds the
-    // terminal; a person is never that quick.
     let started = Instant::now();
     wait_until(drawn, "a moment", |_| {
         Ok(started.elapsed() >= Duration::from_millis(300))
@@ -203,7 +195,6 @@ fn program_keys(drawn: &mut Drawn) -> Result<()> {
     wait(drawn, "a command on the emptied line", |text| {
         text.lines().any(|line| line == "keys-reached")
     })?;
-    // ⌥← and ⌥→ go a word back and on: "one XtwoY", an X typed a word back, a Y at the end.
     type_keys(drawn, "echo one two")?;
     press(drawn, "alt-left")?;
     type_keys(drawn, "X")?;
@@ -292,7 +283,6 @@ fn resized(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     wait_until(drawn, "the tab to narrow", |drawn| {
         Ok(size(drawn).is_some_and(|(cols, _)| cols < cols_before))
     })?;
-    // The size settles before the daemon hears it.
     drawn.pause()?;
     let (cols, rows) = size(drawn).ok_or("the tab's terminal isn't laid out")?;
     focused(drawn)?;
@@ -311,13 +301,11 @@ fn resized(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 /// The tab gone as quitting the app takes it, which leaves the terminal running in the daemon,
 /// and brought back from the daemon as the app does when it starts, its screen as it was.
 fn reattached(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
-    // The tab is narrow by now, so the command may have wrapped.
     let as_it_was = |text: &str| text.replace('\n', "").contains("% stty size");
     let closed = terminal(drawn)?.downgrade();
     let shell = drawn.shell.clone();
     (drawn.cx).update(|cx| shell.update(cx, Shell::let_go_of_shown_terminal));
     wait_until(drawn, "the tab to go", |drawn| Ok(terminal(drawn).is_err()))?;
-    // Its view goes with it, and lets the terminal go in the daemon.
     wait_until(drawn, "its view to go", |_| Ok(closed.upgrade().is_none()))?;
     (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));
     wait(drawn, "the terminal back from the daemon", as_it_was)?;
@@ -344,7 +332,6 @@ fn after_restart(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     stop_daemon(&dir)?;
     wait_until(drawn, "the daemon to stop", |_| Ok(!dir.socket().exists()))?;
     (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));
-    // The tab is narrow by now, so lines wrap.
     wait(drawn, "the shell run again from its screen", |text| {
         let text = text.replace('\n', "");
         let (before, after) = text.split_once(RESTORED).unwrap_or_default();

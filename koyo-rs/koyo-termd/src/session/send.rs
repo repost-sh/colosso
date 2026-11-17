@@ -13,7 +13,6 @@ use super::cmd::{Reply, exited};
 
 impl Session {
     pub(super) fn send(&mut self, reply: &Reply, send: &SendRequest) {
-        // A key it can't name refuses the whole send, before anything is written.
         let bytes = match self.encode_send(send) {
             Ok(bytes) => bytes,
             Err(error) => return reply.err(error),
@@ -80,7 +79,6 @@ impl Session {
             unshifted: chord.unshifted,
             composing: false,
         };
-        // An agent's alt is the Meta key, as a terminal user's Option set to Alt is.
         self.engine
             .encode_key(&input, OptionAsAlt::Both)
             .map_err(|error| {

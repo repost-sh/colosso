@@ -101,7 +101,6 @@ fn apply(
     if !here.is_empty() {
         let version = asked.version();
         let applied = editor.update(cx, |editor, cx| {
-            // Carried past what was typed since, while the editor still has those edits.
             let edits: Option<Vec<(Range<usize>, &str)>> =
                 (byte_edits(&here, |range| asked.bytes(range)).into_iter())
                     .map(|(range, text)| Some((editor.translate_range(range, version)?, text)))
@@ -185,8 +184,6 @@ fn on_disk(path: &Path, edits: &[TextEdit], encoding: Encoding) -> io::Result<()
     let mut edited = String::with_capacity(text.len());
     let mut at = 0;
     for (range, new_text) in byte_edits(edits, |range| indexed.offsets(range, encoding)) {
-        // One beginning before the last ended overlaps it, which a server's don't: it
-        // goes in where the last ended.
         let start = range.start.max(at);
         edited.push_str(&text[at..start]);
         edited.push_str(new_text);

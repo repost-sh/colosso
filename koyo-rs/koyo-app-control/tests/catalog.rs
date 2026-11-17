@@ -68,7 +68,6 @@ fn every_input_schema_is_an_object_that_refuses_unknown_fields() {
         assert_eq!(schema["additionalProperties"], false, "{name}");
         assert!(schema["properties"].is_object(), "{name}");
         assert!(schema.get("title").is_none(), "{name}");
-        // The schema says it, and the input type does it.
         let error = Command::parse(name, json!({ "zzUnknown": 1 })).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidInput, "{name}");
         assert!(
@@ -263,7 +262,6 @@ fn settings_tell_a_reset_from_a_field_left_out() {
 
 #[test]
 fn an_agent_cant_set_what_chats_run_with() {
-    // A chat could choose its next session's program or mode, or its own tools.
     for setting in ["claudePath", "chatMode", "koyoTools", "externalControl"] {
         let refused = Command::parse("settings_set", json!({ setting: null })).unwrap_err();
         assert!(refused.message.contains("unknown field"), "{setting}");
@@ -330,7 +328,6 @@ fn browser_viewport_takes_the_presets_by_name_a_zoom_and_a_request_id() {
     assert!(descriptor.hints.idempotent && !descriptor.hints.read_only);
     let properties = &descriptor.input_schema["properties"];
     assert_eq!(properties[REQUEST_ID]["pattern"], REQUEST_ID_PATTERN);
-    // The presets are listed, under the schema's definitions.
     let schema = serde_json::to_string(&descriptor.input_schema).unwrap();
     for name in [
         "responsive",
@@ -438,7 +435,6 @@ fn a_browser_page_an_agent_opens_takes_a_viewport() {
                 .is_some(),
             "{name}"
         );
-        // Agents learn the default from the description.
         assert!(descriptor.description.contains("1440 × 900"), "{name}");
     }
     let Command::TabOpen(sized) = Command::parse(
@@ -456,7 +452,6 @@ fn a_browser_page_an_agent_opens_takes_a_viewport() {
             ..OpenViewport::default()
         })
     );
-    // Left out, the app applies the person's default.
     let Command::TabOpen(plain) = Command::parse("tab_open", json!({ "kind": "browser" })).unwrap()
     else {
         panic!("tab_open parsed as another command");
@@ -473,7 +468,6 @@ fn a_browser_page_an_agent_opens_takes_a_viewport() {
         panic!("a new pane");
     };
     assert_eq!(spec.viewport.and_then(|viewport| viewport.fill), Some(true));
-    // A pane moved keeps its own page.
     let Command::PaneSplit(moved) = Command::parse(
         "pane_split",
         json!({ "pane": 3, "edge": "top", "move": 9, "viewport": { "fill": true } }),

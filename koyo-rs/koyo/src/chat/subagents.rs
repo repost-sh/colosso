@@ -45,8 +45,6 @@ pub(super) fn group(
             _ => None,
         })
         .collect();
-    // One running on past its run moves nothing: for as long as it takes, the window isn't kept
-    // drawing for its words, as the dot and the time say it's running.
     let moving = replica.live().is_some();
     match agents.as_slice() {
         [(item, agent)] => card(drawing, item, agent, moving).into_any_element(),
@@ -62,7 +60,6 @@ fn line(
     index: usize,
 ) -> Div {
     let p = drawing.p;
-    // Open until a person closes it, whatever they're doing by then.
     let open = !drawing.open.contains(id);
     let stacked = agents
         .iter()

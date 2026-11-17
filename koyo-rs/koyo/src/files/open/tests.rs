@@ -35,13 +35,9 @@ fn a_preview_gives_way_to_the_next_until_its_kept(cx: &mut TestAppContext) {
         Some("README.md"),
         "picked in the tree"
     );
-    // A file opened for good opens right after the tab shown; the preview stays.
     assert_eq!(open("src/main.rs", true, cx), ["README.md*", "[main.rs]"]);
-    // The next preview takes the preview's tab, where it is.
     assert_eq!(open("new.txt", false, cx), ["[new.txt*]", "main.rs"]);
-    // A file open already is shown in its tab.
     assert_eq!(open("src/main.rs", false, cx), ["new.txt*", "[main.rs]"]);
-    // Kept, as a double click on its tab does, the preview stays when another's previewed.
     with_shell(window, &shell, cx, |shell, _, cx| {
         let (project, branch, _) = shell.workspace.shown_tab().unwrap();
         shell.keep_tab((project, branch, 0), cx);
@@ -50,7 +46,6 @@ fn a_preview_gives_way_to_the_next_until_its_kept(cx: &mut TestAppContext) {
         open("README.md", false, cx),
         ["new.txt", "main.rs", "[README.md*]"]
     );
-    // Opening the preview's file for good keeps it.
     assert_eq!(
         open("README.md", true, cx),
         ["new.txt", "main.rs", "[README.md]"]
@@ -75,7 +70,6 @@ fn a_preview_typed_into_is_kept(cx: &mut TestAppContext) {
     });
     typed(window, &editor.unwrap(), "// typed\n", cx);
     assert_eq!(tabs(&shell, cx), ["[lib.rs+]"], "kept, and marked unsaved");
-    // The next preview opens beside it.
     preview("README.md", cx);
     assert_eq!(tabs(&shell, cx), ["lib.rs+", "[README.md*]"]);
     let _ = std::fs::remove_dir_all(&root);
@@ -96,11 +90,9 @@ fn the_tree_opens_files_in_tabs_and_follows_the_tab_shown(cx: &mut TestAppContex
         cx.run_until_parked();
         tabs(&shell, cx)
     };
-    // Rows: src/, target/, .gitignore, new.txt, README.md. A folder opens nothing.
     assert!(press("down", cx).is_empty());
     assert_eq!(press("end", cx), ["[README.md*]"]);
     assert_eq!(press("up", cx), ["[new.txt*]"]);
-    // Enter keeps it; the next file down is previewed after it. The tree keeps the keyboard.
     assert_eq!(press("enter", cx), ["[new.txt]"]);
     assert_eq!(press("down", cx), ["new.txt", "[README.md*]"]);
     let tree_focused = (cx.update_window(window, |_, window, cx| {
@@ -108,7 +100,6 @@ fn the_tree_opens_files_in_tabs_and_follows_the_tab_shown(cx: &mut TestAppContex
     }))
     .unwrap();
     assert!(tree_focused, "the tree keeps the keyboard");
-    // The tab shown picks its file in the tree.
     with_shell(window, &shell, cx, |shell, _, cx| {
         let (project, branch, _) = shell.workspace.shown_tab().unwrap();
         shell.workspace.select_tab(project, branch, 0);
@@ -116,7 +107,6 @@ fn the_tree_opens_files_in_tabs_and_follows_the_tab_shown(cx: &mut TestAppContex
     });
     cx.run_until_parked();
     assert_eq!(selected(&files, cx).as_deref(), Some("new.txt"));
-    // Previews turned off, the keys only move the pick, and a click opens a tab for good.
     cx.update(|cx| settings::update(cx, |settings| settings.preview_files = false));
     press("end", cx);
     assert_eq!(selected(&files, cx).as_deref(), Some("README.md"));
@@ -134,7 +124,6 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     let root = checkout("files-tabs-unsaved");
     let (window, shell, _) = shell_with_tree(&root, cx);
     let lib = root.join("src/lib.rs");
-    // Opens the file and types `text` at its start, keeping no hold on its editor.
     let edit = |text: &str, cx: &mut TestAppContext| {
         let (_, editor, _) = editing(window, &shell, "src/lib.rs", At::Bytes(0..0), cx);
         typed(window, &editor, text, cx);
@@ -146,7 +135,6 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
         });
         cx.run_until_parked();
     };
-    // Saved: the file's written, then the tab closes.
     edit("// kept\n", cx);
     close(cx);
     assert_eq!(tabs(&shell, cx), ["[lib.rs+]"], "still open, asked");
@@ -158,13 +146,11 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     );
     let on_disk = || std::fs::read_to_string(&lib).unwrap();
     assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
-    // Not saved: the tab closes, the file as it was.
     edit("// lost\n", cx);
     close(cx);
     answer(cx, SaveDialog::close);
     assert!(tabs(&shell, cx).is_empty());
     assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
-    // Clean, a tab closes without a word.
     editing(window, &shell, "src/lib.rs", At::Bytes(0..0), cx);
     close(cx);
     assert!(tabs(&shell, cx).is_empty());
@@ -178,8 +164,6 @@ fn the_question_fits_a_file_name_that_wraps_its_title(cx: &mut TestAppContext) {
     let long = "src/attempt-log-check-newer.usecase.rs";
     write(&root, long, b"// long\n");
     let (window, shell, _) = shell_with_tree(&root, cx);
-    // Types into the file at `path`, closes its tab, and says how tall the question asked
-    // is and where its buttons end, before answering it.
     let asked_about = |path: &str, cx: &mut TestAppContext| {
         let (_, editor, _) = editing(window, &shell, path, At::Bytes(0..0), cx);
         typed(window, &editor, "// edit\n", cx);

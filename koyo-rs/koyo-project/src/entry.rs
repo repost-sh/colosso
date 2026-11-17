@@ -97,7 +97,6 @@ fn by_value(a: &str, b: &str) -> Ordering {
 
 /// The entry named `name` in `entries`, which are in `order`.
 pub(crate) fn find<'a>(entries: &'a [Entry], name: &str) -> Option<&'a Entry> {
-    // Folders and files are sorted apart, so the name is looked for among each.
     [true, false].into_iter().find_map(|folder| {
         let at = (entries
             .binary_search_by(|entry| by_place((entry.is_folder(), &entry.name), (folder, name))))

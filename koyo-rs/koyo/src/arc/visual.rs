@@ -83,12 +83,10 @@ fn open_tabs(shell: &mut Shell) {
     shell
         .workspace
         .push_tab(titled(PaneKind::Terminal, "cargo test"));
-    // A split listed, as Arc lists one: its halves side by side.
     shell.workspace.push_tab(Tab::beside(
         web_page("https://x.com/history", "History / X"),
         web_page("https://normas.example/", "Normas"),
     ));
-    // And one shown, each pane an island, the glass between them.
     shell.workspace.push_tab(Tab::beside(
         web_page("https://github.com/", "GitHub"),
         web_page("https://www.example.com/", "Example Domain"),
@@ -100,7 +98,6 @@ fn open_tabs(shell: &mut Shell) {
 
 fn draw() -> Result<Vec<String>> {
     acts::needs_its_own_host()?;
-    // A second project, for the second space.
     let site = project_beside("site")?;
     let mut drawn = Drawn::open_on_checkout(OUT, &[&site])?;
     let shell = drawn.shell.clone();
@@ -130,7 +127,6 @@ fn draw() -> Result<Vec<String>> {
             cx.notify();
         });
     });
-    // The tile shows the git host's avatar once it's fetched; offline, the initials stay.
     let root = checkout()?;
     let fetched = drawn.until(Duration::from_secs(20), |drawn| {
         Ok(drawn
@@ -142,7 +138,6 @@ fn draw() -> Result<Vec<String>> {
         Ok(()) => "the project's avatar came from its git host".into(),
         Err(why) => format!("no avatar ({why}): the tile shows initials"),
     });
-    // The panel beside the panes, an island of its own.
     (drawn.cx)
         .update_window(drawn.window, |_, window, cx| {
             window.dispatch_action(Box::new(ToggleRightPanel), cx);
@@ -159,22 +154,17 @@ fn draw() -> Result<Vec<String>> {
         drawn
             .cx
             .update(|cx| shell.update(cx, |shell, cx| shell.show_space(space, cx)));
-        // The switch moves in time: the space fades in and its mark stretches.
         acts::settle(&mut drawn)?;
         let path = drawn.save(&format!("arc-{name}-dark.png"))?;
         said.push(format!("saved {}", path.display()));
     }
-    // What a person does there: a space's mark saying a chat in it waits, a tab's row saying
-    // it, a tile dragged, the address bar following the pane and ⌘L's launcher on a page.
     acts::pills(&mut drawn, &site, &mut said)?;
     acts::tab_marks(&mut drawn, &mut said)?;
     acts::drag_tile(&mut drawn, &mut said)?;
     acts::address(&mut drawn, &mut said)?;
     keys::space_keys(&mut drawn, &mut said)?;
-    // The pages pinned at the sidebar's head and the space's loose ones, from none and back.
     pins::pins(&mut drawn, &mut said)?;
     acts::stop_host(&mut said);
-    // The Orca layout keeps one card, hairlines between its parts: no islands there.
     drawn.cx.update(|cx| {
         settings::update(cx, |settings| settings.layout = Layout::Orca);
         shell.update(cx, |shell, cx| shell.show_space(0, cx));
@@ -191,7 +181,6 @@ fn draw() -> Result<Vec<String>> {
     said.push(format!("spaces: {shown}"));
     let held = |path: &Path| path.display().to_string();
     said.push(format!("second project: {}", held(&site)));
-    // Back in Arc, a project's worktrees under their headers, which Orca then lists as moved.
     headers::headers(&mut drawn, &mut said)?;
     Ok(said)
 }

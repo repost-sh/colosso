@@ -119,7 +119,6 @@ impl DeviceSetup {
                  The switch shows up only once the device has been connected to a Mac with Xcode: \
                  keep it plugged in. {BACK}"
             ),
-            // What the list says of it, as the tab does: the update is the person's.
             Some(_) => device.and_then(|device| device.missing.as_ref()).map_or_else(String::new, |(_, said)| format!("{said} {BACK}")),
             None => format!(
                 "{name} is ready. Open it in a Device tab: while the tab is open, it stays awake and \
@@ -137,7 +136,6 @@ impl Render for DeviceSetup {
         let at = at(device);
         let rows = ROWS.iter().zip(STEPS).enumerate().map(|(index, ((name, why), code))| {
             let (mark, stands) = match index.cmp(&at) {
-                // The system's done: which one.
                 std::cmp::Ordering::Less => (Mark::Done, device.filter(|_| code == Missing::System).map(|device| device.system.as_str())),
                 std::cmp::Ordering::Equal if looking => (Mark::Busy, None),
                 _ => (Mark::Next { dim: index > at }, None),

@@ -19,7 +19,6 @@ use idevice::usbmuxd::{Connection, UsbmuxdConnection, UsbmuxdListenEvent};
 /// # Errors
 /// When usbmuxd can't be reached or listened to.
 pub fn watch() -> Result<(), String> {
-    // The app closing its end of the pipe ends the watcher.
     let (closed, mut gone) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
         let mut sink = [0u8; 64];
@@ -31,7 +30,6 @@ pub fn watch() -> Result<(), String> {
         let mut usbmuxd = UsbmuxdConnection::default().await.map_err(|error| format!("usbmuxd isn't there: {error}"))?;
         let mut events = usbmuxd.listen().await.map_err(|error| format!("usbmuxd won't say: {error}"))?;
         let mut out = std::io::stdout();
-        // What's plugged in by cable, by usbmuxd's number: its going is said by that alone.
         let mut wired = HashSet::new();
         loop {
             let event = tokio::select! {

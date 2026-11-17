@@ -37,7 +37,6 @@ define_class!(
                 && let Some(hearing) = hearing.as_ref()
             {
                 let name = response.notification().request().identifier().to_string();
-                // Nobody's listening only as the app goes.
                 let _ = hearing.unbounded_send(name);
             }
             done.call(());
@@ -69,7 +68,6 @@ pub fn clicks() -> Option<UnboundedReceiver<String>> {
         let delegate = Clicks::new();
         let protocol = ProtocolObject::from_ref(&*delegate);
         UNUserNotificationCenter::currentNotificationCenter().setDelegate(Some(protocol));
-        // The center's hold on its delegate is weak, and this one's for as long as the app.
         std::mem::forget(delegate);
     });
     let (told, hears) = unbounded();

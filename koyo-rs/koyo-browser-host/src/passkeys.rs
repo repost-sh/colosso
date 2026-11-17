@@ -48,7 +48,6 @@ struct Waiting {
 }
 
 thread_local! {
-    // The UI thread, where CEF delivers process messages and the app's requests are handled.
     static REQUESTS: RefCell<Pending<Waiting>> = const { RefCell::new(Pending::new()) };
 }
 
@@ -134,7 +133,6 @@ fn ask(
         ancestors.push(text(&parent.url()));
         above = parent.parent();
     }
-    // A frame the engine has no parent for yet is checked against the page too.
     if frame.is_main() != 1
         && ancestors.is_empty()
         && let Some(main) = browser.main_frame()
@@ -201,7 +199,6 @@ pub(crate) fn load_started(pane: PaneId, browser: &Browser, frame: &Frame) {
 /// isn't the browser's any more goes too; by the time the new document starts, only its
 /// frames are.
 pub(crate) fn frames_changed(pane: PaneId, browser: &Browser, gone: Option<&Frame>) {
-    // Frames come and go all the time, requests seldom: nothing to list when none waits.
     if !REQUESTS.with(|requests| requests.borrow().has(pane)) {
         return;
     }

@@ -144,7 +144,6 @@ fn between_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     if space(drawn) != 1 {
         return Err("⌥→ didn't show the second space's project".into());
     }
-    // No project past it: the empty space after is passed over, so there's nothing to show.
     let gave = gives(drawn, "alt-right", "keys-last-project-gives.png", said)?;
     if space(drawn) != 1 || gave >= 0. {
         return Err("⌥→ past the last project didn't give and stay".into());
@@ -233,7 +232,6 @@ fn in_the_composer(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 /// chat is the first space's last tile's, so ⌥→ goes on into the next space.
 fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let window = drawn.window;
-    // The chat's empty background, high above the prompt's box.
     (drawn.cx).simulate_click(window, point(px(1100.), px(180.)), Modifiers::default());
     drawn.draw()?;
     let (next, contexts) = press(drawn, "alt-right")?;
@@ -245,8 +243,6 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     if next != Some("arc::NextProject") || space(drawn) != 1 {
         return Err("a press on the chat's background left the keyboard in its prompt".into());
     }
-    // Back to the space, which shows the chat's project again: at the first space ⌥⇧← has none
-    // to show, and in the prompt it would select a word back instead.
     let (back, _) = press(drawn, "alt-shift-left")?;
     settle(drawn)?;
     let (still, contexts) = press(drawn, "alt-shift-left")?;
@@ -260,7 +256,6 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     if back != Some("arc::PreviousSpace") || still != Some("arc::PreviousSpace") {
         return Err("the chat shown again took the keyboard into its prompt".into());
     }
-    // Its tab picked in the sidebar: moved to, the chat still isn't typed in.
     let shell = drawn.shell.clone();
     drawn.cx.update(|cx| {
         shell.update(cx, |shell, cx| {
@@ -276,7 +271,6 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     if picked != Some("arc::PreviousSpace") {
         return Err("the chat's tab picked put the keyboard in its prompt".into());
     }
-    // A press in the prompt's text, and the person types there again.
     (drawn.cx).simulate_click(window, point(px(700.), px(498.)), Modifiers::default());
     drawn.draw()?;
     let (word, contexts) = press(drawn, "alt-left")?;

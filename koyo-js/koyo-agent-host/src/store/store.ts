@@ -1,8 +1,3 @@
-// The host's chats on disk (docs/chat.md C3, C4): one SQLite file in WAL mode, a table per
-// kind of record, each row the record's JSON. A thread's actor is the only writer of its
-// rows, and each of its steps is one `commit`: a transaction that stamps every changed row
-// with the thread's next change number.
-
 import { Database } from "bun:sqlite";
 import { z } from "zod";
 
@@ -158,7 +153,6 @@ export class Store {
       for (const run of runs) {
         const message = run.prompt.messageId;
         putRun.run(run.id, id, run.status, message, seq, JSON.stringify(run));
-        // A removed run stays as a row to say so, and what it held goes.
         if (run.status === "removed") {
           this.#db.query("DELETE FROM items WHERE thread_id = ? AND run_id = ?").run(id, run.id);
           this.#db.query("DELETE FROM requests WHERE thread_id = ? AND run_id = ?").run(id, run.id);
@@ -278,7 +272,6 @@ export class Store {
     if (oldest === undefined || newest === undefined) {
       return { runs, items: [], requests: [] };
     }
-    // The page's runs are every run between its oldest and its newest.
     const span = [oldest.threadId, oldest.id, newest.id];
     const inPage = "AND run_id BETWEEN ? AND ?";
     return {

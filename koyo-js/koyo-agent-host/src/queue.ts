@@ -1,8 +1,3 @@
-// Values one side gives and another reads, in the order given, as an async iterable: the
-// prompts a session feeds its CLI (docs/chat.md 4.7) are one. A reader that comes before a
-// value waits for it; once the queue ends, what's queued is still read, then the end, or
-// the failure it ended with.
-
 export class Queue<T extends object> implements AsyncIterable<T> {
   readonly #queued: T[] = [];
   readonly #waiting: PromiseWithResolvers<IteratorResult<T, undefined>>[] = [];

@@ -132,7 +132,6 @@ impl AccountsPanel {
     /// `row`'s block, which a click switches to when Koyo keeps its login and it isn't the Mac's.
     fn row(&self, row: &Row, now: f64, window: &Window, p: Palette) -> Part {
         let view = &self.view;
-        // One thing at a time: while something's being done, nothing more is offered.
         let switchable = view.doing.is_none() && row.switchable && !row.active;
         let (block, height) = account(row, now, view.line(), window, p);
         let block = block.when(switchable, |block| {
@@ -167,7 +166,6 @@ impl MenuBody for AccountsPanel {
 impl Render for AccountsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let parts = self.parts(window, cx).into_iter().map(|(part, _)| part);
-        // Where what it holds ends, which the tests hold to its extent.
         let end = div().debug_selector(|| "accounts-panel-end".to_owned());
         let panel = div().size_full().flex().flex_col();
         panel.children(parts).child(end)
@@ -365,7 +363,6 @@ fn account(row: &Row, now: f64, line: f64, window: &Window, p: Palette) -> (Stat
 fn bar_line(bar: &Bar, now: f64, line: f64, p: Palette) -> Div {
     let colour = level(bar.percent, line, p.accent, p);
     let full = bar.percent.unwrap_or(0.).clamp(0., 100.) as f32 / 100.;
-    // The bar, and a tick a little taller where even use of the week would have it.
     let track = div()
         .relative()
         .flex_1()

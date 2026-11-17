@@ -280,11 +280,9 @@ pub fn tool_line(tool: &Tool, status: ItemStatus, cwd: &str) -> String {
         ToolFamily::Mcp => ("Calling", "Called"),
         ToolFamily::Skill | ToolFamily::Other => ("Using", "Used"),
         ToolFamily::Todo => return "Updated the to-dos".to_owned(),
-        // What it was asked to do reads as a line of its own.
         ToolFamily::Agent => return tool.label.clone(),
     };
     let what = from_checkout(&tool.label, cwd);
-    // It never ran: what it would have done is all there is to say, beside "Declined".
     if status == ItemStatus::Declined {
         return what;
     }

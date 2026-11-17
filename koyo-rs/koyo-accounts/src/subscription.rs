@@ -131,7 +131,6 @@ pub fn fetch_plan(env: &Env, access_token: &str, timeout: Duration) -> PlanFetch
             plan.insert(key.to_owned(), Value::from(value));
         }
     }
-    // Always present (null if unsent): `is_due` reads a missing key as an old record.
     plan.entry("planDisplayName").or_insert(Value::Null);
     let account_uuid = data
         .get("account")
@@ -199,8 +198,6 @@ pub fn plan_label(plan: Option<&Map<String, Value>>) -> Option<String> {
     }
     let tier = str_at(plan, "tier");
     let label = lookup(&TIER_LABELS, tier).or(tier);
-    // The server's name wins unless the table names the plan more precisely ("Max" against
-    // "Max 5x"); Ultra shares the Max 20x tier.
     if let Some(name) = str_at(plan, "planDisplayName").filter(|name| !name.is_empty())
         && !label.is_some_and(|label| label.starts_with(name))
     {
@@ -240,7 +237,6 @@ pub fn is_due(record: Option<&Value>, now: f64, ttl: f64) -> bool {
     let Some(record) = record.filter(|record| valid_record(record)) else {
         return true;
     };
-    // Stored before the name was kept.
     if record
         .get("plan")
         .is_none_or(|plan| plan.get("planDisplayName").is_none())
@@ -336,9 +332,6 @@ impl PlanStore {
             fsutil::create_dir_all(&self.env, parent)?;
         }
         let _lock = FileLock::hold(&self.env, &sibling_lock(&self.path), DEFAULT_TIMEOUT)?;
-        // The clock is read under the lock: a record another writer landed while this one
-        // waited carries a later stamp than a clock read before the wait, and would be taken
-        // for skew and overwritten.
         let now = self.env.now();
         let mut merged = self.load();
         for (key, update) in updates {

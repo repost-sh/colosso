@@ -1,5 +1,3 @@
-// Going back in a chat (docs/chat.md C11), as a provider's session sees it and a client hears it.
-
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { Run, type Thread } from "../src/protocol/model";

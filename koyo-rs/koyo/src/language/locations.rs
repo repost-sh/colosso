@@ -120,8 +120,6 @@ impl Hooks {
         let places = grouped(links.into_iter().filter_map(|link| {
             let path = uri::to_path(&link.target_uri)?;
             let range = link.target_selection_range;
-            // This file's ranges were made the editor's own, as its definitions provider
-            // gives them (`link_for_editor`): back to the server's, as the others are.
             let range = if path == *self.path {
                 let start = rope.position_to_offset(&range.start);
                 asked.for_server(start..rope.position_to_offset(&range.end))
@@ -178,7 +176,6 @@ async fn located(
     root: Option<PathBuf>,
     cx: &mut AsyncApp,
 ) -> Arc<[FileLocations]> {
-    // The texts the server has, read on the main thread; the rest are read from disk off it.
     let (texts, encoding) = cx.update(|cx| {
         let server = server.upgrade();
         let server = server.as_ref().map(|server| server.read(cx));
@@ -275,7 +272,6 @@ mod tests {
         assert_eq!(located.text.as_ref(), "let x = greet(1);");
         assert_eq!(&located.text[located.matched.clone()], "greet");
         assert_eq!(located.at, At::Bytes(22..27));
-        // Without the text, only the line is known.
         let blind = locate(None, range, Encoding::Utf16);
         assert_eq!(blind.at, At::Line(1));
         assert!(blind.text.is_empty());

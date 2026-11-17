@@ -71,7 +71,6 @@ impl Handoff {
                 bytes: Vec::with_capacity(FIRST),
                 closed: false,
             }),
-            // An idle session thread sleeps until there's output.
             armed: AtomicBool::new(true),
             wake,
             last: AtomicUsize::new(FIRST),
@@ -109,7 +108,6 @@ impl Handoff {
                     }
                 }
                 Err(error) if error.kind() == ErrorKind::Interrupted => {}
-                // EIO once the program's side is closed.
                 Err(_) => return,
             }
         }
@@ -139,7 +137,6 @@ impl Handoff {
 
     fn wake_if_asleep(&self) {
         if self.armed.swap(false, Ordering::SeqCst) {
-            // Full only when a wake is already waiting.
             let _ = self.wake.try_send(());
         }
     }
@@ -153,12 +150,9 @@ impl Handoff {
     /// What's been handed over since the last take. Taking nothing, the session thread
     /// goes to sleep until the next output: it's woken for it.
     pub fn take(&self) -> Taken {
-        // The reader gets a buffer as large as the last, so it doesn't grow one while it
-        // reads; made here, outside the lock.
         let fresh = Vec::with_capacity(self.last.load(Ordering::Relaxed));
         let mut state = self.state.lock();
         if state.bytes.is_empty() && !state.closed {
-            // Armed under the lock: output pushed after it sees it and wakes the thread.
             self.armed.store(true, Ordering::SeqCst);
             return Taken {
                 bytes: Vec::new(),
@@ -190,7 +184,6 @@ impl Session {
             self.output(&bytes.slice(at..end));
             at = end;
         }
-        // Closed, it handed over all it read.
         if taken.closed {
             self.handoff = None;
             self.woken = never();
@@ -218,7 +211,6 @@ mod tests {
         );
         let taken = handoff.take();
         assert_eq!(taken.bytes, b"ab");
-        // Nothing more: the taker sleeps, and the next output wakes it.
         assert!(handoff.take().bytes.is_empty());
         handoff.push(b"c");
         assert!(woken.try_recv().is_ok());

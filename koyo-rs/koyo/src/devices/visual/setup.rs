@@ -28,7 +28,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         newest: "27.2".into(),
         selected: Some("26.4".into()),
     };
-    // The picker first, as the person meets it.
     for (picture, missing) in [
         ("picker-xcode.png", older()),
         ("picker-system.png", found(ready(), true, false)),
@@ -54,7 +53,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         shows(drawn, missing, if made { vec![simulator("V-SETUP")] } else { Vec::new() });
         lines.push(format!("{}", drawn.save_dialog(picture)?.display()));
     }
-    // The device made: its first start, then ready.
     let link = drawn.cx.update(|cx| crate::devices::devices(cx).update(cx, |devices: &mut Devices, cx| devices.link("V-SETUP", "iPhone 18 Pro", false, cx)));
     let (tell, _told) = std::sync::mpsc::channel();
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.use_host(Running::stand_in(tell), cx)));
@@ -86,7 +84,6 @@ fn settings_page(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(Some(crate::settings_view::SettingsPage::Devices), cx)));
     lines.push(format!("{}", drawn.save("settings-devices.png")?.display()));
-    // What's missing, marked: an Xcode too old, then no iOS version.
     for (picture, missing) in [("settings-devices-xcode.png", older()), ("settings-devices-system.png", found(ready(), true, false))] {
         shows(drawn, missing, Vec::new());
         lines.push(format!("{}", drawn.save(picture)?.display()));

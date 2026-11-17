@@ -92,7 +92,6 @@ mod tests {
             "told again, with no words yet"
         );
         assert_eq!(consents.take(arc, Some("yes, again")), Ok("yes, again"));
-        // Each thing asked for by itself.
         assert_eq!(consents.take(focus, None), Err(false));
         assert_eq!(consents.take(Asked::App(8), Some("go ahead")), Err(false));
         assert_eq!(consents.take(focus, Some("go ahead")), Ok("go ahead"));

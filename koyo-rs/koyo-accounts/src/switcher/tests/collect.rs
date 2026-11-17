@@ -242,8 +242,6 @@ fn idle_slot_absent_backup_still_no_credentials() {
 
 #[test]
 fn active_slot_unreadable_credential_shows_keychain_unavailable_on_linux() {
-    // cswap's Linux case: `.credentials.json` there but unreadable, no Keychain failure. On
-    // the Mac that is the file fallback of an absent Keychain item.
     let h = Harness::new();
     h.switcher.setup_directories().unwrap();
     h.set_live(&access_creds("sk-live"));
@@ -290,7 +288,6 @@ fn active_slot_unreadable_credential_shows_keychain_unavailable_on_linux() {
 
 #[test]
 fn list_active_shows_keychain_unavailable() {
-    // A locked Keychain read "no credentials" and nudged the person into a needless re-login.
     let h = super::support::gate_harness();
     h.mock_claude_config();
     h.sandbox.security.answer_all(Answer::Exit(36));

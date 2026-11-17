@@ -19,7 +19,6 @@ pub(super) fn open_dev_tools(
     inspect: Option<ipc::Point>,
     dock: DevToolsDock,
 ) {
-    // The page is on its way: its DevTools follow once it is there.
     let waiting = with(|host| {
         let p = host.panes.get_mut(&page)?;
         if p.browser.is_some() {
@@ -62,7 +61,6 @@ pub(super) fn open_dev_tools(
     .flatten();
     match state {
         None => return,
-        // Inspecting again only moves the inspector's selection.
         Some((Some(open), _)) if open == devtools => {
             if let Some(at) = inspect {
                 reveal(page, at);
@@ -88,10 +86,8 @@ pub(super) fn open_dev_tools(
     }
     let mut inspected = crate::devtools::Inspected::new(devtools, dock);
     if let Some(at) = inspect {
-        // Nothing to look up yet: the frontend has not turned the DOM on.
         let _ = inspected.session.inspect(at);
     }
-    // The frontend's own session on the page is made while it loads.
     let begin = inspected.session.begin();
     let url = crate::devtools::frontend_url(&bridge);
     with(|host| {
@@ -103,7 +99,6 @@ pub(super) fn open_dev_tools(
         }
     });
     host.send_dev_tools_message(Some(begin.as_bytes()));
-    // The frontend is Chromium's own: of no profile of Koyo's.
     crate::native::create(devtools, &url, viewport, None);
 }
 
@@ -134,7 +129,6 @@ pub(super) fn cdp_failed(pane: PaneId, call: u64, error: impl Into<String>) {
 
 /// An agent command for `page`'s own session.
 pub(super) fn cdp(page: PaneId, call: u64, method: &str, params: serde_json::Value) {
-    // The page is on its way: the command runs once it has loaded.
     let held = with(|host| {
         let p = host.panes.get_mut(&page)?;
         if p.loaded {
@@ -227,7 +221,6 @@ fn agent_message(page: PaneId, fields: &mut crate::devtools::Fields) -> bool {
         return false;
     }
     let id = fields.get("id").and_then(serde_json::Value::as_i64);
-    // The answer to a command of the host's own is nobody else's.
     if let Some(id) = id
         && with_pane(page, |p| p.own.remove(&id)) == Some(true)
     {

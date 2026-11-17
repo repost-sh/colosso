@@ -82,7 +82,6 @@ impl Shell {
         };
         let kept = kept || !settings::get(cx).preview_files;
         let path = checkout.read(cx).root().join(&place.path);
-        // A tab brought back with the window for it, and not shown yet, is one that has it.
         let open =
             (self.open_already(&path, cx)).or_else(|| self.open_brought_back(&path, window, cx));
         let file = if let Some((at, file)) = open {
@@ -110,7 +109,6 @@ impl Shell {
                 file.focus(window, cx);
             }
         });
-        // A file opened is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
         cx.notify();
     }
@@ -167,7 +165,6 @@ impl Shell {
         pane.set_file(file.clone());
         pane.title = title.into();
         let shown = unit.tab_with(id).unwrap_or(unit.active_tab);
-        // Shown in place of a pinned or a loose page too, which selecting a tab leaves.
         if let Some((project, branch, _)) = self.workspace.shown_tab() {
             self.workspace.select_tab(project, branch, shown);
         }
@@ -191,11 +188,9 @@ impl Shell {
             .map(Arc::from);
         let file = if let Some(kind) = viewer::kind(&path) {
             let viewer = cx.new(|cx| Viewer::new(path.clone(), kind, cx));
-            // Shown again as it's written, as text is read again.
             checkout.update(cx, |checkout, _| checkout.watch(&viewer));
             cx.new(|_| FilePane::with_viewer(path, relative, viewer, preview))
         } else {
-            // A file of the checkout is edited in place; one outside it is only read.
             let (document, editor) = self.text(&path, checkout, relative.is_some(), window, cx);
             cx.new(|cx| FilePane::with_text(path, relative, document, editor, preview, at, cx))
         };
@@ -204,7 +199,6 @@ impl Shell {
             this.file_pane_event(file, event, &checkout, window, cx);
         })
         .detach();
-        // Its tab shows whether it's a preview and whether it has unsaved edits.
         cx.observe(&file, |_, _, cx| cx.notify()).detach();
         file
     }
@@ -245,7 +239,6 @@ impl Shell {
         match event {
             FilePaneEvent::PickInTree(path) => {
                 self.show(View::Files, cx);
-                // Made now rather than after this change, to pick the path in.
                 self.follow_selection(window, cx);
                 if let Some(files) = self.right_panel.files().cloned() {
                     files.update(cx, |files, cx| files.pick_in_tree(path, window, cx));

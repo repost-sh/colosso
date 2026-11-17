@@ -1,5 +1,3 @@
-// A chat on a fake provider, from the top of the host's threads down.
-
 import type { RunId } from "../../src/protocol/ids";
 import type { Thread } from "../../src/protocol/model";
 import { FakeProvider } from "../../src/providers/fake";

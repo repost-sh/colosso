@@ -24,8 +24,6 @@ fn without_model_setting_the_same_usage_holds() {
     assert_eq!(h.reasons(), ["below-threshold"]);
 }
 
-// -- TestHeaderProbeReadings ------------------------------------------------------------------
-
 #[test]
 fn complete_reading_is_a_target() {
     let mut h = Harness::standard();
@@ -43,7 +41,6 @@ fn complete_reading_is_a_target() {
 
 #[test]
 fn weekly_only_active_reading_does_not_fail_over() {
-    // No 5h window (Ultra): the 7d reading decides, not three unknown ticks.
     let mut h = Harness::standard();
     for _ in 0..3 {
         let outcome = h.tick_with_usage(&[

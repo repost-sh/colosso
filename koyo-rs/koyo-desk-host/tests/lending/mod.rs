@@ -69,7 +69,6 @@ fn on_screen(pid: i32) -> usize {
 fn the_watch_on_the_persons_screen_sees_the_windows_there() {
     let owners = owners_on_screen();
     assert!(owners.len() > 3, "too few windows for a screen: {owners:?}");
-    // The window server's own among them are another user's: only the number is checked.
     assert!(owners.iter().all(|pid| *pid > 0), "{owners:?}");
     let first = owners[0];
     assert!(on_screen(first) > 0 && on_screen(-1) == 0);
@@ -104,8 +103,6 @@ fn stand_in() -> StandIn {
     for _ in 0..100 {
         if let [pid] = text_edits()[..] {
             let app = StandIn(pid);
-            // An app of the person's has long been running when an agent asks for it:
-            // this one is given the time to finish starting, hidden as it started.
             nap(Duration::from_secs(2));
             assert_eq!(
                 on_screen(pid),
@@ -224,8 +221,6 @@ fn an_app_of_the_persons_is_lent_on_their_word_and_given_back_not_quit() {
     let theirs = stand_in();
     let pid = theirs.0;
 
-    // Words that come before any refusal said what to ask count for nothing; without their
-    // word it's refused, with what to tell them and ask; nothing is taken.
     let early = driver
         .ask(open(Some("yes, before I was asked")))
         .unwrap_err();
@@ -235,14 +230,11 @@ fn an_app_of_the_persons_is_lent_on_their_word_and_given_back_not_quit() {
     assert_eq!(empty.code, RefusalCode::NeedsConsent, "{empty:?}");
     assert!(driver.lent.is_empty() && windows_of(&mut driver, pid) == 0);
 
-    // On their word, their own process is on the agent desktop, and on record as lent.
     let shown = lends(&mut driver, pid, "yes, bring my TextEdit over");
     assert!(shown > 0, "the lent app shows no window: {:?}", driver.logs);
     assert_eq!(windows_of(&mut driver, pid), shown);
     let record = Path::new(env!("KOYO_TARGET_DIR")).join("dt/state/apps");
     let recorded = std::fs::read_to_string(&record).unwrap();
-    // The record names it, when it started, that it's lent, and the desktop it came from
-    // (none: hidden, it was on no desktop).
     let lent = |line: &str| {
         let mut parts = line.split(' ');
         parts.next() == Some(pid.to_string().as_str()) && parts.nth(1) == Some("lent")
@@ -257,8 +249,6 @@ fn an_app_of_the_persons_is_lent_on_their_word_and_given_back_not_quit() {
         driver.logs
     );
 
-    // Brought forward from outside, as macOS and the app itself do it, it stays lent, and
-    // the front is the person's again before macOS can follow it to its desktop.
     let said = driver.logs.len();
     activate(pid);
     driver.rest(Duration::from_millis(700));
@@ -279,15 +269,12 @@ fn an_app_of_the_persons_is_lent_on_their_word_and_given_back_not_quit() {
     );
     assert_eq!(driver.lent.len(), 1, "coming to the front gave it back");
 
-    // Closed by the agent, it goes back as it is: off the agent desktop, and running long
-    // after an app of the agent's would have been stopped.
     hide(pid);
     assert_eq!(driver.ask(Ask::Close(Close::App(pid))), Ok(Answer::Done));
     assert!(driver.until(Duration::from_secs(3), |driver| driver.lent.is_empty()));
     driver.rest(Duration::from_secs(4));
     assert!(alive(pid), "the person's app was quit");
     assert_eq!(windows_of(&mut driver, pid), 0);
-    // The words that lent it are used up: with them alone it's refused, and said why.
     let stale = driver
         .ask(open(Some("yes, bring my TextEdit over")))
         .unwrap_err();
@@ -295,8 +282,6 @@ fn an_app_of_the_persons_is_lent_on_their_word_and_given_back_not_quit() {
     assert!(stale.message.contains("used up"), "{stale:?}");
     assert!(driver.lent.is_empty() && windows_of(&mut driver, pid) == 0);
 
-    // A host that goes without a word leaves it lent on record: the next gives it back
-    // before all else, and ends nothing of the person's.
     lends(&mut driver, pid, "yes, once more");
     hide(pid);
     driver.kill();
@@ -305,7 +290,6 @@ fn an_app_of_the_persons_is_lent_on_their_word_and_given_back_not_quit() {
     assert!(alive(pid), "the next host ended the person's app");
     assert!(driver.lent.is_empty() && windows_of(&mut driver, pid) == 0);
 
-    // And the host's own end gives it back the same.
     lends(&mut driver, pid, "yes, a last time");
     hide(pid);
     driver.quit();

@@ -63,7 +63,6 @@ pub(crate) fn start(launch: &Launch) -> Result<(Arc<Shared>, Sender<Signal>), Ls
     let (signal, signals) = mpsc::channel();
     let (stderr_done, stderr_finished) = mpsc::channel();
 
-    // The watcher first: it owns the process, and kills it if anything after this fails.
     let reporter = Arc::clone(&shared);
     spawn(&name, "watch", move || {
         watch(guarded, &signals, &stderr_finished, &reporter);
@@ -100,7 +99,6 @@ struct Watched(Child);
 
 impl Drop for Watched {
     fn drop(&mut self) {
-        // Both are no-ops once the process has been waited for.
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -114,7 +112,6 @@ fn watch(
     shared: &Shared,
 ) {
     let (status, killed, broken) = wait(&mut watched.0, signals);
-    // A crash report is about the last stderr lines; give their reader a moment to finish.
     let _ = stderr_finished.recv_timeout(STDERR_GRACE);
     let code = match status {
         Ok(status) => status.code(),
@@ -156,7 +153,6 @@ fn wait(
                 continue;
             }
             Some(Signal::Kill(broken)) => broken,
-            // The client and the reader are both gone, so nothing else could tell.
             None => None,
         };
         let killed = kill(child);
@@ -199,7 +195,6 @@ fn read(stdout: ChildStdout, shared: &Arc<Shared>, signal: &Sender<Signal>) {
         match frame::read(&mut reader, &mut line) {
             Ok(Some(body)) => dispatch(shared, body),
             Ok(None) => break Signal::OutputClosed,
-            // Past a broken frame there's no knowing where the next message starts.
             Err(error) => break Signal::Kill(Some(format!("unreadable output: {error}"))),
         }
     };
@@ -211,7 +206,6 @@ fn dispatch(shared: &Arc<Shared>, body: Vec<u8>) {
     let message: Incoming<'_> = match serde_json::from_slice(&body) {
         Ok(message) => message,
         Err(error) => {
-            // One bad message isn't fatal: the frames around it are still whole.
             log::warn!("{} sent an unreadable message: {error}", shared.name);
             return;
         }
@@ -271,8 +265,6 @@ fn read_stderr(stderr: ChildStderr, shared: &Shared, mut log: Option<File>, done
         let line = line.trim_end();
         if !line.is_empty() {
             log::info!("{}: {line}", shared.name);
-            // In one write, so the app's own lines in the same log don't land inside it. A log
-            // that can't be written to anymore is let go of; the app's log still has the line.
             let whole = format!("{line}\n");
             if log
                 .as_mut()

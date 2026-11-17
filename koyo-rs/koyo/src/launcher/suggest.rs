@@ -51,7 +51,6 @@ pub fn fetch(query: String, cx: &App) -> Task<Option<Vec<String>>> {
         executor.timer(PAUSE).await;
         let encoded: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
         let child = Command::new("curl")
-            // First, so no `.curlrc` changes what's asked.
             .arg("--disable")
             .args(["--fail", "--silent", "--compressed", "--proto", "=https"])
             .args(["--max-time", TIMEOUT])
@@ -65,7 +64,6 @@ pub fn fetch(query: String, cx: &App) -> Task<Option<Vec<String>>> {
             .ok()?;
         let mut asking = Asking(child);
         let mut polls = 0;
-        // An answer is a few hundred bytes, well within what the pipe holds till it's read.
         let status = loop {
             if let Some(status) = asking.0.try_wait().ok()? {
                 break status;

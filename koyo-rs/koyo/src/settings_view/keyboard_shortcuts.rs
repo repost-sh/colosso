@@ -117,7 +117,6 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 fn keys(action: &dyn Action, cx: &App) -> Option<Kbd> {
     let keymap = cx.key_bindings();
     let keymap = keymap.borrow();
-    // The keymap lists later bindings last, and later bindings take precedence.
     let binding = keymap.bindings_for_action(action).last()?;
     let keystroke = binding.keystrokes().first()?.as_keystroke().clone();
     Some(Kbd::new(keystroke))

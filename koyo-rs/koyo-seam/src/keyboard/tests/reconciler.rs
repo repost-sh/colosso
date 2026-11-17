@@ -56,7 +56,6 @@ fn a_key_finding_the_first_responder_elsewhere_hands_it_over_first() {
     fake.moved(WINDOW, Responder::Page(PAGE));
     let healed = reconcile::at_key(COMPOSER, WINDOW, &fake);
     assert_eq!(healed, Some(Moved { before: Responder::Page(PAGE), after: Responder::Gpui }));
-    // Delivered after this, the key goes to GPUI's view.
     assert_eq!(fake.first_responder(WINDOW), Responder::Gpui);
 }
 
@@ -72,8 +71,6 @@ fn a_key_while_text_is_being_composed_goes_where_the_composition_is() {
 
 #[test]
 fn a_key_going_where_it_should_is_left_alone() {
-    // Shortcuts are offered as key equivalents before the window hears the key at all, so
-    // what the router does is only ever this: nothing, unless the key would go astray.
     let fake = fake();
     assert_eq!(reconcile::at_key(COMPOSER, WINDOW, &fake), None);
     fake.moved(WINDOW, Responder::Page(PAGE));
@@ -89,7 +86,6 @@ fn a_press_on_gpuis_content_gives_it_the_keyboard_back_if_it_should_have_it() {
     fake.moved(WINDOW, Responder::Page(PAGE));
     let healed = reconcile::at_press(COMPOSER, WINDOW, &fake);
     assert_eq!(healed, Some(Moved { before: Responder::Page(PAGE), after: Responder::Gpui }));
-    // With a page holding, a press on a button leaves the keyboard in the page.
     fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(reconcile::at_press(Holder::Page(PAGE), WINDOW, &fake), None);
 }
@@ -104,7 +100,6 @@ fn a_page_asking_for_the_keyboard_has_it_only_if_the_person_put_it_there() {
     assert_eq!(asked(COMPOSER, composer, PAGE), Heard::Refused(PAGE));
     assert_eq!(asked(Holder::Page(PAGE), Surface::Page(PAGE), PAGE), Heard::Wanted);
     assert_eq!(asked(Holder::Page(PAGE), Surface::Page(PAGE), OTHER_PAGE), Heard::Refused(OTHER_PAGE));
-    // Away, the person's page may take it back for when they return; no other page may.
     assert_eq!(asked(Holder::Away, Surface::Page(PAGE), PAGE), Heard::Wanted);
     assert_eq!(asked(Holder::Away, composer, PAGE), Heard::Refused(PAGE));
     assert_eq!(asked(Holder::Menu, composer, PAGE), Heard::Refused(PAGE));

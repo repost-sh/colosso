@@ -13,8 +13,6 @@ use koyo_app_control::{
     Endpoint, ErrorCode, FALLBACK_SOCKET_FILE, MAX_SOCKET_PATH, fallback_dir,
 };
 
-// Marked as test code, as everything here is, so the lints' leave for tests (to unwrap, to
-// panic) reaches the helpers too.
 /// A fresh, empty folder of the build's own (`target/tmp`).
 #[cfg(test)]
 fn temp_dir(name: &str) -> PathBuf {
@@ -64,13 +62,11 @@ fn a_deep_data_folder_gets_a_private_folder_under_the_temporary_one() {
     assert_eq!(hash.len(), 8);
     assert!(hash.bytes().all(|b| b.is_ascii_hexdigit()));
 
-    // The same folder, however it's written, gets the same name; another folder another.
     let mut slashed = data.clone().into_os_string();
     slashed.push("/");
     assert_eq!(fallback_dir(Path::new(&slashed), &temp), folder);
     assert_ne!(fallback_dir(&data.join("other"), &temp), folder);
 
-    // Binding makes the folder, private, with the socket in it.
     fs::create_dir_all(&temp).unwrap();
     let listener = Listener::bind(&endpoint).unwrap();
     assert_eq!(mode(folder), 0o700);
@@ -133,7 +129,6 @@ fn a_stale_socket_is_replaced() {
     let root = temp_dir("stale");
     let endpoint = Endpoint::for_data_dir_in(&root.join("data"), &root).unwrap();
     fs::create_dir_all(endpoint.path().parent().unwrap()).unwrap();
-    // A socket file nothing answers on, as a crashed app leaves behind.
     drop(UnixListener::bind(endpoint.path()).unwrap());
     assert!(endpoint.path().exists());
     let _listener = Listener::bind(&endpoint).unwrap();

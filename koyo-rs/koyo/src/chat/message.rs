@@ -46,7 +46,6 @@ impl Drawing {
         let open = self.open.contains(id);
         let steered = message.delivered == Delivered::Steer;
         let group: SharedString = format!("user-{}", item.id).into();
-        // A steer joined the run: when the run was asked for isn't when it was said.
         let sent = if steered {
             None
         } else {

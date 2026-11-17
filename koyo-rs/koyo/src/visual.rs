@@ -149,8 +149,6 @@ impl Drawn {
         let platform = gpui_kit::platform::current_platform(false);
         let assets = Arc::new(gpui_kit::assets::AllAssets);
         let mut cx = VisualTestAppContext::with_asset_source(platform, assets);
-        // The project lists and watches the checkout on a thread of its own, which wakes the
-        // panels' tasks from outside the scheduler.
         cx.executor().allow_parking();
         cx.update(|cx| {
             crate::init(cx);
@@ -269,7 +267,6 @@ impl Drawn {
             let checkout = self.shell.read(cx).right_panel.checkout();
             checkout.and_then(|checkout| checkout.read(cx).project().cloned())
         });
-        // Subscribed before looking, so whatever's published after the look wakes the wait.
         let updates = project
             .ok_or("the checkout didn't open")?
             .subscribe(Feed::Everything);

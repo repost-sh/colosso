@@ -14,14 +14,10 @@ import { removeScratch, scratch } from "../support/scratch";
 
 afterEach(removeScratch);
 
-// A file written and run straight away waits on macOS's check of a new program, which can
-// take many seconds; the programs run here are the system's own, under names of the test's.
-
 describe("the login environment", () => {
   test("is what the login shell prints, without the variables a Claude session sets", async () => {
     const home = scratch();
     writeFileSync(join(home, ".profile"), [
-      // A login rc file that prints, as some do.
       "echo 'Welcome back.'",
       "export PATH=\"/login/bin:$PATH\" KEEP=yes CLAUDECODE=1",
       "export NOTE='two",
@@ -103,7 +99,6 @@ describe("claude", () => {
     symlinkSync("/usr/bin/false", claude);
     expect(await versions.of(claude, { PATH: "/usr/bin:/bin" })).toBeNull();
     rmSync(claude);
-    // The system's shell prints a version, as `claude --version` does.
     symlinkSync("/bin/sh", claude);
     const version = await versions.of(claude, { PATH: "/usr/bin:/bin" });
     expect(version).toMatch(/^\d+\.\d+\.\d+/u);

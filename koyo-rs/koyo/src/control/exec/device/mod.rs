@@ -269,7 +269,6 @@ pub(super) fn refused(refusal: Refusal) -> ControlError {
         RefusalCode::Invalid => ControlError::invalid_input(message),
         RefusalCode::Unsupported => ControlError::new(ErrorCode::Unsupported, message),
         RefusalCode::TimedOut => ControlError::timeout(message),
-        // Cut short by the person: theirs for now, as when they act before it starts.
         RefusalCode::PersonActing => ControlError::new(ErrorCode::PersonHasControl, message).retryable(true),
         RefusalCode::Failed => ControlError::internal(message),
     }

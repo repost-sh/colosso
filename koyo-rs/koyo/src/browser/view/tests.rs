@@ -7,7 +7,6 @@ use koyo_browser_ipc::Dialog;
 use super::*;
 use crate::browser::control::Mode;
 use crate::browser::host::HostStatus;
-// Drawing the window is when the view asks its questions.
 use crate::test_support::{draw, in_window};
 
 /// A start page in a window of its own. A test names no engine, so the host it starts
@@ -84,7 +83,6 @@ fn a_page_the_person_only_uses_goes_back_once_they_have_been_still_a_while(
     view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
     still(cx, 3);
     view.read_with(cx, |view, _| assert!(view.control.person_holds()));
-    // Using it again holds it for as long again.
     view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
     still(cx, 3);
     view.read_with(cx, |view, _| {
@@ -94,7 +92,6 @@ fn a_page_the_person_only_uses_goes_back_once_they_have_been_still_a_while(
     view.read_with(cx, |view, _| {
         assert!(view.control.holder.is_none(), "gone back");
     });
-    // Asked for, it stays theirs until they give it back.
     view.update(cx, |view, cx| view.person_acts(Mode::Explicit, cx));
     still(cx, 60);
     view.read_with(cx, |view, _| assert!(view.control.person_holds()));
@@ -105,7 +102,6 @@ fn a_page_the_person_only_uses_goes_back_once_they_have_been_still_a_while(
 #[gpui_kit::test]
 fn the_agents_pointer_travels_only_where_the_person_can_see_it(cx: &mut TestAppContext) {
     let (window, drawn) = start_page(cx);
-    // A page the window holds but doesn't draw, as a tab out of sight.
     let unseen = window
         .update(cx, |_, window, cx| {
             cx.new(|cx| BrowserView::new(String::new(), Path::new("/work/app"), window, cx))
@@ -135,7 +131,6 @@ fn the_devtools_own_controls_move_and_close_them_and_turn_responsive_mode_on_and
     let device = |on| DevToolsAsk::DeviceMode { on };
     let responsive =
         |cx: &mut TestAppContext| view.read_with(cx, |view, _| view.responsive.mode.is_some());
-    // Without open DevTools, nothing they'd ask changes the page.
     view.update(cx, |view, cx| view.devtools_asked(device(true), cx));
     assert!(!responsive(cx));
 
@@ -165,7 +160,6 @@ fn the_devtools_own_controls_move_and_close_them_and_turn_responsive_mode_on_and
         );
     }
 
-    // The device toolbar toggle sets responsive mode, said twice or not.
     for (on, then) in [(true, true), (true, true), (false, false), (false, false)] {
         view.update(cx, |view, cx| view.devtools_asked(device(on), cx));
         assert_eq!(responsive(cx), then);
@@ -174,7 +168,6 @@ fn the_devtools_own_controls_move_and_close_them_and_turn_responsive_mode_on_and
     view.update(cx, |view, cx| view.devtools_asked(DevToolsAsk::Close, cx));
     view.read_with(cx, |view, _| assert!(view.devtools().is_none(), "closed"));
 
-    // Toggled with the keys in the tools themselves, they close as from their page.
     view.update(cx, |view, cx| view.inspect(None, cx));
     draw(window, cx);
     let tools = view.read_with(cx, |view, _| view.devtools().cloned().expect("open again"));
@@ -192,7 +185,6 @@ fn a_view_going_leaves_its_pane_to_the_view_that_took_it_since(cx: &mut TestAppC
     let pane = first.read_with(cx, |view, _| view.pane);
     let browsers = cx.update(Browsers::global);
     browsers.update(cx, |browsers, _| browsers.attach(pane, second.downgrade()));
-    // The first view goes with its window.
     let gone = first.downgrade();
     drop(first);
     (cx.update_window(window, |_, window, _| window.remove_window())).unwrap();
@@ -256,10 +248,7 @@ fn the_persons_right_click_in_a_page_an_agent_holds_takes_it_back_and_shows_its_
             .update(cx, |_, window, cx| view.read(cx).menu_gate(window))
             .unwrap()
     };
-    // The agent's own right-click reaches the page with no press of the window's: the page
-    // is still the agent's as it asks for its menu.
     assert_eq!(gate(cx), Err(Refusal::Agent));
-    // The person's right press in the page, heard on its way there, before the page asks.
     let press = MouseDownEvent {
         position: point(px(200.), px(150.)),
         button: MouseButton::Right,

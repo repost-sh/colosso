@@ -54,7 +54,6 @@ pub fn ensure(dir: &Path, tracked: usize, ignored: usize, seed: u64) -> Result<M
     {
         return Ok(serde_json::from_str(&text)?);
     }
-    // A tree cut short is made again from the start.
     if dir.exists() {
         fs::remove_dir_all(dir).with_context(|| format!("removing {}", dir.display()))?;
     }
@@ -68,7 +67,6 @@ fn make(dir: &Path, tracked: usize, ignored: usize, seed: u64) -> Result<Made> {
     let per_dependency = (ignored / 2).div_ceil(DEPENDENCIES * DEPENDENCY_FOLDERS);
     let per_crate = (ignored / 2).div_ceil(CRATES);
     let mut rng = Rng::new(seed);
-    // Every path first, so the hash says what's made before anything is written.
     let mut folders: Vec<(String, Vec<String>)> = Vec::new();
     for package in 0..PACKAGES {
         for area in 0..AREAS {

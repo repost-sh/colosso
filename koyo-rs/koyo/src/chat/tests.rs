@@ -224,7 +224,6 @@ fn what_comes_before_a_reopens_snapshot_is_applied_on_top_of_it_too(cx: &mut Tes
         thread.opened(Ok(snapshot("t", 3, vec![answer("a", 0, "Hel", 3)])), cx);
         assert_eq!(thread.opening(), Some(3));
         thread.take_in(vec![appended("a", " world")], cx);
-        // The snapshot has the item whole as it was, which the appends go on from.
         thread.opened(Ok(snapshot("t", 4, vec![answer("a", 0, "Hello", 3)])), cx);
     });
     assert_eq!(text_of(&thread, cx), "Hello world");
@@ -237,7 +236,6 @@ fn what_came_for_an_open_that_failed_is_let_go(cx: &mut TestAppContext) {
         thread.opening();
         thread.take_in(vec![appended("a", " world")], cx);
         thread.opened(Err(ClientError::Closed), cx);
-        // Nothing to go on: the next open's snapshot brings it.
         thread.take_in(vec![appended("a", " again")], cx);
         thread.opening();
         thread.opened(Ok(snapshot("t", 3, vec![answer("a", 0, "Hello", 3)])), cx);
@@ -275,7 +273,6 @@ fn a_text_already_drawn_grows_and_is_settled_with_the_rows(cx: &mut TestAppConte
         thread.text(&id, "Hel", cx)
     });
     let shows = |cx: &mut TestAppContext| {
-        // The view parses in the background, and shows what it has parsed.
         cx.run_until_parked();
         view.read_with(cx, |view, _| {
             view.rendered_text().as_str().trim_end().to_owned()
@@ -310,7 +307,6 @@ fn the_first_list_brings_back_the_tabs_it_names_in_the_order_they_were_made(
     });
     draw(window, cx);
     assert_eq!(tabs(&shell, cx), ["First", "Second"]);
-    // What's on a checkout not listed yet waits for it; the others aren't brought back twice.
     let waiting = chats.read_with(cx, |chats, _| chats.to_restore().to_vec());
     assert_eq!(waiting, [ThreadId("0004".into())]);
     shell.update(cx, Shell::follow_chats);

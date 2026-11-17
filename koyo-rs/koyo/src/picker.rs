@@ -225,7 +225,6 @@ impl Picker {
                 let along = ((at.x - left) / travel).clamp(0., 1.);
                 let opacity = MIN_OPACITY + along * (MAX_OPACITY - MIN_OPACITY);
                 gradient::update(cx, |theme| theme.set_opacity(opacity));
-                // A tick for every tenth crossed.
                 let tenth = |opacity: f32| (opacity * 10.).round() as i32;
                 if tenth(opacity) != tenth(before) {
                     haptic_tick();
@@ -439,7 +438,6 @@ impl Picker {
                             .h_full()
                             .flex()
                             .children(PAGES.iter().enumerate().map(|(page, presets)| {
-                                // Only the pages in view get swatches; the rest hold their place.
                                 let shown = (page as f32 - offset).abs() < 1.;
                                 div()
                                     .w(px(PAGE_WIDTH))
@@ -468,8 +466,6 @@ impl Picker {
     }
 
     fn slider(&self, theme: &GradientTheme, colors: &Colors) -> impl IntoElement {
-        // Without colors there is nothing to see through: the wave lies dim at full swing
-        // and the thumb is gone.
         let enabled = !theme.dots.is_empty();
         let progress = if enabled {
             opacity_progress(theme.opacity)
@@ -570,7 +566,6 @@ impl Picker {
                         let radius = DIAL / 2.;
                         for index in 0..16 {
                             let angle = index as f32 / 16. * std::f32::consts::TAU;
-                            // The first tick sits a quarter turn past the top, where the dial starts.
                             let value = ((index + 4) % 16) as f32 / 16.;
                             let alpha = if value <= texture { 1. } else { 0.4 };
                             let at = center
@@ -621,7 +616,6 @@ impl Render for Picker {
             .child(self.slider(&theme, &colors))
             .child(self.dial(&theme, &colors))
             .when(self.drag.is_some(), |root| {
-                // Follows the mouse anywhere until the button comes up.
                 root.child(
                     canvas(
                         |_, _, _| {},
@@ -667,7 +661,6 @@ struct Colors {
 
 impl Colors {
     fn new(dark: bool) -> Self {
-        // Light ink on dark, dark ink on light.
         let ink = |alpha: f32| {
             if dark {
                 gray(1., alpha)
@@ -844,7 +837,6 @@ fn paint_handle(
 ) {
     let angle = texture * std::f32::consts::TAU;
     let (sin, cos) = angle.sin_cos();
-    // Along the radius, then across it.
     let outward = (sin, -cos);
     let across = (cos, sin);
     let (half_length, half_width, corner) = (6., 3., 2.);
@@ -858,7 +850,6 @@ fn paint_handle(
             px(rim.1 + outward.1 * along + across.1 * side),
         )
     };
-    // A rounded rectangle, its corners cut into short arcs.
     let mut path = PathBuilder::fill();
     let corners = [
         (half_length - corner, half_width - corner, 0.),
@@ -955,7 +946,6 @@ impl Wave {
             let turn = (x - start) / (end - start) * WAVE_TURNS;
             center - amplitude * (turn * std::f32::consts::TAU).sin()
         };
-        // The wave is bright up to the thumb and dim past it.
         for (from, to, color) in [
             (start, self.split.min(end), self.bright),
             (self.split.max(start), end, self.dim),
@@ -973,7 +963,6 @@ impl Wave {
             if let Ok(path) = path.build() {
                 window.paint_path(path, color);
             }
-            // Round caps.
             for x in [from, to] {
                 let cap = gpui_kit::Bounds::new(
                     at(x - WAVE_STROKE / 2., wave_y(x) - WAVE_STROKE / 2.),
@@ -986,14 +975,12 @@ impl Wave {
 }
 
 /// A light tap on the trackpad, as each detent passes.
-// objc's `msg_send!` checks a `cargo-clippy` cfg that current Rust no longer declares.
 #[expect(unexpected_cfgs, reason = "objc's `msg_send!` checks the cfg itself")]
 fn haptic_tick() {
     #[cfg(target_os = "macos")]
     unsafe {
         use objc::runtime::Object;
         use objc::{class, msg_send, sel, sel_impl};
-        // NSHapticFeedbackPatternLevelChange, performed now.
         let performer: *mut Object = msg_send![class!(NSHapticFeedbackManager), defaultPerformer];
         let _: () = msg_send![performer, performFeedbackPattern: 2isize performanceTime: 1usize];
     }

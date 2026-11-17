@@ -13,7 +13,6 @@ fn an_xcodes_version_is_read_from_its_version_plist() {
 #[test]
 fn xcode_stands_by_the_one_in_use_and_the_newest_installed() {
     let all = |versions: &[&str]| versions.iter().map(|&version| version.to_owned()).collect::<Vec<_>>();
-    // The one in use is new enough: the others aren't read.
     let read = std::cell::Cell::new(false);
     let installed = || {
         read.set(true);
@@ -21,11 +20,8 @@ fn xcode_stands_by_the_one_in_use_and_the_newest_installed() {
     };
     assert_eq!(stands(Some("27.2".into()), installed), Xcode::Ready("27.2".into()));
     assert!(!read.get());
-    // Older, and nothing newer.
     assert_eq!(stands(Some("26.4".into()), || all(&["26.4"])), Xcode::Older("26.4".into()));
-    // The Command Line Tools in use, an old Xcode installed.
     assert_eq!(stands(None, || all(&["25.0", "26.1"])), Xcode::Older("26.1".into()));
-    // A new one installed but another in use, or the Command Line Tools.
     assert_eq!(
         stands(Some("26.4".into()), || all(&["26.4", "27.0", "27.2"])),
         Xcode::Other {

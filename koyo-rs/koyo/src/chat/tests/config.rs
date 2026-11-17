@@ -15,8 +15,6 @@ fn the_client_keeps_the_settings_from_the_start_and_as_they_change(cx: &mut Test
     let chats = chats_of(&shell, cx);
     let told = |cx: &mut TestAppContext| chats.read_with(cx, |chats, _| chats.told_config.clone());
 
-    // Kept before any host is reached, for every connection to tell it first. Koyo tools are on
-    // by default: chats' sessions start this executable as their server.
     let this = std::env::current_exe().unwrap();
     assert_eq!(
         told(cx),

@@ -125,9 +125,6 @@ impl ChatView {
         } else {
             place.bottom(px(FLOAT))
         };
-        // The edge that shows the chat working is laid over the composer, as wide as it is, rather
-        // than drawn in it, so its steps draw this view and not the composer
-        // (`composer/activity.rs`).
         let held = div()
             .relative()
             .w_full()
@@ -207,7 +204,6 @@ impl ChatView {
         let row = (floating(prompts, top, px(PROMPT_ROOM) - hidden))
             .filter(|_| settings::get(cx).floating_prompts)
             .map(|at| (prompts[at], push(at)))
-            // All the way up, its card's out of sight, and its place stays drawn.
             .filter(|(_, push)| px(PROMPT_ROOM) + *push + card > Pixels::ZERO)
             .and_then(|(at, push)| Some((at, push, timeline.rows.get(at)?)));
         let lifted = row.map(|(at, ..)| at);
@@ -235,8 +231,6 @@ impl ChatView {
                 moved
             }
         };
-        // Told only of a change: an entity updated at all is taken as changed, which a scroll's
-        // frame mustn't be.
         if timeline.floating != lifted {
             let timeline = shown.timeline.clone();
             timeline.update(cx, |timeline, cx| timeline.set_floating(lifted, cx));
@@ -330,11 +324,9 @@ impl ChatView {
             .flex_col()
             .items_end()
             .child(card)
-            // Measured whole, its edge included, for how far the next prompt pushes it.
             .on_children_prepainted(move |cards, _, _| {
                 height.set(cards.first().map_or(Pixels::ZERO, |card| card.size.height));
             });
-        // Pushed up, it goes out of the top of the chat rather than over what's above it.
         let place = div()
             .absolute()
             .top_0()

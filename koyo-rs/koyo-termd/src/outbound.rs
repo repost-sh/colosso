@@ -171,8 +171,6 @@ mod tests {
         let lane = Arc::new(Lane::default());
         outbound.send(Bytes::from_static(b"a"));
         assert!(outbound.send_stream(Bytes::from_static(b"b"), Bytes::new(), &lane));
-        // Bumped before the writer gets to it (the writer is racing us, so this can only be
-        // checked for what's queued after the bump).
         lane.bump();
         assert!(outbound.send_stream(Bytes::from_static(b""), Bytes::from_static(b"c"), &lane));
         outbound.send(Bytes::from_static(b"d"));

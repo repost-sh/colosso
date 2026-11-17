@@ -84,8 +84,6 @@ fn acted(what: &str, done: Result<Acted, AccountsError>) -> Acted {
 fn run(switcher: &Switcher, job: Job) -> Done {
     let (said, read) = match job {
         Job::Read { active, other } => {
-            // The active account as the Mac's login has it now: the global config and the
-            // sequence, no Keychain.
             let current = active
                 .then(|| switcher.current_account_number().ok().flatten())
                 .flatten();
@@ -145,7 +143,6 @@ fn tick(switcher: &Switcher, engine: &Mutex<AutoSwitchEngine>, threshold: f64) -
         engine.set_threshold(threshold);
         engine.tick()
     });
-    // A switch changed which account is the Mac's login: the accounts are taken again.
     let moved = report.as_ref().map(|report| report.outcome) == Some(TickOutcome::Switched);
     Done {
         accounts: moved.then(|| snapshot(switcher, &BTreeSet::new())),
@@ -214,7 +211,6 @@ impl Service {
     /// Starts once the login shell has been read (a test's sandbox at once); the first reading
     /// is the cadence's.
     pub fn start(cx: &mut Context<Accounts>) -> Service {
-        // Tests that hand nothing run on nothing: never the Mac's login.
         let source = crate::settings::data_dir()
             .filter(|_| !cfg!(test))
             .map(|dir| Source::Mac(dir.join("claude-accounts")));
@@ -294,7 +290,6 @@ impl Service {
                 *other = another.or(other.take());
             }
             (Some(Job::Live(waiting)), Job::Live(limits)) => *waiting = limits,
-            // The person's job goes ahead of the app's waiting ones; it's never more than one.
             (_, job) if job.doing().is_some() => self.waiting.push_front(job),
             (_, job) => self.waiting.push_back(job),
         }

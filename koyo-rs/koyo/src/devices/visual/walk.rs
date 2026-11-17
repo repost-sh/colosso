@@ -55,7 +55,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
     let started = Instant::now();
     let registry = drawn.cx.update(|cx| devices(cx));
     drawn.cx.update(|cx| registry.update(cx, Devices::unlisted));
-    // The picker as the person opens it: the Mac read afresh.
     let _picker = open(drawn, None, false)?;
     drawn.until(Duration::from_secs(20), |drawn| Ok(drawn.cx.read(|cx| registry.read(cx).found.is_some())))?;
     let need = drawn.cx.read(|cx| registry.read(cx).need());
@@ -64,14 +63,12 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         return Err(format!("a fresh set should miss only a device, not {need:?}"));
     }
     lines.push(format!("{}", drawn.save("walk-picker.png")?.display()));
-    // Set Up…, as the picker's button opens it.
     let window = drawn.window;
     drawn.cx.update_window(window, |_, window, cx| setup::open(window, cx)).map_err(|error| error.to_string())?;
     let dialog = (drawn.cx.read(modal::current::<Setup>)).ok_or("the setup didn't open")?;
     let step = |drawn: &mut Drawn| drawn.cx.read(|cx| dialog.read(cx).step(cx));
     say(lines, format!("walk: the setup opened at {:?}", step(drawn)));
     lines.push(format!("{}", drawn.save_dialog("walk-setup-device.png")?.display()));
-    // Continue.
     let pressed = Instant::now();
     drawn.cx.update(|cx| dialog.update(cx, Setup::make));
     drawn.until(Duration::from_secs(60), |drawn| Ok(step(drawn) == Step::Starting))?;
@@ -123,8 +120,6 @@ fn settings(drawn: &mut Drawn, link: &gpui_kit::Entity<Link>, lines: &mut Vec<St
 fn first_tap(drawn: &mut Drawn, link: &gpui_kit::Entity<Link>, lines: &mut Vec<String>) -> Result<()> {
     let view = drawn.cx.read(|cx| drawn.shell.read(cx).shown_device_view(cx)).ok_or("the device's tab isn't shown")?;
     lines.push(format!("{}", drawn.save("walk-tab.png")?.display()));
-    // Just after a first boot the home screen is still filling in: asked again, as an agent
-    // would.
     let mut found = None;
     let looking = Instant::now();
     drawn.until(Duration::from_secs(90), |drawn| {

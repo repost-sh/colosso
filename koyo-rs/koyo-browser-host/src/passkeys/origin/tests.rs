@@ -23,7 +23,6 @@ fn a_page_with_no_id_of_its_own_asks_for_its_domain() {
             rp_id: "accounts.google.com".into(),
         }
     );
-    // Ports stay in the origin, never in the id.
     assert_eq!(
         allowed("https://example.com:8443/", ""),
         Allowed {
@@ -51,7 +50,6 @@ fn an_id_may_be_the_domain_or_a_registrable_suffix_of_it() {
         allowed("https://me.github.io/", "me.github.io").rp_id,
         "me.github.io"
     );
-    // Named as the page likes, compared as the URL standard writes domains.
     assert_eq!(
         allowed("https://www.example.com/", "Example.COM").rp_id,
         "example.com"
@@ -85,7 +83,6 @@ fn an_id_that_is_a_public_suffix_or_another_site_is_a_security_error() {
             "{address} {rp_id}"
         );
     }
-    // A site on an address has no domain for an id.
     assert_eq!(
         refused("https://192.168.1.10/", &[], ""),
         PasskeyError::Security
@@ -114,12 +111,10 @@ fn only_secure_origins_may_ask() {
     }
     assert_eq!(allowed("http://localhost:5173/", "").rp_id, "localhost");
     assert_eq!(allowed("http://app.localhost/", "").rp_id, "app.localhost");
-    // An unlisted top-level name is a public suffix by the list's own rule.
     assert_eq!(
         refused("http://app.localhost/", &[], "localhost"),
         PasskeyError::Security
     );
-    // A blob's origin is the one inside it.
     assert_eq!(
         allowed("blob:https://example.com/4a5c-11e8", "").origin,
         "https://example.com"
@@ -142,7 +137,6 @@ fn a_frame_under_another_origins_frame_may_not_ask() {
         refused("https://login.example.com/", &["https://example.com/"], ""),
         PasskeyError::NotAllowed
     );
-    // Same origin as its parent, under a frame of another: still another origin above it.
     assert_eq!(
         refused(
             "https://example.com/inner",
@@ -166,6 +160,5 @@ fn suffixes_are_cut_at_a_labels_edge() {
     assert!(suffix_of_or_equal("example.com", "a.b.example.com"));
     assert!(!suffix_of_or_equal("ample.com", "example.com"));
     assert!(!suffix_of_or_equal("", "example.com"));
-    // A host may be its own id even where it's a public suffix's whole name.
     assert!(suffix_of_or_equal("localhost", "localhost"));
 }

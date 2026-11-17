@@ -74,10 +74,8 @@ impl Switcher {
                          — unlock the keychain and retry: {error}"
                     )));
                 }
-                // Best-effort: the plaintext seed is the next-best truth.
                 Err(_) => break,
                 Ok(Some(creds)) if !creds.is_empty() => return Ok(Some(creds)),
-                // Absent: Claude Code's own signal to look further.
                 Ok(_) => {}
             }
         }
@@ -112,9 +110,6 @@ impl Switcher {
     /// [`AccountsError::CredentialRead`] for an unreadable Keychain or a degraded read.
     pub(crate) fn read_capture_credentials(&self) -> Result<Option<String>> {
         if let Some(secure) = self.env.vars.securestorage_config_dir.as_deref() {
-            // A defined override names the only store Claude Code reads here; on a miss it sees
-            // a logged-out environment, so nothing falls back into another profile's store, nor
-            // to the tail below, which follows `CLAUDE_CONFIG_DIR`.
             let dir = if secure.is_empty() {
                 paths::default_claude_config_home(&self.env)
                     .to_string_lossy()
@@ -139,10 +134,8 @@ impl Switcher {
             Path::new(config_dir),
             &paths::default_claude_config_home(&self.env),
         ) {
-            // Only here do the active store's file and the default profile coincide.
             return self.refuse_degraded_capture();
         }
-        // Only this profile's own `primaryApiKey`, never the default profile's Keychain key.
         let config = self.store.read_global_config();
         Ok(Some(text(config.as_ref(), "primaryApiKey").to_owned()))
     }

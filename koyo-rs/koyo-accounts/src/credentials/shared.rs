@@ -66,8 +66,6 @@ pub fn credential_object(credentials: Option<&str>) -> Option<Map<String, Value>
 pub fn shared_credential_fields(credentials: Option<&str>) -> Option<Map<String, Value>> {
     let data = credential_object(credentials)?;
     if data.contains_key("claudeAiOauth") {
-        // An unknown sibling stays with the slot, which fails safe, but silently: if Claude
-        // Code grows a new shared key, that default brings back the stale restore for it.
         let mut unrecognized: Vec<&str> = data
             .keys()
             .map(String::as_str)

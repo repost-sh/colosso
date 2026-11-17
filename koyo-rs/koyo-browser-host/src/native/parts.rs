@@ -21,8 +21,6 @@ pub(super) fn hide_toolbar(view: &BrowserView) {
 }
 
 wrap_browser_view_delegate! {
-    // `toolbar`: whether the page carries Chrome's toolbar, which is never shown: extensions'
-    // popups anchor to it.
     pub(super) struct PageViewDelegate {
         pane: PaneId,
         toolbar: bool,
@@ -43,8 +41,6 @@ wrap_browser_view_delegate! {
             RuntimeStyle::CHROME
         }
 
-        // A page an extension opens from this one (`chrome.tabs.create`) is a page as this
-        // one is: Chrome-style, in a holder of its own (`native::adopt`).
         fn delegate_for_popup_browser_view(
             &self,
             _browser_view: Option<&mut BrowserView>,
@@ -93,8 +89,6 @@ wrap_window_delegate! {
             window_destroyed(self.pane);
         }
 
-        // The window may close once its browser says so, which a browser asked to close
-        // does. (The wrapper's default is no, where CEF's own is yes.)
         fn can_close(&self, _window: Option<&mut Window>) -> c_int {
             (self.view.browser())
                 .and_then(|browser| browser.host())

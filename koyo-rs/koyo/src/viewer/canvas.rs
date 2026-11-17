@@ -183,8 +183,6 @@ pub fn zoom_about(
     let (left, top) = offset(before.size, viewport, camera.scroll);
     let at = (anchor.0 - left, anchor.1 - top);
     let after = layout(pages, zoom);
-    // The point is held by the page it's on, or the nearest, so the room between pages,
-    // which doesn't zoom, doesn't move it.
     let target = match nearest(&before.pages, at.1) {
         Some(index) => {
             let (was, now) = (before.pages[index], after.pages[index]);

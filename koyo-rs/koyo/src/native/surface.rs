@@ -112,8 +112,6 @@ impl Surface {
             self.show(surface, false);
             return;
         }
-        // The surface is laid out in whole device pixels; the view is offset in it by what it
-        // lost to the clip, its own origin at the bottom left.
         let scale = window.scale_factor();
         let device = visible.to_device_pixels(scale);
         let placed = Some((device, window.viewport_size()));
@@ -155,8 +153,6 @@ impl Surface {
         let Some(layer) = self.view.layer() else {
             return;
         };
-        // Core Animation's corners are by the layer's own axes, whose y runs up in a view
-        // that isn't flipped: its "min y" corners are the bottom ones.
         let mask = [
             (corners.bottom_left, CACornerMask::LayerMinXMinYCorner),
             (corners.bottom_right, CACornerMask::LayerMaxXMinYCorner),
@@ -195,7 +191,6 @@ impl Surface {
                 (window.enable_window_composition())
                     .and_then(|composition| composition.remove_surface(surface.id()))
             });
-            // A closed window has taken its views with it.
             if let Ok(Err(error)) = removed {
                 log::warn!("couldn't remove a native view's surface: {error:#}");
             }
@@ -283,24 +278,18 @@ mod tests {
     #[test]
     fn a_view_on_whole_points_covers_its_pane_and_keeps_a_device_whole() {
         let bounds = |x: f32, y: f32, w: f32, h: f32| Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
-        // A page filling its pane, whose edges a pointer set: half a point over, and anywhere
-        // between. Each edge goes out, so the page covers the pane, which clips it back.
         let filling = |pane| on_whole_points(pane, pane);
         assert_eq!(filling(bounds(268., 40., 1644., 739.5)), bounds(268., 40., 1644., 740.));
         assert_eq!(filling(bounds(267.3, 40.4, 821.9, 515.2)), bounds(267., 40., 823., 516.));
-        // The owner's, 2026-11-15: a pane's left edge on a half point, which the nearest
-        // whole point left uncovered, a white line beside Google Meet's dark page.
         let pane = bounds(9.5, 44., 1000., 700.);
         let placed = filling(pane);
         assert!(placed.left() <= pane.left() && placed.right() >= pane.right());
         assert_eq!(placed, bounds(9., 44., 1001., 700.));
-        // A device's whole size, centred in a pane larger than it, stays what it was.
         let pane = bounds(0., 0., 1200., 1000.);
         for at in [0., 0.25, 0.5, 0.75] {
             let placed = on_whole_points(bounds(100. + at, 60. + at, 390., 844.), pane);
             assert_eq!(placed.size, size(px(390.), px(844.)), "from {at}");
         }
-        // Two panes with an edge between them: each covers its side of it.
         let (above, below) = (bounds(0., 40., 800., 371.5), bounds(0., 411.5, 800., 300.));
         assert!(filling(above).bottom() >= above.bottom());
         assert!(filling(below).top() <= below.top());

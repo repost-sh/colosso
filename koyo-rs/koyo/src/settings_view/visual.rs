@@ -55,7 +55,6 @@ fn draw() -> Result<Vec<String>> {
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;
     let shell = drawn.shell.clone();
     drawn.cx.update(|cx| {
-        // As the user first sees it, whatever the check's own settings file says.
         settings::update(cx, |settings| {
             settings.key_repeat = KeyRepeat::default();
             settings.fonts = Fonts::default();

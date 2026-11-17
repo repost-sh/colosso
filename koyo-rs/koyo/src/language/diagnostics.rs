@@ -115,7 +115,6 @@ pub(super) fn show(editor: &mut EditorState, converted: &Converted, cx: &mut Con
             Some((bytes, Diagnostic::from(diagnostic.clone())))
         })
         .collect();
-    // The set takes them in the order of their ranges.
     items.sort_by_key(|(bytes, _)| bytes.start);
     let Some(set) = editor.diagnostics_mut() else {
         return;

@@ -34,9 +34,7 @@ fn filling_again_after_the_mode_was_drawn_tells_the_page_the_whole_pane(cx: &mut
     let (window, view) = page(cx);
     let filling = view.read_with(cx, |view, _| view.viewport).unwrap();
     view.update(cx, |view, cx| view.pick_device(Some(iphone()), cx));
-    // Drawn with the mode on, the page's room is under the device bar.
     draw(window, cx);
-    // The person's ✕, and the size the page is told with it, before the window draws again.
     let told = view.update(cx, |view, cx| {
         view.set_responsive(None, cx);
         view.viewport
@@ -83,7 +81,6 @@ fn a_page_is_measured_once_told_its_size_and_only_of_that_size(cx: &mut TestAppC
     view.read_with(cx, |view, _| {
         assert!(view.ready_to_measure(shown), "its own report says it's there");
     });
-    // Its tab goes out of sight, and it's sized there.
     view.update(cx, |view, cx| view.set_visible(false, cx));
     let tablet = device(find("ipad-mini").unwrap());
     let target = view.update(cx, |view, cx| view.agent_viewport(&agent, &tablet, cx));
@@ -112,8 +109,6 @@ fn a_grip_let_go_outside_the_window_sizes_nothing_more(cx: &mut TestAppContext) 
     let width_now = |cx: &mut TestAppContext| {
         view.read_with(cx, |view, _| view.responsive.mode.as_ref().unwrap().width)
     };
-    // Taken straight from the view: a test's page is under the notice that its engine
-    // didn't start, which keeps the pointer from the grip.
     let press = MouseDownEvent {
         position: grip,
         button: MouseButton::Left,
@@ -122,7 +117,6 @@ fn a_grip_let_go_outside_the_window_sizes_nothing_more(cx: &mut TestAppContext) 
         first_mouse: false,
     };
     view.update(cx, |view, cx| view.take_grip(Grip::Right, &press, cx));
-    // The window's moves carry it.
     let (none, held) = (Modifiers::default(), Some(MouseButton::Left));
     let mut pointer = VisualTestContext::from_window(window, cx);
     pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), held, none);
@@ -132,7 +126,6 @@ fn a_grip_let_go_outside_the_window_sizes_nothing_more(cx: &mut TestAppContext) 
         width - 100,
         "the page stays centred, its edge under the pointer"
     );
-    // Let go outside the window, the button comes up unseen: the next move has none held.
     let mut pointer = VisualTestContext::from_window(window, cx);
     pointer.simulate_mouse_move(grip - point(px(150.), px(0.)), None, none);
     assert_eq!(width_now(cx), dragged, "the grip is let go");
@@ -164,13 +157,10 @@ fn a_grip_held_sizes_the_page_as_the_pane_is_drawn(cx: &mut TestAppContext) {
     pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), held, none);
     let dragged = view.read_with(cx, |view, _| view.responsive.mode.as_ref().unwrap().width);
     assert_ne!(dragged, before.width, "the grip sized the mode");
-    // The page is laid out at it as the pane is drawn (a test's window draws once the update
-    // is over).
     draw(window, cx);
     view.read_with(cx, |view, _| {
         assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
     });
-    // Let go where the window doesn't see it: the next move has no button held.
     let mut pointer = VisualTestContext::from_window(window, cx);
     pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), None, none);
     draw(window, cx);
@@ -199,7 +189,6 @@ fn a_free_size_stays_within_what_a_denser_screen_shows(cx: &mut TestAppContext) 
     draw(window, cx);
     let width = view.read_with(cx, |view, _| view.viewport.map(|viewport| viewport.width));
     assert_eq!(width, Some(10_000));
-    // The window moves to a 2× screen.
     cx.simulate_window_scale_factor_change(window, 2.);
     draw(window, cx);
     view.read_with(cx, |view, _| {
@@ -215,7 +204,6 @@ fn a_free_size_stays_within_what_a_denser_screen_shows(cx: &mut TestAppContext) 
     let taller = view.update(cx, |view, cx| view.agent_viewport(&agent, &taller, cx));
     assert!(taller.is_ok(), "later changes still go: {taller:?}");
     view.update(cx, |view, cx| view.person_sizes(4000, 900, cx));
-    // The person's size is the page's as the pane is drawn.
     draw(window, cx);
     let width = view.read_with(cx, |view, _| view.viewport.map(|viewport| viewport.width));
     assert_eq!(width, Some(4000), "and so do the person's");

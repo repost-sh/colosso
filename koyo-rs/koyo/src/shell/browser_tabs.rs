@@ -41,7 +41,6 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
-        // Where the person is in no worktree, it's a loose page of the space shown.
         let loose = self.opens_loose(cx);
         self.open_page(url, (loose, beside), mode.filter(|_| !loose), window, cx)
     }
@@ -82,7 +81,6 @@ impl Shell {
         } else {
             self.workspace.push_tab(tab);
         }
-        // The keyboard is in its address on the start page, else in the page.
         let intent = if beside { Intent::LinkBeside } else { Intent::NewTab };
         if start {
             view.update(cx, |view, cx| view.focus_address(intent, window, cx));
@@ -90,7 +88,6 @@ impl Shell {
             self.intend(intent);
             self.keys_to_shown_tab(cx);
         }
-        // A new tab is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
         cx.notify();
         Some(id)
@@ -160,7 +157,6 @@ impl Shell {
             }
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
-            // DevTools the host closed with their page leave the tab.
             BrowserEvent::Closed if view.read(cx).is_inspector() => {
                 self.remove_browser_pane(view, cx);
             }
@@ -188,9 +184,6 @@ impl Shell {
             cx.notify();
         }
     }
-
-    // Tabs extensions open and ask for (`docs/extensions.md` 3): a tab an extension opened is
-    // a page the engine made already, which gets a tab beside the one it was opened from.
 
     /// A page at `url` of the profile `project`'s pages have when `by` opens them, the shell
     /// hearing what it says: a new one, or with `adopted` the one the host made already under
@@ -231,7 +224,6 @@ impl Shell {
         match opened {
             Some(opened) if active => drop(self.show_tab_holding(opened.pane, cx)),
             Some(_) => {}
-            // Its opener's tab wasn't found: the page has no tab, and closes in the engine.
             None => browser::close_page(pane, cx),
         }
     }
@@ -268,7 +260,6 @@ impl Shell {
                 self.workspace.insert_tab_after((project_at, branch, at), tab);
             }
             Spot::Pinned | Spot::Loose(_) => {
-                // By the opener's tab, its page: `DevTools` beside it are in it too.
                 let loose = self.workspace.loose_at(located.tab);
                 let place = loose.map_or(usize::MAX, |beside| beside + 1);
                 (self.workspace).add_loose(Loose { tab, project }, place, false);

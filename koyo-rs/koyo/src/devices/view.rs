@@ -110,7 +110,6 @@ impl DeviceView {
     pub fn of(chosen: Chosen, cx: &mut Context<Self>) -> Self {
         let mut view = Self::with(Vec::new(), cx);
         view.choose(chosen, cx);
-        // Whether the device is still there, for a tab brought back.
         super::devices(cx).update(cx, super::Devices::refresh);
         view
     }
@@ -157,12 +156,10 @@ impl DeviceView {
         self.watching = vec![
             cx.observe(&link, |_, _, cx| cx.notify()),
             cx.observe(&picture, |_, _, cx| cx.notify()),
-            // The list says whether the device is still there.
             cx.observe(&super::devices(cx), |_, _, cx| cx.notify()),
         ];
         let (view, shown, heard) = (cx.weak_entity(), chosen.clone(), link.clone());
         self.bar = Some(cx.new(|cx| super::bar::DeviceBar::new(view, shown, heard, cx)));
-        // Its pane takes the bar with the title: said after the bar is there.
         cx.emit(DeviceEvent::Titled(chosen.name.clone()));
         self.device = Some(chosen);
         self.link = Some(link);
@@ -252,8 +249,6 @@ impl Render for DeviceView {
         }
         let picture = self.link.as_ref().filter(|link| link.read(cx).screen().is_some()).cloned();
         let notice = self.notice(cx);
-        // Only with the person at this window: a dialog that opens while Koyo is behind another
-        // app takes the keyboard from the app they're typing in.
         if window.is_window_active() && self.may_offer_setup(cx) && super::devices(cx).read(cx).setup_due() {
             window.defer(cx, super::setup::offer);
         }
@@ -268,7 +263,6 @@ impl Render for DeviceView {
             .flex()
             .flex_col()
             .overflow_hidden()
-            // No background of its own, as a chat has none: the window's card shows round it.
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
             .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| this.key_up(event, cx)))
             .on_pinch(cx.listener(|this, event: &PinchEvent, _, cx| this.pinch(event, cx)))
@@ -282,9 +276,6 @@ impl Render for DeviceView {
                     .relative()
                     .flex_1()
                     .min_h_0()
-                    // Room round the picture, so the device doesn't run to the pane's edge. The
-                    // control bar floats over the pane's foot: the picture always keeps clear of
-                    // it, so the device's screen is never under it and doesn't move when it comes.
                     .when(self.device.is_some(), |area| {
                         let margin = gpui_kit::px(MARGIN);
                         area.px(margin).pt(margin).pb(gpui_kit::px(crate::held::ROOM))
@@ -321,7 +312,6 @@ struct Hovered(WeakEntity<DeviceView>);
 impl Global for Hovered {}
 
 pub(super) fn hovered(view: WeakEntity<DeviceView>, cx: &mut App) {
-    // Every move over the picture says so: the global changes only when the view does.
     if cx.try_global::<Hovered>().is_none_or(|hovered| hovered.0 != view) {
         cx.set_global(Hovered(view));
     }

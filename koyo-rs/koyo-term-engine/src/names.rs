@@ -61,7 +61,6 @@ pub fn chord(written: &str) -> Option<Chord> {
         other => other,
     };
     let (key, unshifted, shifted) = if single {
-        // A letter with Shift is the capital.
         let c = name.chars().next()?;
         let c = if mods.contains(Mods::SHIFT) {
             c.to_ascii_uppercase()
@@ -243,7 +242,6 @@ fn printable(name: &str) -> Option<(Key, Option<char>, bool)> {
         '*' => (Key::Digit8, '8', true),
         '(' => (Key::Digit9, '9', true),
         ')' => (Key::Digit0, '0', true),
-        // A layout's own letter: no place to name, the character says it all.
         other => return Some((Key::Unidentified, Some(other), false)),
     };
     Some((key, Some(base), shifted))

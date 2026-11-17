@@ -33,9 +33,7 @@ fn reference(tree: &str, text: &str) -> Option<String> {
 }
 
 pub fn system(target: &Target, host: &mut Driver, screen: &Screen) {
-    // Right after a boot the Home Screen is still being drawn.
     host.settle(1_000, 10_000);
-    // An app in front, for Home to leave and for the switcher to show.
     simctl(target, &["launch", &target.udid, "com.apple.mobilesafari"]);
     host.settle(1_000, 10_000);
     let home = press(host, Press::Home);

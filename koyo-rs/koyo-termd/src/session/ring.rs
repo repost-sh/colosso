@@ -44,7 +44,6 @@ impl Ring {
 
     pub fn append(&mut self, chunk: &[u8]) {
         if chunk.len() >= self.capacity {
-            // Only the tail of a chunk bigger than the ring can be kept.
             let skipped = chunk.len() - self.capacity;
             self.start += (self.bytes.len() + skipped) as u64;
             self.bytes.clear();
@@ -94,7 +93,6 @@ impl Ring {
         if cut_short {
             end = match newline(&bytes[begin..end]) {
                 Some(at) => begin + at + 1,
-                // A line longer than the limit goes as it is, so reading always moves on.
                 None if end == begin => bytes.len(),
                 None => end,
             };
@@ -148,18 +146,15 @@ mod tests {
             text(&ring, Some(0), 100),
             ("one\ntwo\nthree".into(), 21, false)
         );
-        // Cut by the limit: up to the last whole line; the rest comes next.
         assert_eq!(text(&ring, Some(0), 12), ("one\n".into(), 4, false));
         assert_eq!(text(&ring, Some(4), 100), ("two\nthree".into(), 21, false));
         assert_eq!(text(&ring, Some(21), 100), (String::new(), 21, false));
         assert_eq!(ring.read_text(Some(22), 100), None);
-        // The newest output starts at a line.
         assert_eq!(text(&ring, None, 14), ("three".into(), 21, false));
         assert_eq!(
             text(&ring, None, 100),
             ("one\ntwo\nthree".into(), 21, false)
         );
-        // A sequence still arriving waits for the rest of it.
         ring.append(b"\n\x1b[3");
         assert_eq!(text(&ring, Some(21), 100), ("\n".into(), 22, false));
     }
@@ -169,7 +164,6 @@ mod tests {
         let mut ring = Ring::new(9);
         ring.append(b"a\nline two\n");
         assert_eq!(text(&ring, Some(0), 100), ("line two\n".into(), 11, true));
-        // A line longer than the limit still moves the reader on.
         assert_eq!(text(&ring, Some(2), 4), ("line".into(), 6, false));
     }
 }

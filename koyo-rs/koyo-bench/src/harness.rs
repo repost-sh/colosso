@@ -52,7 +52,6 @@ fn new_editor(setup: Setup, window: &mut Window, cx: &mut App) -> Entity<EditorS
         EditorState::new(window, cx)
             .language(setup.language)
             .soft_wrap(setup.soft_wrap)
-            // Wheel scrolling never bounces, but a stretch left over would animate.
             .scroll_bounce(false)
     })
 }
@@ -190,13 +189,9 @@ fn time_frame(
     input: impl FnOnce(&mut Window, &mut App),
 ) -> Result<Duration> {
     let started = Instant::now();
-    // Two updates, as the event and the frame are two turns of the event loop: what the
-    // event notified is flushed before the frame looks for what changed.
     cx.update_window(window, |_, window, cx| input(window, cx))?;
     cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
     let took = started.elapsed();
-    // Work the event spawned runs between frames, as it would in the app, untimed. Time
-    // stands still, so nothing debounced fires mid-scenario: a typist who never pauses.
     cx.run_until_parked();
     Ok(took)
 }

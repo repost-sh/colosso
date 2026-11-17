@@ -64,7 +64,6 @@ fn staged_and_unstaged_files_are_grouped_apart() {
         file("src/a.rs", false),
         file("b.rs", false),
     ];
-    // Closing a folder in one group leaves the same folder in the other open.
     let closed = HashSet::from([(false, "src".to_owned())]);
     let rows: Vec<String> = (file_entries(&files, true, &closed).iter())
         .map(|entry| match entry {
@@ -137,7 +136,6 @@ fn a_folder_or_group_acts_on_the_files_under_it(cx: &mut TestAppContext) {
     ];
     let (_, panel) = open_with(files, cx);
     panel.update(cx, |panel, _| {
-        // Staged/, src/, a.rs, Unstaged/, src/, a.rs, b.rs, c.rs
         assert_eq!(panel.entry_files(0), [0]);
         assert_eq!(panel.entry_files(1), [0]);
         assert_eq!(panel.entry_files(3), [1, 2, 3]);
@@ -155,7 +153,6 @@ fn hovering_the_file_list_shows_its_actions_without_breaking_a_frame(cx: &mut Te
             .unwrap();
     };
     draw(cx);
-    // Down the file list, row by row, onto each row and off it again.
     for y in (40..400).step_by(9) {
         cx.update_window(handle, |_, window, cx| {
             window.simulate_mouse_move(gpui_kit::point(px(120.), px(y as f32)), cx);
@@ -174,7 +171,6 @@ fn a_file_picked_in_the_list_is_glided_to_and_stays_picked(cx: &mut TestAppConte
     };
     draw(cx);
     panel.update(cx, |panel, cx| panel.show(12, cx));
-    // Partway there, the file it's going to stays the one picked.
     draw(cx);
     panel.update(cx, |panel, _| {
         assert!(panel.glide.is_some());

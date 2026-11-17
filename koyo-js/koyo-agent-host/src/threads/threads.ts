@@ -1,7 +1,3 @@
-// The host's threads (docs/chat.md 4.1, 4.3.2): each thread's actor, made the first time it's
-// wanted and kept; the clients that watch the list of them; and the live sessions, of which at
-// most four stay open, the least recently used closed first when a fifth is wanted.
-
 import { log } from "../log";
 import type { RunId, ThreadId } from "../protocol/ids";
 import type { FilesBack, Params } from "../protocol/methods";
@@ -49,7 +45,6 @@ export class Threads {
   recover(): void {
     const { store, attachments, drafts, now } = this.#options;
     for (const id of store.unsettledThreads()) {
-      // The thread with its row first: a host that stops between the two has this to do again.
       const parent = store.thread(id)?.parent;
       if (parent !== null && parent !== undefined) {
         this.actor(parent.threadId);
@@ -124,7 +119,6 @@ export class Threads {
     const { store, attachments } = this.#options;
     const files = store.attachments(id);
     actor.dispose();
-    // Once they ended with its session, so that nothing writes them again.
     for (const child of store.children(id)) {
       this.delete(child);
     }
@@ -257,9 +251,7 @@ function missing(id: ProviderId): Provider {
   return {
     id,
     capabilities: { steer: false, resume: false, images: false, compact: false, plan: false },
-    setConfig: () => {
-      // It has nothing to follow them with.
-    },
+    setConfig: () => {},
     status: async () => await Promise.resolve({
       provider: id,
       state: "missing",

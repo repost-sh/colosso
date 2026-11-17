@@ -20,7 +20,6 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
         hear(&shell, ("0001", &worktree), (status, needs, unread), cx);
         draw(window, cx);
     };
-    // What the tab's doing, and where its row says so: with the spinner, or with the dot.
     let told = |cx: &mut TestAppContext| {
         draw(window, cx);
         let activity = cx.read(|cx| {
@@ -36,7 +35,6 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     hear(Status::Working, None, false, cx);
     let (activity, working, waiting) = told(cx);
     assert_eq!((activity, waiting), (Activity::Working, None));
-    // At the row's end, in the middle of its height.
     let spinner = working.expect("the spinner on the row of the chat at work");
     let row = drawn(window, "tab-0-0-0", cx).expect("the chat's row");
     assert!(
@@ -46,20 +44,17 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     assert!(spinner.left() > row.center().x);
     assert_eq!(spinner.center().y, row.center().y);
 
-    // Finished and not seen: the dot, where the spinner was.
     hear(Status::Idle, None, true, cx);
     let (activity, working, waiting) = told(cx);
     assert_eq!((activity, working), (Activity::Attention, None));
     let dot = waiting.expect("the dot on the row of the chat that finished");
     assert_eq!(dot.center(), spinner.center());
 
-    // Asking the person while it works is waiting for them.
     hear(Status::Working, Some(RequestKind::Approval), false, cx);
     assert_eq!(told(cx).0, Activity::Attention);
     hear(Status::Idle, None, false, cx);
     assert_eq!(told(cx), (Activity::Quiet, None, None), "seen: nothing");
 
-    // In a split, whose row is its panes, it goes before them.
     hear(Status::Working, None, false, cx);
     shell.update(cx, |shell, cx| {
         let unit = shell.workspace.branch_mut().expect("a checkout");
@@ -141,7 +136,6 @@ fn a_splits_pane_shows_its_x_while_the_pointers_on_it(cx: &mut TestAppContext) {
     });
     draw(window, cx);
     let row = drawn(window, "tab-0-0-0", cx).expect("the split's row");
-    // The pointer on the right pane, three quarters along the row.
     let on = point(row.left() + row.size.width * 0.75, row.center().y);
     VisualTestContext::from_window(window, cx).simulate_mouse_move(on, None, Modifiers::default());
     draw(window, cx);

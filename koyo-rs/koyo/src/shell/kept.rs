@@ -101,8 +101,6 @@ impl KeptWindow {
         let path = settings::data_dir()
             .filter(|_| keeps_a_file())
             .map(|data| data.join(FILE));
-        // A change still settling when the app quits or the window closes is written then, as
-        // the next window reads the file again.
         cx.on_app_quit(|shell, cx| {
             shell.write_what_is_due(cx);
             async {}
@@ -214,7 +212,6 @@ impl Shell {
                     checkout: unit.worktree.path.clone(),
                 });
             } else {
-                // Not listed yet: what the file says of it stands.
                 let waiting = self.kept.selecting.iter();
                 now.projects
                     .extend(waiting.filter(|kept| kept.project == project.path).cloned());

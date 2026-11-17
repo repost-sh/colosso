@@ -22,14 +22,11 @@ pub struct Checkout {
 
 impl Checkout {
     pub fn new(name: &str) -> Checkout {
-        // The workspace's own target folder: the shared build folder cargo's temporary
-        // folder is in may be outside it.
         let root = Path::new(env!("KOYO_TARGET_DIR"))
             .join("test-project")
             .join(format!("{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        // The platform reports real paths; the tests compare with what it reports.
         Checkout {
             root: fs::canonicalize(&root).unwrap(),
         }

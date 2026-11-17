@@ -43,7 +43,6 @@ pub(super) fn bind_keys(cx: &mut App) {
     let recalling = format!("{RECALLING} > Input");
     cx.bind_keys([
         KeyBinding::new("escape", StopTurn, Some(stoppable.as_str())),
-        // Keyboard shortcuts names the last one, which works wherever a person's typing.
         KeyBinding::new("cmd-.", StopTurn, Some(COMPOSER)),
         KeyBinding::new("up", RecallPrompt, Some(recalling.as_str())),
     ]);
@@ -269,7 +268,6 @@ impl ChatComposer {
             .on_action(cx.listener(|this, edit: &GiveBackEdit, window, cx| {
                 this.give_back_edit(&edit.0, window, cx);
             }))
-            // What the send button shows follows ⌘, while there's a turn to queue behind.
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
                 let secondary = event.modifiers.secondary(cx);
                 if this.secondary_held != secondary {

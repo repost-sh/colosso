@@ -65,8 +65,6 @@ pub(super) fn hold(pane: PaneId, window: &NSWindow) {
     window.setOpaque(false);
     window.setHasShadow(false);
     window.setBackgroundColor(Some(&NSColor::clearColor()));
-    // In no window list of the person's: not shared, not animated, transient, out of the window
-    // cycle, and beside a full-screen window rather than in a Space of its own.
     window.setSharingType(NSWindowSharingType::None);
     window.setAnimationBehavior(NSWindowAnimationBehavior::None);
     window.setCollectionBehavior(
@@ -125,8 +123,6 @@ fn patch_holders(window: &NSWindow) {
         let refusing = unsafe {
             std::mem::transmute::<extern "C-unwind" fn(&AnyObject, Sel) -> Bool, Imp>(refuse)
         };
-        // Patched already through another class that shares the method: `refuse` mustn't
-        // become its own original.
         if original as usize == refusing as usize {
             continue;
         }
@@ -168,8 +164,6 @@ fn patch_full_screen(class: &AnyClass) {
         let ours = std::mem::transmute::<extern "C-unwind" fn(&AnyObject, Sel, *mut AnyObject), Imp>(
             toggle_full_screen,
         );
-        // On CEF's own class where it has no method of its own, so `NSWindow`'s stays as it
-        // is for every other window; else in place of the class's.
         let types = ffi::method_getTypeEncoding(method);
         let class = std::ptr::from_ref(class).cast_mut();
         let original = if ffi::class_addMethod(class, selector, ours, types).as_bool() {
@@ -202,8 +196,6 @@ extern "C-unwind" fn toggle_full_screen(this: &AnyObject, cmd: Sel, sender: *mut
             holder.full
         })
     });
-    // `AppKit` tells the delegate it will inside the toggle, and that it did once its
-    // animation has ended: Chromium expects that order, a turn of the run loop apart.
     // SAFETY: `AppKit`'s own names, constants for the process's life.
     let (will, did): (Told, Told) = unsafe {
         if entering {
@@ -218,7 +210,6 @@ extern "C-unwind" fn toggle_full_screen(this: &AnyObject, cmd: Sel, sender: *mut
             )
         }
     };
-    // A toggle that comes before the last one's end was told ends that one first.
     finish_transition(holder);
     tell_delegate(this, will.0, will.1);
     HOLDERS.with(|holders| {

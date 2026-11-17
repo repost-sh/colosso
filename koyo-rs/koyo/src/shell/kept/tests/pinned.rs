@@ -56,7 +56,6 @@ fn the_pinned_pages_file_reads_back_what_was_written() {
     assert_eq!(json["tabs"][0]["title"], "Inbox");
     assert_eq!(json["tabs"][0]["pinnedUrl"], "https://mail.example.com/");
     assert_eq!(json["tabs"][0]["project"], "/src/app");
-    // None shown, and none pinned: a file all the same.
     let none = KeptPins::default();
     assert_eq!(as_json(&none), json!({ "version": 1, "tabs": [] }));
     assert_eq!(round_trip(&none).tabs, []);
@@ -81,15 +80,12 @@ fn a_file_as_this_build_writes_it_still_loads() {
     assert_eq!(pins.tabs, [inbox, site]);
     assert_eq!((pins.shown, pins.version), (Some(0), 1));
     assert!(pins.unread.is_empty() && pins.more.is_empty());
-    // And it's what this build writes for it.
     let written = String::from_utf8(pins.encode().expect("it encodes")).expect("text");
     assert_eq!(written, TODAY);
 }
 
 #[test]
 fn a_file_another_build_wrote_loses_nothing_read_and_written_again() {
-    // A later build's: fields this one doesn't know, in the file and in a page's entry, a kind
-    // of entry it can't read as a page, and a later version.
     let later = json!({
         "version": 7,
         "shown": 2,
@@ -129,8 +125,6 @@ fn a_file_another_build_wrote_loses_nothing_read_and_written_again() {
     );
     assert_eq!(round_trip(&pins), pins);
 
-    // An earlier build's, or one edited by hand: fields left out, or of another type, have
-    // their defaults, and the page is pinned where it showed.
     let earlier = r#"{"tabs":[{"url":"https://a.example/"},{"url":"https://b.example/","title":7,"project":null},{"title":"no address"}],"shown":9}"#;
     let pins = KeptPins::read(earlier.as_bytes()).expect("an earlier build's file");
     let a = kept("https://a.example/", "", "https://a.example/", "");
@@ -146,7 +140,6 @@ fn a_file_another_build_wrote_loses_nothing_read_and_written_again() {
         })
     );
 
-    // What isn't a file of pinned pages at all is none, rather than no pages.
     for not in ["{ not json", "[]", "7", r#"{"tabs":{"a":1}}"#, ""] {
         assert_eq!(KeptPins::read(not.as_bytes()), None, "{not}");
     }
@@ -200,7 +193,6 @@ pub(super) fn relaunched(window: &Path, cx: &mut TestAppContext) -> Entity<Shell
     shell.update(cx, |shell, cx| {
         shell.keep_window_at(window);
         shell.restore_pages(cx);
-        // On the space shown, as a window opened is.
         shell.follow_space_pages(cx);
     });
     cx.run_until_parked();
@@ -212,7 +204,6 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
     let root = repo("kept-pinned-back", &[("README.md", "hi\n")]);
     let window_file: PathBuf = scratch("kept-pinned-back-file").join("window.json");
     let (window, shell) = shell_with(&[&root], cx);
-    // The Arc layout, where the pinned pages are.
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
     shell.update(cx, |shell, _| shell.keep_window_at(&window_file));
     select(&shell, &root, cx);
@@ -228,7 +219,6 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
         for key in &keys {
             assert!(shell.pin_tab_of(*key, cx));
         }
-        // The last moves first, and the second goes on from where it's pinned.
         shell.move_pinned(2, 0, cx);
     });
     let view = cx.read(|cx| shell.read(cx).workspace.pane(keys[1])?.view().cloned());
@@ -254,8 +244,6 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
         "the last opened was the tab shown, and went on showing"
     );
 
-    // The next launch: in the order of their tiles, each at the address it showed, titled as
-    // it was, pinned where it was, the one shown shown, and no page made but the one shown's.
     let (before, _) = pins_of(&shell, cx);
     let back = relaunched(&window_file, cx);
     let (pins, shown) = pins_of(&back, cx);
@@ -271,11 +259,8 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
         profile, root,
         "of the project it was pinned from, for its sign-ins"
     );
-    // Nothing changed since: the file isn't written again, and reads as it did.
     assert_eq!(written(&window_file, cx), file);
 
-    // Closed, the third is back where it's pinned, which the file keeps too; removed, the first
-    // is gone from it.
     let third = cx.read(|cx| back.read(cx).workspace.pinned()[2].key());
     let first = cx.read(|cx| back.read(cx).workspace.pinned()[0].key());
     back.update(cx, |shell, cx| {
@@ -287,7 +272,6 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
     assert_eq!(urls, [pages[0], pages[1]]);
     assert_eq!(file.shown, None);
 
-    // The Orca layout shows none of them, switched to or launched in: they stay pinned.
     back.update(cx, |shell, cx| {
         let first = shell.workspace.pinned()[0].key();
         shell.show_tab_holding(first, cx);
@@ -305,7 +289,6 @@ fn a_window_file_that_cant_be_read_doesnt_take_the_pinned_pages_with_it(cx: &mut
     let folder = scratch("kept-pinned-alone-file");
     let window_file = folder.join("window.json");
     std::fs::write(&window_file, "{ not json at all").unwrap();
-    // A later build's file, with what this one doesn't read.
     let later = json!({
         "version": 3,
         "theme": "glass",
@@ -315,7 +298,6 @@ fn a_window_file_that_cant_be_read_doesnt_take_the_pinned_pages_with_it(cx: &mut
         ],
     });
     std::fs::write(folder.join(FILE), later.to_string()).unwrap();
-    // The app as it is once a window has been open, its project in the sidebar.
     let (_, _before) = shell_with(&[&root], cx);
     let shell = relaunched(&window_file, cx);
     let (pins, shown) = pins_of(&shell, cx);
@@ -323,8 +305,6 @@ fn a_window_file_that_cant_be_read_doesnt_take_the_pinned_pages_with_it(cx: &mut
     let a = (home.clone(), "A".to_owned(), home, false);
     assert_eq!((pins, shown), (vec![a], None));
 
-    // Pinned at another address, the file is written with what it held that this build doesn't
-    // read still in it.
     let pinned = cx.read(|cx| shell.read(cx).workspace.pinned()[0].key());
     shell.update(cx, |shell, cx| {
         shell.repin_at(pinned, "https://a.example/home".into(), cx);

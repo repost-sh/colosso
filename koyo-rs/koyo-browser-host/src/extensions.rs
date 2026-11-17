@@ -58,8 +58,6 @@ thread_local! {
 /// that names its ends (`--remote-debugging-io-pipes`); none where the engine is CEF's own,
 /// or the pipe couldn't be made, and then there are no extension controls.
 pub(crate) fn pipe_switch() -> Option<String> {
-    // Both: the second has Chromium neither wait on the pipe's client before it quits nor
-    // quit by itself when the client hangs up (`docs/extensions.md` 2.3).
     if !(patched("devtools-pipe-descriptors") && patched("devtools-pipe-embedder")) {
         log::info!("extensions: the engine is CEF's own, without Koyo's patches; their icons and popups are off");
         return None;
@@ -129,7 +127,6 @@ pub(crate) fn profile_opened() {
     if !pipe::is_open() {
         return;
     }
-    // What its extensions set for every page, said before the profile had a name here.
     let kept = STATE.with(|state| std::mem::take(&mut state.borrow_mut().unnamed));
     for ((folder, extension), action) in kept {
         match host::profile_of_folder(&folder) {
@@ -190,7 +187,6 @@ fn answered(asked: &Asked, message: &Value) {
                 std::mem::take(&mut state.stale)
             });
             match failed {
-                // An engine built without Koyo's patches has no such command.
                 Some(why) => log::warn!("extensions: the engine doesn't list them ({why})"),
                 None => installed(message.get("result").unwrap_or(&Value::Null)),
             }
@@ -215,7 +211,6 @@ fn installed(result: &Value) {
     log::debug!("extensions: the engine lists {}", listed.map_or(0, Vec::len));
     for entry in listed.into_iter().flatten() {
         let folder = entry.get("profile").and_then(Value::as_str).unwrap_or_default();
-        // A profile of no project (the engine's own, the developer tools') has no row.
         let Some(profile) = host::profile_of_folder(folder) else {
             continue;
         };
@@ -282,7 +277,6 @@ fn action_updated(params: &Value) {
     };
     let (folder, extension) = (text("profile"), text("id"));
     let pane = match params.get("browserId").and_then(Value::as_i64) {
-        // A page that isn't a pane's (a window of Chrome's own) has no icon of the app's.
         Some(browser) => match i32::try_from(browser).ok().and_then(host::pane_of_browser) {
             Some(pane) => Some(pane),
             None => return,
@@ -290,8 +284,6 @@ fn action_updated(params: &Value) {
         None => None,
     };
     let Some(profile) = host::profile_of_folder(&folder) else {
-        // No pane was opened in the profile yet. A page's own can't come before one was;
-        // what's set for every page is kept until the profile has a name ([`profile_opened`]).
         if pane.is_none() {
             STATE.with(|state| state.borrow_mut().unnamed.insert((folder, extension), action));
         }
@@ -309,7 +301,6 @@ pub(crate) fn active(pane: PaneId) {
         return;
     }
     STATE.with(|state| state.borrow_mut().active = Some(pane));
-    // A popup open over another page goes with it, as it does in Chrome when its tab does.
     popup::close_unless(pane);
     tell_active(pane);
 }
@@ -361,7 +352,6 @@ pub(crate) fn act(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner) {
     if popup::pressed_shut(pane, extension) {
         return;
     }
-    // The page pressed for is the one the person is on, whatever had the keyboard.
     active(pane);
     popup::expect(pane, extension, at, corner);
     ask(
@@ -404,7 +394,6 @@ mod tests {
             pinned,
             ..Extension::default()
         };
-        // As Chromium lists them: the pinned ones in pin order, then the others in its own.
         let listed = vec![
             one("u", "uBlock Origin Lite", true),
             one("b", "Bitwarden", true),
@@ -429,7 +418,6 @@ mod tests {
         assert!(read.enabled && read.removable && !read.pinned);
         assert_eq!(read.source, ExtensionSource::Store);
         assert_eq!(read.icon_path, "/p/Extensions/d/1/img/icon_64.png");
-        // One with no id is nothing to show; what's left out is empty or off.
         assert!(extension(&json!({ "name": "Nameless" })).is_none());
         let bare = extension(&json!({ "id": "a", "location": "commandLine" })).unwrap();
         assert_eq!(bare.source, ExtensionSource::Unpacked);

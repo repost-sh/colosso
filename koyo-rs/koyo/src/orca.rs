@@ -23,7 +23,6 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
     let query = shell.search_query(cx);
-    // Each project with the worktrees the search leaves it; all of them while it's empty.
     let shown: Vec<_> = workspace
         .projects
         .iter()
@@ -156,7 +155,6 @@ fn branch_row(
 pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
-    // With no project shown there's no branch, and so no tab the place is asked for.
     let project_index = workspace.active_project().unwrap_or_default();
     let branch_index = workspace
         .project()
@@ -170,15 +168,12 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
             let at = (project_index, branch_index, tab_index);
             let row = row(("orca-tab", tab_index), active, p)
                 .h(px(28.))
-                // Narrowed to fit beside the + button, however many there are, down to their
-                // icons, as a browser's are: each stays on screen to pick.
                 .flex_shrink(1.)
                 .min_w_0()
                 .overflow_hidden()
                 .when(!active, |tab| tab.text_color(p.muted))
                 .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     this.pick_tab(project_index, branch_index, tab_index, cx);
-                    // A second click keeps a previewed file open.
                     if event.click_count() > 1 {
                         this.keep_tab(at, cx);
                     }

@@ -106,7 +106,6 @@ pub fn installed() -> (Rc<Fake>, Turns) {
     let turns = Turns::default();
     let queue = turns.clone();
     hooks::install(fake.clone(), Box::new(move |_, task| queue.0.borrow_mut().push(task)));
-    // As before the press itself gave a page the keyboard: the tests of that say so.
     hooks::click_by_the_press(false);
     (fake, turns)
 }

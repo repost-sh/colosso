@@ -78,7 +78,6 @@ fn stash_failure_aborts_direct_activation() {
 
 #[test]
 fn orphaned_live_login_without_config_identity_is_stashed() {
-    // The config is gone but a live login remains: it still gets its safety copy.
     let (h, orphaned) = setup(None);
     h.switcher.perform_switch("1", None).unwrap();
     let id = h.only_stash_id();
@@ -103,7 +102,6 @@ fn unreadable_live_credentials_without_config_identity_abort() {
 
 #[test]
 fn mid_failure_restores_identityless_config() {
-    // A settings-bearing config without `oauthAccount` is restored with the login.
     let (h, orphaned) = setup(None);
     let original_config = json!({"projects": {"/home/x": {"history": []}}}).to_string();
     std::fs::write(h.config_path(), &original_config).unwrap();
@@ -193,7 +191,6 @@ fn shared_key_absent_from_live_is_not_resurrected() {
 
 #[test]
 fn direct_activation_without_config_identity_composes_live_state() {
-    // An orphaned live credential still carries the machine's MCP state.
     let h = Harness::new();
     h.write_sequence(&json!({
         "activeAccountNumber": null, "lastUpdated": "2024-01-01T00:00:00Z", "sequence": [1],

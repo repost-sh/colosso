@@ -49,7 +49,6 @@ fn tabs_join_and_reorder(layout: Layout, cx: &mut TestAppContext) {
     let (window, shell) = shell_with(&[&root], cx);
     cx.update(|cx| {
         settings::update(cx, |settings| settings.layout = layout);
-        // Tabs go straight to their places, rather than sliding there in time.
         cx.set_reduce_motion(true);
     });
     select(&shell, &root, cx);
@@ -63,7 +62,6 @@ fn tabs_join_and_reorder(layout: Layout, cx: &mut TestAppContext) {
     let (before, _) = tabs(&shell, cx);
     let [a, b, c] = [before[0][0], before[1][0], before[2][0]];
 
-    // Over the second tab's middle, right of its centre: it's joined on its right.
     let onto = listed(window, 1, cx);
     let right = onto.center() + point(onto.size.width * 0.1, px(0.));
     drag(window, 0, right, cx);
@@ -77,7 +75,6 @@ fn tabs_join_and_reorder(layout: Layout, cx: &mut TestAppContext) {
         assert!(matches!(tab, Tab::Split(split) if split.axis == SplitAxis::Row));
     });
 
-    // Past the start of the first tab: it's moved before it.
     let first = listed(window, 0, cx);
     drag(window, 1, first.origin + point(px(2.), px(2.)), cx);
     assert_eq!(

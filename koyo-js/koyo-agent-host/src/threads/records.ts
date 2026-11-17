@@ -1,6 +1,3 @@
-// The rows a thread's actor writes, made and changed by pure functions: a new run or item, a
-// run moved through the one transition function, a run settled with what it left open.
-
 import type { UUID } from "node:crypto";
 import { join } from "node:path";
 
@@ -431,7 +428,6 @@ export function updatedThread(thread: Thread, change: ThreadChange, at: string):
   return {
     ...settings,
     tabOpen: change.tabOpen ?? thread.tabOpen,
-    // A tab coming or going is nothing done in the chat, and lists go by when one last was.
     updatedAt: Bun.deepEquals(settings, thread) ? thread.updatedAt : at,
   };
 }

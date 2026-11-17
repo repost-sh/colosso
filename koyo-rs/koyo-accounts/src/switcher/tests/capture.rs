@@ -96,7 +96,6 @@ fn macos_prefers_hashed_keychain_entry() {
 
 #[test]
 fn trailing_slash_still_finds_keychain_entry() {
-    // Claude Code hashes the exported string verbatim.
     let h = Harness::new();
     let dir = make_config_dir(&h, Some(&access_creds(CONFIG_DIR_TOKEN)));
     let exported = format!("{}/", path_str(&dir));
@@ -208,7 +207,6 @@ fn no_config_dir_uses_active_store() {
 
 #[test]
 fn unreadable_keychain_fails_closed() {
-    // One bounded retry, then the add fails rather than capture the seed.
     let h = Harness::new();
     let dir = make_config_dir(&h, Some(&access_creds(CONFIG_DIR_TOKEN)));
     let service = keychain_service_name(&path_str(&dir));
@@ -242,7 +240,6 @@ fn transient_keychain_error_retries() {
         &access_creds("rotated"),
     );
     let h = with_vars(h, Some(path_str(&dir)), None);
-    // The capture's read is the add's first `security` call.
     h.sandbox.security.answer_next(Answer::Exit(51));
     h.switcher.add_account().unwrap();
     assert!(stored(&h).contains("rotated"));
@@ -250,8 +247,6 @@ fn transient_keychain_error_retries() {
 
 #[test]
 fn session_read_still_falls_back_on_keychain_error() {
-    // The best-effort read stays best-effort: a locked Keychain reads the seed. Only capture
-    // is strict.
     let h = Harness::new();
     let dir = make_config_dir(&h, Some(&access_creds(CONFIG_DIR_TOKEN)));
     h.sandbox.security.answer_all(Answer::Exit(51));
@@ -323,8 +318,6 @@ fn empty_selected_store_does_not_leak_config_profile() {
 
 #[test]
 fn credentialless_securestorage_default_dir_does_not_fall_back() {
-    // A non-empty override naming `~/.claude` uses the hashed name: neither the unsuffixed
-    // item nor the config profile's seed may answer.
     let h = Harness::new();
     h.set_live(&access_creds(ACTIVE_TOKEN));
     assert!(
@@ -414,8 +407,6 @@ fn relative_symlink_target_is_normalised_before_hashing() {
 
 #[test]
 fn lexical_target_naming_another_directory_is_not_consulted() {
-    // Under a parent that is itself a symlink elsewhere, `..` resolves under the parent's
-    // target, so the lexical spelling names an unrelated folder.
     let h = Harness::new();
     let root = h.sandbox.root();
     std::fs::create_dir_all(root.join("leases/sessions")).unwrap();

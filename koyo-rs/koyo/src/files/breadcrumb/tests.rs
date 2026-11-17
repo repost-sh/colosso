@@ -31,7 +31,6 @@ fn the_crumbs_are_the_folders_as_the_tree_names_them_then_the_file() {
         crumbs(Path::new("/r/README.md"), Some("README.md")),
         [crumb("README.md", Some("README.md"))]
     );
-    // Outside the checkout: the whole folder, which the tree hasn't got, then the file.
     assert_eq!(
         crumbs(Path::new("/opt/x/lib.rs"), None),
         [crumb("/opt/x", None), crumb("lib.rs", None)]
@@ -43,7 +42,6 @@ fn a_crumb_clicked_is_picked_in_the_tree_with_its_folders_opened(cx: &mut TestAp
     let root = checkout("files-breadcrumb");
     let (window, shell, panel) = shell_showing(&root, cx);
     editing(window, &shell, "src/nested/deep.rs", At::Bytes(0..0), cx);
-    // `src` closed again, nothing under it is listed.
     with(window, &panel, cx, |panel, _, cx| {
         let src = panel.rows.position("src").expect("src listed");
         panel.toggle(src, cx);
@@ -61,17 +59,14 @@ fn a_crumb_clicked_is_picked_in_the_tree_with_its_folders_opened(cx: &mut TestAp
     let cx = &mut VisualTestContext::from_window(window, cx);
     cx.run_until_parked();
     assert!(!listed("src/nested", cx));
-    // "nested" clicked: src opens, nested is picked and the tree has the keyboard.
     click("crumb-1", cx);
     assert_eq!(selected(cx).as_deref(), Some("src/nested"));
     assert!(listed("src/nested", cx));
     assert!(cx.update(|window, cx| panel.read(cx).focus_handle().is_focused(window)));
     click("crumb-0", cx);
     assert_eq!(selected(cx).as_deref(), Some("src"));
-    // The file's name picks the file.
     click("crumb-2", cx);
     assert_eq!(selected(cx).as_deref(), Some("src/nested/deep.rs"));
-    // With the tree closed, a crumb clicked opens it.
     cx.dispatch_action(crate::right_panel::ToggleFiles);
     cx.run_until_parked();
     assert!(!cx.read(|cx| {

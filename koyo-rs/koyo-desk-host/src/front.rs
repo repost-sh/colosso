@@ -179,13 +179,10 @@ fn answer(
     active: Option<SpaceId>,
     finder: &mut Option<i32>,
 ) {
-    // On the agent's desktop an agent's app in front is the person's doing.
     if seen.desktop.is_some() && active == seen.desktop {
         return;
     }
     let began = Instant::now();
-    // An app with a window where they are looking: one whose windows are elsewhere would
-    // take them there.
     let here = active.and_then(|space| windows::persons_front(space, seen.had, &seen.ours));
     let to = here.or_else(|| {
         *finder = finder.or_else(|| apps::first_running(apps::FINDER));
@@ -206,7 +203,6 @@ fn answer(
         watch.asked.push(pid);
     }
     drop(watch);
-    // The host's loop says what happened, and answers what the person asked for.
     ns::wake();
 }
 
@@ -231,16 +227,12 @@ impl FrontGuard {
         let (living, gone) = channel::<()>();
         let watched = Arc::clone(&watch);
         std::thread::spawn(move || {
-            // The app last seen in front and the desktop it was seen on, when an agent's
-            // one there was last answered and since when one is there with the person's
-            // not seen in between, and the Finder's pid.
             let mut last: Option<(Serial, i32)> = None;
             let mut on: Option<SpaceId> = None;
             let mut answered = Instant::now();
             let mut since: Option<Instant> = None;
             let mut finder: Option<i32> = None;
             loop {
-                // Waits out the time between two looks, and ends with the guard.
                 let wait = {
                     let watch = held(&watched);
                     let acted = watch.acted.values().map(Instant::elapsed).min();
@@ -252,7 +244,6 @@ impl FrontGuard {
                 let Some(serial) = skylight::front_serial() else {
                     continue;
                 };
-                // The same app as at the last look, most times: its pid is known.
                 let first = last.is_none_or(|(known, _)| known != serial);
                 if first {
                     last = skylight::pid_of(serial).map(|pid| (serial, pid));
@@ -279,8 +270,6 @@ impl FrontGuard {
                 };
                 let active = (!theirs || seen.gave).then(skylight::active).flatten();
                 if followed(seen.gave, seen.desktop, active) {
-                    // The front was given back, and macOS went to the agent's desktop
-                    // all the same: the host puts the person's own back.
                     let mut watch = held(&watched);
                     if watch.astray.is_none() {
                         watch.astray = Some((Instant::now(), None));
@@ -293,8 +282,6 @@ impl FrontGuard {
                     since = None;
                     continue;
                 }
-                // Looked at again as the person comes to another desktop: the Dock brings
-                // an app forward a moment before the desktop is the one shown.
                 let moved = on != active;
                 on = active;
                 let held_for = since.get_or_insert_with(Instant::now).elapsed();
@@ -413,7 +400,6 @@ impl Host {
                      own desktop is on their screen again, {after} ms after"
                 ),
             );
-            // What macOS brings forward there is answered by the guard.
             ns::wake();
         } else if tried.is_none() {
             let why = back.and_then(Result::err).unwrap_or_default();

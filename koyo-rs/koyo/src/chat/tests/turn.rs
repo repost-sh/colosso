@@ -223,7 +223,6 @@ fn a_queued_message_is_changed_where_it_shows(cx: &mut TestAppContext) {
 
     let edited = json!({ "threadId": "0001", "runId": "q1", "text": "Later!", "attachments": [] });
     assert_eq!(asked(&chat, cx), [("queue.edit", edited)]);
-    // With no host to hear it, it couldn't be changed, so the words come here to go on from.
     chat.keys("!", cx);
     assert_eq!(
         chat.typed(cx),

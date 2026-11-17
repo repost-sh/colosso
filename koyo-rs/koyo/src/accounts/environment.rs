@@ -52,7 +52,6 @@ fn printed() -> Option<Vec<u8>> {
         .unwrap_or_else(|| "/bin/zsh".to_owned());
     let mut child = Command::new(shell)
         .args(["-l", "-c", "env -0"])
-        // A group of its own, so a timeout stops what its rc files started too.
         .process_group(0)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -126,7 +125,6 @@ mod tests {
         assert_eq!(shell.vars.securestorage_config_dir.as_deref(), Some(""));
         assert_eq!(shell.vars.claude_config_dir, None);
         assert_eq!(shell.vars.user.as_deref(), Some("ana"));
-        // Set but empty, it overrides nothing.
         assert_eq!(shell.overridden_by, None);
     }
 

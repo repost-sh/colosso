@@ -94,7 +94,6 @@ fn a_picture_alone_can_be_sent_and_comes_back_if_it_does_not_go(cx: &mut TestApp
 
     send(&chat, cx);
 
-    // No host hears it here, so it didn't go.
     assert_eq!(tiles(&chat, cx), 1);
     assert_eq!(kept_files(&folder), 1, "its file stays for when it does");
     let why = chat
@@ -177,8 +176,6 @@ fn files_let_go_over_the_timeline_are_attached(cx: &mut TestAppContext) {
 fn files_let_go_over_the_glass_are_attached(cx: &mut TestAppContext) {
     let (chat, folder) = attaching("chat-attach-drop-glass", cx);
 
-    // In the middle of the composer floating at the bottom of the tab, what's on the glass blocking
-    // the pointer from everything behind it.
     let_go(
         &chat,
         |size| gpui_kit::point(size.width * 0.6, size.height - px(85.)),
@@ -256,7 +253,6 @@ fn a_message_sent_again_as_it_was_keeps_its_id(cx: &mut TestAppContext) {
     draw(chat.window, cx);
     type_in(&chat, "Look", cx);
 
-    // No host hears it here, so each of these comes back.
     send(&chat, cx);
     let first = unsent(&chat, cx);
     assert!(first.is_some());

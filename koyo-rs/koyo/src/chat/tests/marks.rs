@@ -19,7 +19,6 @@ fn warning(text: &str) -> ItemBody {
 /// two lines high and ran out of the column, to the window's edge.
 #[gpui_kit::test]
 fn a_long_notice_and_a_long_failure_wrap_at_the_columns_width(cx: &mut TestAppContext) {
-    // Far wider than the widest column, on one line.
     let long =
         "Claude's earlier thinking was written while you were signed in elsewhere. ".repeat(8);
     let notices = vec![

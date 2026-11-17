@@ -53,7 +53,6 @@ fn option_up_and_down_go_down_the_sidebars_rows_and_leave_the_keyboard_be(cx: &m
         shell.workspace.select_tab(0, 0, 0);
         cx.notify();
     });
-    // A loose page of the space, over the worktrees: a page pinned and then loosened.
     let page = open_page(window, &shell, Some("https://example.com/loose"), cx);
     shell.update(cx, |shell, cx| {
         assert!(shell.pin_tab_of(page, cx));
@@ -71,7 +70,6 @@ fn option_up_and_down_go_down_the_sidebars_rows_and_leave_the_keyboard_be(cx: &m
         "loose",
         "the loose page, over the worktrees"
     );
-    // A page shown this way doesn't take the keyboard, so ⌥↑ is still heard, with no row above.
     assert_eq!(go("alt-up", cx), "loose", "nothing above the first row");
     let down: Vec<_> = (0..5).map(|_| go("alt-down", cx)).collect();
     assert_eq!(
@@ -81,7 +79,6 @@ fn option_up_and_down_go_down_the_sidebars_rows_and_leave_the_keyboard_be(cx: &m
     );
     assert!(keyboard_at_window(window, &shell, cx));
 
-    // `feat` collapsed: its tab is passed over.
     shell.update(cx, |shell, cx| {
         let feat = folder_of(shell, "feat");
         settings::update(cx, |settings| settings.toggle_collapsed(&root, &feat));
@@ -109,7 +106,6 @@ fn with_motion_the_pill_passes_out_of_the_row_left_and_into_the_next(cx: &mut Te
     draw(window, cx);
     (cx.update_window(window, |_, window, cx| window.blur(cx))).unwrap();
     cx.update(|cx| cx.set_reduce_motion(false));
-    // The first worktree's tab at `tab`, its row known by its place and its pill by its pane.
     let pill = |tab: usize, cx: &mut TestAppContext| {
         let drawn_as = (
             format!("arc-tab-light-{}", panes[tab]),

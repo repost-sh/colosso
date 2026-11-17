@@ -49,7 +49,6 @@ impl Control for EffortSlider {
 
     fn make(&self, main: MainThreadMarker) -> Retained<NSSlider> {
         let view = slider::over_stops(self.stops, main);
-        // What's typed keeps the keys, the thumb moved or not.
         view.setRefusesFirstResponder(true);
         view
     }

@@ -36,8 +36,6 @@ pub(super) fn with_worktrees(
     }
     shell.update(cx, |shell, cx| {
         shell.show_worktrees(&root, read_worktrees(&root), cx);
-        // Main, feat, fix, whatever order git lists them in: kept, as a drag keeps it, and
-        // followed as git lists them again.
         let order = ["main", "feat", "fix"].map(|branch| folder_of(shell, branch));
         settings::update(cx, |settings| {
             settings.set_worktree_order(&root, order.to_vec());
@@ -91,7 +89,6 @@ fn a_header_collapses_its_worktree_and_opens_it_again_and_the_next_launch_keeps_
         cx.notify();
     });
     draw(window, cx);
-    // Whether its tab is drawn; its header always is.
     let shows = |window, cx: &mut TestAppContext| {
         assert!(drawn(window, "arc-header-0", cx).is_some(), "the header");
         drawn(window, "tab-0-0-0", cx).is_some()
@@ -111,7 +108,6 @@ fn a_header_collapses_its_worktree_and_opens_it_again_and_the_next_launch_keeps_
     assert_eq!(tab_shown, Some((0, 0, 0)), "still the tab shown");
 
     let (window, shell) = relaunch(window, shell, cx);
-    // A test's window keeps no tabs, so the one coming back is given one again.
     shell.update(cx, |shell, cx| {
         shell.workspace.push_tab(chat("one"));
         cx.notify();
@@ -122,7 +118,6 @@ fn a_header_collapses_its_worktree_and_opens_it_again_and_the_next_launch_keeps_
     click(window, "arc-header-0", cx);
     assert!(!collapsed(cx));
     assert!(shows(window, cx), "open again");
-    // Nothing kept of a worktree that's open.
     let kept = cx.read(|cx| settings::get(cx).project_looks.contains_key(&root));
     assert!(!kept);
 }
@@ -132,8 +127,6 @@ fn a_worktree_dragged_by_its_header_moves_in_both_layouts_and_the_next_launch_ke
     cx: &mut TestAppContext,
 ) {
     let (window, shell, root) = with_worktrees("arc-reorder", cx);
-    // A tab on the last worktree, which the main checkout is let go on, past that worktree's
-    // middle, taken by its header.
     shell.update(cx, |shell, cx| {
         shell.workspace.select_branch(0, 2);
         shell.workspace.push_tab(chat("one"));
@@ -149,7 +142,6 @@ fn a_worktree_dragged_by_its_header_moves_in_both_layouts_and_the_next_launch_ke
     let order = shell.read_with(cx, |shell, _| shell.workspace.projects[0].worktree_paths());
     assert_eq!(kept, order, "kept as listed");
 
-    // Orca lists the same worktrees: the order is the project's, not the sidebar's.
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
     draw(window, cx);
     assert_eq!(listed(&shell, cx), ["feat", "fix", "main"]);
@@ -161,7 +153,6 @@ fn a_worktree_dragged_by_its_header_moves_in_both_layouts_and_the_next_launch_ke
         ["feat", "fix", "main"],
         "as it was left"
     );
-    // Back up, over the first worktree's header.
     drag(window, "arc-header-2", "arc-header-0", cx);
     assert_eq!(listed(&shell, cx), ["main", "feat", "fix"]);
 }
@@ -191,7 +182,6 @@ fn a_tab_let_go_on_another_worktrees_header_moves_there_open_or_collapsed(cx: &m
     assert_eq!(titles(1, cx), ["one"], "and went to the other's");
     assert_eq!(shown(cx), Some((0, 1, 0)), "where it shows");
 
-    // On a collapsed header, it goes first among the worktree's tabs, which stay hidden.
     click(window, "arc-header-2", cx);
     drag(window, "tab-0-0-0", "arc-header-2", cx);
     assert_eq!(titles(0, cx), ["three"]);
@@ -204,7 +194,6 @@ fn a_tab_let_go_on_another_worktrees_header_moves_there_open_or_collapsed(cx: &m
 fn a_headers_plus_opens_a_new_tab_on_its_worktree_opening_it_if_collapsed(cx: &mut TestAppContext) {
     let (window, shell, root) = with_worktrees("arc-plus", cx);
     let fix = shell.read_with(cx, |shell, _| folder_of(shell, "fix"));
-    // The launcher it opens, if it opened one, dismissed again; and the worktree selected.
     let plus = |branch: &'static str, cx: &mut TestAppContext| {
         click(window, branch, cx);
         let launcher = dialog::<Launcher>(cx).map(|(launcher, _)| launcher);
@@ -261,10 +250,8 @@ fn offers(unit: &BranchUnit) -> Vec<(&'static str, bool)> {
 fn the_menu_offers_clearing_and_deleting_as_the_worktree_can_be() {
     let (clear, delete) = (("Clear Tabs…", true), ("Delete Worktree…", true));
     assert_eq!(offers(&unit("/work/feat", false, 2)), [clear, delete]);
-    // No tabs, nothing to clear.
     let nothing = ("Clear Tabs…", false);
     assert_eq!(offers(&unit("/work/feat", false, 0)), [nothing, delete]);
-    // Git can't delete a main checkout.
     let main = ("Delete Worktree…", false);
     assert_eq!(offers(&unit("/src/app", true, 1)), [clear, main]);
     assert_eq!(offers(&unit("/src/app", true, 0)), [nothing, main]);

@@ -1,14 +1,3 @@
-// The store's schema, as the migrations that build it. Each entry runs once, in order, in a
-// transaction; `PRAGMA user_version` counts those that ran. An entry is never edited once
-// committed: a change is a new entry.
-//
-// Every table keeps its record whole as the JSON the protocol sends (`data`), with the
-// columns queries need beside it. `message_id` is the id the app gave the message a run
-// started from, or a user message's, so a send repeated is found by it. `seq` is the
-// thread's change number when the row last changed (docs/chat.md C4); `threads.head` is the
-// thread's latest. Ids are UUIDv7, so a thread's runs sort by when they were sent, and
-// history pages by run.
-
 export const MIGRATIONS: readonly string[] = [
   `
   CREATE TABLE threads (
@@ -63,7 +52,6 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX threads_by_parent ON threads (json_extract(data, '$.parent.threadId'))
     WHERE json_extract(data, '$.parent.threadId') IS NOT NULL;
   `,
-  // What was said last in a thread is read from its latest items back (Store.said).
   `
   CREATE INDEX items_by_ordinal ON items (thread_id, ordinal);
   `,

@@ -65,7 +65,6 @@ fn glass_over_a_page_is_dark_over_a_light_one_and_light_over_a_dark_one(cx: &mut
         "the bar's glass over a black page is light"
     );
 
-    // Over a region of the window the page isn't in, the glass is the theme's.
     let beyond = Bounds::new(point(px(-200.), px(-200.)), size(px(100.), px(100.)));
     let read = view.read_with(cx, |view, _| glass_dark([view], beyond, None));
     assert_eq!(read, None, "glass over none of the page reads none of it");

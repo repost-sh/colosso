@@ -61,7 +61,6 @@ pub(super) fn racing(
 
 #[test]
 fn gate_rereads_under_lock_and_posts_rereread_bytes() {
-    // The POST spends the bytes re-read under the lock, not the caller's stale snapshot.
     let h = gate_harness();
     let fresher = creds("sk-fresher", "rt-fresher", Some(json!(2000)));
     h.set_backup("1", EMAIL, &fresher);
@@ -75,7 +74,6 @@ fn gate_rereads_under_lock_and_posts_rereread_bytes() {
 
 #[test]
 fn gate_cas_persist_detects_racing_writer() {
-    // A writer replaced the lineage mid-POST: our successor is stashed, theirs adopted.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     let racer = creds("sk-racer", "rt-racer", Some(json!(8_888_888_888_000_u64)));
@@ -129,7 +127,6 @@ fn gate_invalid_grant_returns_error_without_persist() {
 
 #[test]
 fn an_unreadable_stash_manifest_defers_instead_of_posting() {
-    // A manifest that can't be READ isn't one with no rows: the successor may be in it.
     let h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     stash_successor_of(&h, &new(), &old());
@@ -147,7 +144,6 @@ fn an_unreadable_stash_manifest_defers_instead_of_posting() {
 
 #[test]
 fn the_purge_exit_the_fail_closed_message_names_actually_works() {
-    // Failing closed on corrupt + orphans is defensible only because the exit works.
     let h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     stash_successor_of(&h, &new(), &old());
@@ -188,7 +184,6 @@ fn a_corrupt_manifest_with_orphan_entries_fails_closed() {
 
 #[test]
 fn a_corrupt_manifest_still_posts_rather_than_deadlocking() {
-    // Corrupt with nothing to protect: proceed, so the next write can set the file aside.
     let h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     h.switcher.setup_directories().unwrap();
@@ -216,7 +211,6 @@ fn a_manifest_of_invalid_utf8_is_corrupt_not_unreadable() {
 
 #[test]
 fn a_readable_empty_manifest_still_posts() {
-    // The control: nothing stashed really means nothing to adopt.
     let h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     queue_grant(&h, "sk-new", "rt-new");
@@ -227,7 +221,6 @@ fn a_readable_empty_manifest_still_posts() {
 
 #[test]
 fn a_removed_slot_defers_instead_of_posting_the_snapshot() {
-    // No stored credential: a removal landed first. The snapshot must not resurrect it.
     let h = gate_harness();
     queue_grant(&h, "sk-new", "rt-new");
     let result = h.switcher.consume_backup_grant("1", EMAIL, &old());

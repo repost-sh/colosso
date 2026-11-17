@@ -42,8 +42,6 @@ pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) 
         let mut fitted = frame;
         fitted.size.width = width + frame.size.width - content.size.width;
         fitted.size.height = height + frame.size.height - content.size.height;
-        // Screen coordinates rise from the bottom: a kept top moves the bottom, a kept right
-        // moves the left.
         if corner.top {
             fitted.origin.y = frame.origin.y + frame.size.height - fitted.size.height;
         }
@@ -51,8 +49,6 @@ pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) 
             fitted.origin.x = frame.origin.x + frame.size.width - fitted.size.width;
         }
         ns_window.setFrame_display(fitted, true);
-        // GPUI heard the resize as it happened; its view draws its layer when asked to display it,
-        // presenting in the transaction the new frame commits in.
         if let Some(layer) = view.layer() {
             layer.display();
         }
@@ -81,7 +77,6 @@ pub fn draw_in_transaction(window: &Window, cx: &mut App) {
         return;
     };
     ASKED.set(true);
-    // GPUI's view draws its layer when asked to display it, presenting in the transaction.
     cx.spawn(async move |_: &mut AsyncApp| {
         ASKED.set(false);
         layer.display();
@@ -113,9 +108,6 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
         // SAFETY: AppKit's own, on the main thread: the window's style and colour, an image
         // its size drawn into while it has the focus, and the effect view, which keeps it.
         unsafe {
-            // Titled, closable, miniaturizable, resizable, and content under the title bar:
-            // what gives a window its frame. What else it is, as a panel that takes no
-            // activation, stays.
             let style: usize = msg_send![&*ns_window, styleMask];
             let bare = style & !(0b1111 | (1 << 15));
             if bare != style {
@@ -125,7 +117,6 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
             let _: () = msg_send![&*ns_window, setBackgroundColor: &*clear];
             ns_window.setOpaque(false);
             let extent = ns_window.frame().size;
-            // A point inside the outline the app draws, so no blur shows beyond its rim.
             let inset = 1.;
             let body = NSRect::new(
                 NSPoint::new(inset, inset),
@@ -143,7 +134,6 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
                 yRadius: radius
             ];
             let _: () = msg_send![&*rounded, fill];
-            // The image's origin is its bottom left: the arrow stands on the body's top edge.
             let arrow: Retained<AnyObject> = msg_send![class!(NSBezierPath), bezierPath];
             let _: () = msg_send![&*arrow, moveToPoint: NSPoint::new(at - half + inset, extent.height - tip)];
             let _: () = msg_send![&*arrow, lineToPoint: NSPoint::new(at, extent.height - inset)];
@@ -151,8 +141,6 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
             let _: () = msg_send![&*arrow, closePath];
             let _: () = msg_send![&*arrow, fill];
             let _: () = msg_send![&*image, unlockFocus];
-            // Stretched only between its corners, top and bottom, so the shape holds while the
-            // window grows or shrinks to what it lists, until it's cut again at the new size.
             let caps = objc2_foundation::NSEdgeInsets {
                 top: tip + radius + inset,
                 left: 0.,
@@ -165,7 +153,6 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
         ns_window.invalidateShadow();
     })
     .detach();
-    // And the shadow again once what's drawn in it has settled.
     refresh_edge(window.window_handle(), cx);
 }
 
@@ -191,7 +178,6 @@ pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
             cx.background_executor()
                 .timer(std::time::Duration::from_millis(wait))
                 .await;
-            // Looked up each time: a card's window may well have gone by now.
             let refreshed = window.update(cx, |_, window, _| {
                 if let Some(ns_window) = ns_window(window) {
                     ns_window.invalidateShadow();
@@ -235,7 +221,6 @@ pub fn on_screen(window: &Window, at: gpui_kit::Point<Pixels>) -> Option<[f64; 2
     let view = gpui_view(window)?;
     let ns_window = view.window()?;
     let points = |pixels: Pixels| f64::from(f32::from(pixels));
-    // The view's own origin is at its bottom left.
     let in_view = objc2_foundation::NSPoint::new(points(at.x), view.frame().size.height - points(at.y));
     let on_screen = ns_window.convertPointToScreen(view.convertPoint_toView(in_view, None));
     Some([on_screen.x, on_screen.y])

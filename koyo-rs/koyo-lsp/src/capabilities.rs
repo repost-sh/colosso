@@ -29,8 +29,6 @@ pub(crate) fn client_capabilities() -> ClientCapabilities {
         window: Some(window()),
         workspace: Some(workspace()),
         text_document: Some(text_document()),
-        // rust-analyzer's own: it says when it's loaded and indexed, and when it reloads,
-        // which `Client::ready` waits on.
         experimental: Some(json!({"serverStatusNotification": true})),
         ..ClientCapabilities::default()
     }
@@ -38,8 +36,6 @@ pub(crate) fn client_capabilities() -> ClientCapabilities {
 
 fn general() -> GeneralClientCapabilities {
     GeneralClientCapabilities {
-        // UTF-8 first: editors index text by bytes, so a server that agrees spares every
-        // position a conversion. UTF-16 is the protocol's default, which every server has.
         position_encodings: Some(vec![
             PositionEncodingKind::UTF8,
             PositionEncodingKind::UTF16,
@@ -50,7 +46,6 @@ fn general() -> GeneralClientCapabilities {
 
 fn window() -> WindowClientCapabilities {
     WindowClientCapabilities {
-        // Indexing and checking report progress, so the app can say what the server is doing.
         work_done_progress: Some(true),
         show_document: Some(ShowDocumentClientCapabilities { support: true }),
         show_message: None,
@@ -70,17 +65,13 @@ fn workspace() -> WorkspaceClientCapabilities {
             ..WorkspaceEditClientCapabilities::default()
         }),
         did_change_configuration: Some(dynamic(false)),
-        // The app watches the checkout already; the server asks for what it wants told about.
         did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
             dynamic_registration: Some(true),
             relative_pattern_support: Some(true),
         }),
-        // A `workspace/symbol` answer is taken as it comes: nothing of a symbol is resolved
-        // after, so the server has to name each one's range.
         symbol: Some(WorkspaceSymbolClientCapabilities::default()),
         workspace_folders: Some(true),
         configuration: Some(true),
-        // It may ask for every inlay hint to be fetched again.
         inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
             refresh_support: Some(true),
         }),
@@ -137,7 +128,6 @@ fn text_document() -> TextDocumentClientCapabilities {
             tag_support: Some(TagSupport {
                 value_set: vec![DiagnosticTag::UNNECESSARY, DiagnosticTag::DEPRECATED],
             }),
-            // Diagnostics name the version they were computed for, so stale ones can be told.
             version_support: Some(true),
             code_description_support: Some(true),
             data_support: Some(true),
@@ -166,7 +156,6 @@ fn completion() -> CompletionClientCapabilities {
                 value_set: vec![CompletionItemTag::DEPRECATED],
             }),
             insert_replace_support: Some(true),
-            // The list comes back light; what a row needs only once it's chosen comes later.
             resolve_support: Some(CompletionItemCapabilityResolveSupport {
                 properties: ["documentation", "detail", "additionalTextEdits"]
                     .map(str::to_owned)
@@ -203,7 +192,6 @@ fn code_action() -> CodeActionClientCapabilities {
         is_preferred_support: Some(true),
         disabled_support: Some(true),
         data_support: Some(true),
-        // Actions are listed without their edits, which are worked out for the one chosen.
         resolve_support: Some(CodeActionCapabilityResolveSupport {
             properties: vec!["edit".to_owned()],
         }),
@@ -264,7 +252,6 @@ fn semantic_tokens() -> SemanticTokensClientCapabilities {
 }
 
 fn goto() -> GotoCapability {
-    // Links carry the target's whole range and its name's, so a peek can show the item.
     GotoCapability {
         dynamic_registration: None,
         link_support: Some(true),

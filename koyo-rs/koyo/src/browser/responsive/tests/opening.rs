@@ -49,7 +49,6 @@ fn a_page_opens_at_the_persons_size_unless_the_call_asks_for_another() {
         ..Change::default()
     };
     assert_eq!(opened(Some(&fill), desktop), Ok(None));
-    // A side left out is the person's size's; with none, the pane's as it's assumed undrawn.
     let narrow = opened(Some(&sized(Some(1280), None)), desktop)
         .unwrap()
         .unwrap();
@@ -71,7 +70,6 @@ fn a_page_opens_at_the_persons_size_unless_the_call_asks_for_another() {
     };
     let upright = opened(Some(&upright), desktop).unwrap().unwrap();
     assert_eq!((upright.width, upright.height), (1080, 1920));
-    // Larger than this window shows, the person's size is brought within it, as a drag stops.
     let huge = opened(None, Some((20_000, 1080))).unwrap().unwrap();
     assert_eq!((huge.width, huge.height), (8192, 1080));
     assert_eq!(huge.set_by, agent());

@@ -23,13 +23,10 @@ fn message(port: u32, orientation: Orientation) -> [u8; 112] {
     const COPY_SEND: u32 = 19;
     let mut message = [0u8; 112];
     let mut put = |at: usize, value: u32| message[at..at + 4].copy_from_slice(&value.to_le_bytes());
-    // The header: bits, size, the port it goes to, and the id of a GSEvent.
     put(0, COPY_SEND);
     put(4, 108);
     put(8, port);
     put(20, 0x7B);
-    // The event's kind (an orientation change, from the system), its record's size, and what
-    // it carries.
     put(0x18, 0x32 | 0x20000);
     put(0x48, 4);
     put(0x4C, number(orientation));

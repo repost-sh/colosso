@@ -64,7 +64,6 @@ pub(crate) fn subscribe(
         Ok(_) => return reply(Err(ControlError::scope_denied(Topic::SCOPE))),
         Err(error) => return reply(Err(error)),
     }
-    // What a newly followed topic reads now, so its first event is a change from now.
     for &topic in topics {
         if !Control::get(cx).hub.seen.contains_key(&topic) {
             let read = fingerprint(topic, cx);

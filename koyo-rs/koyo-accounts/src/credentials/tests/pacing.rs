@@ -74,7 +74,7 @@ fn a_failed_backup_read_backs_off_the_next_one() {
     assert_eq!(read_ex(&world, 2, false), missing());
     assert_eq!(world.security.reads_of(&account(2)), 1);
 
-    world.security.clear_rule(); // the Keychain recovers at once...
+    world.security.clear_rule();
     assert_eq!(read_ex(&world, 2, false), missing());
     assert_eq!(
         world.security.reads_of(&account(2)),
@@ -82,7 +82,7 @@ fn a_failed_backup_read_backs_off_the_next_one() {
         "a read inside the cooldown spawned"
     );
 
-    world.store.lapse_keychain_cooldown(); // ...the cooldown lapses
+    world.store.lapse_keychain_cooldown();
     assert_eq!(read_ex(&world, 2, false), (cred("backup2"), false));
     assert_eq!(world.security.reads_of(&account(2)), 2);
 }
@@ -132,7 +132,6 @@ fn a_cooldown_is_announced_once_and_its_skips_are_silent() {
         "one per cooldown"
     );
 
-    // The cooldown lapses and the re-probe fails again: a new cooldown, announced once.
     world.store.lapse_keychain_cooldown();
     snapshot(&world, 5);
     snapshot(&world, 5);
@@ -193,7 +192,6 @@ fn own_write_and_delete_drop_the_cache() {
 
 #[test]
 fn a_registry_change_drops_the_cache() {
-    // Same length, same mtime: the atomic write's new inode still tells them apart.
     let world = world(2);
     read(&world, 2, true);
     read(&world, 2, true);
@@ -230,7 +228,6 @@ fn a_failed_read_is_never_cached() {
 
 #[test]
 fn a_cached_hit_is_served_during_the_cooldown() {
-    // A transient failure mustn't blank every idle row; a cold slot reads unreadable.
     let world = world(3);
     assert_eq!(read(&world, 2, true), cred("backup2"));
     world.security.lock();
@@ -254,7 +251,7 @@ fn a_drop_during_the_fill_wins() {
         if super::after(call, "-a") == Some(account(2))
             && let Some(store) = store.upgrade()
         {
-            store.drop_backup_read_cache(); // lands while `security` runs
+            store.drop_backup_read_cache();
         }
         None
     });
@@ -270,7 +267,6 @@ fn a_drop_during_the_fill_wins() {
 
 #[test]
 fn a_write_landing_after_a_racing_fill_is_not_shadowed() {
-    // Drop, a miss reads the OLD item and stores it, the write lands: the drop runs after.
     let world = world(2);
     let store = Arc::downgrade(&world.store);
     world.security.set_rule(move |call| {

@@ -64,7 +64,6 @@ impl Stale {
         let touched = |path: &str| self.touched(path);
         self.everything
             || (self.index && staged.contains(change.path.as_str()))
-            // Writing a file changes only what's unstaged of it.
             || !change.staged
                 && (touched(&change.path)
                     || matches!(&change.status, Status::Renamed { from } if touched(from)))
@@ -108,8 +107,6 @@ pub fn read(
 
 /// Which of `changes` to read again: the `stale` ones and any `listed` differently before.
 fn unread(changes: &[Change], listed: &[Change], stale: &Stale) -> Vec<Change> {
-    // Staging a file moves what its unstaged change is diffed from, so with the index changed,
-    // every file staged before or now is read again.
     let staged: HashSet<&str> = (listed.iter().chain(changes))
         .filter(|change| change.staged)
         .map(|change| change.path.as_str())
@@ -238,7 +235,6 @@ mod tests {
             ..change(path, Status::Modified)
         };
         let unstaged = |path: &str| change(path, Status::Modified);
-        // `b.rs` was staged and now isn't, so its unstaged change has a new base.
         let listed = vec![
             staged("a.rs"),
             staged("b.rs"),
@@ -255,7 +251,6 @@ mod tests {
         let mut index = Stale::default();
         index.add(vec![Touched::Index]);
         assert_eq!(unread(&changes, &listed, &index), changes[..3]);
-        // Writing a file leaves what's staged of it as it was.
         assert_eq!(
             unread(&changes, &listed, &stale(&["a.rs"])),
             [unstaged("a.rs")]

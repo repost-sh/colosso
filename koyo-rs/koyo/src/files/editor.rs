@@ -259,7 +259,6 @@ impl FileEditor {
             self.show(window, cx);
             return;
         };
-        // What the document was told last, before it took the text read.
         let dirty = (self.document.upgrade()).is_some_and(|document| document.read(cx).is_dirty());
         if dirty {
             log::info!("a file read again under unsaved edits: they stay");

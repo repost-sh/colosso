@@ -80,15 +80,12 @@ fn poll_event_human_line() {
         line.contains("a@example.com") && line.contains("42% used"),
         "{line}"
     );
-    // The others show each window, not just the ambiguous binding pct.
     assert!(line.contains("b@example.com: 5h 10% · 7d 0%"), "{line}");
     assert!(line.contains("c@example.com: ?"), "{line}");
 }
 
 #[test]
 fn poll_event_windows_match_the_decision_set() {
-    // A model's window isn't one the decision reads: an ignored Fable 100% next to a switch
-    // onto that account would read as a bug.
     let fleet = [
         ("1", usage(42.)),
         (
@@ -115,7 +112,6 @@ fn whole_numbers_drop_the_decimal() {
 
 #[test]
 fn fractional_threshold_keeps_one_decimal() {
-    // `.0f` would render the valid maximum 99.9 as a lying "100".
     assert_eq!(pct_label(99.9), "99.9");
 }
 
@@ -151,7 +147,6 @@ fn below_threshold_detail_shows_fractional_threshold() {
 
 #[test]
 fn below_threshold_detail_never_shows_impossible_comparison() {
-    // 99.85 under 99.9: `.0f` on the left rendered the impossible "100% < 99.9%".
     let mut h = Harness::fleet(2, threshold(99.9));
     h.tick_with_usage(&[("1", usage(99.85)), ("2", usage(10.))]);
     let details: Vec<String> = h
@@ -164,14 +159,11 @@ fn below_threshold_detail_never_shows_impossible_comparison() {
 
 #[test]
 fn poll_event_human_names_the_binding_window_and_its_line() {
-    // The binding window the poll measured, and its line.
     let mut measured = poll(Some(account_a()), &[("1", 7.)], 85.);
     measured.binding = Some(binding("7d", 93., 97.));
     assert!(measured.human().contains("7d 93% used (switch at 97%)"));
-    // No window data (sentinels): the account-wide form.
     let bare = poll(Some(account_a()), &[("1", 7.)], 85.);
     assert!(bare.human().contains("93% used (switch at 85%)"));
-    // From a tick: the binding window is the one the trigger compared.
     let mut h = Harness::fleet(2, defaults());
     h.tick_with_usage(&[("1", usage7(42., 10., None)), ("2", usage(5.))]);
     let event = h.all::<PollEvent>().remove(0);
@@ -185,7 +177,6 @@ fn poll_event_human_names_the_binding_window_and_its_line() {
 
 #[test]
 fn the_other_events_say_what_happened() {
-    // The sentences the log shows (cswap's `human()`), for the events no other test reads.
     let quarantined = AutoSwitchEvent::Quarantine(QuarantineEvent {
         ts: START,
         number: "2".into(),

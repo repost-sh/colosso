@@ -49,9 +49,6 @@ pub(crate) fn opened(browser: Option<&mut Browser>, url: &str) {
         else {
             return;
         };
-        // Chromium keeps the person's answer as the site's `GEOLOCATION` content setting.
-        // `GEOLOCATION_WITH_OPTIONS`, which it is moving to, is a website setting: asked
-        // for as a content setting, Chromium stops the host.
         let url = CefString::from(url);
         if context.content_setting(Some(&url), Some(&url), ContentSettingTypes::GEOLOCATION)
             == ContentSettingValues::ALLOW

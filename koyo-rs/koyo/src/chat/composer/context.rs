@@ -54,7 +54,6 @@ impl Render for ContextPanel {
                     .hover(|row| row.bg(p.selected))
                     .child("Compact now")
                     .on_click(move |_, _, cx| {
-                        // Once the menu's window is done with what got here.
                         let composer = composer.clone();
                         cx.defer(move |cx| {
                             composer

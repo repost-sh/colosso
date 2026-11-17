@@ -29,7 +29,6 @@ fn the_button_beside_the_macs_login_opens_settings_on_accounts(cx: &mut TestAppC
     let route = shell.read_with(cx, Shell::route);
     assert_eq!(route, Route::Settings(SettingsPage::Accounts));
     assert!(!cx.windows().contains(&panel), "the panel went");
-    // Settings adds it, not the panel.
     let unmanaged = cx.read(|cx| accounts(cx).read(cx).view.unmanaged.clone());
     assert_eq!(unmanaged.as_deref(), Some("ana@example.com"));
 }

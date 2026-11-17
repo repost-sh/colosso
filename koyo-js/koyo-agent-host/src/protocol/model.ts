@@ -1,7 +1,3 @@
-// The chat records the host keeps and sends (docs/chat.md 4.4): threads, the runs (turns) in
-// them, the items their timelines show, and the requests an agent waits on a person for. On
-// the wire a missing value is `null`, never an absent field, so both sides read one shape.
-
 import { z } from "zod";
 
 import { ItemId, MessageId, RequestId, RunId, ThreadId } from "./ids";

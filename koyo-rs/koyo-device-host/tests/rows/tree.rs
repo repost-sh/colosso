@@ -65,7 +65,6 @@ pub fn tree(target: &Target, host: &mut Driver) {
             source == Source::Accessibility && has("General") && has("Accessibility") && took < Duration::from_millis(300),
         );
     }
-    // A system alert: Maps asks for the location the first time, in SpringBoard's alert.
     let launched = host.ask(
         Ask::Launch {
             bundle: "com.apple.Maps".into(),
@@ -108,7 +107,6 @@ pub fn rests(target: &Target, host: &mut Driver) {
     let started = Instant::now();
     let _ = host.until(Duration::from_secs(12), |_| !accessibility(target));
     let (off, after) = (!accessibility(target), started.elapsed());
-    // As the person opens it: no agent's launch, which reads the tree to see it in front.
     simctl(target, &["launch", "--terminate-running-process", &target.udid, "com.apple.Preferences"]);
     settle(host);
     let still_off = !accessibility(target);

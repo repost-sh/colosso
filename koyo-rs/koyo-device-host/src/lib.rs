@@ -28,7 +28,6 @@ pub use sim::access::ENV_RESTS_MS;
 /// The host's entry: `args` without the program's name. Exits 0 when the app said quit or went
 /// away, 1 when it couldn't run, 64 when started wrong.
 pub fn main(args: &[String]) -> std::process::ExitCode {
-    // The watcher is a program of its own: `--watch` alone.
     if let [only] = args
         && only == "--watch"
     {

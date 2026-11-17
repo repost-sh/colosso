@@ -13,8 +13,6 @@ fn oauth(value: Value) -> Map<String, Value> {
     map
 }
 
-// TestExtractAccessToken
-
 #[test]
 fn valid_credentials() {
     let creds = json!({"claudeAiOauth": {"accessToken": "sk-test-token"}}).to_string();
@@ -40,8 +38,6 @@ fn empty_string() {
     assert_eq!(extract_access_token(""), None);
 }
 
-// TestIsSetupToken
-
 #[test]
 fn add_token_shape() {
     assert!(is_setup_token(Some(&oauth(
@@ -65,12 +61,9 @@ fn profile_scope_is_not() {
 
 #[test]
 fn missing_scopes_is_not() {
-    // Unknown provenance: keep the endpoint's answer, don't spend quota.
     assert!(!is_setup_token(Some(&oauth(json!({"accessToken": "t"})))));
     assert!(!is_setup_token(None));
 }
-
-// TestCredentialFingerprint
 
 #[test]
 fn stable_across_access_token_rotation() {
@@ -96,7 +89,6 @@ fn full_content_fallback_for_api_keys_and_setup_tokens() {
     let setup = json!({"claudeAiOauth": {"accessToken": "sk-ant-oat01-abc"}}).to_string();
     assert!(credential_fingerprint(api_key).is_some());
     assert!(credential_fingerprint(&setup).is_some());
-    // Never None for real bytes: a None would make every "did it change?" read "changed".
     assert_ne!(
         credential_fingerprint(api_key),
         credential_fingerprint(&setup)

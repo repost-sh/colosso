@@ -131,7 +131,6 @@ pub fn picture(target: &Target, pages: &Pages, host: &mut Driver, screen: &Scree
         &format!("{cpu:.1}%"),
         cpu >= 0.,
     );
-    // Tearing: what the app draws, read as fast as it goes, the newest slot held as the app holds it.
     let (mut reads, mut torn) = (0u64, 0u64);
     let started = Instant::now();
     while started.elapsed() < Duration::from_secs(10) {
@@ -151,7 +150,6 @@ pub fn picture(target: &Target, pages: &Pages, host: &mut Driver, screen: &Scree
     let _ = host.until(Duration::from_millis(500), |_| false);
     host.drain();
     let shown = host.shown().unwrap();
-    // The page's bands are where Safari puts its view: each colour is looked for down the middle.
     let column: Vec<(u8, u8, u8)> = (0..400)
         .map(|i| pixel(&shown, 0.5, f64::from(i) / 400.))
         .collect();
@@ -256,7 +254,6 @@ fn full_ring(host: &mut Driver, screen: &Screen) {
 pub fn unseen(target: &Target, pages: &Pages, host: &mut Driver) {
     open(target, pages, "flash.html", "ready-flash");
     host.tell(&ToHost::Visible { visible: false });
-    // An agent's last answer keeps the picture current for ten seconds.
     let _ = host.until(Duration::from_secs(11), |_| false);
     let hidden = host.count_frames(Duration::from_secs(3));
     host.tell(&ToHost::Visible { visible: true });

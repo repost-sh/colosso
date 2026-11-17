@@ -157,7 +157,6 @@ pub fn init(cx: &mut App) {
         ..read.unwrap_or_default()
     };
     cx.set_global(history);
-    // A change still settling when the app quits is written on the way out.
     kept_file::write_on_quit(cx, due);
 }
 
@@ -306,7 +305,6 @@ impl History {
     }
 
     fn used_at(&mut self, kind: Kind, text: &str, used: Use, place: &Place) -> &mut Entry {
-        // The entry used last goes last, so entries used within the same second keep their order.
         let found = self
             .entries
             .iter()
@@ -355,7 +353,6 @@ impl History {
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(at, _)| at);
         if let Some(at) = least {
-            // Removed in place, so the entries keep the order they were last used in.
             let gone = self.entries.remove(at);
             self.learned
                 .retain(|learned| !(learned.kind == kind && learned.text == gone.text));

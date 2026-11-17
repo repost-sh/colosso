@@ -27,7 +27,6 @@ fn two_views_of_a_terminal_both_hear_it_and_the_last_to_go_detaches() {
     let (first_tx, first) = crossbeam_channel::unbounded();
     routes.claim(0, handle.clone(), first_tx);
 
-    // The second view's snapshot goes out before the daemon answers its attach.
     assert_eq!(routes.expect(&handle), Some(0));
     routes.route(0, output(10, "snapshot"));
     let (second_tx, second) = crossbeam_channel::unbounded();
@@ -72,7 +71,6 @@ fn an_unknown_terminal_expects_nothing() {
 
 #[test]
 fn a_client_that_stopped_the_daemon_starts_it_no_more() {
-    // No daemon runs in a folder that isn't there, and none is started in it.
     let dir = TermDir::at(
         std::env::current_dir()
             .unwrap()

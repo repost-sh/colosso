@@ -1,5 +1,3 @@
-// A chat's generated title (docs/chat.md 4.5.7).
-
 import { log } from "../log";
 import type { Provider } from "../providers/provider";
 import { titleFrom } from "./records";

@@ -175,9 +175,6 @@ pub(super) fn press(window: &NSWindow, what: &str) -> String {
     // SAFETY: Core Graphics' own constructors, the events ours to release; `NSEvent`'s
     // constructor from one; the application's own queue.
     unsafe {
-        // From a source of the harness's own (`kCGEventSourceStatePrivate`), whose modifiers are
-        // none: made from no source, an event takes the modifiers held on the keyboard at that
-        // moment, and the person's ⌘, held as they worked, turned an ⌥→ here into ⌘⌥→.
         let source = CGEventSourceCreate(-1);
         for down in [true, false] {
             let made = CGEventCreateKeyboardEvent(source.cast_const(), code, down);
@@ -217,9 +214,6 @@ pub(super) fn scroll(window: &NSWindow, dy: i32) -> String {
     // SAFETY: Core Graphics makes the event; the fields set are the window it's over, which
     // `AppKit` reads back as the event's window.
     unsafe {
-        // From a source of the harness's own, as its keys are (`keys::press`): made from no
-        // source, the wheel takes the modifiers held on the keyboard just then, and the
-        // person's ⌘ would make a scroll a zoom.
         let source = CGEventSourceCreate(-1);
         let made = CGEventCreateScrollWheelEvent2(source.cast_const(), 0, 1, dy, 0, 0);
         if !source.is_null() {

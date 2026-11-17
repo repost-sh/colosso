@@ -148,7 +148,6 @@ impl Shell {
     /// The space known by `gone` was deleted: its loose pages are the space known by `to`'s,
     /// where its projects went, or close with it.
     pub(crate) fn hand_on_loose(&mut self, gone: u64, to: Option<u64>, cx: &mut Context<Self>) {
-        // What's handed back is let go here, pages and all.
         drop(self.workspace.hand_on_loose(gone, to));
         cx.notify();
     }

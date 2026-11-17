@@ -29,7 +29,6 @@ fn only_a_tab_whose_single_pane_is_a_page_is_pinned() {
         None,
         "a chat isn't"
     );
-    // The two pages side by side: a split isn't.
     let unit = workspace.branch_mut().expect("a checkout");
     let beside = unit.tabs[1].first().id;
     assert!(unit.drop_tab(2, beside, Edge::Right));
@@ -50,7 +49,6 @@ fn only_a_tab_whose_single_pane_is_a_page_is_pinned() {
 #[test]
 fn a_page_pinned_leaves_its_checkout_and_goes_on_showing_if_it_was_shown() {
     let mut workspace = with_pages(&["a", "b"]);
-    // `a` isn't the tab shown: pinned, the checkout still shows `b`.
     assert_eq!(workspace.pin_tab((0, 0, 1), "a".into()), Some(0));
     assert_eq!(pinned(&workspace), ["a"]);
     assert_eq!(
@@ -59,7 +57,6 @@ fn a_page_pinned_leaves_its_checkout_and_goes_on_showing_if_it_was_shown() {
     );
     assert_eq!(workspace.pinned_shown(), None);
     assert_eq!(shown(&workspace), "b");
-    // `b` is: pinned, it's still what's shown, and its checkout shows the chat under it.
     assert_eq!(workspace.pin_tab((0, 0, 1), "b".into()), Some(1));
     assert_eq!(pinned(&workspace), ["a", "b"]);
     assert_eq!(workspace.pinned_shown(), Some(1));
@@ -74,12 +71,10 @@ fn a_pinned_page_stays_shown_while_another_project_is_selected_until_a_tab_is_pi
     pin_first_page(&mut workspace);
     assert!(workspace.show_pinned(0));
     assert!(!workspace.show_pinned(3), "no such pinned page");
-    // Another space's project, or none, as an empty space shows.
     workspace.select_project(None);
     assert_eq!(shown(&workspace), "a", "with no project shown");
     workspace.select_project(Some(0));
     assert_eq!(shown(&workspace), "a");
-    // A tab of a checkout picked, a worktree selected or a tab opened leaves it.
     workspace.select_tab(0, 0, 0);
     assert_eq!(
         (workspace.pinned_shown(), shown(&workspace).as_str()),
@@ -126,13 +121,11 @@ fn a_pinned_page_closed_stays_pinned_and_opens_where_it_was_once_picked_again() 
         address: address.into(),
         favicon: None,
     };
-    // One that isn't shown closes: the page shown stays shown, and both stay pinned.
     assert!(workspace.close_pinned_page(0, "a".into(), closed("https://a.example/now")));
     assert_eq!(pinned(&workspace), ["a", "b"]);
     assert_eq!(shown(&workspace), "b");
     let page = workspace.pinned()[0].tab.first();
     assert_eq!(page.unloaded_address(), Some("https://a.example/now"));
-    // The one shown closes: the checkout's tab shows in its place, and it's still pinned.
     assert!(workspace.close_pinned_page(1, "b".into(), closed("https://b.example/")));
     assert_eq!(
         (workspace.pinned_shown(), shown(&workspace).as_str()),
@@ -143,11 +136,9 @@ fn a_pinned_page_closed_stays_pinned_and_opens_where_it_was_once_picked_again() 
         !workspace.close_pinned_page(5, "".into(), closed("")),
         "no such pinned page"
     );
-    // Its tile picked again, it's the tab shown, to open at the address it closed at.
     assert!(workspace.show_pinned(1));
     let page = workspace.tab_shown().expect("the pinned page").first();
     assert_eq!(page.unloaded_address(), Some("https://b.example/"));
-    // The address it's pinned at is its own to change, and goes with it when it's removed.
     assert_eq!(workspace.pinned()[0].home, "a");
     assert!(workspace.set_pinned_home(0, "https://a.example/".into()));
     assert!(
@@ -174,8 +165,6 @@ fn a_page_unpinned_is_a_tab_of_the_checkout_shown_there() {
         pin_first_page(&mut workspace);
     }
     workspace.show_pinned(1);
-    // One before the page shown is unpinned onto the worktree, after its tabs: it's shown
-    // there, the worktree selected, and the pinned page is left for it.
     assert!(!workspace.unpin(0, (0, 7), 0), "no such checkout");
     assert!(!workspace.unpin(4, (0, 1), 0), "no such pinned page");
     assert!(workspace.unpin(0, (0, 1), usize::MAX));
@@ -184,7 +173,6 @@ fn a_page_unpinned_is_a_tab_of_the_checkout_shown_there() {
     let project = workspace.project().expect("a project");
     assert_eq!(project.active_branch, 1);
     assert_eq!(shown(&workspace), "a");
-    // And the other, first among the main checkout's tabs.
     assert!(workspace.unpin(0, (0, 0), 0));
     assert!(workspace.pinned().is_empty());
     let unit = workspace.branch().expect("a checkout");

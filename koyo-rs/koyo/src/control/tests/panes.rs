@@ -68,7 +68,6 @@ fn panes_split_resize_detach_and_close(cx: &mut TestAppContext) {
     )
     .unwrap_err();
     assert_eq!(refused.code, ErrorCode::InvalidInput);
-    // A pane of another tab moved into the split.
     let third = call(&agent, "tab_open", json!({ "kind": "chat" }), cx).unwrap()["pane"].clone();
     let moved = call(
         &agent,

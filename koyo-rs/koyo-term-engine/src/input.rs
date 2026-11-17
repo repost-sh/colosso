@@ -359,7 +359,6 @@ mod tests {
                 .unwrap(),
             b"\x1b[A"
         );
-        // Application cursor keys (DECCKM), as vim and less turn on.
         engine.write(b"\x1b[?1h");
         assert_eq!(
             engine
@@ -367,7 +366,6 @@ mod tests {
                 .unwrap(),
             b"\x1bOA"
         );
-        // A lone modifier sends nothing.
         assert!(
             engine
                 .encode_key(&press(Key::ShiftLeft, None, Mods::SHIFT), OptionAsAlt::No)
@@ -394,7 +392,6 @@ mod tests {
             any_button_pressed: true,
         };
         assert!(engine.encode_mouse(&click, geometry).unwrap().is_empty());
-        // Normal tracking with SGR coordinates.
         engine.write(b"\x1b[?1000h\x1b[?1006h");
         assert_eq!(
             engine.encode_mouse(&click, geometry).unwrap(),

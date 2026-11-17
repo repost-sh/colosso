@@ -109,7 +109,6 @@ fn stop(pid: i32) -> io::Result<()> {
             data: 0,
             udata: std::ptr::null_mut(),
         };
-        // Watched before it's killed, so its exit can't be missed.
         let watched = libc::kevent(
             queue,
             &raw const watch,
@@ -120,7 +119,6 @@ fn stop(pid: i32) -> io::Result<()> {
         );
         if watched < 0 {
             libc::close(queue);
-            // Gone already.
             return Ok(());
         }
         libc::kill(pid, libc::SIGKILL);
@@ -197,7 +195,6 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn a_root_without_a_lock_or_with_a_dead_holder_is_free() {
-        // Scratch inside the checkout, as the smoke tests keep theirs.
         let root = Path::new(env!("KOYO_CHECKOUT")).join(format!(
             ".superpowers/t/ipc-profiles-{}",
             std::process::id()
@@ -206,7 +203,6 @@ mod tests {
         std::fs::create_dir_all(&root).expect("scratch");
         assert_eq!(holder(&root, "Koyo Browser Host"), Holder::Free);
         let hostname = hostname().expect("hostname");
-        // No process has the largest pid, and this test's own process isn't a host.
         std::os::unix::fs::symlink(format!("{hostname}-{}", i32::MAX), root.join(LOCK))
             .expect("lock");
         assert_eq!(holder(&root, "Koyo Browser Host"), Holder::Free);

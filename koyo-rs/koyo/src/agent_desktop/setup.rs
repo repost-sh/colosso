@@ -43,7 +43,6 @@ pub struct Setup {
 pub fn open(parent: &mut Window, cx: &mut App) {
     modal::open_kept(WIDTH, HEIGHT, parent, cx, |_, cx| {
         let desk = desk(cx);
-        // The desk looks for the grants for as long as the dialog is up (`setup_shows`).
         desk.update(cx, |desk, cx| desk.setup_shows(true, cx));
         Setup {
             seen: desk.read(cx).step(),

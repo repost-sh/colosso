@@ -69,7 +69,6 @@ fn take(event: notify::Result<Event>) {
             for path in &event.paths {
                 batch.push(&text(path), lost);
             }
-            // Too much happened for the platform to say what, or where.
             if lost && event.paths.is_empty() {
                 batch.push("", true);
             }

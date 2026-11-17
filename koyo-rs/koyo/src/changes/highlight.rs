@@ -121,7 +121,6 @@ fn side<'a>(
                     }
                 }
                 start = end;
-                // A malformed stack only costs this line's colours.
                 let _ = stack.apply(&op);
             }
             tokens

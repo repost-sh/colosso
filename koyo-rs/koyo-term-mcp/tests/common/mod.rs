@@ -195,8 +195,6 @@ impl FakeApp {
             return;
         };
         self.stopped.store(true, Ordering::SeqCst);
-        // A connection wakes the listener, which then sees it should stop and lets the
-        // socket go.
         let _ = Connection::connect(&self.endpoint);
         accepting.join().unwrap();
         for peer in self.peers.lock().drain(..) {
@@ -218,7 +216,6 @@ fn serve_peer(
     answer: &Answer,
 ) {
     let (mut reader, writer) = connection.split().unwrap();
-    // A connection that only checks the app answers says nothing.
     let Ok(Some(ClientFrame::Hello(hello))) = reader.read::<ClientFrame>(MAX_CLIENT_FRAME) else {
         return;
     };

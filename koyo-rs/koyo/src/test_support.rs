@@ -127,7 +127,6 @@ pub fn in_window<V: Render>(
 /// The shell in a laptop-sized window, each of `roots` a project in its sidebar.
 #[cfg(test)]
 pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
-    // Each checkout's project lists and watches it on a thread of its own.
     cx.executor().allow_parking();
     cx.update(crate::init);
     let (window, shell) = shell_window(cx);
@@ -136,7 +135,6 @@ pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle,
             shell.workspace.add_project(root.to_path_buf());
             shell.show_worktrees(root, read_worktrees(root), cx);
         }
-        // As the app does when a project is added: the settings list it, in a space.
         shell.save_projects(cx);
     });
     (window, shell)

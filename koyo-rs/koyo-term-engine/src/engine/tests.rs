@@ -121,7 +121,6 @@ fn programs_are_told_the_hosts_theme() {
             b"\x1b[?997;2n".to_vec()
         ]
     );
-    // A change is reported only to a program that asked to hear of changes.
     assert_eq!(engine.set_color_scheme(true).unwrap(), None);
     engine.write(b"\x1b[?2031h");
     assert_eq!(engine.set_color_scheme(true).unwrap(), None);
@@ -141,7 +140,6 @@ fn a_link_a_program_prints_covers_its_cells() {
     assert_eq!(links.len(), 2, "{links:?}");
     assert_eq!(links[0].cols, 4..9);
     assert_eq!(&*links[0].uri, "file:///abs/a%20b.png");
-    // The wide character's tail is the link's too.
     assert_eq!(links[1].cols, 13..16);
     assert_eq!(&*links[1].uri, "https://example.com/");
     assert!(frame.rows[1].links.is_empty());

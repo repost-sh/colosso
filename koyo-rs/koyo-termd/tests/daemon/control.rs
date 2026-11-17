@@ -66,14 +66,12 @@ fn agents_hold_by_lease_and_a_person_takes_over_until_giving_back() {
     codex.attach(&handle, None);
     claude.attach(&handle, None);
 
-    // An agent writes nothing before it claims; then its writes go through.
     let early = codex.paste(&handle, "early\n").unwrap_err();
     assert_eq!(early.code, ErrorCode::ControlRequired);
     codex.claim(&handle, false).unwrap();
     codex.paste(&handle, "from codex\n").unwrap();
     person.output_until(index, "got:from codex");
 
-    // Another agent displaces it only by asking to, and the first is told who did.
     let plain = claude.claim(&handle, false).unwrap_err();
     assert_eq!(plain.code, ErrorCode::ControlRequired);
     assert_eq!(holder_kind(&plain), ActorKind::Agent);
@@ -97,8 +95,6 @@ fn agents_hold_by_lease_and_a_person_takes_over_until_giving_back() {
     assert_eq!(reason.as_deref(), Some("rerunning tests"));
     let lost = codex.paste(&handle, "still me\n").unwrap_err();
     assert_eq!(lost.code, ErrorCode::ControlTakenBy);
-    // The person's view reporting focus takes nothing; the line discipline echoes the report,
-    // and the agent's ^U drops it from the line.
     person.connection.input(index, b"\x1b[I").unwrap();
     person.output_until(index, "^[[I");
     claude.paste(&handle, "\u{15}from claude\n").unwrap();
@@ -108,8 +104,6 @@ fn agents_hold_by_lease_and_a_person_takes_over_until_giving_back() {
         Some(Controller::Agent { .. })
     ));
 
-    // The person types: the input goes in, the terminal is theirs, and agents stay out,
-    // taking over or not.
     person.connection.input(index, b"mine\r").unwrap();
     person.output_until(index, "got:mine");
     claude.event_until(&handle, |kind| {
@@ -134,7 +128,6 @@ fn agents_hold_by_lease_and_a_person_takes_over_until_giving_back() {
         assert_eq!(holder_kind(&error), ActorKind::Human);
     }
 
-    // Give back opens it to agents again.
     let given = person.connection.request(RequestBody::Release {
         handle: handle.clone(),
     });
@@ -143,7 +136,6 @@ fn agents_hold_by_lease_and_a_person_takes_over_until_giving_back() {
     codex.paste(&handle, "back\n").unwrap();
     person.output_until(index, "got:back");
 
-    // An agent's lease ends with its connection.
     codex.connection.close();
     person.event_until(&handle, |kind| {
         matches!(

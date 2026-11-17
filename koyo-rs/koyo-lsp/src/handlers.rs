@@ -57,7 +57,6 @@ impl Responder {
 
     fn write<T: Serialize>(&self, outcome: Result<&T, &ResponseError>) {
         match message::response(&self.id, outcome) {
-            // A send fails only once the writer is gone with the server; nobody is waiting.
             Ok(body) => drop(self.out.send(body)),
             Err(error) => log::error!("couldn't write the answer to {}: {error}", self.method),
         }
@@ -121,7 +120,6 @@ pub(crate) fn answer(shared: &Arc<Shared>, params: &Payload, responder: Responde
             let result = parse(params).map(|params| unregister(shared, &params));
             responder.send(result.as_ref());
         }
-        // Answered at once: the fetching is the owner's, once it hears.
         InlayHintRefreshRequest::METHOD => {
             responder.send(Ok(&()));
             shared.emit(&Event::InlayHintsRefresh);
@@ -136,7 +134,6 @@ pub(crate) fn answer(shared: &Arc<Shared>, params: &Payload, responder: Responde
                 let result = parse(params).map(|params| configuration(&shared.settings, &params));
                 responder.send(result.as_ref());
             }
-            // The rest answer with their defaults as the responder drops.
             None => drop(responder),
         },
     }
@@ -202,7 +199,6 @@ fn fallback(method: &str, handled: bool) -> Result<Value, ResponseError> {
             "failureReason": "No editor took the edit.",
         })),
         ShowDocument::METHOD => Ok(json!({"success": false})),
-        // Progress is shown however it's reported; a dismissed message chose no action.
         WorkDoneProgressCreate::METHOD | ShowMessageRequest::METHOD => Ok(Value::Null),
         _ if handled => Err(ResponseError::new(
             REQUEST_FAILED,

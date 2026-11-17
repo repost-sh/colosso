@@ -3,6 +3,9 @@
 # crates keep upstream's files). The files listed in koyo-rs/hygiene-allow.txt are over it
 # already; each may shrink but not grow, and leaves the list once it's under the limit. Paths
 # are the workspace's, as cargo prints them.
+#
+# Then holds the Rust and TypeScript source free of plain comments (koyo-rs/koyo-hygiene, which
+# prints what to write instead and deletes them on --fix).
 set -eu
 cd "$(dirname "$0")/../koyo-rs"
 
@@ -43,3 +46,5 @@ find koyo koyo-* -name '*.rs' -not -path '*/target/*' -exec wc -l {} + |
       exit failed
     }
   '
+
+../script/cargo run -q -p koyo-hygiene

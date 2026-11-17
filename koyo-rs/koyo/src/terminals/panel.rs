@@ -116,7 +116,6 @@ impl ActivityPanel {
                 if event.handle != ours {
                     continue;
                 }
-                // Anything else may change the record, which only Info shows.
                 let heard = this.update(cx, |this, cx| match event.kind {
                     EventKind::Logged { log, .. } => this.read(log, cx),
                     _ if this.tab == PanelTab::Info => this.refresh_info(cx),

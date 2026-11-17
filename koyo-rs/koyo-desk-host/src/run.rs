@@ -114,11 +114,8 @@ pub fn run(socket: &std::path::Path, state: PathBuf, counting: bool) -> Result<(
             host.hear(message);
         }
     });
-    // A panic ends the loop, not the cleanup: the agent's apps and desktop still go.
     let looped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         while !host.ending() && !ENDING.load(Ordering::Relaxed) {
-            // What macOS hands out for the length of a turn is let go at its end: nothing
-            // else drains it in a process that runs its own loop.
             objc2::rc::autoreleasepool(|_| {
                 ns::pump(if host.busy() { BUSY_TICK } else { TICK });
                 for message in host.link.take() {

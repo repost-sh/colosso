@@ -130,7 +130,6 @@ pub fn start(cx: &mut App) {
                     cx.background_executor().timer(Duration::from_millis(ms)).await;
                     "waited".to_owned()
                 } else if verb == "clear-data" {
-                    // What Settings → Browser → Clear browsing data does, once confirmed.
                     cx.update(crate::browser::clear_data);
                     "clearing".to_owned()
                 } else if verb == "drag" {
@@ -181,7 +180,6 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
     let numbers: Vec<f64> = rest.split(' ').filter_map(|word| word.parse().ok()).collect();
     match (verb, numbers.as_slice()) {
         ("shot", _) => {
-            // The window named by its number, as a dialog's; else the app's own.
             let (name, number) = rest.split_once(' ').unwrap_or((rest, ""));
             let number = number.parse().ok().or_else(|| u32::try_from(window.windowNumber()).ok());
             match number {
@@ -199,7 +197,6 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         ("draw", _) => draw(&window),
         ("quit", _) => quit(),
         ("pages", _) => koyo_browser_host::native::describe(),
-        // In another window of the app's, by its number: a popover's, a dialog's.
         ("click", [x, y, number]) => match look::numbered(*number as isize) {
             Some(other) => {
                 let at = point(&other, *x, *y);
@@ -210,7 +207,6 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             }
             None => "no such window".into(),
         },
-        // The pointer moved there, then a button down and up: the left's (1, 2), the right's (3, 4).
         ("click" | "rclick", [x, y]) => {
             let (at, down) = (point(&window, *x, *y), if verb == "click" { 1 } else { 3 });
             for (kind, clicks) in [(5, 0), (down, 1), (down + 1, 1)] {
@@ -218,7 +214,6 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             }
             "clicked".into()
         }
-        // Down and not up, as a hand's is while the menu the press opens tracks it.
         ("rdown", [x, y]) => {
             mouse(&window, 3, point(&window, *x, *y), 1);
             "right down".into()
@@ -338,7 +333,6 @@ fn uptime() -> f64 {
 fn mouse(window: &NSWindow, kind: usize, at: NSPoint, clicks: isize) {
     let event = mouse_event(window, kind, at, clicks);
     if !event.is_null() {
-        // A press of the left or right button, going down: the harness's own.
         if matches!(kind, 1 | 3) {
             koyo_seam::heard::probe_sends(window.windowNumber(), koyo_seam::input::Kind::Press);
         }
@@ -432,7 +426,6 @@ fn shot(number: u32, path: &Path) -> String {
     use std::os::unix::ffi::OsStrExt as _;
     // SAFETY: Core Graphics' and Image I/O's own calls; each object made is released.
     unsafe {
-        // Only this window (8), its frame without its shadow (1), at a point a pixel (16).
         let image = CGWindowListCreateImage(CGRectNull, 8, number, 1 | 16);
         if image.is_null() {
             return "no picture of the window".into();

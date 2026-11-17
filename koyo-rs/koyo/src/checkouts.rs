@@ -18,7 +18,6 @@ impl Global for Checkouts {}
 
 /// The project for the checkout at `root`, opened unless a panel has it open already.
 pub fn project(root: &Path, git: GitDirs, cx: &mut App) -> Arc<Project> {
-    // By its real path, so a checkout reached through a link is the same checkout.
     let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_owned());
     let open = &mut cx.default_global::<Checkouts>().0;
     open.retain(|_, project| project.strong_count() > 0);

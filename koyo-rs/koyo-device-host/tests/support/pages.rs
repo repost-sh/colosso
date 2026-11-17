@@ -154,7 +154,6 @@ pub fn open(target: &super::Target, pages: &Pages, page: &str, ready: &str) -> V
     for _ in 0..3 {
         pages.clear();
         if matches!(target.kind, super::Kind::Phone) {
-            // Safari opened on the page by `devicectl` (approvals E and K).
             let _ = std::process::Command::new("/usr/bin/xcrun")
                 .args(["devicectl", "device", "process", "launch", "--quiet", "--device", &target.udid, "--payload-url"])
                 .arg(pages.url(page))
@@ -164,7 +163,6 @@ pub fn open(target: &super::Target, pages: &Pages, page: &str, ready: &str) -> V
             super::simctl(target, &["openurl", &target.udid, &pages.url(page)]);
         }
         if let Some(report) = pages.wait_for(ready, Duration::from_secs(12)) {
-            // Settled: Safari's bars stop moving.
             let started = Instant::now();
             while started.elapsed() < Duration::from_secs(2) {
                 std::thread::park_timeout(Duration::from_millis(100));

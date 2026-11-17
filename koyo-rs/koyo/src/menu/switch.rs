@@ -53,7 +53,6 @@ mod appkit {
         fn make(&self, main: MainThreadMarker) -> Retained<NSSwitch> {
             let view = NSSwitch::new(main);
             view.setControlSize(NSControlSize::Small);
-            // What's typed keeps the keys, flipped or not.
             view.setRefusesFirstResponder(true);
             view
         }

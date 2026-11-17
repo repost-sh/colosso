@@ -123,7 +123,6 @@ pub const FIXTURES: [Fixture; 12] = [
         51,
         false,
     ),
-    // A mebibyte on one line: the editor's long-line path.
     Fixture {
         single_line: true,
         ..fixture(

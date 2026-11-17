@@ -193,7 +193,6 @@ impl Registry {
                 server.follow_writes(project, cx);
             }
         });
-        // Not one that failed or crashed: that waits for the user to start it again.
         if !waits && *server.read(cx).state() == super::State::Stopped {
             self.start(&key, cx);
         }
@@ -317,7 +316,6 @@ impl Registry {
             {
                 self.retire(&victim, &why, cx);
             } else if let Some(slot) = self.servers.get(&victim) {
-                // Its files stay open; its menu in the status bar starts it again.
                 slot.stop(&why, cx);
             }
         }

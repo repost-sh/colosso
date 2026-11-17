@@ -44,10 +44,7 @@ impl Render for Menu {
                 .child(self.body.clone())
                 .into_any_element();
         };
-        // The window's blur is cut to the callout's shape, again whenever the window's size
-        // changes; what's drawn over it is that shape too, the arrow and then the rest.
         let extent = window.viewport_size();
-        // The arrow: how tall, half how wide; and how round the body's corners are.
         let (tall, half, round) = (
             px(super::TIP),
             px(super::TIP_HALF),
@@ -57,19 +54,13 @@ impl Render for Menu {
             let (at, tall, half, round) = (tip.as_f32(), tall.as_f32(), half.as_f32(), round.as_f32());
             crate::native::window::callout(window, at, tall, half, round, cx);
         }
-        // The frame a floating window has, which macOS draws only round a rectangle: here a
-        // hairline round the callout, arrow and all.
         let edge = if p.text.l > 0.5 {
             theme::gray(1., 0.24)
         } else {
             theme::gray(0., 0.22)
         };
         let (wide, high) = (extent.width, extent.height - tall);
-        // The arrow stays on the straight of the top edge.
         let middle = tip.clamp(round + half, (wide - round - half).max(round + half));
-        // The body is a bordered, rounded surface as any panel's, so its edge is as sharp. It's
-        // drawn in three strips side by side, the one under the arrow without its top line:
-        // the arrow stands open on the body, the edge running up and round it.
         let strip = |from: Pixels, to: Pixels, open: bool| {
             let surface = div()
                 .absolute()
@@ -91,7 +82,6 @@ impl Render for Menu {
                 .overflow_hidden()
                 .child(surface)
         };
-        // The arrow itself: its fill down to where the body's begins, and its two slants.
         let arrow = gpui_kit::canvas(
             |_, _, _| {},
             move |bounds, (), window, _| {
@@ -117,7 +107,6 @@ impl Render for Menu {
         )
         .absolute()
         .size_full();
-        // What it holds, over the body.
         let body = div()
             .absolute()
             .top(tall)
@@ -244,7 +233,6 @@ impl Rows {
         };
         row(index)
             .when(highlighted, |row| row.bg(p.selected))
-            // Moved, as it may rest on a row while the keys go elsewhere.
             .on_mouse_move(cx.listener(move |this, _: &MouseMoveEvent, _, cx| {
                 this.highlight(Some(index), cx);
             }))

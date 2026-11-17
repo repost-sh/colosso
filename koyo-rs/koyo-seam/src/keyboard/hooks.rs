@@ -110,7 +110,6 @@ pub fn delivered(window: WindowKey, over: Responder, button: isize) {
     }
     end_click();
     super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
-    // The page may have been the holder already, with the first responder elsewhere.
     reconcile(window);
 }
 
@@ -185,8 +184,6 @@ pub fn pressed(window: WindowKey, over: Responder, button: isize) {
     };
     match over {
         Responder::Page(pane) => {
-            // Already the first responder, it hears of no change: the press is theirs all
-            // the same, and used.
             if installed.appkit.first_responder(window) == over {
                 super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
             } else if !BY_THE_PRESS.get() {

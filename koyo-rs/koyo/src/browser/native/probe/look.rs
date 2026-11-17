@@ -119,8 +119,6 @@ pub(super) fn draw_unseen() {
         return;
     };
     for window in &NSApplication::sharedApplication(main).windows() {
-        // A menu or a popover hides while Koyo isn't the app in front, which on such a
-        // desktop it never is: it stays, so it can be seen and pressed there.
         if window.hidesOnDeactivate() {
             window.setHidesOnDeactivate(false);
             window.orderFrontRegardless();
@@ -323,8 +321,6 @@ pub(super) async fn drag(rest: &str, cx: &mut gpui_kit::AsyncApp) -> String {
     };
     let pause = std::time::Duration::from_millis(*pause as u64);
     let at = |[x, y]: &[f64; 2]| super::point(&window, *x, *y);
-    // The pointer moved there (5), a left press (1), a left drag to each point (6), and the
-    // release (2).
     super::mouse(&window, 5, at(first), 0);
     super::mouse(&window, 1, at(first), 1);
     for to in moves {

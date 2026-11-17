@@ -88,7 +88,6 @@ impl Security for SystemSecurity {
             .spawn()
             .map_err(|error| KeychainError(format!("couldn't run {SECURITY}: {error}")))?;
         if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
-            // A command is one line, well within what the pipe holds.
             stdin
                 .write_all(input.as_bytes())
                 .map_err(|error| KeychainError(format!("couldn't talk to {SECURITY}: {error}")))?;
@@ -193,7 +192,6 @@ pub fn get_password(
     );
     let output = security.run(&args, None)?;
     match output.status {
-        // `-w` prints the value and one newline: exactly that is taken off.
         0 => Ok(Some(
             output
                 .stdout
@@ -231,8 +229,6 @@ pub fn set_password(
     let output = if command.len() <= SECURITY_STDIN_LINE_LIMIT {
         security.run(&["-i"], Some(&command))?
     } else {
-        // Hex in the arguments defeats a plaintext grep, not a determined observer; the
-        // alternative, a line cut mid-value, is a corrupted item.
         let args = vec![
             "add-generic-password",
             "-U",

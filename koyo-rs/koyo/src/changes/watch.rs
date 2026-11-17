@@ -151,14 +151,12 @@ mod tests {
         std::fs::create_dir_all(root.join("node_modules")).unwrap();
         std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
         let (_project, written) = follow(&root);
-        // Whatever the setup left for the watcher to report is taken first.
         std::fs::write(root.join("before"), "").unwrap();
         let before = Touched::File("before".into());
         assert!(reported(&written, |update| touched(update).contains(&before)).is_some());
         for n in 0..200 {
             std::fs::write(root.join(format!("node_modules/f{n}.js")), "").unwrap();
         }
-        // Reported in order: anything about the writes would come before the marker.
         std::fs::write(root.join("marker"), "").unwrap();
         let marker = Touched::File("marker".into());
         let mut seen = Vec::new();

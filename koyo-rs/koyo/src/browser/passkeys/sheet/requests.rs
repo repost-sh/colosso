@@ -116,7 +116,6 @@ fn key_creation(
 ) -> Retained<ASAuthorizationRequest> {
     let user = &creation.user;
     let selection = &creation.authenticator_selection;
-    // A key shows the account by its display name, which a site may leave out.
     let display_name = if user.display_name.is_empty() {
         &user.name
     } else {

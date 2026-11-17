@@ -72,7 +72,6 @@ fn listen(dir: &TermDir) -> io::Result<UnixListener> {
                     format!("{} is in use without its lock held", path.display()),
                 ));
             }
-            // Left behind by a daemon that died: the lock is ours, so the socket is too.
             fs::remove_file(&path)?;
             koyo_daemon::bind(&path)?
         }

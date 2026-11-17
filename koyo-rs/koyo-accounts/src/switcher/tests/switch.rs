@@ -42,7 +42,6 @@ fn switch_refuses_to_overwrite_backup_with_empty_current_creds() {
     let h = two_accounts(&mut sample_sequence_data());
     let good = creds("sk-good-1", "rt-good-1", None);
     h.set_backup("1", "test@example.com", &good);
-    // No live item and no file: the read is "", as a `security` timeout's.
     assert!(matches!(
         h.switcher.perform_switch("2", None),
         Err(AccountsError::CredentialRead(_))
@@ -104,7 +103,6 @@ fn switch_with_unset_active_account_does_not_write_none_backup() {
 
 #[test]
 fn switch_uses_live_identity_for_current_backup_slot() {
-    // A stale `activeAccountNumber` never decides where the live credential is backed up.
     let h = Harness::new();
     h.write_config(&json!({"oauthAccount": {
         "emailAddress": "realiti44@gmail.com", "accountUuid": "",
@@ -137,8 +135,6 @@ fn switch_uses_live_identity_for_current_backup_slot() {
         .write_account_config("4", "realiti44@gmail.com", "old-realiti-config")
         .unwrap();
     h.set_live(&live);
-    // cswap's oracle answers a uuid-less identity, which Koyo's takes for no answer: both
-    // reach the backup of the live identity's slot.
     h.queue_profile(&profile("", Some("realiti44@gmail.com"), Some("")));
     h.switcher.perform_switch("3", None).unwrap();
     assert_eq!(h.backup("4", "realiti44@gmail.com").unwrap(), live);
@@ -188,7 +184,6 @@ fn direct_activation_rolls_back_live_creds_on_sequence_write_failure() {
 
 #[test]
 fn direct_activation_rollback_publishes_config_by_rename() {
-    // Never rewritten in place: a running Claude Code watching it would see an empty file.
     let seen = Arc::new(Mutex::new(None));
     let seen_in = seen.clone();
     let (h, original_config, _) = direct_activation_failing(move |config| {
@@ -206,7 +201,6 @@ fn direct_activation_rollback_publishes_config_by_rename() {
 
 #[test]
 fn direct_activation_rollback_failure_leaves_config_intact() {
-    // A restore that can't publish leaves the complete post-switch config, never a torn one.
     let (h, _, _) = direct_activation_failing(|_| {
         crate::fsutil::FAULT.set(Some((crate::fsutil::Step::Rename, libc::ENOSPC)));
     });
@@ -219,7 +213,6 @@ fn direct_activation_rollback_failure_leaves_config_intact() {
 
 #[test]
 fn direct_activation_fails_fast_when_live_creds_unreadable() {
-    // A live credential that can't be snapshotted is never overwritten.
     let h = Harness::new();
     let original_config = untracked_config().to_string();
     std::fs::write(h.config_path(), &original_config).unwrap();
@@ -246,9 +239,6 @@ fn direct_activation_fails_fast_when_live_creds_unreadable() {
 
 #[test]
 fn an_unreadable_live_config_is_kept_aside_before_a_switch_writes() {
-    // cswap's `_salvage_unreadable`, whose tests are in `test_api_key_accounts.py` (API-key
-    // accounts aren't ported): the bytes survive in a 0600 copy beside the config, the person
-    // is told, and the target's config takes its place.
     let h = Harness::new();
     let torn = r#"{"projects": {"#;
     std::fs::write(h.config_path(), torn).unwrap();

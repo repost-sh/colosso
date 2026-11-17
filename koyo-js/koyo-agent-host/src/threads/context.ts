@@ -1,5 +1,3 @@
-// What a thread's actor works with, from the threads it's one of.
-
 import type { AccountLimits, Thread, ThreadSummary } from "../protocol/model";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";

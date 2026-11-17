@@ -1,7 +1,3 @@
-// Claude's tools as the timeline shows them (docs/chat.md 4.7): each tool's family, a label
-// to show it by, what it was given and what came back, bounded to 16 KB (4.5.8), and what an
-// approval of it shows a person.
-
 import { LEGACY_TOOL_NAME_ALIASES } from "@anthropic-ai/claude-agent-sdk";
 import type {
   BashOutput,
@@ -27,8 +23,6 @@ export type Fields = Readonly<Record<string, unknown>>;
 
 const AnyRecord = z.record(z.string(), z.unknown());
 const AnyJson = z.json();
-// What the CLI's structured results are read for, typed by its own tools' types so they
-// can't drift from them unseen.
 const Patched: z.ZodType<Pick<FileEditOutput, "structuredPatch">> = z.object({
   structuredPatch: z.array(Hunk),
 });

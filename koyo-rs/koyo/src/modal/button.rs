@@ -95,7 +95,6 @@ impl RenderOnce for Button {
                 |button, handler| {
                     button
                         .cursor_pointer()
-                        // The way the settings' pill buttons answer a hover, for the plain one.
                         .hover(move |style| match self.tone {
                             Tone::Plain => style.bg(p.selected),
                             _ => style.opacity(0.85),
@@ -104,7 +103,6 @@ impl RenderOnce for Button {
                 },
             )
             .relative()
-            // The label stays, unseen, so the button keeps its width.
             .child(div().when(self.busy, Styled::invisible).child(self.label))
             .when(self.busy, |button| button.child(spinner(text)))
     }
@@ -119,7 +117,6 @@ pub fn spinner(color: Hsla) -> impl IntoElement {
         .items_center()
         .justify_center()
         .child(
-            // An open arc turning at an even speed; the default eases each turn, so it stalls.
             Spinner::new()
                 .icon(IconName::LoaderCircle)
                 .ease(|delta| delta)

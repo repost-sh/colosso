@@ -151,7 +151,6 @@ impl Phone {
             return;
         }
         let until = std::time::Instant::now() + DETACHES_WITHIN;
-        // The session's end drops its side of the events: then this says so at once.
         while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
             if self.events.recv_timeout(left).is_err() {
                 break;

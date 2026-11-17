@@ -1,6 +1,3 @@
-// The Claude driver's test bench: a query that plays the CLI's part, frame by frame as a test
-// says, and a sink that keeps what the driver reported.
-
 import { randomUUID, type UUID } from "node:crypto";
 
 import type {

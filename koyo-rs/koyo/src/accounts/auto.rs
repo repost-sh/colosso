@@ -78,7 +78,6 @@ impl Accounts {
     /// next tick after the wait it asked for.
     pub(super) fn ticked(&mut self, report: &TickReport, cx: &mut Context<Self>) {
         let now = super::now();
-        // As cswap logs it, the poll each tick makes at debug: emails and numbers, never a token.
         for event in &report.events {
             match event {
                 AutoSwitchEvent::Poll(_) => log::debug!("auto-switch: {}", event.human()),

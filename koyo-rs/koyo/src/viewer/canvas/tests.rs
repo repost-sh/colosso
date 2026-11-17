@@ -59,7 +59,6 @@ fn zooming_keeps_the_point_under_the_pointer_still() {
     };
     let anchor = (100., 80.);
     let zoomed = zoom_about(&pages, viewport, camera, 2., anchor);
-    // The page point under the anchor, before and after.
     let point = |camera: Camera| {
         let laid = layout(&pages, camera.zoom);
         let (left, top) = offset(laid.size, viewport, camera.scroll);

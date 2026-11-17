@@ -45,7 +45,6 @@ impl Viewer {
     /// zoom once it rests.
     pub(super) fn camera_moved(&mut self, zoomed: bool, cx: &mut Context<Self>) {
         if zoomed && !self.is_drawn() && self.stale.is_empty() {
-            // Nothing to stretch meanwhile: drawn at the zoom straight away.
             self.level = self.zoom_level();
         } else if zoomed {
             self.settling = cx.spawn(async move |this, cx| {
@@ -165,7 +164,6 @@ impl Viewer {
 pub fn longest(shown: u32, native: u32) -> u32 {
     let native = native.clamp(1, LONGEST);
     let shown = f64::from(shown.max(1));
-    // Every other step halves, exactly; the one between is a √2 smaller.
     let mut whole = f64::from(native);
     while whole / 2. >= shown {
         whole /= 2.;

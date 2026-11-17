@@ -23,7 +23,6 @@ fn the_spec_sets_the_cap_and_keeps_the_margin_threshold() {
     assert_eq!(RETRY_AFTER_MARGIN_ABOVE_S, 600.);
     assert_eq!(RETRY_AFTER_MARGIN_S, 900.);
     assert_eq!(RETRY_AFTER_FLOOR_CAP_S, 4500.);
-    // An ask between the old cap and the new one takes the margin, as cswap's measured rule.
     assert_eq!(wait(1, Some(601.)), 1501.);
     assert_eq!(wait(1, Some(900.)), 1800.);
 }
@@ -82,8 +81,6 @@ fn retry_after_is_the_floor() {
     let h = Harness::new();
     h.record("1", err_after("http-429", 90.));
     let entry = h.entry("1");
-    // The first failure computes 30 s, but the server asked 90 s: honoured as the floor, with
-    // no margin under the threshold.
     assert!(approx(entry.backoff_until.unwrap(), h.now() + 90.));
     assert!(entry.in_backoff(h.now() + 89.));
     assert!(!entry.in_backoff(h.now() + 91.));
@@ -115,7 +112,6 @@ fn edge_429_backoff_floors_at_edge_backoff() {
 fn a_non_429_retry_after_zero_does_not_take_the_saturated_edge() {
     let h = Harness::new();
     h.record("1", err_after("http-503", 0.));
-    // The plain curve's 30 s, not the 429-only edge floor.
     assert!(approx(h.entry("1").backoff_until.unwrap(), h.now() + 30.));
 }
 
@@ -304,7 +300,6 @@ fn blind_window(age_at_fail: f64, ask: f64, error: &str) -> f64 {
 
 #[test]
 fn park_bound_blind_window_equals_age_at_failure() {
-    // The non-429 arm, where the park cap equals TRUST_MAX_AGE_S: blind == age at failure.
     for (age, ask, expected) in [
         (0., 5000., 0.),
         (1., 5000., 1.),
@@ -322,7 +317,6 @@ fn park_bound_blind_window_equals_age_at_failure() {
             "age {age} ask {ask}: {blind}"
         );
     }
-    // The 429 arm: blind = age - 2700, clamped to [0, park].
     for (age, ask, expected) in [
         (0., 5000., 0.),
         (2701., 5000., 1.),

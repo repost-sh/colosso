@@ -35,7 +35,6 @@ pub fn links(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let printed = |text: &str| text.lines().any(|line| line == "failed at src/main.rs:2:5");
     wait(drawn, "the paths printed", printed)?;
 
-    // ⌘ held over the picture's path underlines it.
     let on_picture = place(drawn, "look at shot.png", "shot.png")?;
     send(
         drawn,
@@ -48,7 +47,6 @@ pub fn links(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     drawn.pause()?;
     said.push(format!("{}", drawn.save("link-underlined.png")?.display()));
 
-    // ⌘-clicked, it opens in a tab, shown as a picture.
     command_click(drawn, on_picture)?;
     let file = opened(drawn, "shot.png")?;
     if drawn.cx.read(|cx| file.read(cx).shows_text()) {
@@ -64,7 +62,6 @@ pub fn links(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     said.push(format!("{}", drawn.save("link-picture.png")?.display()));
     press(drawn, "cmd-w")?;
 
-    // A path and a line, as a compiler prints them, open the file at that line.
     wait(drawn, "the terminal again", printed)?;
     let on_place = place(drawn, "failed at src/main.rs:2:5", "src/main.rs")?;
     command_click(drawn, on_place)?;

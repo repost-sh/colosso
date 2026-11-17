@@ -41,7 +41,6 @@ impl AutoSwitchEngine {
             .tick_inner(&mut state)
             .and_then(|outcome| self.persist_health_counters(&state).map(|()| outcome));
         let outcome = result.unwrap_or_else(|error| {
-            // A failed tick waits the normal cadence, whatever it had decided before failing.
             self.wait = Wait::Interval;
             self.emit_error(error.to_string());
             TickOutcome::Error
@@ -73,8 +72,6 @@ impl AutoSwitchEngine {
         let roster = self.host.roster()?;
         self.release_recovered_quarantines(&roster, state)?;
 
-        // A tick with no managed active account keeps the counting context; another account
-        // reseeds from the state file, so its counts are never inherited.
         if let Some(current) = &roster.current
             && self.health_account.as_ref() != Some(current)
         {
@@ -85,8 +82,6 @@ impl AutoSwitchEngine {
             return Ok(self.no_active_account(&roster));
         };
 
-        // Every candidate is an OAuth account; the no-return bar is applied where the choice
-        // is made (`release.rs`), not in this census of what exists.
         let census = |wanted: fn(&RosterSlot) -> bool| -> Vec<String> {
             roster
                 .slots
@@ -120,8 +115,6 @@ impl AutoSwitchEngine {
             return Ok(TickOutcome::NoAction);
         }
         if candidates.is_empty() {
-            // Won't change until an account is added or recovered: no point polling at the
-            // full cadence.
             self.wait = Wait::Long;
             self.no_switch(NoSwitchReason::NoCandidates, "");
             return Ok(TickOutcome::Blocked);
@@ -140,8 +133,6 @@ impl AutoSwitchEngine {
         if ordered.is_empty() {
             return Ok(self.report_blocked(&input, any_known));
         }
-        // The departure snapshot of the account being left, from the same readings and instant
-        // the ranking decided on.
         let left = Departure {
             headroom: active_headroom,
             recovery: active.map_or(f64::INFINITY, |active| active.reset_key(input.now)),
@@ -153,7 +144,6 @@ impl AutoSwitchEngine {
     /// active account over the line (proactive) or at its limit, or unreadable for
     /// `unhealthy_ticks` ticks (failover), an expired token on an idle machine holding instead.
     fn trigger_for(&mut self, active: Option<&Reading<'_>>) -> Option<Trigger> {
-        // A headroom and a binding window come from the same windows: both or neither.
         if let Some(active) = active
             && let (Some(active_headroom), Some(binding)) = (active.headroom, &active.binding)
         {
@@ -164,7 +154,6 @@ impl AutoSwitchEngine {
                 self.no_switch(NoSwitchReason::BelowThreshold, &detail);
                 return None;
             }
-            // Exhaustion is physical: at-limit reads the raw headroom.
             return Some(if active_headroom <= 0. {
                 Trigger::AtLimit
             } else {
@@ -172,10 +161,6 @@ impl AutoSwitchEngine {
             });
         }
         if active.is_some_and(|active| active.is_sentinel(USAGE_TOKEN_EXPIRED)) {
-            // Expired, and the refresh couldn't complete this pass (lock contention, an
-            // unattributable lineage, a failed persist, or the row's backoff). Later passes
-            // retry: no quota burns, nothing to switch for yet, so crawl slowly instead of
-            // spending failover ticks.
             let now = self.now();
             let since = *self.idle_hold_since.get_or_insert(now);
             if now - since <= IDLE_HOLD_MAX_S {
@@ -187,8 +172,6 @@ impl AutoSwitchEngine {
                 );
                 return None;
             }
-            // Held far longer than an idle nap needs: likely a dead refresh token with an
-            // active user, so count as unhealthy and fail over after all.
             log::warn!(
                 "Active token expired and owned for over {:.0} minutes; resuming unhealthy \
                  counting (dead refresh token?)",
@@ -220,8 +203,6 @@ impl AutoSwitchEngine {
             emails: BTreeMap::new(),
         }));
         if roster.live.is_some() {
-            // A live login Koyo doesn't manage: never act, a switch would overwrite it
-            // without a backup.
             self.no_switch(
                 NoSwitchReason::UnmanagedActiveAccount,
                 "Add Current Login to include it in rotation",
@@ -292,10 +273,6 @@ impl AutoSwitchEngine {
             );
             return TickOutcome::Blocked;
         }
-        // All exhausted (and its reset-aware wait) only when it's literally true: every
-        // candidate known and at its limit. One that merely failed the hysteresis gate, or is
-        // unreadable this tick, can become viable any moment, and the active can hit 100% and
-        // need the at-limit escape, so those keep the normal cadence.
         let truly_exhausted = input.candidates.iter().all(|num| {
             input
                 .headroom_of(num)

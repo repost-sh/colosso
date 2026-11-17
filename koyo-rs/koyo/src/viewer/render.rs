@@ -221,7 +221,6 @@ fn button(
         .xsmall()
         .tooltip_with_action(tooltip, action.as_ref(), Some(CONTEXT))
         .on_click(cx.listener(move |this, _, window, cx| {
-            // The viewer takes the keys, as clicking its pages would.
             window.focus(&this.focus, cx);
             window.dispatch_action(action.boxed_clone(), cx);
         }))

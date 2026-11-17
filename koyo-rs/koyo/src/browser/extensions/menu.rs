@@ -127,7 +127,6 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // The visual check runs unattended, where the menu's tracking would wait for a pick.
         if cfg!(feature = "visual-check") {
             return;
         }
@@ -181,7 +180,6 @@ mod tests {
     #[test]
     fn a_popup_opens_towards_the_windows_middle() {
         let icon = |x: f32| Bounds::new(point(px(x), px(40.)), size(px(26.), px(26.)));
-        // The sliders button of a sidebar's address field, and a toolbar's last icon.
         assert_eq!(hangs_by(icon(226.), px(1920.)), Corner::Left);
         assert_eq!(hangs_by(icon(1860.), px(1920.)), Corner::Right);
     }
@@ -209,10 +207,8 @@ mod tests {
     fn an_icons_menu_names_the_extension_and_what_can_be_done_with_it() {
         let with_all = shown(false, "chrome-extension://abc/options.html", "https://example.com/");
         assert_eq!(labels(&with_all), ["Block", "-", "Options", "Pin to Toolbar", "Manage Extension"]);
-        // One with no options has no such row; one pinned can be unpinned.
         let bare = shown(true, "", "");
         assert_eq!(labels(&bare), ["Block", "-", "Unpin from Toolbar", "Manage Extension"]);
-        // Its name goes nowhere when it has no home page.
         assert_eq!(rows(&bare)[0], Some(("Block".into(), IconPick::Home, false)));
         assert_eq!(rows(&bare)[2], Some(("Unpin from Toolbar".into(), IconPick::Pin(false), true)));
     }

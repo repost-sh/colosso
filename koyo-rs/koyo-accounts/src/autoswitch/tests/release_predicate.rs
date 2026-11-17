@@ -39,12 +39,8 @@ fn null_snapshot(trigger: &str) -> Value {
            "leftTrigger": trigger})
 }
 
-// -- TestConsumeFirstDepartureRecordsItsOwnTrigger ---------------------------------------------
-
 #[test]
 fn the_null_snapshot_answers_differently_by_recorded_trigger() {
-    // Peer 11 points, active 5. Failover's landing floor (h > 10) releases; an ordinary
-    // departure's dominance (h > 5 x 2 + 3 = 13) doesn't, and has no baseline.
     let usage = [("1", usage(89.)), ("2", usage(95.))];
     let headroom = [("1", Some(11.))];
     let settings = defaults();
@@ -66,9 +62,6 @@ fn the_null_snapshot_answers_differently_by_recorded_trigger() {
     ));
 }
 
-// -- TestAllAboveHeadroomDoesNotFlap, direct --------------------------------------------------
-
-// The premise: unclamped, the headroom leg is unsatisfiable at 100.
 const _: () = assert!(100. < 98. + SPENT_HEADROOM_PCT);
 
 #[test]
@@ -85,7 +78,7 @@ fn the_clamp_stays_load_bearing_when_dominance_does_not_fire() {
 #[test]
 fn the_dominance_leg_does_not_silently_read_an_unreadable_active_as_no_dominance() {
     let state = json!({"lastSwitchFrom": "2", "leftHeadroom": 40.0, "leftRecoveryAt": null});
-    let usage = [("2", usage(60.))]; // the peer frozen at 40 points
+    let usage = [("2", usage(60.))];
     let settings = defaults();
     let readable = recovered_on(
         &settings,
@@ -130,7 +123,6 @@ fn no_return_account_does_not_re_bar_an_already_recovered_peer_when_the_active_i
 
 #[test]
 fn the_all_spent_recovery_leg_carries_its_own_hysteresis() {
-    // The peer resets only 60 s before the active: inside RECOVERY_HYSTERESIS_S.
     let state = null_snapshot("failover");
     let usage = [
         ("1", usage_r(95., &iso(START + 3600.))),
@@ -170,8 +162,6 @@ fn no_return_accounts_unreadable_active_fallback_has_a_floor_too() {
     );
 }
 
-// -- TestTheReleasePredicateOneStateShapePerTest ----------------------------------------------
-
 fn failover_from_two() -> Value {
     json!({"lastSwitchFrom": "2", "leftHeadroom": null, "leftRecoveryAt": null,
            "leftTrigger": "failover"})
@@ -189,8 +179,6 @@ fn failover_peer_readable_dominant_and_changed_releases() {
 
 #[test]
 fn the_failover_floor_moves_with_the_users_threshold() {
-    // threshold 60: 35 points is under its line's floor (40) and holds; threshold 71 (floor
-    // 29): the same peer releases.
     let usage = [("2", usage(65.))];
     let headroom = [("2", Some(35.))];
     assert!(!recovered_on(
@@ -233,7 +221,6 @@ fn failover_peer_still_unreadable_holds() {
 
 #[test]
 fn ordinary_departure_weekly_bound_peer_that_recovered_releases() {
-    // The reset moved from an hour out to a minute out: a recovery the headroom leg can't see.
     let state =
         json!({"lastSwitchFrom": "2", "leftHeadroom": 4.0, "leftRecoveryAt": START + 3600.});
     let usage = [("2", usage_r(96., &iso(START + 60.)))];

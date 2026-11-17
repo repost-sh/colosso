@@ -79,8 +79,6 @@ fn project_of(rig: &Rig, root: &Path, cx: &TestAppContext) -> PathBuf {
 #[gpui_kit::test]
 fn the_person_is_told_who_asks_as_it_says_it_is_in_koyos_words(cx: &mut TestAppContext) {
     let (rig, [here, there], page) = two_projects("control-persons-asker", cx);
-    // A chat, as it says it is: by Koyo's title for that chat and the worktree it's in, not the
-    // name its client gives, nor the worktree its hello says.
     hears(&rig, vec![summary("c1", &there, "2026-11-15T10:00:00Z")], cx);
     let chat = Caller {
         worktree: Some(here),
@@ -96,8 +94,6 @@ fn the_person_is_told_who_asks_as_it_says_it_is_in_koyos_words(cx: &mut TestAppC
     assert_eq!(detail, MAY);
     assert!(answer.is_ok());
 
-    // An outside client, by the name it gives itself, said to be its own, its quotes and line
-    // breaks gone, as are its reason's, cut short.
     let other = persons_page(&rig, &terminal("term_0"), "https://bank.example/", true, cx);
     let name = "Koyo” says:\n“Allow";
     allow(name, &Scope::DEFAULT_GRANT, cx);
@@ -113,7 +109,6 @@ fn the_person_is_told_who_asks_as_it_says_it_is_in_koyos_words(cx: &mut TestAppC
     assert_eq!(words.chars().count(), 200 + 1, "200 with the ellipsis, then the quote");
     assert!(words.ends_with("x…”"), "{words}");
 
-    // An agent saying it's in a terminal the window hasn't heard of, as such.
     let third = persons_page(&rig, &terminal("term_0"), "https://news.example/", true, cx);
     let ((question, _), _) = asked(
         &terminal("term_9"),
@@ -146,8 +141,6 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
     assert_eq!(declined.code, ErrorCode::UserDeclined);
     assert!(declined.message.contains("cancelled it"), "{}", declined.message);
 
-    // The client turned down isn't let ask again, for the page or a copy of it, by its name
-    // or, under another name, on its connection.
     let renamed = Caller {
         connection: agent.connection,
         ..terminal("term_5")
@@ -159,7 +152,6 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
             assert!(refused.message.contains("for you"), "{}", refused.message);
         }
     }
-    // Anyone else waits a minute.
     let (other, third) = (terminal("term_2"), chat("c2"));
     for caller in [&other, &third] {
         let refused = call(caller, claim().0, claim().1, cx).unwrap_err();
@@ -168,7 +160,6 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
     }
     assert!(!cx.has_pending_prompt(), "nobody was asked");
     cx.executor().advance_clock(OTHERS_WAIT);
-    // Then they may ask, one at a time.
     let asking = send(&other, None, op(claim().0, claim().1), cx);
     cx.run_until_parked();
     assert!(cx.has_pending_prompt());
@@ -178,11 +169,9 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
     cx.simulate_prompt_answer("Allow");
     cx.run_until_parked();
     assert_eq!(taken(&asking).expect("answered").unwrap()["held"], json!(true));
-    // The client turned down still waits.
     let refused = call(&agent, claim().0, claim().1, cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::UserDeclined);
 
-    // No answer in time is a refusal too; refusals over are forgotten.
     cx.executor().advance_clock(DECLINED_FOR);
     let loose = persons_page(&rig, &terminal("term_0"), "https://bank.example/", false, cx);
     let asking = send(&agent, None, op("browser_claim", json!({ "pane": loose })), cx);
@@ -193,7 +182,6 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
     let unanswered = taken(&asking).expect("answered").unwrap_err();
     assert_eq!(unanswered.code, ErrorCode::UserDeclined);
     assert!(unanswered.message.contains("in time"), "{}", unanswered.message);
-    // Answering the prompt now, late, changes nothing.
     if cx.has_pending_prompt() {
         cx.simulate_prompt_answer("Allow");
         cx.run_until_parked();
@@ -202,7 +190,6 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
     assert_eq!(refused.code, ErrorCode::UserDeclined);
     let kept = cx.read(crate::control::exec::declines_kept);
     assert_eq!(kept, 2, "the latest only, by the client's name and by its connection");
-    // Ten minutes on, the first page may be asked about again.
     let (question, _) = asked(&agent, claim(), "Cancel", cx);
     assert!(question.0.contains("wants to use your page"), "{}", question.0);
 }
@@ -211,9 +198,6 @@ fn a_client_turned_down_waits_ten_minutes_and_anyone_else_a_minute(cx: &mut Test
 fn a_copy_of_the_persons_page_opens_in_the_callers_worktree(cx: &mut TestAppContext) {
     let (rig, [here, there], page) = two_projects("control-persons-copy", cx);
     let selected = read_shell(&rig, cx, |shell, _| shell.workspace.active_project());
-    // A chat's copy goes to the worktree Koyo knows it in, whatever its hello says; there it's
-    // of that worktree's project's sign-ins, not the page's, its project being on a profile of
-    // its own (`browser/profiles.rs`): on Default as the page's is, it'd be signed in alike.
     let there_project = project_of(&rig, &there, cx);
     cx.update(|cx| {
         crate::browser::profiles::update(cx, |profiles| {
@@ -243,7 +227,6 @@ fn a_copy_of_the_persons_page_opens_in_the_callers_worktree(cx: &mut TestAppCont
             "https://mail.example/inbox".to_owned()
         )
     );
-    // Out of sight, the person's page left as it was; the copy an ordinary page of the agent's.
     let now = read_shell(&rig, cx, |shell, _| {
         (shell.workspace.active_project(), shell.workspace.pinned().len())
     });
@@ -256,8 +239,6 @@ fn a_copy_of_the_persons_page_opens_in_the_callers_worktree(cx: &mut TestAppCont
     let claimed = call(&chat, "browser_claim", json!({ "pane": copy }), cx).unwrap();
     assert_eq!(claimed, json!({ "pane": copy, "held": true }));
 
-    // An outside client: in no worktree it has none to copy into, and without the navigate
-    // scope it can't open a tab; either refused before anyone's asked.
     allow("Claude Code", &Scope::DEFAULT_GRANT, cx);
     let refused = call(&external("Claude Code"), "browser_duplicate", json!({ "pane": page }), cx);
     let refused = refused.unwrap_err();
@@ -271,7 +252,6 @@ fn a_copy_of_the_persons_page_opens_in_the_callers_worktree(cx: &mut TestAppCont
     let refused = call(&bare, "browser_duplicate", json!({ "pane": page }), cx).unwrap_err();
     assert_eq!(refused.details, Some(json!({ "scope": "navigate" })));
     assert!(!cx.has_pending_prompt());
-    // Working in the checkout the page was pinned from, its copy is signed in as the page is.
     let inside = Caller {
         cwd: Some(here.clone()),
         ..external("Claude Code")
@@ -283,11 +263,9 @@ fn a_copy_of_the_persons_page_opens_in_the_callers_worktree(cx: &mut TestAppCont
     assert!(detail.contains("signed in as you, as this page is"), "{detail}");
     let copy = copied.unwrap()["pane"].as_u64().unwrap();
     assert_eq!(where_it_is(&rig, copy, cx).0, project_of(&rig, &here, cx));
-    // A worktree's page isn't the person's to hand on.
     let refused = call(&inside, "browser_duplicate", json!({ "pane": copy }), cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::InvalidInput);
 
-    // The page gone elsewhere while the person was asked: nothing is copied.
     let asking = send(&inside, None, op(duplicate.0, duplicate.1), cx);
     cx.run_until_parked();
     let view = read_shell(&rig, cx, |shell, _| shell.workspace.pane(page)?.view().cloned());

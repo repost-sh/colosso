@@ -49,7 +49,6 @@ impl DeskView {
             .flex_col()
             .items_center()
             .gap_2();
-        // An app that is the person's own, on the agent desktop on their word.
         for Lent { pid, app } in lent {
             let said = format!(
                 "{app} is yours, lent to agents: its windows are here until it's given back."
@@ -66,8 +65,6 @@ impl DeskView {
                     .child(notice(said, push, cx)),
             );
         }
-        // An app the agent runs that was asked for, by the person it seems: nothing is
-        // started for them on a guess.
         if let Some(app) = wanted {
             let said = format!(
                 "{app} came to the front: if you opened it, the one running is the agent's."

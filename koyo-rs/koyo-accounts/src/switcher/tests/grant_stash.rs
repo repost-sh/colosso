@@ -83,7 +83,6 @@ fn row_c_control_nothing_stashed_posts_the_snapshot() {
 
 #[test]
 fn corrupt_entry_keeps_its_current_behaviour() {
-    // Undecodable bytes are gone for good: ABSENT, not unreadable, and never adopted.
     let h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     let entry_path = h.switcher.store.stash_entry_path(&stash_lock_failed(&h));
@@ -159,8 +158,6 @@ fn unreadable_row_does_not_starve_a_readable_sibling() {
 
 #[test]
 fn a_cas_conflict_stash_does_not_accumulate_forever() {
-    // The conflict's row can never match (the store only moves forward): the next scan, on
-    // the store's newer generation, retires it.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     let third = fresh("sk-3rd", "rt-3rd");

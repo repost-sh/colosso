@@ -133,7 +133,6 @@ impl Shell {
         let now = Instant::now();
         match event.touch_phase {
             TouchPhase::Started => {
-                // Caught mid-way, the space goes on from where it is.
                 self.swipe.settling = None;
                 self.swipe.velocity = 0.;
                 self.swipe.fingers = Some(Fingers {
@@ -143,7 +142,6 @@ impl Shell {
                 });
             }
             TouchPhase::Moved => self.drag(dx, dy, now, cx),
-            // The system took the gesture back: the space settles where it rests.
             TouchPhase::Cancelled => {
                 if self.swipe.fingers.take().is_some() {
                     self.settle(None, cx);
@@ -196,7 +194,6 @@ impl Shell {
         fingers.travel += dx;
         fingers.at = now;
         let moving = (dx / dt).clamp(-MOST_SPEED, MOST_SPEED);
-        // Smoothed, as a frame's own speed jitters.
         self.swipe.velocity = 0.6 * moving + 0.4 * self.swipe.velocity;
         let travel = fingers.travel;
         let width = width(cx);
@@ -240,7 +237,6 @@ impl Shell {
         if let Some(to) = to {
             self.slide_to_space(to, cx);
         } else if heading.is_none() {
-            // Not already on its way to the first or last space.
             self.nudge(step, cx);
         }
     }
@@ -255,15 +251,12 @@ impl Shell {
         let heading = self.heading();
         let settings = settings::get(cx);
         let from = heading.unwrap_or(settings.space);
-        // The project the keys go on from: the one on its way in, or else the one shown.
         let at = match heading {
             Some(goal) => (self.swipe.settling.as_ref())
                 .and_then(|settling| settling.project.clone())
                 .or_else(|| Some(settings.spaces.get(goal)?.shown_project()?.to_owned())),
             None => self.workspace.project().map(|project| project.path.clone()),
         };
-        // Every project, space by space, each space's in the order its tiles show them: its
-        // space, its folder and its place in the workspace.
         let order: Vec<(usize, &PathBuf, usize)> = (settings.spaces.iter().enumerate())
             .flat_map(|(space, held)| held.projects.iter().map(move |path| (space, path)))
             .filter_map(|(space, path)| Some((space, path, self.workspace.project_index(path)?)))
@@ -273,7 +266,6 @@ impl Shell {
         });
         let to = match here {
             Some(here) => here.checked_add_signed(step).and_then(|to| order.get(to)),
-            // None shown, as in a space with no project: the nearest that way.
             None if step > 0 => order.iter().find(|&&(space, ..)| space >= from),
             None => order.iter().rev().find(|&&(space, ..)| space <= from),
         };
@@ -289,8 +281,6 @@ impl Shell {
             .workspace
             .project()
             .map(|project| key_of(&project.path));
-        // Its space slides in as a swipe brings it, at once with reduced motion; the space shown
-        // comes back to rest.
         self.slide_to_space(space, cx);
         if settings::get(cx).space != space {
             if let Some(settling) = self.swipe.settling.as_mut() {
@@ -299,7 +289,6 @@ impl Shell {
             return;
         }
         self.select_project(index, cx);
-        // Along the tiles of the space shown, the light passes from the one to the other.
         if let Some(leaving) = leaving.filter(|_| along && !cx.reduce_motion()) {
             let at = cx.background_executor().now();
             (self.swipe.glides.tiles).start(leaving, key_of(&path), step > 0, at);
@@ -344,7 +333,6 @@ impl Shell {
         let dt = (now.duration_since(settling.at).as_secs_f32()).min(LONGEST_FRAME);
         settling.at = now;
         let goal = settling.goal.filter(|&goal| goal != shown);
-        // Out the right going back a space, out the left going on.
         let way = goal.map_or(0., |goal| if goal > shown { 1. } else { -1. });
         let swipe = &mut self.swipe;
         let at = SpringState {
@@ -355,8 +343,6 @@ impl Shell {
         (swipe.offset, swipe.velocity) = (moved.position, moved.velocity);
         if let Some(goal) = goal {
             if swipe.offset * -way >= width / 2. {
-                // Half-way out: the next space comes in from the other side, as fast, where it's
-                // as faint as this one is.
                 swipe.offset += way * width;
                 let project = swipe.settling.take().and_then(|settling| settling.project);
                 swipe.settling = Some(Settling {
@@ -365,7 +351,6 @@ impl Shell {
                     at: now,
                 });
                 self.show_space(goal, cx);
-                // The project ⌥← or ⌥→ was on its way to shows, as its tile would show it.
                 let index = project.and_then(|path| self.workspace.project_index(&path));
                 if let Some(index) = index {
                     self.select_project(index, cx);
@@ -395,13 +380,9 @@ mod tests {
     #[test]
     fn a_flick_goes_on_and_a_slow_short_pull_goes_back() {
         let width = 260.;
-        // A short pull, let go still: back.
         assert_eq!(decide(-40., 0., width, true, true), 0);
-        // As short, flicked: on.
         assert_eq!(decide(-40., -900., width, true, true), 1);
-        // Pulled far: on, either way.
         assert_eq!(decide(120., 0., width, true, true), -1);
-        // With no space there, nowhere.
         assert_eq!(decide(-200., -900., width, true, false), 0);
     }
 }

@@ -102,7 +102,6 @@ impl Device {
     pub fn touch(&mut self, at: &[Point], touching: bool, edge: Option<Edge>, size: Size) -> Result<(), String> {
         match self {
             Device::Simulator(sim) => sim.touch(at, touching, edge, size),
-            // A real device goes by where the finger is, not by an edge's flag.
             Device::Phone(phone) => phone.touch(at, touching, size),
         }
     }

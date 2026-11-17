@@ -93,8 +93,6 @@ impl Repo {
                     .arg(&path)
                     .arg(base.full())
                     .run()?;
-                // Remembered so the branch can later be compared with where it started. The
-                // worktree is there either way, so failing to remember isn't failing to create.
                 Git::new(&self.path)
                     .args(["config", &base_key(&branch), &base.to_string()])
                     .run()

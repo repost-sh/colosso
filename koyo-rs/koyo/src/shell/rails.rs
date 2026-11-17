@@ -102,7 +102,6 @@ fn rail(edge: Edge, full: f32, shown: AnimationPhase, content: impl FnOnce() -> 
     if shown.0 <= 0. {
         return rail;
     }
-    // How far past the window's edge the content is pushed.
     let past = px(thick - full);
     let content = content().flex_shrink_0().relative().opacity(shown.0);
     rail.child(match edge {
@@ -155,8 +154,6 @@ impl Shell {
         rail(Edge::Top, theme::TITLE_BAR_HEIGHT, shown.open, || {
             let row = div().flex().items_center().gap_1().pr(px(theme::GUTTER));
             let row = if Self::layout(cx) == Layout::Arc {
-                // Over the sidebar, as Arc's: the lights and the toggle, and the page's back,
-                // forward and reload at the sidebar's edge (`docs/arc-sidebar.md` 1).
                 let width = theme::GUTTER + settings::get(cx).sidebar_width();
                 row.child(
                     div()
@@ -173,8 +170,6 @@ impl Shell {
                         .child(crate::arc::controls(self, cx)),
                 )
             } else {
-                // Orca's: the toggle, the Claude accounts' button (the Arc sidebar's foot has it
-                // there), and the page's back and forward.
                 row.child(lights_area(hover))
                     .child(toggle())
                     .children(crate::accounts::button(cx))
@@ -191,7 +186,6 @@ impl Shell {
                 .child(self.changes_button(cx))
                 .child(self.files_button(cx))
         })
-        // Compact, the thin rail moves the window, as the full one's empty space does.
         .when(shown.open.0 <= 0., |rail| {
             rail.child(drag_area("compact-title").w_full())
         })

@@ -184,7 +184,6 @@ impl Viewer {
             }
             Out::Missed(job) => {
                 log::warn!("{}: {job:?} couldn't be drawn", self.path.display());
-                // Nothing will come for it: what's in sight is as drawn as it gets.
                 if let Job::Tile(key) = job
                     && self.asked.remove(&key)
                 {

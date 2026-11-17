@@ -35,7 +35,6 @@ pub(super) fn show_document(
             at: Some(At::Server(selection, running.read(cx).encoding)),
         };
         let view = view.clone();
-        // The editor is mid-update; the file is shown once it's done.
         cx.defer(move |cx| {
             view.update(cx, |_, cx| cx.emit(place)).ok();
         });

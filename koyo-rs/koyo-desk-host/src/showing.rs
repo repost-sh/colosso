@@ -78,7 +78,6 @@ impl Host {
             .map_err(|again| refusal(&shown.app, again))?
             .to_owned();
         let from = skylight::active().filter(|active| *active != space);
-        // The agent's app is about to be in front, and is meant to be.
         self.front.stand_down(SWITCHES_WITHIN);
         if let Err(why) = mission::go_to(space) {
             let message =
@@ -89,8 +88,6 @@ impl Host {
         if let Some(app) = self.apps.iter().find(|app| app.pid == shown.pid) {
             apps::activate(&app.running);
         }
-        // The desktop the person was on is kept from the first taking: taken again while
-        // it's held, that is still where they go back to.
         let from = self.taken.take().map_or(from, |taken| taken.from);
         let pid = shown.pid;
         self.taken = Some(Taken { from, pid });
@@ -123,8 +120,6 @@ impl Host {
             let message = format!("the person's desktop couldn't be brought back: {why}");
             return Err(Refusal::new(RefusalCode::Failed, message));
         }
-        // What macOS brings forward there is answered by the guard, should it be an app
-        // of the agent's: the person's own that is lent, on the desktop it left.
         ns::wake();
         self.log(
             LogLevel::Info,

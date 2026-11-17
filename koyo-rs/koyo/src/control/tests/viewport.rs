@@ -39,7 +39,6 @@ fn an_agent_shows_a_page_as_a_phone_and_back(cx: &mut TestAppContext) {
     let rig = controlled("control-viewport", &[&root], cx);
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
-    // Filling its pane as the person's pages do, which the agent asks for.
     let browser = json!({
         "kind": "browser", "url": "https://example.com/", "viewport": { "fill": true }
     });
@@ -116,8 +115,6 @@ fn an_agent_shows_a_page_as_a_phone_and_back(cx: &mut TestAppContext) {
             refused.message
         );
     }
-    // The image is the page's, as browser_screenshot's: asked of a page no engine shows, it
-    // can't be had.
     let shot = call_waiting(&agent, json!({ "width": 400, "screenshot": true }), cx).unwrap_err();
     assert_eq!(shot.code, ErrorCode::BrowserUnavailable, "{}", shot.message);
 
@@ -155,7 +152,6 @@ fn a_page_an_agent_opens_starts_at_the_persons_size_for_agents_pages(cx: &mut Te
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
 
-    // Out of sight, as agents' tabs open by default, in responsive mode at 1440 × 900.
     let first = open_page(&agent, &json!({}), cx);
     let viewport = listed_viewport(&agent, &first, cx);
     assert_eq!(viewport["mode"], "responsive");
@@ -163,7 +159,6 @@ fn a_page_an_agent_opens_starts_at_the_persons_size_for_agents_pages(cx: &mut Te
     assert_eq!(viewport["zoom"], "fit");
     assert_eq!(viewport["mobile"], false);
     assert_eq!(viewport["setBy"], "koyo app (in terminal term_1)");
-    // Shown, it keeps it, scaled down to fit the pane.
     let shown = open_page(&agent, &json!({ "select": true }), cx);
     draw(rig.window, cx);
     let viewport = listed_viewport(&agent, &shown, cx);
@@ -173,7 +168,6 @@ fn a_page_an_agent_opens_starts_at_the_persons_size_for_agents_pages(cx: &mut Te
         "{viewport}"
     );
 
-    // What the call asks for instead: a size, a side, a preset, or the whole pane.
     let sized = open_page(
         &agent,
         &json!({ "viewport": { "width": 1280, "height": 720 } }),
@@ -220,8 +214,6 @@ fn the_persons_size_for_agents_pages_holds_for_the_next_page_opened(cx: &mut Tes
     let agent = terminal("term_1");
     let first = open_page(&agent, &json!({}), cx);
 
-    // The person's size for the next page an agent opens; pages open already keep theirs. An
-    // external client's page starts there too.
     cx.update(|cx| {
         crate::control::set_pages_open_at(
             PageSize::Size {
@@ -254,7 +246,6 @@ fn the_persons_size_for_agents_pages_holds_for_the_next_page_opened(cx: &mut Tes
         (json!(1280), json!(800))
     );
 
-    // A viewport no page takes is refused before anything opens.
     let tabs = |cx: &TestAppContext| {
         read_shell(&rig, cx, |shell, _| {
             shell.workspace.branch().unwrap().tabs.len()

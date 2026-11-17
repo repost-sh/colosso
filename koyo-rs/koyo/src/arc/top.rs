@@ -58,11 +58,9 @@ pub(super) fn said(shell: &Shell, cx: &App) -> (SharedString, bool) {
     let Some(tab) = shell.workspace.tab_shown() else {
         return ("No tab open".into(), true);
     };
-    // The pane the person is in, of a split's: the bar follows them from one to the other.
     let pane = tab.current();
     match pane.kind {
         PaneKind::Browser => {
-            // A page's `DevTools` say their page's address, which is what the bar changes.
             let shown = shell.shown_page(cx).map(|shown| shown.read(cx).address());
             let address = shown.or_else(|| pane.address(cx)).unwrap_or_default();
             if address.is_empty() {
@@ -104,11 +102,9 @@ pub fn address_bar(
                 .filter_map(|pane| Some(pane.view()?.read(cx).address_field().clone()))
                 .find(|field| field.read(cx).focus_handle(cx).is_focused(window))
         });
-    // There while the pointer is over the bar, as a tab's close button is over its row.
     let (hovered, hover) =
         crate::theme::hover::eased("arc-address", crate::browser::SITE_BUTTONS_FADE, window, cx);
     let ends = (editing.is_none()).then(|| shell.shown_page(cx)).flatten().and_then(|page| {
-        // This layout has no toolbar: the pinned extensions' icons are here, with the buttons.
         let pinned = crate::browser::pinned_extensions(&page, cx);
         crate::browser::site_buttons(page.read(cx), &page, p.text.opacity(0.7), hovered, pinned, cx)
     });
@@ -132,7 +128,6 @@ pub fn address_bar(
             p.text.opacity(0.85)
         })
         .map(|bar| match editing {
-            // The page's keys for its address, ⌘R and the rest, go with it.
             Some(field) => bar.cursor_text().key_context("BrowserAddress").child(
                 div()
                     .min_w_0()
@@ -146,8 +141,6 @@ pub fn address_bar(
                         window.dispatch_action(Box::new(OpenAddress), cx);
                     })
                 })
-                // Pinned extensions, copy link and site controls, for the page shown
-                // (`browser/site.rs`).
                 .children(ends),
         })
 }

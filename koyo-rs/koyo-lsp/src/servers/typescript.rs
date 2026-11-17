@@ -18,16 +18,11 @@ use super::{ServerSpec, runs};
 
 pub static TYPESCRIPT: ServerSpec = ServerSpec {
     name: "typescript",
-    // A `tsc` on PATH is as likely TypeScript 5's or 6's, a script with no `--lsp`.
     on_path: false,
-    // The project's own is found by [`engine`], among every TypeScript installed in the
-    // checkout.
     project: |_| None,
     release: Release {
         version: "7.0.2",
-        // The platform package `typescript` depends on: the binary and its library files.
         url: "https://registry.npmjs.org/@typescript/typescript-{target}/-/typescript-{target}-{version}.tgz",
-        // Digests computed from the downloads.
         assets: &[
             (
                 ("aarch64", "macos"),
@@ -234,11 +229,9 @@ mod tests {
         assert_eq!(engine(&root), Engine::Native { tsc: None });
         let at_root = with_typescript(&root, "5.9.3", None);
         let in_api = with_typescript(&root.join("packages/api"), "4.9.5", None);
-        // Linked as pnpm links it: the package where it really is.
         let store = Some(".pnpm/typescript@7.0.2");
         let in_web = with_typescript(&root.join("packages/web"), "7.0.2", store);
         let deep = with_typescript(&root.join("examples/typescript/web"), "6.0.0", None);
-        // Four folders down, under a dependency, under a build, hidden: not looked into.
         with_typescript(&root.join("a/b/c/d"), "7.1.0", None);
         with_typescript(&root.join("node_modules/dep"), "7.1.0", None);
         with_typescript(&root.join("dist/app"), "7.1.0", None);
@@ -254,14 +247,12 @@ mod tests {
             (real(&in_api), (4, 9, 5)),
         ];
         assert_eq!(found, expected);
-        // The newest older than 7 is the one vtsls runs, wherever it is.
         assert_eq!(
             engine(&root),
             Engine::Vtsls {
                 typescript: real(&deep)
             }
         );
-        // Unreadable: not known.
         fs::write(at_root.join("package.json"), "not json").unwrap();
         assert_eq!(installed(&root).len(), 3);
     }
@@ -287,10 +278,8 @@ mod tests {
                 tsc: Some(fs::canonicalize(&tsc).unwrap())
             }
         );
-        // One that doesn't run is no server.
         fs::write(&tsc, "#!/bin/sh\nexit 1\n").unwrap();
         assert_eq!(engine(&root), Engine::Native { tsc: None });
-        // TypeScript 5's, even with a platform package beside it, isn't the project's server.
         let root = scratch("typescript-own-older");
         let package = with_typescript(&root, "5.9.3", None);
         with_platform_package(&package);

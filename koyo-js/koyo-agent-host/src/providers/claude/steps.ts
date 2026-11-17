@@ -1,10 +1,3 @@
-// The tool calls of a turn or a subagent (docs/chat.md 4.7). A call starts on its `tool_use`
-// block or its permission request, whichever comes first (T3 adapter pitfall 33), and settles
-// on its `tool_result`; what's still open when the turn ends, the actor closes (4.5). An Agent
-// call is a subagent's start, for those who keep them; a TodoWrite call also shows the to-do
-// list, one item a turn that each call updates. AskUserQuestion and ExitPlanMode have no item
-// of their own: the request they make stands in the timeline for them.
-
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { TodoWriteInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 import { z } from "zod";
@@ -143,7 +136,6 @@ export function settleResults(steps: Steps, content: Content, structured: unknow
     steps.settle(block.tool_use_id, {
       text: resultText(block.content),
       isError: block.is_error === true,
-      // The CLI's structured twin is the message's, so it's only one result's (pitfall 32).
       structured: results.length === 1 ? structured : undefined,
     });
   }

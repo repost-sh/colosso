@@ -45,11 +45,6 @@ impl Switcher {
         email: &str,
         snapshot: &str,
     ) -> RefreshOutcome {
-        // Store-resolution parity: Claude Code honours CLAUDE_SECURESTORAGE_CONFIG_DIR for its
-        // credential store, and the capture mirrors it (#205), but the gate resolves the
-        // default store. Spending a grant read from a store Claude Code left behind is the
-        // stale-copy failure by construction: refuse, under its own kind, so the remedy shows
-        // instead of a guaranteed 401 read as network trouble every pass.
         if self
             .env
             .vars
@@ -64,18 +59,12 @@ impl Switcher {
             );
             return RefreshOutcome::failed(STORE_UNMIRRORED_ERROR);
         }
-        // One in-flight consume per slot, held across re-read, POST and CAS: the slot lock
-        // can't cover the POST (network never runs under a lock others contend on), which
-        // left a window where a second gate re-read the unchanged backup and POSTed the same
-        // grant. Only gates contend on this one, and the POST is bounded.
         let path = self
             .credentials_dir
             .join(format!(".consume-{account_num}.lock"));
         let _consume_lock = match FileLock::acquire(&self.env, &path, self.lock_timeout) {
             Ok(Some(lock)) => lock,
             Ok(None) => {
-                // Nothing failed and nothing is remote: another gate holds the slot and will
-                // finish. Its own kind, so the tick doesn't blame the network.
                 log::info!(
                     "Another consume is in flight for account {account_num}; deferring to the \
                      next pass."

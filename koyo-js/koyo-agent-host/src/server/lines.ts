@@ -1,6 +1,3 @@
-// A connection's bytes cut into lines (docs/chat.md 4.3): what arrives comes in pieces of any
-// size, a character's bytes may straddle two of them, and a line may not grow past a bound.
-
 const NEWLINE = 0x0A;
 
 /** What a piece of input completed: the lines, or that one grew past the bound. */
@@ -36,7 +33,6 @@ export class LineReader {
       return { kind: "too_long" };
     }
     if (rest.length > 0) {
-      // A copy: the runtime may reuse the chunk's memory for the next read.
       this.#pending.push(rest.slice());
       this.#pendingBytes += rest.length;
     }

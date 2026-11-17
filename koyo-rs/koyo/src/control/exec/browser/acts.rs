@@ -64,7 +64,6 @@ pub(crate) fn read(
         let Value::String(content) = value else {
             return Err(script::missing(None, selector.as_deref()));
         };
-        // The page cut it near the limit; this cuts it at the limit, in characters.
         let truncated = content.chars().count() > limit;
         let content = if truncated {
             content.chars().take(limit).collect()
@@ -197,11 +196,8 @@ pub(crate) fn click(
                 MouseButton::Right => "right",
             };
             let count = input.click_count.unwrap_or(1).max(1);
-            // The person sees the agent's pointer travel to the point, and the click lands as
-            // it gets there.
             if let Some(caller) = actor {
                 let actor = caller.actor();
-                // The pointer's claim asks the gate again first, as each command does.
                 let travel = cx.update(|cx| {
                     page.still(cx)?;
                     (page.view()?.update(cx, |view, cx| view.agent_points(&actor, (x, y), cx)))

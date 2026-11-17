@@ -83,20 +83,17 @@ fn opened(caller: &Caller, chosen: Chosen, cx: &mut App) -> Result<u64, ControlE
     let shows = crate::control::policy::shows(None, cx);
     let udid = chosen.udid.clone();
     let simulator = !chosen.phone;
-    // Asked again as it starts: another call may have started one since this one looked.
     if simulator {
         let running = devices::devices(cx).read(cx).running_now(cx);
         if let Some(names) = devices::past_limit(&running, Some(&udid), devices::at_once(cx)) {
             return Err(too_many(&names));
         }
     }
-    // Its tab, where the caller is and not where the person is (`beside::tab`).
     let pane = update_shell(cx, |shell, window, cx| {
         beside::tab(shell, caller, shows, window, cx, |shell, place, cx| shell.device_pane_at(Some(chosen), place, cx))
     })?
     .ok_or_else(|| ControlError::internal("The device's tab couldn't be opened."))?;
     let devices = devices::devices(cx);
-    // A simulator just made isn't in the list the launcher and the picker read yet.
     if simulator && devices.read(cx).simulator(&udid).is_none() {
         devices.update(cx, devices::Devices::refresh);
     }
@@ -144,7 +141,6 @@ fn standing(udid: &str, name: &str, pane: u64, cx: &App) -> Result<DeviceOpenOut
 }
 
 pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Result<Exec, ControlError> {
-    // From the call's start: making a simulator is part of the minute the tool promises.
     let started = Instant::now();
     if let Some(udid) = input.device.as_deref() {
         let unplugged = devices::devices(cx).read(cx).plugged_device(udid).is_none();
@@ -152,7 +148,6 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
             return Err(ControlError::device_unavailable(format!("{name} isn't plugged in: plug it in with a cable.")).retryable(false));
         }
         super::lend::usable(caller, udid, cx)?;
-        // A real device plugged in, lent to the caller: no simulator to choose or make.
         if let Some(plugged) = devices::devices(cx).read(cx).plugged_device(udid).map(Chosen::from) {
             let (udid, name) = (plugged.udid.clone(), plugged.name.clone());
             let pane = opened(caller, plugged, cx)?;
@@ -179,9 +174,7 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
 
 pub(crate) fn close(caller: &Caller, input: &Which, cx: &mut App) -> Result<Exec, ControlError> {
     let target = which(caller, input.device.as_deref(), input.pane, cx)?;
-    // Refused while the person holds it, as an act is.
     claim(caller, &target, cx)?;
-    // The last of its tabs closed ends its host; one with no tab is stopped as it is.
     let panes = panes_of(&target.udid, cx);
     let _ = update_shell(cx, |shell, _, cx| {
         for pane in panes {

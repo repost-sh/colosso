@@ -64,7 +64,6 @@ fn page_of(
     key: u64,
     cx: &mut TestAppContext,
 ) -> Option<(EntityId, bool)> {
-    // Drawn, the keyboard's loss is heard; drawn again, the tab shown takes it.
     for _ in 0..3 {
         draw(window, cx);
     }
@@ -94,12 +93,10 @@ fn a_pages_tab_dropped_on_the_pinned_region_is_pinned_and_no_other_kind_is(
         "with none pinned, the zone says where one goes"
     );
 
-    // A chat's tab isn't taken.
     drag(window, "tab-0-0-0", "arc-pinned", cx);
     assert!(pinned(&shell, cx).is_empty());
     assert_eq!(listed(&shell, cx).len(), 4);
 
-    // A page's is: it leaves its worktree's list, and the zone gives way to its tile.
     drag(window, "tab-0-0-1", "arc-pinned", cx);
     assert_eq!(pinned(&shell, cx), ["https://example.com/docs"]);
     assert_eq!(listed(&shell, cx).len(), 3);
@@ -113,7 +110,6 @@ fn a_pages_tab_dropped_on_the_pinned_region_is_pinned_and_no_other_kind_is(
         Some(0)
     );
 
-    // The tab shown, pinned, goes on showing: dropped on the tiles, it's the last of them.
     drag(window, "tab-0-0-2", "arc-pinned", cx);
     assert_eq!(
         pinned(&shell, cx),
@@ -124,8 +120,6 @@ fn a_pages_tab_dropped_on_the_pinned_region_is_pinned_and_no_other_kind_is(
         (Some("https://example.com/other".into()), true)
     );
 
-    // Two pages side by side are a split, which isn't taken. Back on a tab of the worktree's,
-    // where a page opened is the worktree's.
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 1, cx));
     let beside = open_page(window, &shell, Some("https://example.com/beside"), cx);
     shell.update(cx, |shell, cx| {
@@ -152,19 +146,15 @@ fn the_empty_zone_put_away_still_shows_while_a_pages_tab_is_in_hand(cx: &mut Tes
     assert!(cx.read(|cx| settings::get(cx).pinned_zone_dismissed));
     assert!(drawn(window, "arc-pinned", cx).is_none(), "put away");
 
-    // A chat's tab taken off its list brings no zone.
     take_up(window, "tab-0-0-0", cx);
     assert!(drawn(window, "arc-pinned", cx).is_none());
     let_go_on(window, "tab-0-0-0", cx);
-    // Nor does a page's tab moved along its own list; taken off it, it does, and the zone
-    // takes it.
     drag(window, "tab-0-0-1", "tab-0-0-1", cx);
     assert!(drawn(window, "arc-pinned", cx).is_none());
     drag_onto(window, "tab-0-0-1", "arc-pinned", cx);
     assert_eq!(pinned(&shell, cx), ["https://example.com/"]);
     assert!(cx.read(|cx| settings::get(cx).pinned_zone_dismissed));
 
-    // Removed again, there's none pinned and the zone stays away.
     let key = cx.read(|cx| shell.read(cx).workspace.pinned()[0].key());
     act(window, RemovePinned(key), cx);
     assert!(pinned(&shell, cx).is_empty());
@@ -188,25 +178,20 @@ fn a_pinned_tile_moves_among_the_others_and_onto_a_worktrees_tabs_is_unpinned(
     ];
     let keys = pin(window, &shell, &pages, cx);
     assert_eq!(pinned(&shell, cx), pages);
-    // The last pinned was the tab shown, and is still.
     assert_eq!(shown(&shell, cx), (Some(pages[2].into()), true));
 
-    // The first tile onto the last: the others step back a slot, and the one shown stays shown.
     drag(window, "arc-pinned-0", "arc-pinned-2", cx);
     assert_eq!(pinned(&shell, cx), [pages[1], pages[2], pages[0]]);
     assert_eq!(shown(&shell, cx), (Some(pages[2].into()), true));
 
-    // A press and release without a move picks it.
     click(window, "arc-pinned-0", cx);
     assert_eq!(shown(&shell, cx), (Some(pages[1].into()), true));
 
-    // Taken well away, onto the second tab's row: unpinned where that tab is, and shown there.
     drag_onto(window, "arc-pinned-2", "tab-0-0-1", cx);
     assert_eq!(pinned(&shell, cx), [pages[1], pages[2]]);
     assert_eq!(listed(&shell, cx), ["A chat", "a.example", "Another"]);
     assert_eq!(shown(&shell, cx), (Some(pages[0].into()), false));
 
-    // Onto the worktree's header, it's the first of its tabs.
     drag_onto(window, "arc-pinned-0", "arc-header-0", cx);
     assert_eq!(pinned(&shell, cx), [pages[2]]);
     assert_eq!(
@@ -215,7 +200,6 @@ fn a_pinned_tile_moves_among_the_others_and_onto_a_worktrees_tabs_is_unpinned(
     );
     assert_eq!(shown(&shell, cx), (Some(pages[1].into()), false));
 
-    // From its menu, after the worktree's tabs.
     act(window, Unpin(keys[2]), cx);
     assert!(pinned(&shell, cx).is_empty());
     assert_eq!(
@@ -237,7 +221,6 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
     act(window, MoveProjectToNewSpace(roots[1].clone()), cx);
     shell.update(cx, |shell, cx| shell.show_space(0, cx));
     draw(window, cx);
-    // Its tile picked, its page has the keyboard.
     click(window, "arc-pinned-0", cx);
     let (view, has_keys) = page_of(window, &shell, key, cx).expect("its page, made");
     assert!(has_keys, "picked, it takes the keyboard");
@@ -251,29 +234,23 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
         assert_eq!(now, Some((view, true)), "the same page, the keyboard in it");
     };
 
-    // ⌥⇧→, as a swipe goes: the sidebar lists the other space's project, the panes don't
-    // change.
     act(window, NextSpace, cx);
     assert_eq!((space(cx), project(cx)), (1, Some(roots[1].clone())));
     still(cx);
     act(window, PreviousSpace, cx);
     assert_eq!((space(cx), project(cx)), (0, Some(roots[0].clone())));
     still(cx);
-    // A click on a space's mark, which doesn't take the keyboard from it.
     click(window, "arc-space-1", cx);
     assert_eq!(space(cx), 1);
     still(cx);
-    // An empty space, which shows no project: the pinned page still shows.
     act(window, NewSpace, cx);
     assert_eq!((space(cx), project(cx)), (2, None));
     still(cx);
-    // The address bar says it, and its controls and ⌘L act on it.
     let said = cx.read(|cx| crate::arc::top::said(shell.read(cx), cx).0.to_string());
     assert_eq!(said, "example.com");
     let steered = cx.read(|cx| (shell.read(cx).shown_page(cx)).map(|page| page.entity_id()));
     assert_eq!(steered, Some(view));
 
-    // A worktree's tab picked leaves it; its tile picked again shows it as it was.
     shell.update(cx, |shell, cx| shell.show_space(0, cx));
     draw(window, cx);
     assert_eq!(drawn(window, "arc-pinned-0", cx).map(|_| ()), Some(()));
@@ -281,7 +258,6 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
     assert_eq!(shown(&shell, cx), (None, false), "the chat shows");
     click(window, "arc-pinned-0", cx);
     still(cx);
-    // So does its project's tile.
     click(window, "arc-tile-0", cx);
     assert!(!shown(&shell, cx).1);
     let alive = page_of(window, &shell, key, cx).map(|(view, _)| view);
@@ -303,19 +279,16 @@ fn a_pinned_page_closed_stays_pinned_and_goes_back_to_where_its_pinned(cx: &mut 
     };
     assert!(menu(keys[1], cx).open && !menu(keys[1], cx).strayed);
 
-    // ⌘W on the pinned page shown: its page goes, its tile stays, and the worktree's tab shows.
     assert_eq!(shown(&shell, cx), (Some(pages[1].into()), true));
     act(window, CloseTab, cx);
     assert_eq!(pinned(&shell, cx), pages, "still pinned");
     assert_eq!(shown(&shell, cx), (None, false), "the chat shows");
     assert!(!open(keys[1], cx) && !menu(keys[1], cx).open);
     assert_eq!(listed(&shell, cx), ["A chat"], "and no tab closed with it");
-    // Its tile picked, it opens again where it's pinned.
     click(window, "arc-pinned-1", cx);
     assert_eq!(shown(&shell, cx), (Some(pages[1].into()), true));
     assert!(page_of(window, &shell, keys[1], cx).is_some());
 
-    // Gone on to another address, Close from its menu takes it back to the one it's pinned at.
     let view = cx.read(|cx| shell.read(cx).workspace.pane(keys[0])?.view().cloned());
     let view = view.expect("the first page, open since it was pinned");
     cx.update_window(window, |_, _, cx| {
@@ -331,7 +304,6 @@ fn a_pinned_page_closed_stays_pinned_and_goes_back_to_where_its_pinned(cx: &mut 
     assert!(!open(keys[0], cx));
     assert!(shown(&shell, cx).1, "the other pinned page stays shown");
 
-    // Replace Pinned URL with Current pins it where it is.
     click(window, "arc-pinned-0", cx);
     let view = cx.read(|cx| shell.read(cx).workspace.pane(keys[0])?.view().cloned());
     cx.update_window(window, |_, _, cx| {
@@ -346,13 +318,11 @@ fn a_pinned_page_closed_stays_pinned_and_goes_back_to_where_its_pinned(cx: &mut 
     assert!(!menu(keys[0], cx).strayed);
     act(window, ClosePinned(keys[0]), cx);
     assert_eq!(pinned(&shell, cx)[0], "https://a.example/new");
-    // Edit…: an address typed is where it's pinned, and where it opens, closed as it is.
     shell.update(cx, |shell, cx| {
         shell.repin_at(keys[0], "https://a.example/edited".into(), cx);
     });
     assert_eq!(pinned(&shell, cx)[0], "https://a.example/edited");
 
-    // Removed, it's pinned no longer.
     act(window, RemovePinned(keys[0]), cx);
     assert_eq!(pinned(&shell, cx), [pages[1]]);
     assert!(cx.read(|cx| shell.read(cx).workspace.pane(keys[0]).is_none()));
@@ -399,7 +369,6 @@ fn a_page_closed_with_the_keyboard_in_it_hands_it_to_what_shows_in_its_place(
             .unwrap()
     };
 
-    // ⌘W with the keyboard in the pinned page: the worktree's tab under it has the keyboard.
     click(window, "arc-pinned-0", cx);
     assert!(has_keys(key, cx), "picked, it takes the keyboard");
     act(window, CloseTab, cx);
@@ -407,7 +376,6 @@ fn a_page_closed_with_the_keyboard_in_it_hands_it_to_what_shows_in_its_place(
     assert_ne!(under, key, "closed, the worktree's tab shows in its place");
     assert!(has_keys(under, cx), "which has the keyboard");
 
-    // Moved among the loose pages, that page keeps the keyboard; its × hands it on.
     shell.update(cx, |shell, cx| shell.loosen_tab_of(under, usize::MAX, cx));
     assert_eq!(tab_shown(cx), under, "loose, it shows");
     assert!(has_keys(under, cx), "moved, the keyboard is where it was");
@@ -416,7 +384,6 @@ fn a_page_closed_with_the_keyboard_in_it_hands_it_to_what_shows_in_its_place(
     assert_ne!(first, under, "closed, the worktree's other tab shows");
     assert!(has_keys(first, cx), "which has the keyboard");
 
-    // Closed from its menu with the keyboard at the window, the pinned page leaves it there.
     click(window, "arc-pinned-0", cx);
     assert!(
         has_keys(key, cx),

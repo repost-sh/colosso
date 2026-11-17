@@ -17,7 +17,6 @@ fn quarantine_persists_across_engine_instances() {
     h.clear_events();
     h.renew();
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(0.)), ("3", usage(50.))]);
-    // 2 has the most headroom but is quarantined: 3 wins.
     assert_eq!(outcome, TickOutcome::Switched);
     assert_eq!(h.active(), Some(3));
 }
@@ -26,7 +25,6 @@ fn quarantine_persists_across_engine_instances() {
 fn replaced_credentials_lift_quarantine() {
     let mut h = Harness::standard();
     h.quarantine(2, QuarantineReason::InvalidGrant);
-    // The person signed in again and re-added the slot: a new refresh token.
     replace_credentials(&h, 2, "sk-2b", "rt-2b");
     h.clear_events();
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(0.)), ("3", usage(50.))]);
@@ -38,8 +36,6 @@ fn replaced_credentials_lift_quarantine() {
 
 #[test]
 fn state_lock_preserves_concurrent_writes() {
-    // Another engine writing between our read and our write: the read-modify-write under the
-    // state lock keeps its quarantine entry.
     let h = Harness::standard();
     h.update_state(&json!({"quarantine": {"3": {
         "email": "c@example.com", "reason": "invalid_grant", "at": "x",

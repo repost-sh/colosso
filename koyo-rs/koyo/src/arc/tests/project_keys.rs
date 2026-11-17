@@ -82,7 +82,6 @@ pub(super) fn passing(
 /// end of the one it leaves and in at the start of the one it comes to (going back, the other way
 /// about), as far in the one as it's gone out of the other.
 pub(super) fn assert_passing(going: Option<(f32, f32)>, coming: Option<(f32, f32)>, on: bool) {
-    // Going back is going on, seen from the other end.
     let turn = |(from, to): (f32, f32)| if on { (from, to) } else { (1. - to, 1. - from) };
     let (out, end) = turn(going.expect("the light leaving"));
     let (start, into) = turn(coming.expect("the light coming in"));
@@ -133,7 +132,6 @@ fn option_arrows_go_along_the_tiles_and_on_into_the_space_beside(cx: &mut TestAp
         (Some(docs.clone()), 1),
         "the next space's"
     );
-    // Space 2 holds no project, so it's passed over.
     assert_eq!(
         go("alt-right", cx),
         (Some(blog.clone()), 3),
@@ -145,7 +143,6 @@ fn option_arrows_go_along_the_tiles_and_on_into_the_space_beside(cx: &mut TestAp
         "nothing past the last"
     );
     assert_eq!(go("alt-left", cx), (Some(docs), 1));
-    // Back into space 0, at its last tile, the nearest.
     assert_eq!(
         go("alt-left", cx),
         (Some(site), 0),
@@ -167,11 +164,9 @@ fn shift_option_arrows_show_the_space_beside_at_the_project_it_showed_last(
     let go = |key, cx: &mut TestAppContext| press(window, &shell, key, cx);
     assert_eq!(go("alt-shift-right", cx), (Some(docs.clone()), 1));
     assert_eq!(go("alt-shift-right", cx), (None, 2), "the empty space");
-    // From a space with no project, ⌥← and ⌥→ go to the nearest project that way.
     assert_eq!(go("alt-right", cx), (Some(blog), 3));
     assert_eq!(go("alt-shift-left", cx), (None, 2));
     assert_eq!(go("alt-left", cx), (Some(docs.clone()), 1));
-    // Space 0 showed `app` last: ⌥⇧← comes back to it, where ⌥← from `docs` goes to `site`.
     assert_eq!(go("alt-shift-left", cx), (Some(app), 0));
     assert_eq!(go("alt-shift-right", cx), (Some(docs), 1));
     assert_eq!(go("alt-left", cx), (Some(site), 0));
@@ -220,14 +215,11 @@ fn pressed_again_while_the_space_slides_they_go_on_from_the_project_coming_in(
     let go = |key, cx: &mut TestAppContext| press(window, &shell, key, cx);
     let offset = |cx: &TestAppContext| cx.read(|cx| shell.read(cx).swipe.offset);
 
-    // Space 1 is on its way, `docs` with it, until it's half-way in: ⌥→ again goes on to `blog`.
     assert_eq!(go("alt-right", cx), (Some(app.clone()), 0), "on its way");
     assert_eq!(go("alt-right", cx), (Some(app), 0), "still on its way");
     frames(window, 60, cx);
     assert_eq!((at(&shell, cx), offset(cx)), ((Some(blog.clone()), 1), 0.));
 
-    // `docs` is in the space shown, so at once; then `app`'s space starts in, and ⌥→ turns it
-    // back, the space shown coming back to rest on `docs`.
     assert_eq!(
         go("alt-left", cx),
         (Some(docs.clone()), 1),
@@ -244,7 +236,6 @@ fn pressed_again_while_the_space_slides_they_go_on_from_the_project_coming_in(
     frames(window, 60, cx);
     assert_eq!((at(&shell, cx), offset(cx)), ((Some(docs), 1), 0.));
 
-    // Past the last project of all, the space gives and settles back.
     assert_eq!(go("alt-right", cx), (Some(blog.clone()), 1));
     assert_eq!(
         go("alt-right", cx),

@@ -99,8 +99,6 @@ fn a_time_of_day_wallpaper_shows_the_picture_whose_time_last_came() {
 
 #[test]
 fn the_sun_is_where_the_almanac_has_it() {
-    // Over the solstice, a minute at a time: highest at about 90° − latitude + 23.44°, due
-    // south, a little before noon UTC in Brussels; well below the horizon at midnight.
     let day = (0..1440).map(|minute| SOLSTICE + f64::from(minute) * 60.);
     let (when, (altitude, azimuth)) = day
         .map(|unix| (unix, sun(unix, BRUSSELS)))

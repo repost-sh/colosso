@@ -104,7 +104,6 @@ impl Element for Canvas {
     ) -> Placed {
         let screen = self.link.read(cx).screen();
         let (points, scale, corner) = screen.map_or((Size::default(), 1., 0.), |s| (s.size, s.scale as f32, s.corner as f32));
-        // Never larger than one device pixel to one of the screen's.
         let most = scale / window.scale_factor().max(1.);
         let (shown, fit) = fitted(bounds, points, most);
         if self.view.read(cx).placed != Some((shown.origin, fit)) {
@@ -135,7 +134,6 @@ impl Element for Canvas {
         let picture = self.link.read(cx).picture.clone();
         let pixels = picture.read(cx).shown.as_ref().map(|shown| shown.pixels.clone());
         if let Some(pixels) = pixels {
-            // A box of the screen's shape: its rounded corners clip the frame, as the device's do.
             let corner = gpui_kit::AbsoluteLength::from(placed.corner);
             let shape = Style {
                 overflow: point(Overflow::Hidden, Overflow::Hidden),

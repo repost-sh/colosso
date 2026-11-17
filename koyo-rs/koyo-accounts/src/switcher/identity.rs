@@ -50,7 +50,6 @@ pub(crate) fn validate_email(email: &str) -> bool {
     {
         return false;
     }
-    // The TLD has no dot, so only the last dot can start it.
     let Some((host, tld)) = domain.rsplit_once('.') else {
         return false;
     };

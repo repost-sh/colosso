@@ -37,8 +37,6 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
         Some((list.found().clone(), list.selected()))
     };
 
-    // F12 on the call, with two definitions: they're listed under the tabs, this file's
-    // line from the editor's text and the other's from the disk, the first picked.
     place_caret(shell.0, &lib_editor, call, cx);
     cx.simulate_keystrokes(shell.0, "f12");
     let watched = vec![changes(&server, cx), changes(&files, cx)];
@@ -64,8 +62,6 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
     assert_eq!(&row.text[row.matched.clone()], "target");
     assert_eq!(row.at, At::Bytes(target.clone()));
 
-    // Down to the other file's, which it shows meanwhile, then Enter: the file's open, the
-    // definition selected, and the editor has the keyboard.
     cx.simulate_keystrokes(shell.0, "down enter");
     let other = root.join("src/other.rs");
     let selected = |cx: &App| {
@@ -98,7 +94,6 @@ async fn references_are_listed_by_file_and_escape_closes_the_list(cx: &mut TestA
         script.extend([
             json!({"expect": {"method": "textDocument/references", "params": {
                 "position": call_range["start"], "context": {"includeDeclaration": true}}}}),
-            // The server's order: the other file first, and this one's places out of order.
             json!({"reply": 1, "result": [
                 {"uri": uri(&root.join("src/other.rs")), "range": target_range},
                 {"uri": uri(&root.join("src/lib.rs")), "range": call_range},
@@ -146,7 +141,6 @@ async fn references_are_listed_by_file_and_escape_closes_the_list(cx: &mut TestA
             (4, "other::target()", "target", At::Bytes(call)),
         ]
     );
-    // The list has the keyboard; Escape closes it and gives the keyboard back.
     let list_focused = |cx: &mut TestAppContext| {
         cx.update_window(shell.0, |_, window, cx| {
             window.draw(cx).clear(cx);

@@ -11,8 +11,6 @@ impl Shell {
     /// shell follows into its space, a pinned page over the space shown, a loose page in its
     /// space; and it takes the keyboard, its file if it shows one.
     pub(super) fn show_visited(&mut self, key: u64, cx: &mut Context<Self>) {
-        // The file's pane is the one the person is in, so it's the one the tab gives the
-        // keyboard to.
         let tab = self.workspace.tab_holding(key);
         let file = tab.and_then(|tab| tab.panes().into_iter().find(|pane| pane.file.is_some()));
         if let Some(file) = file.map(|pane| pane.id) {

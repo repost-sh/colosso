@@ -57,7 +57,6 @@ fn fresh_fetch_resyncs_backup_after_external_rotation() {
     let first = fresh_drift_pass(&h, Some(&profile_self()));
     assert_eq!(first.usage, Some(json!({"five_hour": {"pct": 3}})));
     assert!(resynced(&h));
-    // The verdict is kept: the next drift resyncs without asking the oracle again.
     fresh_drift_pass(&h, None);
     assert!(resynced(&h));
     assert_eq!(h.profile_lookups(), 1);
@@ -97,7 +96,6 @@ fn fresh_foreign_probe_mismatch_skips_resync_warns_once_and_caches() {
     assert_eq!(second.sentinel.as_deref(), Some(USAGE_FOREIGN_CREDENTIAL));
     assert!(!resynced(&h));
     assert_eq!(h.profile_lookups(), 1, "the foreign verdict is kept");
-    // The warning's once-only mark.
     assert!(locked(&h.switcher.provenance_warned).contains(&("1".into(), EMAIL.into())));
 }
 

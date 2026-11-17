@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// of its own, spelled the way git reports paths.
 pub fn scratch(kind: &str) -> PathBuf {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    // Not CARGO_TARGET_TMPDIR: a shared build dir can put that outside the checkout.
     let root = Path::new(env!("KOYO_TARGET_DIR"))
         .join("test-repos")
         .join(format!(
@@ -18,7 +17,6 @@ pub fn scratch(kind: &str) -> PathBuf {
         ));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    // Without the `..` above.
     std::fs::canonicalize(&root).unwrap()
 }
 

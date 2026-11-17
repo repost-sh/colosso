@@ -161,7 +161,6 @@ pub fn screenshot(
                 for y in y0..y1 {
                     for x in x0..x1 {
                         let p = &bytes[y * stride + x * 4..y * stride + x * 4 + 3];
-                        // BGRA in memory: blue, green, red.
                         sum[0] += u32::from(p[2]);
                         sum[1] += u32::from(p[1]);
                         sum[2] += u32::from(p[0]);
@@ -251,7 +250,6 @@ mod tests {
                 height: 4.
             })
         );
-        // One point in a hundred is the line between small and large.
         assert_eq!(diff.change(), Change::Large);
         let mut many = vec![0; 1000];
         many[5] = 1 << 16;

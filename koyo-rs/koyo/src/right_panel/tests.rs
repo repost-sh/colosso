@@ -27,10 +27,8 @@ fn each_checkout_keeps_its_panels_until_it_leaves_the_sidebar(cx: &mut TestAppCo
     select(&shell, &two, cx);
     let second = shown(&shell, cx);
     assert_ne!(first.1, second.1, "each checkout has a tree of its own");
-    // Back to the first: the same checkout and tree, as they were left.
     select(&shell, &one, cx);
     assert_eq!(shown(&shell, cx), first);
-    // The second leaves the sidebar, and its panels with it.
     shell.update(cx, |shell, cx| {
         let project = shell.workspace.project_index(&two).unwrap();
         shell.workspace.remove_project(project);
@@ -92,7 +90,6 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
     let edge = |selector, cx: &mut VisualTestContext| {
         cx.debug_bounds(selector).unwrap().center().x.as_f32()
     };
-    // The panel's own edge, beside the tabs: dragged left, the tree is wider.
     let before = edge("right-panel-resize", cx);
     drag("right-panel-resize", -60., cx, |cx| {
         let after = edge("right-panel-resize", cx);

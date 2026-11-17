@@ -43,13 +43,10 @@ fn after(by: Duration, window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut 
 #[gpui_kit::test]
 fn cmd_b_folds_every_rail_as_thin_as_the_gutter_and_brings_them_back(cx: &mut TestAppContext) {
     let (window, _shell) = shell_with(&[], cx);
-    // The springs land at once, so each draw shows where they were sent.
     cx.update(|cx| cx.set_reduce_motion(true));
     for layout in Layout::ALL {
         cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
         draw(window, cx);
-        // Out: the top and icon rails full, Arc's sidebar on the glass between the icon rail and
-        // the card; the status bar as thin as the gutter, with no servers to show.
         let out = card(window, cx);
         let sidebar = match layout {
             Layout::Orca => 0.,
@@ -79,8 +76,6 @@ fn cmd_b_folds_every_rail_as_thin_as_the_gutter_and_brings_them_back(cx: &mut Te
 #[gpui_kit::test]
 fn the_rails_move_to_compact_mode_rather_than_jump(cx: &mut TestAppContext) {
     let (window, shell) = shell_with(&[], cx);
-    // In Arc the sidebar is left of the card, which slides with it; in Orca, with no rail down
-    // the left any more, the card's left edge stays at the gutter.
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
     draw(window, cx);
     let out = card(window, cx);

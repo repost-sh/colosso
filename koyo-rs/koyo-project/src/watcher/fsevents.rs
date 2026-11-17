@@ -101,7 +101,6 @@ impl Stream {
             .map(|folder| CFString::from_str(&text(folder)))
             .collect();
         let paths = CFArray::from_retained_objects(&paths);
-        // Every file's own report, rather than the folder's it's in, handed over at once.
         let flags = fs::kFSEventStreamCreateFlagFileEvents | fs::kFSEventStreamCreateFlagNoDefer;
         // SAFETY: the callback matches what FSEvents calls; no context is passed, which it
         // allows; the paths are an array of strings, which the stream copies. Started from

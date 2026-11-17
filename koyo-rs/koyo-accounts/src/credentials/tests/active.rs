@@ -77,7 +77,6 @@ fn custom_config_dir_does_not_return_the_default_keychain_item() {
 
 #[test]
 fn custom_config_dir_reads_its_own_hashed_keychain_item() {
-    // Claude Code writes rotations Keychain-only: a live custom profile often has no file.
     let (world, dir) = with_config_dir("custom-profile", None);
     let account = world.account();
     let hashed = keychain_service_name(&dir);
@@ -214,7 +213,6 @@ fn active_write_keys_keychain_by_account_name() {
     let account = crate::keychain::keychain_account_name(None);
     let items = world.security.fake.items();
     assert!(items.contains_key(&(CLAUDE_CODE_KEYCHAIN_SERVICE.to_owned(), account)));
-    // Never a "user" default that mismatches Claude Code headless.
     assert!(!items.contains_key(&(CLAUDE_CODE_KEYCHAIN_SERVICE.to_owned(), "user".to_owned())));
     assert_eq!(
         world.store.last_active_credentials_backend(),
@@ -268,7 +266,6 @@ fn active_read_keychain_unavailable_no_fallback() {
     let result = world.store.read_active_credentials();
     assert_eq!(result.value.as_deref(), Some(""));
     assert!(result.keychain_unavailable);
-    // The value-only read still reads as empty.
     assert_eq!(world.store.read_credentials().as_deref(), Some(""));
 }
 
@@ -347,7 +344,6 @@ fn old_mtime(path: &std::path::Path) -> SystemTime {
 
 #[test]
 fn keychain_write_refreshes_existing_file() {
-    // #86: the present file is rewritten so a running session reloads; #1414: never deleted.
     let world = World::new();
     let path = write_credentials_file(&world, "OLD-CREDS");
     let before = old_mtime(&path);
@@ -387,7 +383,6 @@ fn keychain_write_does_not_create_absent_file() {
 fn refresh_stale_file_is_best_effort() {
     let world = World::new();
     write_credentials_file(&world, "OLD-CREDS");
-    // The shadow file's rewrite fails as a full disk does.
     fsutil::FAULT.set(Some((fsutil::Step::Rename, libc::ENOSPC)));
     let written = world.store.write_credentials(r#"{"fresh":1}"#);
     fsutil::FAULT.set(None);

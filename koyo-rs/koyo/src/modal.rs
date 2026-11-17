@@ -61,7 +61,6 @@ pub fn open_palette<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    // Its field, the most rows it shows and its status line, with the room between them.
     let rows = PALETTE_ROWS as f32 * crate::files::ROW;
     let height = 2. * PALETTE_PADDING + FIELD + GAP + rows + GAP + SMALL_LINE;
     open_padded(PALETTE_WIDTH, height, PALETTE_PADDING, parent, cx, build);
@@ -170,7 +169,6 @@ fn open_at<V: Render>(
     };
     popup::open(opening, parent, cx, |window, cx| {
         let content = cx.new(|cx| build(window, cx));
-        // Heard in whichever window has the keys: the dialog usually, as it takes them.
         let escape = cx.intercept_keystrokes(|event, _, cx| {
             if event.keystroke.key == "escape" {
                 close(cx);
@@ -337,7 +335,6 @@ pub fn cancel(id: &'static str) -> Button {
 pub fn field(input: Input, p: Palette) -> gpui_kit::Div {
     div()
         .h(px(FIELD))
-        // The input pads its own text, so the field only adds a little.
         .px(px(4.))
         .flex()
         .items_center()

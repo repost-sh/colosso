@@ -214,8 +214,6 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // The inspector opens once its page is open, and again once the page has opened again
-        // (clearing the browsing data closes every page and opens it afresh).
         let changes = cx.observe(&inspected, |this, _, cx| this.ensure_open(cx));
         let kind = Kind::DevTools {
             inspected,
@@ -240,8 +238,6 @@ impl BrowserView {
         if !url.is_empty() {
             address.update(cx, |address, cx| address.set_value(url.clone(), window, cx));
         }
-        // Each view is a page of its own in the host, even when it reuses a closed pane's
-        // id while the host is still closing that page.
         let pane = adopted.unwrap_or_else(|| NEXT_PANE.fetch_add(1, Ordering::Relaxed));
         let focus = cx.focus_handle();
         let subscriptions = vec![
@@ -275,7 +271,6 @@ impl BrowserView {
             crate::keyboard::page_closed(pane);
         })
         .detach();
-        // The window's scale is known before the pane is drawn.
         let mut responsive = super::responsive::State::default();
         responsive.window_scale = window.scale_factor();
         Self {
@@ -334,7 +329,6 @@ impl BrowserView {
     pub(super) fn closed(&mut self, cx: &mut Context<Self>) {
         self.opened = None;
         self.forget_passkey();
-        // A page closed full screen leaves it: the window comes out of full screen with it.
         if self.is_fullscreen() {
             self.fullscreen_changed(false, cx);
         }
@@ -377,7 +371,6 @@ impl BrowserView {
         if loaded && self.zoom != ACTUAL_SIZE {
             self.send_zoom(cx);
         }
-        // Loading again, the page has what the offered reload would give it.
         self.responsive.reload_hint &= !page.loading;
         self.page = page;
         if !self.page.url.is_empty() {
@@ -431,7 +424,6 @@ impl BrowserView {
     fn focus_moved(&mut self, into: bool, window: &mut Window, cx: &mut Context<Self>) {
         if into {
             crate::keyboard::entered_page(window, self.pane);
-            // The page with the keyboard is the one the person is on, for extensions.
             self.tell_active(cx);
         } else if let Some(part) = self.part_with_focus(window, cx) {
             crate::keyboard::left_page(window, self.pane, part);

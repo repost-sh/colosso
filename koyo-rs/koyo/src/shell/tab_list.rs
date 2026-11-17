@@ -61,8 +61,6 @@ pub fn tab_row(
     let faces = Face::all(tab, cx);
     let row = match (tab, faces.first()) {
         (Tab::Single(_), Some(face)) => single(row, face, cx),
-        // Along the strip a split's chips fill the row nearly to its edge; down the sidebar its
-        // halves keep the row's own room, as a single pane does.
         _ => row
             .when(axis == Axis::Horizontal, |row| row.px(px(3.)))
             .child(split_chips(&faces, axis, p, cx)),
@@ -120,9 +118,7 @@ fn tab_drag(
     let joining = lifted && hand.joining();
     let hand = hand.clone();
     row.debug_selector(move || format!("tab-{}-{}-{}", at.0, at.1, at.2))
-        // In hand, it's lifted off the list, over the tabs it passes.
         .when(lifted, |row| row.bg(p.hover).shadow_sm())
-        // Over the middle of another, it fades so the one it would join shows through.
         .when(joining, |row| row.opacity(JOINING_OPACITY))
         .on_drag(held, move |held, grab, _, cx| {
             hand.take(list, key, at.2, grab.along(axis));
@@ -131,7 +127,6 @@ fn tab_drag(
         })
         .drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
             Dragged::Pane(_) | Dragged::Loose => style.bg(p.hover),
-            // A tab from another checkout's list would go here.
             Dragged::Tab(project, branch, _) if (project, branch) != (at.0, at.1) => {
                 style.bg(p.hover)
             }

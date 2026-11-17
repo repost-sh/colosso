@@ -54,7 +54,6 @@ impl DeviceView {
         p: Palette,
         cx: &mut Context<Self>,
     ) -> impl gpui_kit::IntoElement {
-        // What it misses: a warning and two or three words, then what to do.
         let missing = missing.map(|(code, said)| {
             let warning = crate::shell::icon(gpui_kit::assets::IconName::TriangleAlert, 12.).text_color(p.modified);
             (div().pt_1().flex().flex_col().gap(px(2.)).text_xs())

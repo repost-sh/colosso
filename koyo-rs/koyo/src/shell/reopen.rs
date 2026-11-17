@@ -59,7 +59,6 @@ impl Shell {
             if pane.kind == PaneKind::Desktop {
                 pane.set_desktop(cx.new(crate::agent_desktop::DeskView::new));
             }
-            // A device's pane comes back on its device, not running; the picker's as the picker.
             if pane.kind == PaneKind::Device {
                 let chosen = (closed.devices.iter())
                     .find(|(id, _)| *id == pane.id)
@@ -75,7 +74,6 @@ impl Shell {
                 .find(|(id, _)| *id == pane.id)
                 .map(|(_, address)| address.clone())
                 .unwrap_or_default();
-            // Titled as it was until the page says otherwise; an agent's page an agent's again.
             let (view, by) = (self.browser_view(address, &project, window, cx), pane.by());
             view.update(cx, |view, _| view.made_by(by));
             pane.set_view(view);
@@ -88,7 +86,6 @@ impl Shell {
                 self.reopen_changes(at, &closed.changes, window, cx);
                 Spot::Checkout(at.0, at.1, at.2)
             }
-            // In its space, or the space shown if it's gone since.
             Spot::Loose(_) | Spot::Pinned => {
                 if let Spot::Loose(space) = back {
                     self.show_space_known_by(space, cx);
@@ -155,7 +152,6 @@ impl Shell {
         if files.is_empty() {
             return;
         }
-        // The checkout it's on is selected now; its panels are made after this change.
         self.follow_selection(window, cx);
         let Some(checkout) = self.right_panel.checkout().cloned() else {
             return;

@@ -38,7 +38,6 @@ fn kept_apart_a_page_the_person_opened_in_a_worktree_is_theirs_to_let_an_agent_u
     };
     assert!(by_agent(own, cx) && !by_agent(persons, cx));
 
-    // Signed in as the person, both are the worktree's: neither asks.
     assert_eq!(reading(&agent, own, cx).code, ErrorCode::BrowserUnavailable);
     assert_eq!(
         reading(&agent, persons, cx).code,
@@ -46,7 +45,6 @@ fn kept_apart_a_page_the_person_opened_in_a_worktree_is_theirs_to_let_an_agent_u
     );
     assert_eq!(listed(&agent, persons, cx)["persons"], json!(false));
 
-    // Kept apart, the person's is theirs to ask for, and the agent's is still its own.
     agents(AgentPages::Separate, cx);
     assert_eq!(reading(&agent, own, cx).code, ErrorCode::BrowserUnavailable);
     let refused = reading(&agent, persons, cx);
@@ -61,11 +59,9 @@ fn kept_apart_a_page_the_person_opened_in_a_worktree_is_theirs_to_let_an_agent_u
         (info["place"].clone(), info["persons"].clone()),
         (json!("worktree"), json!(true))
     );
-    // A call naming no page never means it.
     let unnamed = call(&agent, "browser_read", json!({}), cx).unwrap_err();
     assert_ne!(unnamed.code, ErrorCode::ConsentRequired);
 
-    // Allowed, the consent holds as a tab before it closes and it moves up the list.
     let question = allowed(&agent, persons, cx);
     assert!(question.contains("wants to use your page"), "{question}");
     assert_eq!(
@@ -79,7 +75,6 @@ fn kept_apart_a_page_the_person_opened_in_a_worktree_is_theirs_to_let_an_agent_u
         ErrorCode::BrowserUnavailable
     );
 
-    // Signed in as the person again, it's the worktree's, for any agent.
     agents(AgentPages::Shared, cx);
     let other = terminal("term_2");
     assert_eq!(
@@ -106,7 +101,6 @@ fn an_agents_page_is_an_agents_from_its_making_and_once_reopened(cx: &mut TestAp
             (pane.by_agent, pane.view().map(|view| view.read(cx).by()))
         })
     };
-    // Marked as it's made, signed in as the person or not, so a switch later moves it.
     assert_eq!(made(own, cx), (true, Some(By::Agent)));
     call(&agent, "tab_close", json!({ "pane": own }), cx).unwrap();
     cx.run_until_parked();

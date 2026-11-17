@@ -103,7 +103,6 @@ fn a_device_starts_again_by_itself_once_listed_ready_after_it_ended_three_times_
     afresh(None, Instant::now(), cx);
     assert!(!ended(cx), "the step done: started again");
 
-    // A host that disagrees with the list is started three times, then left for the person.
     for _ in 0..2 {
         says(&link, unavailable(Missing::DeveloperMode, "Developer Mode is off."), cx);
         afresh(None, Instant::now(), cx);
@@ -113,8 +112,6 @@ fn a_device_starts_again_by_itself_once_listed_ready_after_it_ended_three_times_
     afresh(None, Instant::now(), cx);
     assert!(ended(cx), "three times at most");
 
-    // The person's start counts afresh; what the list can't see (another app holding the
-    // device) isn't started by it.
     link.update(cx, Link::start);
     says(&link, unavailable(Missing::InUse, "Another app is showing it."), cx);
     afresh(None, Instant::now(), cx);
@@ -135,5 +132,4 @@ fn a_device_the_list_says_misses_a_step_isnt_started(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert!(!cx.read(|cx| link.read(cx).running_or_starting()), "no host for it: nothing is sent to it");
     assert_eq!(notice(&view, cx), Some(("a step".into(), 0)), "the list's words; an update is the person's");
-    // Once the list says nothing is missing it starts by itself: the test above.
 }

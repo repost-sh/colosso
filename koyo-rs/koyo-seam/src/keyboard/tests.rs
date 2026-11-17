@@ -52,7 +52,6 @@ fn the_same_holder_again_is_no_move() {
 
 #[test]
 fn a_page_left_after_another_took_the_keyboard_changes_nothing() {
-    // Two pages' focus moves are heard in no set order: the one taking it first, here.
     let mut keyboards = holding(Surface::Page(PAGE));
     keyboards.set(WINDOW, Surface::Page(OTHER_PAGE), Cause::Focused);
     assert_eq!(keyboards.left_page(WINDOW, PAGE, Part::Other), None);
@@ -72,7 +71,6 @@ fn a_window_not_key_holds_nothing_and_gets_back_what_it_had() {
 fn what_the_person_does_while_away_is_what_comes_back() {
     let mut keyboards = holding(Surface::Page(PAGE));
     keyboards.key(WINDOW, false);
-    // Heard while away: no move, the window still has nothing.
     assert_eq!(keyboards.set(WINDOW, Surface::Gpui(COMPOSER), Cause::TabShown), None);
     assert_eq!(holder(&keyboards), Holder::Away);
     assert_eq!(keyboards.key(WINDOW, true).map(|change| change.to), Some(Holder::Gpui(COMPOSER)));
@@ -83,9 +81,7 @@ fn a_dialog_has_the_keys_until_it_closes_and_the_window_is_key_again() {
     let mut keyboards = holding(Surface::Gpui(COMPOSER));
     let opened = keyboards.dialog(WINDOW, true).unwrap();
     assert_eq!((opened.to, opened.cause), (Holder::Away, Cause::DialogOpened));
-    // The dialog's window takes the key window's place.
     assert_eq!(keyboards.key(WINDOW, false), None);
-    // Closed, it leaves the window away until the window is key again.
     assert_eq!(keyboards.dialog(WINDOW, false), None);
     let back = keyboards.key(WINDOW, true).unwrap();
     assert_eq!((back.to, back.cause), (Holder::Gpui(COMPOSER), Cause::WindowKey));
@@ -191,10 +187,8 @@ fn a_tab_shown_again_has_what_it_had_as_it_was_left() {
     keyboards.set(WINDOW, Surface::Page(PAGE), Cause::TabShown);
     assert_eq!(keyboards.tab_shown(WINDOW, chat), Some(Surface::Gpui(COMPOSER)));
     keyboards.set(WINDOW, Surface::Gpui(COMPOSER), Cause::TabShown);
-    // The tab shown, asked for again, has what it has now.
     keyboards.set(WINDOW, Surface::Gpui(Part::Window), Cause::Focused);
     assert_eq!(keyboards.tab_shown(WINDOW, chat), Some(Surface::Gpui(Part::Window)));
-    // A page that closed is kept for no tab.
     keyboards.page_closed(PAGE);
     assert_eq!(keyboards.tab_shown(WINDOW, pages), None);
 }

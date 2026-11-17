@@ -179,11 +179,8 @@ impl TabHand {
         };
         let (axis, bounds) = (list.axis, list.bounds);
         let outside = outside(axis, bounds, at);
-        // A worktree joins none, and has nowhere else to go: it stays on its list, wherever the
-        // pointer takes it. A loose page leaves its list as a tab does, and joins none.
         let tabs = matches!(list.holds, Holds::Tabs { .. });
         let leaves = !matches!(list.holds, Holds::Worktrees);
-        // Over what takes it elsewhere, it's off its list, whose own room may run under there.
         let taken = (self.elsewhere.get()).is_some_and(|place| place.contains(&at));
         drag.off = leaves
             && (taken
@@ -201,9 +198,6 @@ impl TabHand {
             (drag.to, drag.join) = (index, None);
             slots[index].origin.along(axis) - start
         } else {
-            // By the pointer, as the tab's own place stops at the list's ends: over the middle
-            // of another tab it joins that one, else it's moved past the middle of each one
-            // before.
             let probe = at.along(axis);
             let others = (slots.iter().enumerate()).filter(|(other, _)| *other != index);
             let over_middle = others.clone().find_map(|(onto, slot)| {
@@ -217,8 +211,6 @@ impl TabHand {
             });
             drag.join = over_middle.filter(|_| tabs);
             drag.to = match drag.join {
-                // The tab joined stays where it is, those between it and the slot left out of
-                // the way.
                 Some(Join { onto, .. }) if onto > index => onto - 1,
                 Some(Join { onto, .. }) => onto + 1,
                 None => (others)
@@ -300,7 +292,6 @@ mod tests {
     fn a_tab_moves_past_the_edge_of_a_tab_and_joins_its_middle() {
         let hand = TabHand::default();
         let (list, slots) = strip(3);
-        // Taken by its middle.
         hand.take(7, 100, 0, px(50.));
         let place = |x| hand.place(&list, &slots, at(x, 14.), true).unwrap();
         let held = place(115.);
@@ -352,8 +343,6 @@ mod tests {
         assert!(hand.holding().is_none());
 
         hand.take(7, 102, 2, px(50.));
-        // Its own place stops at the strip's start, where its middle is over the first
-        // tab's middle; the pointer at that tab's edge still moves it first.
         let held = hand.place(&list, &slots, at(10., 14.), true).unwrap();
         assert_eq!((held.pos, held.to, held.join), (px(0.), 0, None));
         assert_eq!(hand.release(7), Some(Drop::Move { from: 2, to: 0 }));
@@ -384,7 +373,6 @@ mod tests {
     #[test]
     fn a_worktree_only_moves_and_stays_on_its_list_wherever_the_pointer_goes() {
         let hand = TabHand::default();
-        // Three worktrees down the sidebar, the middle one open on its tabs.
         let slots = [(0., 36.), (36., 112.), (148., 36.)].map(|(top, height)| Bounds {
             origin: point(px(0.), px(top)),
             size: size(px(240.), px(height)),

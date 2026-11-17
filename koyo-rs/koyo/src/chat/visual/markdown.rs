@@ -84,7 +84,6 @@ pub(super) fn draw() -> Result<Vec<String>> {
     check.composer()?;
     check.floating()?;
     check.picture()?;
-    // The host the chats started stops with the check.
     let data = settings::data_dir().ok_or("there's no data folder")?;
     let host = koyo_agent::client::host_dir(&data);
     koyo_agent::client::stop_host(&host).map_err(|error| error.to_string())?;
@@ -201,7 +200,6 @@ impl Check {
                 timeline.toggle(id, 0, cx);
             });
         });
-        // Opened at the end, it grows up past the top: back to where it starts.
         self.scroll_to(&view, 0)?;
         self.both("long-prompt-open")
     }
@@ -223,8 +221,6 @@ impl Check {
             }
             self.both(&format!("composer-{name}"))?;
         }
-        // A caret isn't drawn in a window that isn't in front, as one off screen isn't: what's
-        // checked is that it's in the bold word and that the styles are the same with it there.
         let typed = "Make this **bold** now";
         let styles = |cx: &gpui_kit::App| text.read(cx).decorations().to_vec();
         self.set_typed(&text, typed)?;
@@ -311,8 +307,6 @@ impl Check {
             self.drawn
                 .cx
                 .update(|cx| settings::update(cx, |settings| settings.floating_prompts = on));
-            // At the end, nothing; scrolling up brings the latest down as far, scrolling down
-            // takes it back up.
             self.at_end(&view)?;
             self.floats(&view, None, &format!("{ahead}-bottom"))?;
             self.wheel(-50.)?;
@@ -321,18 +315,15 @@ impl Check {
             self.floats(&view, on.then_some(third), &format!("{ahead}-revealed"))?;
             self.wheel(60.)?;
             self.floats(&view, on.then_some(third), &format!("{ahead}-hiding"))?;
-            // Gone to the middle of a section, nothing, until a scroll up there.
             self.scroll_to(&view, second + 3)?;
             self.floats(&view, None, &format!("{ahead}-jumped"))?;
             self.wheel(400.)?;
             self.wheel(-300.)?;
             self.floats(&view, on.then_some(second), &format!("{ahead}-middle"))?;
-            // Its place at the top, it's there; scrolling down, it goes with its place.
             self.scroll_to(&view, second)?;
             self.floats(&view, None, &format!("{ahead}-settled"))?;
             self.wheel(6.)?;
             self.floats(&view, None, &format!("{ahead}-scrolled-down"))?;
-            // A turn up from the third at the top: the second comes down above it, pushed out.
             self.scroll_to(&view, third)?;
             self.wheel(-40.)?;
             self.floats(&view, on.then_some(second), &format!("{ahead}-pushed"))?;

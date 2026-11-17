@@ -14,7 +14,6 @@ fn the_identity_is_kept_until_the_config_changes() {
     assert_eq!(email(&world), None);
     std::fs::write(&path, r#"{"oauthAccount": {"emailAddress": "a@x.com"}}"#).unwrap();
     assert_eq!(email(&world).as_deref(), Some("a@x.com"));
-    // Claude Code writes it anew (a new inode, as its atomic write): read again.
     let next = path.with_extension("next");
     std::fs::write(
         &next,
@@ -23,7 +22,6 @@ fn the_identity_is_kept_until_the_config_changes() {
     .unwrap();
     std::fs::rename(&next, &path).unwrap();
     assert_eq!(email(&world).as_deref(), Some("b@x.com"));
-    // In place, a different size: read again too.
     std::fs::write(
         &path,
         r#"{"oauthAccount": {"emailAddress": "c@x.com"}, "nn": 22}"#,

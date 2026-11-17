@@ -39,7 +39,6 @@ describe("commit", () => {
     });
     expect(second.seq).toBe(2);
     expect(chats.head(chat.id)).toBe(2);
-    // The thread wasn't part of the step, so it keeps the number it last changed at.
     expect(chats.thread(chat.id)?.seq).toBe(1);
     expect(chats.latest(chat.id, 10).items.map((row) => row.seq)).toStrictEqual([2]);
   });
@@ -63,7 +62,6 @@ describe("what was said last", () => {
     const asked = prompt("Find the flaky test.");
     chats.commit(chat.id, { runs: [turn], items: [userMessage(turn, 0, asked, "turn")] });
     expect(chats.said(chat.id)).toStrictEqual({ ordinal: 0, text: "Find the flaky test." });
-    // A reply still empty says nothing yet; one with words does.
     chats.commit(chat.id, { items: [text(turn, 1)] });
     expect(chats.said(chat.id)?.ordinal).toBe(0);
     chats.commit(chat.id, { items: [text(turn, 2, "It shares a folder.")] });

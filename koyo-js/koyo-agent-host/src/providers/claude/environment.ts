@@ -1,8 +1,3 @@
-// Where Claude runs and which Claude (docs/chat.md 4.2): the person's login environment, read
-// once from their shell, so a Finder launch's bare PATH is never what the agent sees; and
-// their own installed `claude` (C7), found where Koyo's setting points or where installers
-// put it, with its version read once for each path.
-
 import { spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -80,7 +75,6 @@ export function parseEnv(printed: string): Record<string, string> {
     if (equals <= 0) {
       continue;
     }
-    // What an rc file printed before `env` ran sticks to the first entry, up to its last line.
     const name = entry.slice(0, equals).split("\n").at(-1) ?? "";
     if (/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) {
       env[name] = entry.slice(equals + 1);
@@ -109,7 +103,6 @@ function dirsOf(path: string | undefined): string[] {
 function withoutSession(env: Record<string, string>): Env {
   const kept = { ...env };
   for (const name of INHERITED) {
-    // A key is removed from a copy the host made itself, never from its own environment.
     Reflect.deleteProperty(kept, name);
   }
   return kept;

@@ -66,7 +66,6 @@ fn decide(context: &RequestContext, site: &str, kind: ContentSettingTypes, allow
 
 /// Tells the app what `pane`'s site is allowed and blocked from.
 pub(super) fn tell(pane: PaneId) {
-    // None for a page with no site, as a start page.
     let settings = of(pane).map_or_else(Vec::new, |(context, site)| {
         KEPT.iter()
             .filter_map(|(permission, kind)| {
@@ -87,7 +86,6 @@ pub(super) fn set(pane: PaneId, permission: Permission, allowed: bool) {
     let kind = KEPT.iter().find(|(kept, _)| *kept == permission);
     if let (Some((context, site)), Some((_, kind))) = (of(pane), kind) {
         decide(&context, &site, *kind, allowed);
-        // Chromium reads the position only once macOS lets the host know it.
         if allowed && permission == Permission::Location {
             crate::location::allowed();
         }

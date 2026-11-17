@@ -137,7 +137,6 @@ impl App {
         if self.forwarding.swap(true, Ordering::SeqCst) {
             return;
         }
-        // A connection lost before anything was followed is the next call's to make again.
         *self.inbox.pending.lock() = Pending::default();
         tokio::spawn(forward(
             Arc::clone(&self.inbox),

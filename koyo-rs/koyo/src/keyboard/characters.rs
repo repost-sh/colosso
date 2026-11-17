@@ -19,7 +19,6 @@ pub fn init(cx: &mut App) {
         let Some(window) = cx.active_window() else {
             return;
         };
-        // The window is busy with the key that asked: once it's done.
         cx.defer(move |cx| {
             let _ = window.update(cx, |_, window, _| window.show_character_palette());
         });

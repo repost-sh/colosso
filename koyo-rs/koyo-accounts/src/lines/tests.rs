@@ -46,8 +46,6 @@ fn round1(value: f64) -> f64 {
     (value * 10.).round() / 10.
 }
 
-// TestWindowLine
-
 #[test]
 fn _5h_always_takes_the_threshold() {
     assert_eq!(window_line("5h", 85., Some(97.)), 85.);
@@ -65,8 +63,6 @@ fn unset_weekly_falls_back_everywhere() {
         assert_eq!(window_line(label, 85., None), 85.);
     }
 }
-
-// TestLineHeadroom: three anchors, 0% -> 100, the line -> 100 - T, 100% -> 0.
 
 fn grid() -> Vec<(f64, f64)> {
     let mut pairs = Vec::new();
@@ -154,8 +150,6 @@ fn monotone_in_each_windows_pct() {
         assert!(up5 <= before + 1e-12 && up7 <= before + 1e-12);
     }
 }
-
-// TestBindingWindow
 
 #[test]
 fn least_policy_headroom_binds_not_the_highest_pct() {
@@ -259,8 +253,6 @@ fn the_binding_flip_is_continuous() {
     assert_eq!(binding(86.8, 99., 85., Some(97.)).line_headroom, 5.);
 }
 
-// TestBindingWindowScale
-
 fn window() -> [Window; 1] {
     [Window::new("5h", 50., Some("2024-01-05T00:00:00Z"))]
 }
@@ -332,8 +324,6 @@ fn the_scale_can_change_which_window_binds() {
         "7d"
     );
 }
-
-// TestLineRoom
 
 #[test]
 fn each_window_against_its_own_line() {

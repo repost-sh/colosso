@@ -66,7 +66,6 @@ pub(crate) fn apply(cx: &mut App) {
         return;
     }
     let requests = control.requests.clone();
-    // The old server lets the port go before a new one binds, which may be the same port.
     Control::get_mut(cx).http = None;
     let started = HttpServer::start(policy.port, terminals_config(), connect(requests));
     let control = Control::get_mut(cx);
@@ -183,12 +182,10 @@ impl Backend for Session {
     }
 
     fn unsubscribe(&self, _topics: &[Topic]) -> Result<(), ControlError> {
-        // The server ignores the topics it no longer watches; they're let go with the session.
         Ok(())
     }
 
     fn resubscribe(&self) -> Result<(), ControlError> {
-        // An in-process session isn't lost while the app runs.
         Ok(())
     }
 }

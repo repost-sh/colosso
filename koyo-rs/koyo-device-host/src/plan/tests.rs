@@ -79,7 +79,6 @@ fn a_swipe_goes_at_sixty_steps_a_second_and_lifts_where_it_ended() {
         fingers: 1,
     };
     let timed = steps(&swipe);
-    // Down, ten steps, the last place once more, then up a frame and more after it.
     assert_eq!(timed.len(), 13);
     assert_eq!(timed[10].at_ms, 160);
     assert_eq!(timed[11].at_ms, 176);
@@ -164,7 +163,6 @@ fn a_pinch_spreads_two_fingers_to_its_scale() {
     let Touch::Fingers { at, .. } = &timed.last().unwrap().touch else {
         panic!("fingers");
     };
-    // Turned a quarter: one above the other.
     assert!((at[0].x - at[1].x).abs() < 1e-9);
 }
 

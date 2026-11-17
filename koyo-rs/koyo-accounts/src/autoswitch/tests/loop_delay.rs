@@ -9,7 +9,6 @@ use crate::poll_policy::{EXHAUSTED_INTERVAL_S, URGENT_INTERVAL_S};
 
 #[test]
 fn loop_survives_raising_tick() {
-    // A failing tick is an error event, never a crash, and the next tick runs normally.
     let mut h = Harness::standard();
     h.host.lock().fail.entries = true;
     assert_eq!(h.tick(), TickOutcome::Error);
@@ -21,7 +20,6 @@ fn loop_survives_raising_tick() {
 
 #[test]
 fn a_roster_failure_is_the_ticks_error() {
-    // The roster is a host read like the collector's: its failure is the tick's error event.
     let mut h = Harness::standard();
     h.host.lock().fail.roster = true;
     assert_eq!(h.tick(), TickOutcome::Error);
@@ -74,8 +72,6 @@ fn sleep_cap() {
     assert_exact(h.engine.next_delay(), EXHAUSTED_INTERVAL_S);
 }
 
-// -- TestLoopObeysThePollPlan -----------------------------------------------------------------
-
 /// A tick under the line, the active row planned `due_in` seconds out.
 fn tick_planned(h: &mut Harness, due_in: f64) -> TickOutcome {
     let now = h.now();
@@ -93,13 +89,11 @@ fn sleep_is_cut_to_the_rows_next_poll() {
     let mut h = Harness::standard();
     h.engine.settings.interval_seconds = 360.;
     assert_eq!(tick_planned(&mut h, 60.), TickOutcome::NoAction);
-    // Unshortened, ~360 s, and the 60 s plan ran late.
     assert_exact(h.delay, 60.);
 }
 
 #[test]
 fn never_sleeps_below_the_planners_own_floor() {
-    // A row already overdue must not spin: the floor is the rate budget.
     let mut h = Harness::standard();
     h.engine.settings.interval_seconds = 360.;
     tick_planned(&mut h, -500.);
@@ -115,8 +109,6 @@ fn a_relaxed_plan_never_lengthens_the_sleep() {
 
 #[test]
 fn a_switch_reads_the_new_active_rows_plan() {
-    // `switch_to` replanned the account switched to: the wait follows its row, not the plan
-    // the tick read for the account it left.
     let mut h = Harness::standard();
     h.engine.settings.interval_seconds = 360.;
     let now = h.now();
@@ -134,7 +126,6 @@ fn a_switch_reads_the_new_active_rows_plan() {
 
 #[test]
 fn a_store_failure_leaves_the_cadence_alone() {
-    // After a switch the new active row is read again; a store that fails then is best-effort.
     let mut h = Harness::standard();
     h.engine.active_plan = ActivePlan::Replanned;
     h.host.lock().fail.entries = true;
@@ -142,16 +133,12 @@ fn a_store_failure_leaves_the_cadence_alone() {
     assert!((0.9 * 60. ..=1.1 * 60.).contains(&delay));
 }
 
-// -- TestSessionThreshold ---------------------------------------------------------------------
-
 #[test]
 fn apply_threshold_retargets_trigger_and_poll_pin() {
     let mut h = Harness::standard();
     h.engine.set_threshold(72.);
     assert_exact(h.engine.settings.threshold, 72.);
-    // The collector's cadence follows at once.
     assert_eq!(h.host.lock().poll_thresholds.last(), Some(&72.));
-    // And the next tick decides with it: 80% >= 72 switches, where 90 wouldn't.
     let outcome = h.tick_with_usage(&[("1", usage(80.)), ("2", usage(10.)), ("3", usage(10.))]);
     assert_eq!(outcome, TickOutcome::Switched);
 }
@@ -167,8 +154,6 @@ fn dropping_the_engine_unpins_the_poll_line() {
 
 #[test]
 fn a_threshold_is_clamped_and_pinned_once() {
-    // The pin is set when the engine is made and when the threshold changes, not every tick;
-    // the threshold is held to cswap's range, garbage reading as the default.
     let mut h = Harness::standard();
     h.tick_with_usage(&[("1", usage(50.)), ("2", usage(10.)), ("3", usage(10.))]);
     assert_eq!(h.host.lock().poll_thresholds, [90.]);
@@ -207,11 +192,8 @@ fn collect_fetch_sets(h: &Harness, threshold: f64) -> Vec<BTreeSet<String>> {
 
 #[test]
 fn collect_escalates_on_the_tick_snapshot_threshold() {
-    // Escalation keys on the tick's threshold, not a re-read of the settings (90 throughout).
     let h = Harness::standard();
     let all: BTreeSet<String> = ["1", "2", "3"].into_iter().map(str::to_owned).collect();
-    // 80% is within ESCALATION_MARGIN_PCT of 90: a full refresh...
     assert!(collect_fetch_sets(&h, 90.).contains(&all));
-    // ...but not of 99.9: the baseline only.
     assert!(!collect_fetch_sets(&h, 99.9).contains(&all));
 }

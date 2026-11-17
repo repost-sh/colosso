@@ -89,7 +89,6 @@ impl Desk {
             return;
         }
         let task = cx.spawn(async move |this, cx| {
-            // Sleeps to the deadline, and on to it again each time it was moved.
             loop {
                 let left = this.update(cx, |this, cx| {
                     let (until, _) = this.end(which).as_ref()?;
@@ -149,7 +148,6 @@ impl DeskView {
             let give_back = cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.desk.update(cx, Desk::give_back);
             });
-            // A desktop the person is only using goes back by itself once they stop.
             let text = if using {
                 format!("{displaced} waits while you use the agent desktop")
             } else {

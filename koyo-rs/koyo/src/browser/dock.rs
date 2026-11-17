@@ -156,14 +156,11 @@ impl BrowserView {
         }
         match (&self.devtools, at) {
             (Some(tools), Some(at)) => {
-                // The page says which it is and where its tools are: it's being updated here,
-                // so the tools can't read it.
                 let (page, side) = (self.pane, self.devtools_side(cx));
                 tools.view.update(cx, |tools, cx| tools.reveal(at, page, side, cx));
             }
             (Some(_), None) => self.close_devtools(cx),
             (None, at) => {
-                // They're made with the window, by the next render.
                 self.open_devtools = Some(Asked { at });
                 cx.notify();
             }
@@ -279,7 +276,6 @@ impl BrowserView {
             .flex_col()
             .children(device)
             .child(div().flex_1().min_h_0().w_full().child(page))
-            // Over the page, among the window's overlays.
             .children(self.find_bar(cx).map(deferred));
         let docked = self
             .devtools
@@ -292,7 +288,6 @@ impl BrowserView {
         let row = dock != Dock::Bottom;
         let place = &settings::get(cx).devtools;
         let size = (self.dock_drag).unwrap_or(if row { place.width } else { place.height });
-        // The tools' own toolbar is their top: no bar of Koyo's over it.
         let panel = div()
             .flex()
             .flex_col()
@@ -338,17 +333,12 @@ impl BrowserView {
                         return;
                     }
                     let (bounds, at) = (event.bounds, event.event.position);
-                    // How far the pointer is from the tools' own edge of the pane.
                     let (span, reach) = match dock {
                         Dock::Bottom => (bounds.size.height, bounds.bottom() - at.y),
                         Dock::Right => (bounds.size.width, bounds.right() - at.x),
                         Dock::Left => (bounds.size.width, at.x - bounds.left()),
                         Dock::Detached => return,
                     };
-                    // The pointer holds the divider's middle, the tools past it. In whole
-                    // points, which is what the setting keeps (a page beside them is on
-                    // whole points whatever this is: `docs/native-pages.md` 6), and
-                    // leaving the page its least room on the divider's other side.
                     let band = theme::card::DIVIDER;
                     let room = (span.as_f32() - band - DOCK_MIN).floor().max(DOCK_MIN);
                     let size = (reach.as_f32() - band / 2.).round().clamp(DOCK_MIN, room);
@@ -358,7 +348,6 @@ impl BrowserView {
                     }
                 }),
             )
-            // Let go wherever the pointer is.
             .capture_any_mouse_up(cx.listener(let_go))
             .on_mouse_up_out(MouseButton::Left, cx.listener(let_go))
             .children(parts)
@@ -387,14 +376,9 @@ impl Render for BrowserView {
         self.make_devtools(window, cx);
         let page = self.page_element(window, cx);
         let column = input::steer(div().size_full().flex().flex_col(), cx);
-        // Full screen on the whole screen, the page is all there is. So are `DevTools`, docked
-        // or detached, their frontend alone: its own toolbar has their dock menu and their ×
-        // (`docs/browser.md` 13.1).
         if self.fills_screen() || self.is_inspector() {
             return column.child(div().flex_1().min_h_0().w_full().child(page));
         }
-        // In the Arc layout the sidebar has the page's back, forward, reload and address, and
-        // its right-click menu responsive mode and the DevTools (`docs/arc-sidebar.md` 2).
         let arc = settings::get(cx).layout == settings::Layout::Arc;
         let toolbar = (!arc).then(|| toolbar::toolbar(self, window, cx));
         let device = super::responsive::bar::device_bar(self, window, cx);
@@ -406,9 +390,6 @@ impl Render for BrowserView {
             .on_action(cx.listener(|this, _: &ZoomIn, _, cx| this.zoom_by(1, cx)))
             .on_action(cx.listener(|this, _: &ZoomOut, _, cx| this.zoom_by(-1, cx)))
             .on_action(cx.listener(|this, _: &ActualSize, _, cx| this.set_zoom(ACTUAL_SIZE, cx)))
-            // The mouse's side buttons anywhere over the pane step through the page's
-            // history, not the app's; heard on the way down, before the address field or a
-            // button takes the press for itself.
             .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, cx| {
                 if let MouseButton::Navigate(direction) = event.button {
                     this.go(input::history_step(direction), cx);

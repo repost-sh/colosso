@@ -60,7 +60,6 @@ impl PageDialog {
                 })
             })
             .collect();
-        // Put away without an answer, by Escape or a press elsewhere: the page gets a no.
         cx.on_release(|dialog: &mut Self, cx| {
             if !dialog.answered {
                 let id = dialog.id;
@@ -157,7 +156,6 @@ impl Render for PageDialog {
         }
         let p = theme::palette(cx);
         let accept_default = self.words.accept_default;
-        // The safe answer sits on the right, where Return lands.
         let mut buttons = vec![self.button(false, cx), self.button(true, cx)];
         if !accept_default {
             buttons.reverse();

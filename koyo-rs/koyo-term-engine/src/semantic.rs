@@ -68,8 +68,6 @@ impl PromptScanner {
             let end = index + 1;
             index = end;
             self.state = match self.state {
-                // Plain text, nearly all of a stream, can't hold a mark: on to just past the
-                // next ESC, this byte's included.
                 State::Ground => {
                     let Some(skip) = memchr::memchr(ESC, &bytes[end - 1..]) else {
                         return;
@@ -101,7 +99,6 @@ impl PromptScanner {
                     if byte == b'\\' {
                         self.finish(keep, end, out);
                     }
-                    // Anything else: the OSC was cut off; the byte after ESC isn't ours.
                     State::Ground
                 }
             };
@@ -114,7 +111,6 @@ impl PromptScanner {
             return false;
         }
         self.buf.push(byte);
-        // Give up as soon as the prefix diverges from `133;`.
         let prefix = b"133;";
         let n = self.buf.len().min(prefix.len());
         self.buf[..n] == prefix[..n]
@@ -140,7 +136,6 @@ fn parse(osc: &[u8]) -> Option<Mark> {
         b"B" => Some(Mark::InputStart),
         b"C" => Some(Mark::OutputStart),
         b"D" => {
-            // `D;0`, `D;1;aid=...`: the exit code is the first parameter, when it's a number.
             let exit = params
                 .map(|p| p.split(|&b| b == b';').next().unwrap_or(&[]))
                 .filter(|code| !code.is_empty())

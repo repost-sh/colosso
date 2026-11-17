@@ -143,7 +143,6 @@ impl Devices {
         if cfg!(test) {
             return;
         }
-        // Asked while a listing runs (a plug in the meantime): listed again once it's done.
         if self.listing_connected != Listing::Idle {
             self.listing_connected = Listing::RunningThenAgain;
             return;
@@ -172,7 +171,6 @@ impl Devices {
     /// `device_list`).
     pub fn connected_afresh(&mut self, listed: Result<Vec<Connected>, String>, since: Instant, cx: &mut Context<Self>) {
         let changed = self.connected.as_ref() != Some(&listed);
-        // Unplugged, a device's lend ends, whether or not a tab showed it.
         if let Ok(now) = &listed {
             let gone: Vec<String> = (self.plugged().iter())
                 .filter(|before| now.iter().all(|device| device.udid != before.udid))
@@ -183,7 +181,6 @@ impl Devices {
             }
         }
         self.connected = Some(listed);
-        // What each misses now, said to its link: none is started while it misses something.
         for (udid, link) in &self.links {
             let misses = self.misses(udid).cloned();
             link.update(cx, |link, cx| link.set_misses(misses, cx));

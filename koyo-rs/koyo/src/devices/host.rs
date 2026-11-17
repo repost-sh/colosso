@@ -125,8 +125,6 @@ pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) 
         command.arg("--stats");
     }
     let mut child = inherit::spawn(command, theirs)?;
-    // The child is waited for on a thread of its own, so it never lingers as a zombie: one whose
-    // hello fails too, which goes once its end of the link is dropped.
     std::thread::Builder::new()
         .name("device-host-wait".into())
         .spawn(move || {

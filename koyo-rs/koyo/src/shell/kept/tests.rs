@@ -122,7 +122,6 @@ fn an_agents_page_is_kept_as_one_and_any_other_as_before() {
     let json = serde_json::to_value(&agents).unwrap();
     assert_eq!(json["byAgent"], true);
     assert_eq!(serde_json::from_value::<KeptPane>(json).unwrap(), agents);
-    // The person's is written as a page always was, and one written before is the person's.
     let persons = KeptPane::Page {
         url: "https://mail.example/".into(),
         title: "Mail".into(),
@@ -191,7 +190,6 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_nothing() {
     assert_eq!(tabs[1]["second"]["thread"], "0001");
     assert_eq!(json["checkouts"][1]["tabs"][0]["kind"], "newChat");
 
-    // A kind a later build keeps is read as one this build brings nothing back for.
     let later =
         r#"{"checkouts":[{"project":"/a","checkout":"/a","tabs":[{"kind":"canvas","board":7}]}]}"#;
     std::fs::write(&path, later).unwrap();
@@ -225,7 +223,6 @@ fn the_file_follows_the_window_as_tabs_open_split_resize_and_close(cx: &mut Test
         "in order, a chat with nothing sent yet among them, the one shown noted"
     );
 
-    // The chat goes right of the page: one tab, split.
     shell.update(cx, |shell, cx| {
         let unit = shell.workspace.branch_mut().unwrap();
         assert!(unit.drop_tab(1, example, Edge::Right));
@@ -242,7 +239,6 @@ fn the_file_follows_the_window_as_tabs_open_split_resize_and_close(cx: &mut Test
     let resized = main_with(&root, 0, std::slice::from_ref(&quarter));
     assert_eq!(written(&path, cx), resized);
 
-    // A new tab's start page is a tab too, with no address.
     let start = open_page(window, &shell, None, cx);
     assert_eq!(
         written(&path, cx),
@@ -252,7 +248,6 @@ fn the_file_follows_the_window_as_tabs_open_split_resize_and_close(cx: &mut Test
     shell.update(cx, |shell, cx| shell.close_tab_now(start_at, cx));
     assert_eq!(written(&path, cx), main_with(&root, 0, &[quarter]));
 
-    // A pane closed leaves its split to the other side; the last tab closed, none is kept.
     shell.update(cx, |shell, cx| shell.close_pane_now(example, cx));
     let alone = main_with(&root, 0, &[KeptTree::Pane(KeptPane::NewChat)]);
     assert_eq!(written(&path, cx), alone);
@@ -284,7 +279,6 @@ fn tabs_wait_for_their_checkout_and_go_with_it_or_its_project(cx: &mut TestAppCo
     };
     let path = file("kept-window-wait-file", &kept);
     let (window, shell) = shell_with(&[&root], cx);
-    // The second project is in the sidebar, its worktrees not listed yet.
     shell.update(cx, |shell, _| {
         shell.workspace.add_project(later.clone());
     });
@@ -301,13 +295,11 @@ fn tabs_wait_for_their_checkout_and_go_with_it_or_its_project(cx: &mut TestAppCo
         "and so does what its project had selected"
     );
 
-    // A change elsewhere carries it along.
     open_page(window, &shell, Some("https://example.edu/"), cx);
     let carried = written(&path, cx);
     assert_eq!(carried.checkouts.last(), Some(&waiting));
     assert_eq!(carried.checkouts[0].tabs.len(), 2);
 
-    // Listed, its tabs come back; its project removed, they go.
     shell.update(cx, |shell, cx| {
         shell.show_worktrees(&later, read_worktrees(&later), cx);
     });
@@ -359,7 +351,6 @@ fn the_browser_tabs_an_earlier_build_kept_come_back_the_first_time(cx: &mut Test
         (titles(&[&["Example"], &["localhost:3000"]]), 0),
         "each a tab of its own, as they came back then"
     );
-    // From then on the window's own file has them, and the old one is left as it was.
     select(&shell, &root, cx);
     open_page(window, &shell, Some("https://example.org/"), cx);
     let now = written(&path, cx);
@@ -422,7 +413,6 @@ fn a_device_s_tab_brought_back_starts_nothing_until_asked(cx: &mut TestAppContex
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the device's tab");
     let link = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
     assert_eq!(cx.read(|cx| link.read(cx).state.clone()), crate::devices::State::Off);
-    // The tab's Start, as the person presses it: nothing else runs, so it starts at once.
     (gpui_kit::AppContext::update_window(cx, window, |_, window, cx| view.update(cx, |view, cx| view.start_asking(window, cx)))).expect("the window");
     let state = cx.read(|cx| link.read(cx).state.clone());
     assert!(matches!(state, crate::devices::State::Failed(_)), "{state:?}");

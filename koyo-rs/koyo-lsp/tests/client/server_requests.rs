@@ -140,7 +140,6 @@ fn owner_handlers_answer_now_later_or_by_default() {
     let mut script = vec![json!({"recv": "fake/echo"})];
     script.extend(ask("edit", "workspace/applyEdit", &json!({"edit": {}})));
     script.push(json!({"send": {"id": "show", "method": "window/showDocument", "params": {"uri": "file:///a.rs"}}}));
-    // What the handler sent the server before it gave up on answering.
     script.push(json!({"echo": "fake/received"}));
     script.push(json!({"echo_reply": true}));
     script.extend(ask(
@@ -150,7 +149,6 @@ fn owner_handlers_answer_now_later_or_by_default() {
     ));
     script.push(json!({"reply": 0, "result": null}));
     let client = fake(&Value::Array(script));
-    // Answered later, from another thread, as an editor applies an edit on its own.
     client.handle::<ApplyWorkspaceEdit>(|_, reply, _| {
         thread::spawn(move || {
             reply.send(Ok(ApplyWorkspaceEditResponse {
@@ -160,8 +158,6 @@ fn owner_handlers_answer_now_later_or_by_default() {
             }));
         });
     });
-    // Tells the server something through its peer, then drops the reply unanswered: the
-    // default answer goes instead.
     client.handle::<ShowDocument>(|params, reply, peer| {
         peer.notify::<Received>(&json!(params.uri.as_str()))
             .unwrap();

@@ -74,7 +74,6 @@ fn run(args: &[String]) -> Result<(), Failure> {
 
 fn hello() -> Hello {
     Hello {
-        // The terminal this runs in answers the program's queries itself.
         capabilities: vec!["answers_queries".into()],
         cwd: std::env::current_dir().ok(),
         ..Hello::new(ClientKind::Cli, "koyo-term", env!("CARGO_PKG_VERSION"))

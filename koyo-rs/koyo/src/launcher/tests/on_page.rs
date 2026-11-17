@@ -83,7 +83,6 @@ fn cmd_l_opens_the_launcher_on_the_page_and_what_is_typed_loads_in_it(cx: &mut T
         "the page's whole address, all of it selected"
     );
 
-    // Typed over it, an address loads in the page, and no tab opens.
     cx.simulate_input(launcher_window, "example.org/next");
     press(launcher_window, "enter", cx);
     cx.run_until_parked();
@@ -101,7 +100,6 @@ fn cmd_l_opens_the_launcher_on_the_page_and_what_is_typed_loads_in_it(cx: &mut T
     });
     assert_eq!(focused, Some(pane));
 
-    // Words are searched in the page, and kept as a search made.
     let (launcher_window, _) = open_address(window, cx);
     cx.simulate_input(launcher_window, "rust gpui");
     press(launcher_window, "enter", cx);
@@ -115,7 +113,6 @@ fn cmd_l_opens_the_launcher_on_the_page_and_what_is_typed_loads_in_it(cx: &mut T
     assert_eq!(searched, ["rust gpui"]);
     assert_eq!(tabs(&shell, cx).len(), 1);
 
-    // With the field emptied there's nowhere to go; another kind opens its tab, as ⌘T's does.
     let (launcher_window, _) = open_address(window, cx);
     press(launcher_window, "backspace enter", cx);
     cx.run_until_parked();
@@ -140,7 +137,6 @@ fn offered(window: AnyWindowHandle, cx: &mut TestAppContext) -> (String, Kind) {
 #[gpui_kit::test]
 fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext) {
     let (window, _, _, _) = on_page("launcher-address-dismissed", Layout::Arc, cx);
-    // Left as it is and dismissed, the address isn't offered to the next ⌘T.
     let (launcher_window, _) = open_address(window, cx);
     press(launcher_window, "escape", cx);
     cx.run_until_parked();
@@ -150,7 +146,6 @@ fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext)
         "nobody typed the address"
     );
 
-    // Text dismissed there waits for the next ⌘T: ⌘L shows the address meanwhile.
     let (launcher_window, _) = launch(window, cx);
     press(launcher_window, "tab", cx);
     cx.simulate_input(launcher_window, "half a thought");
@@ -159,7 +154,6 @@ fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext)
     let (launcher_window, launcher) = open_address(window, cx);
     assert_eq!(kind(&launcher, cx), Kind::Browser);
     assert_eq!(field(&launcher, cx).0, DOCS);
-    // ⌘L again selects it all, as in any address bar.
     press(launcher_window, "end", cx);
     assert_eq!(field(&launcher, cx).1, (DOCS.len(), DOCS.len()));
     press(launcher_window, "cmd-l", cx);
@@ -170,7 +164,6 @@ fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext)
     let thought = ("half a thought".to_owned(), Kind::Chat);
     assert_eq!(offered(window, cx), thought);
 
-    // An address typed over and dismissed is text like any other.
     let (launcher_window, _) = open_address(window, cx);
     cx.simulate_input(launcher_window, "example.org");
     press(launcher_window, "escape", cx);
@@ -183,14 +176,12 @@ fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn with_no_page_in_the_tab_cmd_l_opens_nothing(cx: &mut TestAppContext) {
-    // A page in a tab that isn't shown, and a chat in the one that is.
     let (window, shell, _, view) = on_page("launcher-address-none", Layout::Arc, cx);
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
     for layout in [Layout::Arc, Layout::Orca] {
         cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
         draw(window, cx);
         draw(window, cx);
-        // From the chat's composer, which has the keyboard.
         press(window, "cmd-l", cx);
         cx.run_until_parked();
         assert!(dialog::<Launcher>(cx).is_none(), "no address to change");
@@ -227,7 +218,6 @@ fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) 
     click_pane(window, first, cx);
     assert_eq!(opens_on(cx), DOCS);
 
-    // What's typed loads in that page, the other left where it was.
     let (launcher_window, _) = open_address(window, cx);
     cx.simulate_input(launcher_window, "example.org");
     press(launcher_window, "enter", cx);
@@ -247,7 +237,6 @@ fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) 
 #[gpui_kit::test]
 fn in_the_orca_layout_cmd_l_puts_the_keyboard_in_the_pages_own_field(cx: &mut TestAppContext) {
     let (window, shell, _, view) = on_page("launcher-address-orca", Layout::Orca, cx);
-    // From a chat beside the page, which the person is in.
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
     draw(window, cx);
     let chat = cx.read(|cx| {

@@ -3,8 +3,6 @@
 
 #![cfg(unix)]
 
-// Marked as test code, as everything here is, so the lints' leave for tests (to unwrap, to
-// panic) reaches the helpers too.
 #[cfg(test)]
 mod common;
 
@@ -124,7 +122,6 @@ fn an_error_comes_back_as_the_app_sent_it_and_the_request_id_goes_along() {
 #[test]
 fn twenty_calls_from_twenty_threads_are_answered_out_of_order() {
     let (endpoint, app) = spawn_app("many", vec![Scope::Read], |_, mut reader, writer| {
-        // Every call is in flight before the first answer goes out, last call first.
         let calls: Vec<_> = (0..20).map(|_| next_call(&mut reader)).collect();
         for call in calls.into_iter().rev() {
             let echo = json!({ "n": call.input["n"].clone() });
@@ -175,7 +172,6 @@ fn a_call_left_unanswered_times_out() {
     let (done, finished) = mpsc::channel::<()>();
     let (endpoint, app) = spawn_app("slow", vec![Scope::Read], move |_, mut reader, _| {
         let _ = next_call(&mut reader);
-        // Holds the connection open, unanswered, until the test is done with it.
         let _ = finished.recv_timeout(PATIENCE);
     });
     let client = Client::connect(&endpoint, &hello()).unwrap();
@@ -204,7 +200,6 @@ fn a_subscription_delivers_the_apps_events() {
                 .write(&ServerFrame::Event { topic }, MAX_SERVER_FRAME)
                 .unwrap();
         }
-        // An answer still finds its call between events.
         let call = next_call(&mut reader);
         writer
             .write(

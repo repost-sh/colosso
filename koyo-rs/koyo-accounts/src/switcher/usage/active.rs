@@ -41,7 +41,6 @@ impl Switcher {
         let outcome = try_fetch_usage_for_account(&self.env, info.num(), &info.creds);
         match outcome.error.as_deref() {
             Some(NO_ACCESS_TOKEN_ERROR) => return FetchRecord::sentinel(USAGE_NO_CREDENTIALS),
-            // cswap's `_defer`, with no refresh (the module says why).
             Some(TOKEN_EXPIRED_ERROR) if verdict.degraded => {
                 return FetchRecord::sentinel(USAGE_KEYCHAIN_UNAVAILABLE);
             }
@@ -53,21 +52,15 @@ impl Switcher {
                 self.resync_rotated_backup(info);
             }
             if self.known_foreign(info) {
-                // The probe proved the served credential another account's: its quota isn't
-                // this slot's. The sentinel reads as unknown headroom, and auto-switch's
-                // failover is what repairs the drift.
                 return FetchRecord::sentinel(USAGE_FOREIGN_CREDENTIAL);
             }
         }
-        // A locally valid token the server rejected keeps its 401 as the record: the store
-        // paces it with backoff instead of "token expired" mislabeling an unexpired token.
         FetchRecord::from(outcome)
     }
 
     /// Whether the profile oracle proved the row's live lineage another account's than the
     /// slot's (a cached `false` verdict). A roster that can't be read is no verdict.
     fn known_foreign(&self, info: &AccountInfo) -> bool {
-        // No verdict at all, the common case: no roster read to build a key.
         if locked(&self.probe_verdicts).is_empty() {
             return false;
         }

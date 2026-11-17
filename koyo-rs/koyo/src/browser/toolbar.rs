@@ -75,7 +75,6 @@ fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserVie
             .tooltip(move |window, cx| Tooltip::new(says.clone()).build(window, cx))
             .child(icon::face(&shown, p.text, p.selected))
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                // The popup hangs from under the icon: the page's top edge is the toolbar's foot.
                 let half = px(icon::BUTTON / 2.);
                 let at = Bounds::new(
                     point(event.position().x - half, this.origin.y - px(icon::BUTTON)),
@@ -169,7 +168,6 @@ pub(super) fn toolbar(
 /// A line over the toolbar's foot while the page loads, as long as the share loaded.
 fn progress(page: &PageState, p: Palette) -> Option<Div> {
     page.loading.then(|| {
-        // Some of it shows at once, before the engine says how far it got.
         let share = f32::from(page.progress.max(8)) / 100.;
         div()
             .debug_selector(|| "browser-progress".to_owned())
@@ -191,10 +189,8 @@ fn address(
 ) -> impl IntoElement + use<> {
     let p = theme::palette(cx);
     let secure = view.page.url.starts_with("https://");
-    // Copy link and site controls (`site.rs`), there while the pointer is over the field.
     let id = ElementId::NamedInteger("browser-address".into(), view.pane);
     let (hovered, hover) = theme::hover::eased(id.clone(), super::site::FADE, window, cx);
-    // Not while the field is being typed in.
     let ends = (!editing).then(|| super::site::buttons(view, &cx.entity(), p.muted, hovered, Vec::new(), cx)).flatten();
     div()
         .id(id)
@@ -243,7 +239,6 @@ pub(super) fn control_bar(
     } else {
         let displaced = view.control.displaced.as_ref()?;
         let give_back = cx.listener(|this, _: &ClickEvent, _, cx| this.give_back(cx));
-        // A page the person is only using goes back by itself once they stop.
         let text = if view.control.person_using() {
             format!("{} waits while you use this tab", displaced.label)
         } else {
@@ -292,7 +287,6 @@ pub(super) fn overlay(
     let start = view.is_start_page();
     let p = theme::palette(cx);
     let (message, action): (String, Option<(&str, OnClick)>) = match (&view.notice, status) {
-        // The engine starts once while Koyo runs: what failed says what to do about it.
         (_, HostStatus::Failed(message)) if !start => (message.clone(), None),
         (Some(Notice::Gone(reason)), _) => {
             let reload = cx.listener(|this, _: &ClickEvent, _, cx| this.go(Go::Reload, cx));
@@ -302,7 +296,6 @@ pub(super) fn overlay(
             )
         }
         (Some(Notice::Failed(message)), _) => (message.clone(), None),
-        // A host starting quickly leaves the page blank, as it would be while loading.
         (None, HostStatus::Starting) if !start && view.starting_long(cx) => {
             ("Starting the browser…".to_owned(), None)
         }
@@ -318,7 +311,6 @@ pub(super) fn overlay(
             .justify_center()
             .gap_3()
             .bg(p.floating())
-            // The page under it stays out of reach.
             .occlude()
             .child(
                 div()

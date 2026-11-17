@@ -44,10 +44,8 @@ pub fn run() -> ExitCode {
 }
 
 fn draw() -> Result<Vec<String>> {
-    // A tab opens on a checkout: this one's, as the other checks open.
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;
     let mut lines = Vec::new();
-    // Nothing plugged in, and `devicectl` never asked: no real device is in the pictures.
     phone::plugged(&mut drawn, Vec::new());
     picker(&mut drawn, &mut lines)?;
     states(&mut drawn, &mut lines)?;
@@ -140,7 +138,6 @@ fn split(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         });
         changed.map_err(|error| error.to_string())
     };
-    // The first tab's pane comes to the right of the device shown.
     change(drawn, |unit| {
         let pane = |tab: Option<&crate::model::Tab>| tab.map(|tab| tab.first().id);
         if let (Some(shown), Some(other)) = (pane(unit.tabs.get(unit.active_tab)), pane(unit.tabs.first()))
@@ -150,7 +147,6 @@ fn split(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         }
     })?;
     lines.push(format!("{}", drawn.save("split.png")?.display()));
-    // And the other goes back to a tab of its own, the first, with the device's shown again.
     change(drawn, |unit| {
         let Some(tab) = unit.tabs.get(unit.active_tab) else {
             return;
@@ -245,7 +241,6 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state }, cx)));
         lines.push(format!("{}", drawn.save(picture)?.display()));
     }
-    // An agent at work: the bar says so, with the person's way to take it.
     drawn.cx.update(|cx| {
         link.update(cx, |link, cx| {
             link.hear(FromHost::State { state: Said::Ready { screen: screen() } }, cx);
@@ -262,7 +257,6 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
     split(drawn, lines)?;
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.failed("iPhone 17 Pro's host stopped three times in a minute.", cx)));
     lines.push(format!("{}", drawn.save("failed.png")?.display()));
-    // Settled, so the next run starts where this one is.
     drawn.cx.update(|cx| link.update(cx, super::link::Link::stop));
     let _ = drawn.until(Duration::from_millis(200), |_| Ok(true));
     Ok(())

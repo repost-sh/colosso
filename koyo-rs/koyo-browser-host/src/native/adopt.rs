@@ -30,7 +30,6 @@ pub(super) fn clear() {
 /// with the client answered here, in a holder of its own once its view is made
 /// ([`adopted`]). None when the page can't take one, and Chrome opens the tab its own way.
 pub(crate) fn adopt(opener: PaneId, url: &str, active: bool) -> Option<Client> {
-    // Its opener's size until a pane places it.
     let size = page(opener, |entry| entry.size)?;
     let pane = crate::host::adopt(opener, url)?;
     let entry = Entry {

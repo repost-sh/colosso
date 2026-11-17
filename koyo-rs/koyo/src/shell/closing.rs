@@ -21,7 +21,6 @@ impl Shell {
             .into_iter()
             .collect();
         let terminals = pane.and_then(|pane| pane.terminal).into_iter().collect();
-        // Closed with the keyboard in it, the pane left beside it has the keyboard.
         let typing = self.pane_with_keyboard(window, cx) == Some(id);
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             shell.close_pane_now(id, cx);
@@ -40,7 +39,6 @@ impl Shell {
         let Some(located) = self.workspace.locate(|pane| pane.id == id) else {
             return;
         };
-        // A pinned or a loose page's tab is its page, its first pane, and its `DevTools`.
         let a_page = located.tab == id;
         match located.spot {
             Spot::Pinned if a_page => self.close_pinned(id, cx),
@@ -71,8 +69,6 @@ impl Shell {
         let terminals = (tab.panes().into_iter())
             .filter_map(|pane| pane.terminal)
             .collect();
-        // Found again by a pane of it once answered: tabs may have moved meanwhile. Closed
-        // with the keyboard in it, the tab shown in its place has the keyboard.
         let shown = self.workspace.shown_checkout_tab() == Some(at);
         let typing = shown && self.pane_with_keyboard(window, cx).is_some();
         let id = tab.first().id;
@@ -178,7 +174,6 @@ impl Shell {
         let devices = (tab.panes().into_iter())
             .filter_map(|pane| Some((pane.id, pane.device_view()?.read(cx).chosen()?.clone())))
             .collect();
-        // A page brought back at launch and never shown has the address it would open at.
         let addresses = (tab.panes().into_iter())
             .filter(|pane| !pane.is_inspector(cx))
             .filter_map(|pane| Some((pane.id, pane.address(cx)?)))
@@ -191,7 +186,6 @@ impl Shell {
         for view in panes.iter().filter_map(|(_, view)| view.clone()) {
             self.let_devtools_go(view, cx);
         }
-        // Panes elsewhere that closed may have moved the tab.
         let unit = &self.workspace.projects[project].branches[branch];
         let from = ClosedFrom::Checkout(unit.worktree.path.clone());
         if let Some(now) = panes.iter().find_map(|(id, _)| unit.tab_with(*id))

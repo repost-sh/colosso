@@ -24,7 +24,6 @@ use crate::viewer::bitmap::Canvas;
 fn striped(canvas: &Canvas) {
     let (w, h) = (CGFloat::from(canvas.width), CGFloat::from(canvas.height));
     let rect = |x: f64, y: f64, w: f64, h: f64| CGRect::new(CGPoint::new(x, y), CGSize::new(w, h));
-    // Quartz's y goes up: the top half is the upper rectangle.
     canvas.fill(rect(0., h / 2., w, h / 2.), [1., 0., 0.]);
     canvas.fill(rect(0., 0., w, h / 2.), [0., 0., 1.]);
     canvas.fill(rect(w / 3., 0., w / 3., h), [1., 1., 1.]);
@@ -135,7 +134,6 @@ fn a_screens_picture_is_laid_out_upright_and_compressed() {
             let at = ((y * width + x) * 4) as usize;
             [pixels[at + 2], pixels[at + 1], pixels[at]]
         };
-        // Red at the top left, blue at the bottom left, the bar white down the middle.
         let near = |got: [u8; 3], expected: [u8; 3]| {
             got.iter().zip(expected).all(|(a, b)| a.abs_diff(b) <= 24)
         };
@@ -276,7 +274,6 @@ fn the_gpu_draws_a_screens_picture_where_it_was_laid_out_and_only_where_its_pane
 
     let (texture, placeholder) = on_the_gpu("chat-backdrop-gpu", striped);
     texture.mark(&placeholder, &solid());
-    // Colours at their full brightness are every cell lit, so the dither leaves them as they are.
     let image = drawn(&placeholder, (192, 128), whole());
     assert!(
         near(rgb(&image, 4, 4), [255, 0, 0]),
@@ -294,14 +291,11 @@ fn the_gpu_draws_a_screens_picture_where_it_was_laid_out_and_only_where_its_pane
         rgb(&image, 96, 64)
     );
 
-    // Clipped to the left half, as to a pane: nothing right of it, where the headless frame
-    // stays the black it's cleared to.
     let left = Bounds::new(whole().origin, size(ScaledPixels(96.), ScaledPixels(128.)));
     let image = drawn(&placeholder, (192, 128), left);
     assert_eq!(rgb(&image, 150, 4), [0, 0, 0], "past the pane");
     assert!(near(rgb(&image, 40, 4), [255, 0, 0]), "in the pane");
 
-    // Let go, it draws nothing.
     drop(texture);
     let image = drawn(&placeholder, (192, 128), whole());
     assert_eq!(rgb(&image, 4, 4), [0, 0, 0]);
@@ -314,7 +308,6 @@ fn a_mid_grey_lights_half_its_cells_at_full_brightness_and_the_rest_near_black()
         let look = ChatBackdrop { density, ..solid() };
         texture.mark(&placeholder, &look);
         let image = drawn(&placeholder, (192, 128), whole());
-        // Each cell is two pixels a side, and all of one shade.
         for (x, y) in [(0, 0), (2, 0), (4, 6), (10, 12)] {
             let cell =
                 [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)].map(|(x, y)| rgb(&image, x, y));
@@ -339,8 +332,6 @@ fn a_mid_grey_lights_half_its_cells_at_full_brightness_and_the_rest_near_black()
         );
         bright as f32 / pixels.len() as f32
     };
-    // 128 lights the cells whose threshold is under half, 8 of 16. Read as sRGB it would be
-    // 55, and light 3.
     let half = lit(1.);
     assert!((half - 0.5).abs() < 0.02, "{half} of the cells lit");
     let more = lit(1.5);
@@ -372,7 +363,6 @@ fn it_shows_at_its_opacity_and_fades_out_down_its_pane() {
     let image = drawn(&placeholder, (192, 128), whole());
     let red = |y: u32| rgb(&image, 4, y)[0];
     assert!(red(0) > 240, "whole where it starts: {}", red(0));
-    // A quarter of the way down, about 0.61 of it shows; 0.537, about 0.32.
     assert!(red(32).abs_diff(158) <= 20, "a quarter down: {}", red(32));
     assert!(red(127) < 8, "gone at the bottom: {}", red(127));
 }

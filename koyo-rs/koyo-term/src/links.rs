@@ -136,7 +136,6 @@ pub fn link_target(target: &str, folders: &[PathBuf]) -> Option<LinkTarget> {
     if target.contains("://") {
         return scan::target(target, &mut file);
     }
-    // `a.rs#L42` as GitHub names a line; another fragment, a heading's, names no place.
     let (path, line) = match target.split_once('#') {
         Some((path, fragment)) => (path, fragment_line(fragment)),
         None => (target, None),
@@ -214,7 +213,6 @@ fn shell_folder(pwd: &str) -> Option<PathBuf> {
 /// The path a `file://` URI names, decoded, and the line its fragment names (`#L42`).
 pub(crate) fn file_uri(uri: &str) -> Option<(String, Option<u32>)> {
     let rest = uri.strip_prefix("file://")?;
-    // The host, if any, is the machine's own: the path starts at the first slash.
     let path = rest.get(rest.find('/')?..)?;
     let (path, line) = match path.split_once('#') {
         Some((path, fragment)) => (path, fragment_line(fragment)),
@@ -249,7 +247,6 @@ impl Line {
         for (row, r) in frame.rows.iter().skip(usize::from(first)).zip(first..) {
             for (cell, c) in row.cells.iter().zip(0u16..) {
                 let width = match cell.width {
-                    // A wide character's tail, and the blank a wide one that didn't fit left.
                     Width::SpacerTail | Width::SpacerHead => continue,
                     Width::Wide => 2,
                     Width::Narrow => 1,

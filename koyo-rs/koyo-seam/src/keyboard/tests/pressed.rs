@@ -34,11 +34,9 @@ fn press_reaches_the_page(button: isize) {
 #[test]
 fn a_press_that_reaches_a_page_gives_it_the_keyboard_though_its_view_never_asks() {
     let (fake, turns) = in_composer(true);
-    // The page's outer view took the press: nothing asks for the first responder.
     press_reaches_the_page(0);
     assert_eq!(holder(), Holder::Page(PAGE));
     assert_eq!(fake.first_responder(WINDOW), Responder::Page(PAGE), "before the next key");
-    // The key right after goes to the page, with nothing to heal.
     hooks::at_key(WINDOW);
     assert_eq!(fake.first_responder(WINDOW), Responder::Page(PAGE));
     assert_eq!(turns.next(), 0, "nothing to put back");
@@ -56,12 +54,10 @@ fn before_the_page_had_it_only_once_its_view_asked_and_a_key_meanwhile_was_koyos
 #[test]
 fn a_press_gpui_keeps_gives_the_page_nothing() {
     let (fake, turns) = in_composer(true);
-    // A divider beside the page, a button drawn over it: heard, and never going on.
     hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
     assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
     hooks::at_key(WINDOW);
     assert_eq!(fake.first_responder(WINDOW), Responder::Gpui);
-    // The page asking after it is refused, as any page that wasn't pressed.
     fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
     assert_eq!(turns.next(), 1);

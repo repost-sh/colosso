@@ -61,7 +61,6 @@ fn a_reply_s_windows_are_laid_over_the_stored_reading() {
     );
     let reading = last_good(&h);
     assert_eq!(reading["five_hour"]["pct"], 42.37);
-    // Python's `isoformat()` of the epoch reset, as cswap's header parser writes it.
     let reset = chrono::DateTime::from_timestamp(h.sandbox.clock.now() as i64 + 3600, 0).unwrap();
     assert_eq!(
         reading["five_hour"]["resets_at"],

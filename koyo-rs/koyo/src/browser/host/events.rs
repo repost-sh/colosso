@@ -22,13 +22,11 @@ impl Browsers {
     /// The host closed `pane`'s page: for its data's clearing, in which case it opens again
     /// (`Browsers::clear_data`), else for good.
     fn page_closed(&mut self, pane: PaneId, cx: &mut Context<Self>) {
-        // What extensions set for the page goes with it.
         self.extensions.pane_closed(pane);
         if !self.reopening.remove(&pane) {
             self.update_view(pane, cx, BrowserView::closed);
             return;
         }
-        // Opening asks this entity how the host is: after this update.
         if let Some(view) = self.views.get(&pane).cloned() {
             cx.defer(move |cx| {
                 let _ = view.update(cx, BrowserView::reopen);
@@ -42,13 +40,10 @@ impl Browsers {
         match event {
             HostEvent::Extensions { profile, extensions } => {
                 self.extensions.listed(profile, extensions);
-                // Their icons are on every page of the profile, and in a popover's window.
                 cx.refresh_windows();
             }
             HostEvent::ExtensionAction { profile, extension, pane, action } => {
                 self.extensions.acted(profile, extension, pane, action);
-                // An icon is on its page's toolbar, in a popover's window, or in the
-                // sidebar's address field, which is the window's and not the page's.
                 let _ = pane;
                 cx.refresh_windows();
             }
@@ -56,7 +51,6 @@ impl Browsers {
                 let heard = self.update_view(opener, cx, |_, cx| {
                     cx.emit(BrowserEvent::Adopted { pane, url, active });
                 });
-                // With no tab to open beside, the page the host made has no pane: it closes.
                 if heard.is_none() {
                     self.send(AppRequest::Close { pane });
                 }

@@ -265,7 +265,6 @@ pub fn read(executor: &Executor, uri: &str) -> Result<ResourceContents, ErrorDat
                 JSON,
             )
         }
-        // The server reads the app's resources from the app.
         Uri::App(_) => {
             let message = format!("{uri} is the app's, not the terminals'");
             return Err(ErrorData::resource_not_found(message, None));

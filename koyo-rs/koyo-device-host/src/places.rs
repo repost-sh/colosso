@@ -74,7 +74,6 @@ mod tests {
 
     #[test]
     fn touches_land_where_the_turned_picture_shows_them() {
-        // A surface 6 wide and 10 high, as a portrait simulator's is.
         let (sw, sh) = (6u32, 10u32);
         for quarters in 0..4u8 {
             let (w, h) = if quarters % 2 == 1 {
@@ -85,13 +84,11 @@ mod tests {
             for px in 0..w {
                 for py in 0..h {
                     let (sx, sy) = kernel(quarters, (px, py), (w, h));
-                    // The middle of the slot's pixel, as a share, mapped to the surface…
                     let share = (
                         (f64::from(px) + 0.5) / f64::from(w),
                         (f64::from(py) + 0.5) / f64::from(h),
                     );
                     let (x, y) = on_surface(quarters, share);
-                    // …is the middle of the pixel the kernel took it from.
                     assert!(
                         (x * f64::from(sw) - (f64::from(sx) + 0.5)).abs() < 1e-9,
                         "{quarters} {px},{py}"
@@ -121,7 +118,6 @@ mod tests {
 
     #[test]
     fn a_held_ipad_takes_places_as_measured() {
-        // The ninth round's table: a place (x, y) of the picture, to the device.
         assert_eq!(on_device(Orientation::LandscapeRight, (0.25, 0.75)), (0.75, 0.75));
         assert_eq!(on_device(Orientation::Portrait, (0.25, 0.75)), (0.25, 0.75));
         assert_eq!(on_device(Orientation::LandscapeLeft, (0.25, 0.75)), (0.25, 0.25));

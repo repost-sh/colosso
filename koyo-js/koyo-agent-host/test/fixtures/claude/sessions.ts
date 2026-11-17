@@ -1,6 +1,3 @@
-// The recorded sessions' turns, frame for frame as the CLI sent them (hook, thinking-token
-// and UI frames left out: the driver drops them), for the prompt whose uuid they echo.
-
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import {

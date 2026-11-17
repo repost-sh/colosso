@@ -173,7 +173,6 @@ fn a_url_leaves_out_what_a_sentence_puts_after_it() {
 
 #[test]
 fn a_link_wrapped_onto_the_next_row_is_one_link() {
-    // Ten columns: `see src/ma` and `in.rs now`.
     let frame = frame(10, "see src/main.rs now");
     assert!(frame.rows[0].wrapped);
     let found = link_at(&frame, GridPoint { col: 1, row: 1 }).unwrap();
@@ -189,7 +188,6 @@ fn wide_characters_before_a_path_take_their_two_columns() {
     let found = link_at(&frame, GridPoint { col: 6, row: 0 }).unwrap();
     assert_eq!(found.target, file("/work/src/a.rs", None, None));
     assert_eq!(found.cells, [(0, 5..13)]);
-    // The tail of a wide character is pointed at as the character.
     assert_eq!(link_at(&frame, GridPoint { col: 1, row: 0 }), None);
 }
 
@@ -206,7 +204,6 @@ fn a_word_that_isnt_a_file_is_no_link() {
 
 #[test]
 fn a_folder_is_no_link() {
-    // The crate's own folder, on the disk.
     let crate_folder = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut links = Links {
         roots: vec![crate_folder.clone()],
@@ -256,7 +253,6 @@ fn a_link_the_program_made_opens_what_it_names() {
     assert_eq!(shot.cells, [(0, 0..8)]);
     let site = link_at(&frame, cell_of(&frame, "a site")).unwrap();
     assert_eq!(site.target, LinkTarget::Url("https://example.com/".into()));
-    // A link of another kind is looked through, to the text it shows.
     let text = link_at(&frame, cell_of(&frame, "src")).unwrap();
     assert_eq!(text.target, file("/work/src/a.rs", None, None));
 }
@@ -267,7 +263,6 @@ fn a_relative_path_is_looked_for_in_the_shells_folder_first() {
     assert_eq!(frame.pwd, "file://host/abs/path");
     let shot = link_at(&frame, cell_of(&frame, "shot")).unwrap();
     assert_eq!(shot.target, file("/abs/path/shot.png", None, None));
-    // Not in the shell's folder: in the checkout.
     let readme = link_at(&frame, cell_of(&frame, "README")).unwrap();
     assert_eq!(readme.target, file("/work/README", None, None));
 }

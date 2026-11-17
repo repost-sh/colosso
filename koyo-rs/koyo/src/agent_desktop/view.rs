@@ -180,8 +180,6 @@ impl DeskView {
             ScrollDelta::Pixels(delta) => (delta.x.as_f32(), delta.y.as_f32()),
             ScrollDelta::Lines(delta) => (delta.x * LINE, delta.y * LINE),
         };
-        // A trackpad's gesture has phases, which a window that isn't showing needs; a
-        // wheel's click has none, and the host makes it a gesture of one step.
         let phase = match (event.delta, event.touch_phase) {
             (ScrollDelta::Lines(_), _) => 0,
             (ScrollDelta::Pixels(_), TouchPhase::Started) => 1,
@@ -364,8 +362,6 @@ impl Render for DeskView {
             let desk = self.desk.read(cx);
             desk.windows.is_empty() && desk.backdrop.is_none()
         };
-        // Only with the person at this window: a dialog that opens while Koyo is behind
-        // another app takes the keyboard from the app they're typing in.
         if window.is_window_active() && self.desk.read(cx).setup_due() {
             window.defer(cx, super::setup::offer);
         }
@@ -381,8 +377,6 @@ impl Render for DeskView {
             .size_full()
             .relative()
             .overflow_hidden()
-            // No background of its own, as a chat has none: the window's card shows round
-            // the desktop. Painted again here, the card's colour stacked into a flat grey.
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
             .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| this.key_up(event, cx)))
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {

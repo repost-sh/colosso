@@ -130,13 +130,10 @@ impl Shell {
         let status_bar = StatusBar::new(cx);
         let _subscriptions = [
             settings::observe(cx),
-            // The person taking the window out of full screen takes a page out with it.
             cx.observe_window_bounds(window, |_, window, cx| {
                 crate::browser::fullscreen::window_resized(window, cx);
             }),
             cx.observe(&history, |this, _, cx| this.went(cx)),
-            // Worktrees may have come or gone in a terminal while the window was away, and the
-            // Claude login's usage may be due a reading.
             cx.observe_window_activation(window, |this, window, cx| {
                 crate::keyboard::key(window, cx);
                 if window.is_window_active() {
@@ -149,35 +146,25 @@ impl Shell {
                     cx.notify();
                 }
             }),
-            // The tab shown is noted as the latest, for ⌃⇥, and the right panel follows what's
-            // selected: after each change rather than mid-frame.
             cx.observe_in(&cx.entity(), window, |this, _, window, cx| {
                 this.workspace.stamp_shown();
                 this.follow_space(cx);
                 this.follow_selection(window, cx);
                 this.make_shown_editors(window, cx);
-                // Closed terminal tabs let their views go, which detaches them.
                 this.terminals.retain(&this.workspace);
                 this.chat_tabs.retain(&this.workspace, cx);
                 pictures::retain(&this.workspace, cx);
                 this.keep_window(cx);
-                // What floats over the window goes as it comes to show something else.
                 let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
                 let showing = (this.route(cx), Self::layout(cx), this.sidebar_open, pane);
                 crate::popup::showing(window.window_handle(), &showing, cx);
             }),
-            // What had the keyboard is gone, a closed panel's list or another space's chat: the
-            // shell has it then, or actions would start above it and its keys do nothing.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
             settings::on_change(cx, Self::settings_changed),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
-            // Settings → Agent desktop shows how the host stands as it changes, Settings →
-            // Accounts the accounts, and Settings → Devices what runs. Only while the page
-            // shows: the desk changes with all an agent does on its desktop.
             settings_view::redraws_while_shown(AgentDesktop, &crate::agent_desktop::desk(cx), cx),
             settings_view::redraws_while_shown(Accounts, &crate::accounts::accounts(cx), cx),
             settings_view::redraws_while_shown(settings_view::SettingsPage::Devices, &crate::devices::devices(cx), cx),
-            // The status bar is tall only with servers to show.
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
                 this.rails.servers = *any;
                 cx.notify();
@@ -211,8 +198,6 @@ impl Shell {
             locations: None,
             _subscriptions,
         };
-        // The pinned and the loose pages first, so one shown stays shown. Then on the space shown,
-        // its project selected, as a switch to it leaves them.
         shell.restore_pages(cx);
         shell.show_space(settings::get(cx).space, cx);
         shell.reload_projects(cx);
@@ -281,7 +266,6 @@ impl Shell {
             }
             PaneKind::Chat | PaneKind::Browser | PaneKind::Editor => self.workspace.new_tab(kind),
         }
-        // To type in, so it takes the keyboard, and settings are left for it.
         self.keys_to_new_tab(kind, cx);
         self.navigate(Route::Workspace, cx);
     }
@@ -292,7 +276,6 @@ impl Shell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Both layouts start the sidebar right after the left gutter.
         let width = (event.event.position.x.as_f32() - theme::GUTTER)
             .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH);
         settings::update(cx, |settings| settings.sidebar_width = width);
@@ -344,7 +327,6 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = theme::palette(cx);
-        // In Arc each part an island of its own, the glass between them; in Orca on the one card.
         let islands = theme::card::islands(cx);
         let column = div()
             .flex_1()
@@ -386,8 +368,6 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        // The shown tab's terminal, chat and browser panes have their views before the panes
-        // draw them.
         self.make_shown_terminals(window, cx);
         self.make_shown_chats(window, cx);
         self.make_shown_browsers(window, cx);
@@ -406,12 +386,10 @@ impl Shell {
                 .into_any_element()
         };
         let content = match (workspace.tab_shown(), workspace.project(), workspace.branch()) {
-            // The selected checkout's tab, or a pinned page, whichever project is shown.
             (Some(tab), ..) => self.tab_content(tab, cx),
             (None, None, _) if workspace.projects.is_empty() => {
                 note("Add a project to see its worktrees here.")
             }
-            // No project shown: a space with none, where a page still opens.
             (None, None, _) if Self::layout(cx) == Layout::Arc => {
                 note("No tab open. ⌘T opens a page, and the + below adds a project.")
             }
@@ -434,18 +412,15 @@ impl Render for Shell {
             .map(|root| Self::handle_actions(root, cx))
             .size_full();
         self.keys_follow_route(route, window, cx);
-        // A page full screen on the whole screen is all the window shows (`browser/fullscreen.rs`).
         if let Some(page) = crate::browser::fullscreen::settle(window, cx) {
             return root.bg(gpui_kit::black()).child(page).into_any_element();
         }
-        // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
         self.step_swipe(window, cx);
         let p = theme::palette(cx);
         let width = settings::get(cx).sidebar_width();
         let shown = self.move_rails(window, cx);
         let sidebar = (shown.open.0 > 0.)
             .then(|| slide_out(self.sidebar(route, layout, window, cx), width, shown.open.0));
-        // Orca keeps the sidebar on its card, Arc on the glass beside its islands.
         let (card_sidebar, glass_sidebar) = match layout {
             Layout::Orca => (sidebar, None),
             Layout::Arc => (None, sidebar),
@@ -455,8 +430,6 @@ impl Render for Shell {
         let beside = rails::left_of_chat(self.sidebar_open, cx);
         let right_panel = (self.right_panel).render(on_workspace, beside, window, cx);
         let main = self.main(route, layout, window, cx);
-        // What the rails hold: in Arc the islands side by side, the glass between them; in Orca
-        // one card holding them all.
         let card = if islands { div() } else { island(p) }
             .debug_selector(|| "shell-card".to_owned())
             .flex_1()
@@ -467,7 +440,6 @@ impl Render for Shell {
             .children(card_sidebar)
             .child(main)
             .children(right_panel)
-            // The rails' menu belongs to the rails, not the card.
             .on_mouse_down(MouseButton::Right, |_, _, cx| {
                 picker::close(cx);
                 cx.stop_propagation();
@@ -477,7 +449,6 @@ impl Render for Shell {
             .relative()
             .flex()
             .flex_col()
-            // A gradient theme paints the glass instead of the plain tint.
             .when(gradient::current(cx).dots.is_empty(), |root| root.bg(p.rail_tint))
             .text_color(p.text)
             .child(backdrop::backdrop(cx))
@@ -487,7 +458,6 @@ impl Render for Shell {
                     .flex_1()
                     .min_h_0()
                     .flex()
-                    // The window's left edge, as thin as its right.
                     .child(div().w(px(theme::GUTTER)).flex_shrink_0())
                     .children(glass_sidebar)
                     .child(card),

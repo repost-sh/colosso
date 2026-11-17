@@ -21,13 +21,7 @@ impl AutoSwitchEngine {
         let interval = self.settings.interval_seconds;
         match self.wait {
             Wait::Until(until) => (until - self.now()).max(interval).min(MAX_SLEEP_S),
-            // Truly exhausted with no reset known, or no candidates; or idle-holding: Claude
-            // Code is idle on an expired token and nothing changes until the person is back, so
-            // crawl, and protection resumes one slow tick after they are.
             Wait::Long => interval.max(NO_RESET_FALLBACK_S),
-            // Blocked on what can resolve any tick (hysteresis, unreadable usage), or not
-            // blocked: the normal cadence, so the at-limit escape isn't missed, with ±10%
-            // jitter, so several machines don't synchronize their requests.
             Wait::Interval => self.respect_poll_plan(jittered(interval, (self.rng)())),
         }
     }

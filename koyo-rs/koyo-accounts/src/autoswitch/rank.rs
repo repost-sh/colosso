@@ -105,18 +105,9 @@ pub(crate) fn rank_candidates(
         .readings
         .get(input.current)
         .and_then(|reading| reading.binding.as_ref());
-    // Policy headroom against the active's line, for the hysteresis gate; raw when it reports
-    // no window.
     let active_lh = active_binding
         .map(|binding| binding.line_headroom)
         .or(input.active_headroom);
-    // When nothing is under the line, the active and every candidate at or over it, "land
-    // somewhere healthy" has no answer and holding out costs the session: the landing rule is
-    // dropped and the ranking is by the most room before a limit, raw headroom. Not by soonest
-    // reset (measured over 32 h of a 28-account fleet: all 18 switches onto a target already at
-    // 95% or more came through that ranking). It engages only when every measured candidate is
-    // over the line; a proactive move needs the active over too, while the escapes leave
-    // whatever the active reads.
     let all_above = if escape {
         every_candidate_above_threshold(input.candidates, input.readings)
     } else {
@@ -136,22 +127,18 @@ pub(crate) fn rank_candidates(
         let Some(h) = reading.headroom else {
             continue;
         };
-        any_known = true; // it exists and is readable either way
+        any_known = true;
         if h <= 0. {
-            continue; // itself at its limit: never a target
+            continue;
         }
         if no_return == Some(num.as_str()) {
-            continue; // the account just left; see `release.rs`
+            continue;
         }
         let binding = reading.binding.as_ref();
         let lh = binding.map_or(h, |binding| binding.line_headroom);
-        // Points left before the line; against raw headroom when it reports no window.
         let room = line_room(&reading.windows, threshold, None).unwrap_or(threshold - (100. - h));
         let over = binding.map_or((100. - h) >= threshold, BindingWindow::over);
         if proactive {
-            // Landing must be healthy: an account at or over the line would re-trigger on the
-            // next tick. The escapes skip this block: any account with real headroom beats a
-            // blocked or dead one.
             if over && !all_above {
                 continue;
             }
@@ -162,29 +149,20 @@ pub(crate) fn rank_candidates(
             } else if let (Some(_), Some(active_lh)) = (input.active_headroom, active_lh)
                 && lh - active_lh < settings.hysteresis_pct
             {
-                continue; // short of the full hysteresis margin in policy headroom
+                continue;
             }
         }
         let key = if all_above {
-            // Every trigger, the escapes included: most raw headroom, the reset of the fullest
-            // window breaking an exact tie, since its rollover gives the room back.
             [-h, reading.reset_key(input.now), 0.]
         } else if proactive {
-            // Soonest weekly reset first (unknown last), most policy headroom breaking ties,
-            // then sequence order; a forced move first prefers targets with the hysteresis
-            // margin of room, since one a few points under the line would need leaving again
-            // within the cooldown it is about to start (#541).
             let tight = room < settings.hysteresis_pct;
             let reset_ts = seven_day_reset_ts(reading.usage(), input.now);
             [flag(tight), reset_ts.unwrap_or(f64::INFINITY), -lh]
         } else {
-            // Escapes prefer a target below the line first, then `best`'s headroom order: a
-            // target over a line is left again at the next cooldown (#305).
             [flag(over), -lh, 0.]
         };
         qualifying.push((key, num.clone()));
     }
-    // Ascending by key; the sort is stable, so sequence order breaks ties.
     qualifying.sort_by(|a, b| compare(&a.0, &b.0));
     (
         qualifying.into_iter().map(|(_, num)| num).collect(),

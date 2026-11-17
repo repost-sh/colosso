@@ -167,14 +167,11 @@ impl Snapshot {
             .zip(at(9).and_then(ax::as_size));
         let mut shown = false;
         if let Some((name, acts)) = named {
-            // A text's words are its value; where it has a name too (a display's "Result"),
-            // the words follow it as a value.
             let labelled = matches!(name, "text" | "heading") && title.is_some();
             let text = match name {
                 "text" | "heading" => title.or_else(|| text_of(value)),
                 _ => title,
             };
-            // Structure with no name says nothing; text with no text says nothing.
             let says = acts || text.is_some() && name != "group" || name == "window";
             if says && (!self.interactive || acts) {
                 let mut line = format!("{}- {name}", "  ".repeat(depth));

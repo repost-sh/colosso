@@ -224,8 +224,6 @@ pub fn build_usage_result(data: &Value, now: f64) -> Result<Option<Value>, Fetch
     if let Some(spend) = spend_entry(data.get("extra_usage"), now)? {
         result.insert("spend".to_owned(), spend);
     }
-    // Per-model weekly limits live in `limits[]` as `weekly_scoped` entries with a
-    // `scope.model.display_name` ("Fable"); the legacy keys never carry them.
     if let Some(Value::Array(limits)) = data.get("limits") {
         let mut scoped = Vec::new();
         for limit in limits.iter().filter_map(Value::as_object) {
@@ -381,8 +379,6 @@ pub fn usage_failure_line(context: &str, kind: &str, retry_after_s: Option<f64>)
         None => kind.to_owned(),
     };
     if kind == RATE_LIMITED_ERROR {
-        // Per token or per account depends on the org's 429 regime (both measured, see
-        // `poll_policy`), so the line stays scope-neutral.
         cause.push_str(" (usage-endpoint budget reached; backing off)");
     }
     format!("Usage fetch failed{at}: {cause}")
@@ -410,7 +406,6 @@ pub fn try_fetch_usage_for_account(
     account_num: &str,
     credentials: &str,
 ) -> UsageOutcome {
-    // No email: the context is paste-safe for public issues.
     let context = format!("for account {account_num}");
     let oauth = extract_oauth_data(credentials).filter(|oauth| !oauth.is_empty());
     let Some(access_token) = oauth

@@ -1,10 +1,3 @@
-// What Claude offers and whether it can run (docs/chat.md 4.5.9, C7). Models, efforts and the
-// account come from the CLI's answer to its initialize request and depend only on the CLI and
-// the account, so they're kept per executable and version; slash commands depend on the
-// folder, refreshed by each session's CLI for its folder, and read by an initialization-only
-// probe for a folder no session has run in: a query whose prompt never comes, closed once its
-// CLI has answered, with no API call.
-
 import type {
   AccountInfo,
   ModelInfo,

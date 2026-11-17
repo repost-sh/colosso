@@ -138,7 +138,6 @@ pub fn start(dir: &DaemonDir, mut command: Command) -> io::Result<()> {
             dir.log().display()
         )));
     }
-    // Waited for, so that once it exits it doesn't stay behind as a zombie of the app's.
     std::thread::Builder::new()
         .name("daemon-reap".into())
         .spawn(move || child.wait())?;
@@ -201,12 +200,10 @@ fn stopped_within(dir: &DaemonDir, wait: Duration) -> bool {
 fn signal(dir: &DaemonDir, signal: libc::c_int) -> io::Result<()> {
     let mut lock = match std::fs::File::open(dir.lock()) {
         Ok(lock) => lock,
-        // No lock, so no daemon holds it.
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error),
     };
     match lock.try_lock() {
-        // No daemon holds it, so the pid in it is stale.
         Ok(()) => return Ok(()),
         Err(std::fs::TryLockError::WouldBlock) => {}
         Err(std::fs::TryLockError::Error(error)) => return Err(error),
@@ -253,7 +250,6 @@ mod tests {
         let root = std::env::temp_dir().join(format!("koyo-daemon-test-{}", std::process::id()));
         let dir = DaemonDir::new(&root, "host");
         std::fs::create_dir_all(dir.root()).unwrap();
-        // As the app's background threads are: SIGTERM blocked where the daemon is started.
         // SAFETY: this thread's own blocked signals, set from an initialised set.
         unsafe {
             let mut term = std::mem::zeroed::<libc::sigset_t>();
@@ -261,8 +257,6 @@ mod tests {
             libc::sigaddset(&raw mut term, libc::SIGTERM);
             libc::pthread_sigmask(libc::SIG_BLOCK, &raw const term, std::ptr::null_mut());
         }
-        // A daemon that says which signals it starts with blocked (the shell's `ps` reads its
-        // own), then that it listens.
         let mut daemon = Command::new("/bin/sh");
         daemon.args(["-c", "ps -o sigmask= -p $$ > blocked; echo ready"]);
         start(&dir, daemon).unwrap();

@@ -159,12 +159,10 @@ pub fn probe(launch: &Launch, root: &Path, call: &Call) {
     };
     let took = Instant::now();
     let hover = wait(120, async {
-        // Still loading its own library files for a moment after it initializes.
         loop {
             match client.request::<HoverRequest>(&params).await {
                 Ok(Some(hover)) => return hover,
                 Ok(None) | Err(LspError::Server { .. }) => {
-                    // A moment's pause, on the client's own timer.
                     within(Duration::from_millis(250), std::future::pending::<()>()).await;
                 }
                 Err(error) => panic!("{error}"),

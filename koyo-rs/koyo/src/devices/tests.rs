@@ -89,7 +89,6 @@ fn a_host_that_goes_answers_what_waited_and_is_started_again(cx: &mut TestAppCon
     cx.run_until_parked();
     let answer = futures::FutureExt::now_or_never(task);
     assert!(matches!(answer, Some(Err(Refusal { code: RefusalCode::Gone, .. }))), "{answer:?}");
-    // Started again: under test there is no host to start, which it says.
     link.read_with(cx, |link, _| {
         assert!(matches!(&link.state, State::Failed(why) if why.contains("isn't started under test")), "{:?}", link.state);
     });
@@ -113,7 +112,6 @@ fn the_person_s_input_reaches_a_ready_device_and_holds_agents_off(cx: &mut TestA
     let _ = told.try_recv();
     link.update(cx, |link, cx| {
         let tap = koyo_device_wire::Input::Text { text: "a".into() };
-        // Not ready yet: nothing goes, nothing is kept.
         link.input(tap.clone(), cx);
         link.hear(FromHost::State { state: Said::Ready { screen: screen() } }, cx);
         link.input(tap, cx);
@@ -128,7 +126,6 @@ fn the_person_s_input_reaches_a_ready_device_and_holds_agents_off(cx: &mut TestA
 fn a_record_whose_host_is_gone_is_a_leftover_and_one_that_runs_isnt() {
     let folder = crate::test_support::scratch("device-records");
     let me = std::process::id();
-    // This test's own process: running, with its own start time.
     let started = super::host::started_at(i32::try_from(me).unwrap()).unwrap();
     std::fs::write(folder.join("ALIVE.host"), format!("{me} {started} ALIVE\n")).unwrap();
     std::fs::write(folder.join("REUSED.host"), format!("{me} 1 REUSED\n")).unwrap();
@@ -200,7 +197,6 @@ fn start_again_ends_a_host_that_gave_up_and_starts_afresh(cx: &mut TestAppContex
         link.start(cx);
     });
     assert_eq!(told.try_recv().ok(), Some(ToHost::Quit), "the host that gave up was ended");
-    // Under test no host is started: the try shows as a failed start, not as the old state.
     let state = cx.read(|cx| link.read(cx).state.clone());
     assert!(matches!(state, State::Failed(_)), "{state:?}");
 }

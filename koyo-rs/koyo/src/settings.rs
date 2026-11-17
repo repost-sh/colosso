@@ -338,14 +338,12 @@ impl Global for Store {}
 
 /// Loads the settings, falling back to the defaults for a missing or unreadable file.
 pub fn init(cx: &mut App) {
-    // Tests keep no file: each starts from the defaults, and none writes over the user's.
     let path = std::env::var_os("KOYO_CONFIG_DIR")
         .map(PathBuf::from)
         .or_else(|| dirs::data_dir().map(|dir| koyo_daemon::app_folder(&dir)))
         .map(|dir| dir.join(FILE))
         .filter(|_| !cfg!(test));
     let mut settings: Settings = path.as_deref().map(file::load).unwrap_or_default();
-    // Projects from before spaces, or edited into the file, find their space.
     settings.reconcile_spaces();
     let seen = path.as_deref().and_then(file::modified);
     cx.set_global(Store {
@@ -355,8 +353,6 @@ pub fn init(cx: &mut App) {
         unsaved: false,
         seen,
     });
-    // Edits to the file while the app runs, a key's repeat tuned by hand say, take effect
-    // within half a second. Tests leave the file be.
     #[cfg(not(test))]
     cx.spawn(async move |cx| {
         loop {
@@ -412,7 +408,6 @@ pub fn init(cx: &mut App) {
     cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
         update(cx, |settings| settings.branch_prefix = prefix.clone());
     });
-    // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
         if cx.global_mut::<Store>().pending.take().is_some()
             && let Some((path, json)) = file::encode(cx)

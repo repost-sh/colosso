@@ -108,7 +108,6 @@ impl Delegate {
     /// Tells the page `answer`, if it still waits.
     fn tell(&self, answer: PasskeyAnswer) {
         if let Some(tell) = self.ivars().tell.take() {
-            // The receiver is gone only with the page's request.
             let _ = tell.send(answer);
         }
     }
@@ -124,7 +123,6 @@ fn answer_of(authorization: &ASAuthorization, asked: Asked) -> PasskeyAnswer {
     {
         // SAFETY: on macOS 13.5 or later, as every shown sheet is, which has `attachment`.
         let attachment = attachment(unsafe { made.attachment() });
-        // Synced with the person's devices, and offered to a phone nearby.
         let transports = vec!["hybrid".to_owned(), "internal".to_owned()];
         let made = registration(made, attachment, transports);
         return answer::created(made, Authenticator::Platform, asked);

@@ -331,8 +331,6 @@ impl Poster {
                     let event = sys::CGEventCreateKeyboardEvent(self.source(), 0, down);
                     if !event.is_null() {
                         sys::CGEventKeyboardSetUnicodeString(event, units.len(), units.as_ptr());
-                        // No modifier, whatever the source last saw: a character that came
-                        // with one held would be a shortcut.
                         sys::CGEventSetFlags(event, 0);
                     }
                     event

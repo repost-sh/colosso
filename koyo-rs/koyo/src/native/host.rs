@@ -54,10 +54,6 @@ pub fn host<C: Control>(
         }
         Some(native.size)
     })?;
-    // As a hitbox there is clipped to what of a scroll layer shows rather than all it paints,
-    // the control is put over its bounds and shown as far as the page shows them. Listening
-    // for its child keeps a scrolling page off a scroll layer too, which would move the div
-    // without prepainting it.
     let track = div()
         .w_full()
         .h(size.height)

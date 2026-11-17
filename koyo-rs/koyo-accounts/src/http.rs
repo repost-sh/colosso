@@ -106,7 +106,6 @@ pub struct Curl;
 impl Http for Curl {
     fn send(&self, request: &Request) -> Result<Response, HttpError> {
         let mut child = Command::new(CURL)
-            // First, so no `.curlrc` changes what's asked.
             .arg("--disable")
             .args(["--silent", "--show-error", "--include", "--compressed"])
             .args(["--proto", "=https", "--config", "-"])
@@ -144,9 +143,6 @@ impl Http for Curl {
 fn failure(code: i32, said: &str) -> HttpError {
     match code {
         28 => HttpError::Timeout,
-        // A certificate refused: the peer's, the CA store, its issuer, a pinned key, its status.
-        // Other TLS failures (a handshake with a plaintext port) are the network's, as cswap
-        // tells only a certificate verification apart.
         60 | 77 | 83 | 90 | 91 => HttpError::Tls(said.to_owned()),
         _ => HttpError::Network(if said.is_empty() {
             format!("curl exited {code}")

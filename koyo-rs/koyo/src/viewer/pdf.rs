@@ -41,8 +41,6 @@ pub fn open(path: &Path) -> Result<(Pdf, Opened), String> {
         }
     }
     let count = CGPDFDocument::number_of_pages(Some(&document));
-    // A page Quartz can't read keeps its place, as a blank letter-sized page, so the pages
-    // after it are still the ones their numbers say.
     let pages: Vec<PageBox> = (1..=count)
         .map(|number| {
             CGPDFDocument::page(Some(&document), number).map_or(LETTER, |page| page_box(&page))
@@ -105,7 +103,6 @@ impl Source for Pdf {
         let context = Some(canvas.context());
         let scale = CGFloat::from(key.level.scale());
         let page_height = CGFloat::from(page_box.size.1) * scale;
-        // Quartz counts up from the bottom: the tile's bottom edge is this far up the page.
         let bottom = page_height - CGFloat::from(top + height);
         CGContext::translate_ctm(context, -CGFloat::from(left), -bottom);
         CGContext::scale_ctm(context, scale, scale);

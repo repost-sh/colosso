@@ -109,7 +109,6 @@ impl BrowserView {
                         if changed {
                             log::debug!("page {} is {:?} light at its foot", this.pane, tone.lightness([0., 0.9, 1., 1.]));
                             this.tone = Some(tone);
-                            // Glass over the page is drawn by whoever lays it there.
                             cx.notify();
                             cx.refresh_windows();
                         }
@@ -142,7 +141,6 @@ mod tests {
 
     #[test]
     fn a_region_is_as_light_as_the_page_is_there() {
-        // Dark along the foot, white above.
         let page = tone(|_, row| if row == DOWN - 1 { 0. } else { 1. });
         assert!(page.lightness([0., 0.9, 1., 1.]).unwrap() < 0.01);
         assert!(page.lightness([0., 0., 1., 0.5]).unwrap() > 0.99);
@@ -154,7 +152,6 @@ mod tests {
         let grid = vec!["1"; ACROSS * DOWN].join(",");
         let dark = Tone::parse(&format!("{grid};18 18 18")).unwrap();
         assert_eq!(dark.canvas(), gpui_kit::Hsla::from(gpui_kit::rgb(0x0012_1212)));
-        // None named, or one that isn't a colour: white, as a page with no background is.
         let white = gpui_kit::Hsla::from(gpui_kit::rgb(0x00ff_ffff));
         assert_eq!(Tone::parse(&grid).unwrap().canvas(), white);
         assert_eq!(Tone::parse(&format!("{grid};red")).unwrap().canvas(), white);

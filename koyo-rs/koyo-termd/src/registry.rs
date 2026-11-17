@@ -48,7 +48,6 @@ impl Registry {
                     record.status = Status::Exited;
                     record.attached_clients = 0;
                     record.control = Control::default();
-                    // A pin lasts as long as the connection that set it, gone with the daemon.
                     record.pinned = None;
                     if record.exit.is_none() {
                         record.exit = Some(Exit {
@@ -251,7 +250,6 @@ mod tests {
         assert_eq!(a_again.pid, None);
         assert!(a_again.exit.is_some_and(|exit| exit.daemon_restart));
         assert_eq!(a_again.attached_clients, 0);
-        // A pin goes with the connection that set it, so with the daemon too.
         assert_eq!(a_again.pinned, None);
     }
 

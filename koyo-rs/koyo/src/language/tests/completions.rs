@@ -34,7 +34,6 @@ fn completing(root: &Path, _: usize) -> Value {
     let mut script = started_with(root, "src/main.rs", capabilities());
     script.extend([
         change(1, &json!({"start": at(1, 4), "end": at(1, 4)}), "g", &main),
-        // Not a trigger character: asked as if invoked, at the caret after the "g".
         json!({"expect": {"method": "textDocument/completion", "params": {
             "position": at(1, 5), "context": {"triggerKind": 1}}}}),
         json!({"reply": 1, "result": {"isIncomplete": false, "items": [
@@ -42,10 +41,8 @@ fn completing(root: &Path, _: usize) -> Value {
             {"label": "grab", "kind": 3, "sortText": "0001"},
             greet,
         ]}}),
-        // The row selected is filled in.
         json!({"expect": {"method": "completionItem/resolve", "params": {"label": "greet"}}}),
         json!({"reply": 2, "result": filled}),
-        // The "r" narrows the list here, without asking again.
         change(2, &json!({"start": at(1, 5), "end": at(1, 5)}), "r", &main),
         status("warning", Some("typed gr")),
         change(
@@ -70,10 +67,8 @@ async fn a_word_typed_lists_the_server_s_completions_and_enter_puts_the_chosen_i
     let server = server(&root, cx).unwrap();
     assert_eq!(settled(&server, cx).await, State::Ready);
     let editor = cx.read(|cx| editor(&main, cx)).unwrap();
-    // On the empty line, after its indentation.
     place_caret(shell.0, &editor, MAIN.find("    \n").unwrap() + 4, cx);
 
-    // The key with the character it types, which the test platform doesn't infer.
     cx.simulate_keystrokes(shell.0, "g->g");
     assert_eq!(
         cx.read(|cx| editor.read(cx).value().to_string()),
@@ -100,7 +95,6 @@ async fn a_word_typed_lists_the_server_s_completions_and_enter_puts_the_chosen_i
         ),
         "the preselected row first, then by sort text, then the fuzzy match"
     );
-    // The server's documentation for the row lands in it.
     let documented = |cx: &App| {
         let menu = editor.read(cx).completion_menu_state();
         menu.items
@@ -126,7 +120,6 @@ async fn a_word_typed_lists_the_server_s_completions_and_enter_puts_the_chosen_i
     assert!(cx.read(documented).is_some(), "the row stays filled in");
     draw(shell.0, cx);
 
-    // Enter: the snippet goes in over the whole word, its first stop selected.
     cx.simulate_keystrokes(shell.0, "enter");
     let watched = vec![changes(&server, cx), changes(&editor, cx)];
     until(cx, watched, |cx| health(cx).as_deref() == Some("completed")).await;
@@ -139,7 +132,6 @@ async fn a_word_typed_lists_the_server_s_completions_and_enter_puts_the_chosen_i
     let name = completed.find("name").unwrap();
     assert_eq!(selected, name..name + 4);
     assert!(cx.read(|cx| !editor.read(cx).completion_menu_state().open));
-    // Tab: the last stop, after the call, and the snippet is over.
     draw(shell.0, cx);
     cx.simulate_keystrokes(shell.0, "tab");
     let end = completed.find(")\n").unwrap() + 1;
@@ -177,7 +169,6 @@ async fn code_actions_list_what_the_server_offers_and_the_chosen_one_edits_the_f
         script.extend([
             json!({"send": {"method": "textDocument/publishDiagnostics", "params": {
                 "uri": main, "version": 0, "diagnostics": [diagnostic]}}}),
-            // Asked for the caret, with the diagnostic there.
             json!({"expect": {"method": "textDocument/codeAction", "params": {
                 "range": {"start": at(1, 5), "end": at(1, 5)},
                 "context": {"diagnostics": [diagnostic]}}}}),
@@ -188,7 +179,6 @@ async fn code_actions_list_what_the_server_offers_and_the_chosen_one_edits_the_f
                     "edit": {"changes": {}}},
                 import,
             ]}),
-            // The one chosen came without its edit: filled in first.
             json!({"expect": {"method": "codeAction/resolve",
                 "params": {"title": "Import `other::greet`"}}}),
             json!({"reply": 2, "result": filled}),
@@ -232,7 +222,6 @@ async fn code_actions_list_what_the_server_offers_and_the_chosen_one_edits_the_f
     );
     draw(shell.0, cx);
 
-    // Enter: this file is edited in the editor, the other on disk.
     cx.simulate_keystrokes(shell.0, "enter");
     let health = |cx: &App| server.read(cx).health().cloned();
     let watched = vec![changes(&server, cx), changes(&editor, cx)];

@@ -119,13 +119,11 @@ impl ChatView {
             cx.subscribe_in(&composer, window, |view, _, event, window, cx| {
                 view.composer_said(event, window, cx);
             }),
-            // A person back from elsewhere may have done something with the branch there.
             cx.observe_window_activation(window, |view, window, cx| {
                 if window.is_window_active() {
                     details::window_active_again(view, cx);
                 }
             }),
-            // Whether prompts float, in open chats at once.
             settings::on_change(cx, Self::float),
         ];
         let mut view = ChatView {
@@ -280,7 +278,6 @@ impl ChatView {
         self.showing_pill = None;
         self.floating = None;
         self.hidden = Pixels::MAX;
-        // Each chat has its own list: what a person scrolls is counted from where this one is.
         if let Some(shown) = self.shown.last() {
             let scroller = shown.scroller.read(cx);
             (self.scrolled_to, self.hand_scrolls) =
@@ -427,7 +424,6 @@ impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         details::keep_fresh(self, cx);
         self.note_seen(window, cx);
-        // Once the list is laid out, as following its end moves it without a scroll.
         cx.defer_in(window, |this, _, cx| this.float(cx));
         let timeline = (self.showing()).map(|shown| {
             shown
@@ -440,7 +436,6 @@ impl Render for ChatView {
             .relative()
             .size_full()
             .text_color(theme::palette(cx).text)
-            // Wherever the keys are in a subagent's chat: clicking its text takes them from the bar.
             .when(self.bar().is_some(), |chat| {
                 chat.key_context(KEYS)
                     .on_action(cx.listener(|this, _: &OpenParent, window, cx| {

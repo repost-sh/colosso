@@ -173,7 +173,6 @@ impl Server {
     /// The last view of the document `id` at `path` let go of it: what the server published
     /// for the file goes too, as it's in a text no editor has.
     fn close(&mut self, path: &Arc<Path>, id: EntityId, cx: &mut Context<Self>) {
-        // A document opened again since replaced this one under the same path.
         if self
             .documents
             .get(path)

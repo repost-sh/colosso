@@ -182,7 +182,6 @@ impl Ring {
             .iter()
             .map(|slot| slot.surface.create_mach_port())
             .collect();
-        // The ports move to the app whether or not the send succeeds.
         if let Err(error) = self.0.sender.send(1, inner.generation, &ports) {
             self.0
                 .teller

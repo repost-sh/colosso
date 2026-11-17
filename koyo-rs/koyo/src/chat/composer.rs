@@ -204,7 +204,6 @@ impl ChatComposer {
                 }
             }),
             cx.observe(&claude_missing, |_, _, cx| cx.notify()),
-            // What the menus were opened on may not be there any more, nor the commands listed.
             cx.observe(&catalog, |this, _, cx| {
                 this.model_menu.close(cx);
                 this.effort_menu.close(cx);
@@ -216,9 +215,7 @@ impl ChatComposer {
                 this.follow_text(cx);
                 this.keep_draft(cx);
             }),
-            // The text views' colours, which its markdown is drawn in, follow the theme.
             cx.observe_global::<TextViewDefaults>(Self::restyle),
-            // What's attached changes the composer and not what's typed.
             cx.observe_self(|this, cx| this.keep_draft(cx)),
             cx.on_release(|this: &mut Self, cx| this.let_go(cx)),
         ];
@@ -314,12 +311,10 @@ impl ChatComposer {
             cx.notify();
         }
         self.follow_turn(turn, cx);
-        // Told only when it changes, as every token comes through here.
         if self.activity.read(cx).working() != working {
             (self.activity).update(cx, |activity, cx| activity.set_working(working, cx));
         }
         if let Some(settings) = settings.filter(|settings| *settings != self.settings) {
-            // The slider's stops are the efforts of the model it opened on.
             if settings.model != self.settings.model {
                 self.effort_menu.close(cx);
             }
@@ -419,13 +414,10 @@ impl Render for ChatComposer {
             ))
             .child(self.footer(&typed, p, cx))
             .children(self.suggestions(p, window, cx))
-            // A press anywhere in the box is a press in the prompt: on its chips and its edge
-            // too, the keyboard is the prompt's.
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, window, cx| window.focus(&this.focus_handle(cx), cx)),
             );
-        // Measured round it, so what's measured is its glass, or its hairline where there's none.
         let placement = self.placement.clone();
         let surface = div()
             .w_full()
@@ -433,7 +425,6 @@ impl Render for ChatComposer {
             .on_prepaint(move |bounds, _, _| placement.glass_at(bounds));
         let mut keys = KeyContext::default();
         keys.add(COMPOSER);
-        // A popover has the keys while it's open, ahead of what's asked.
         if self.suggesting() {
             keys.add(SUGGESTING);
         } else if typed.is_empty() {
@@ -452,7 +443,6 @@ impl Render for ChatComposer {
         self.hears_suggestions(Self::hears_model_menu(hearing, cx), cx)
             .key_context(keys)
             .relative()
-            // As wide as the column the tab holds it in, with the edge over it.
             .w_full()
             .px_6()
             .flex()
@@ -475,7 +465,6 @@ impl Render for ChatComposer {
                     .children(self.note(p, cx)),
             )
             .child(surface)
-            // Told a frame late, as it's measured once drawn.
             .on_prepaint(move |bounds, _, cx| {
                 placement.composer_at(bounds);
                 let fitting = labels_fitting(bounds.size.width);

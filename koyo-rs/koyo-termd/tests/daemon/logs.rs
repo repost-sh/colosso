@@ -38,7 +38,6 @@ fn the_logs_keep_who_did_what_and_every_command_the_shell_ran() {
     };
     wait_until("the prompt", || idle(&record()));
 
-    // The person types a key at a time, as the app sends keys.
     for key in ["e", "c", "h", "o", " ", "h", "i", "\r"] {
         person.connection.input(index, key.as_bytes()).unwrap();
     }
@@ -51,8 +50,6 @@ fn the_logs_keep_who_did_what_and_every_command_the_shell_ran() {
             }
         )
     });
-    // An agent claims the terminal and types a command that fails. (A paste wouldn't run
-    // it: zsh takes a bracketed paste's newline as text.)
     let (agent_index, _) = agent.attach(&handle, None);
     let claim = RequestBody::Claim {
         handle: handle.clone(),
@@ -83,7 +80,6 @@ fn the_logs_keep_who_did_what_and_every_command_the_shell_ran() {
     );
     assert!(commands[0].first_offset < commands[0].last_offset);
 
-    // The typing is one line, then the enter key, the claim and the paste.
     wait_until("the enter key's line, after the pause", || {
         let activity: Vec<ActivityEntry> = entries(&dir, &handle, LogKind::Activity);
         activity.iter().any(|entry| entry.action == "pressed enter")
@@ -105,7 +101,6 @@ fn the_logs_keep_who_did_what_and_every_command_the_shell_ran() {
     assert_eq!(typed.actor.kind, ActorKind::Agent);
     assert_eq!(typed.human, None, "an agent's input isn't the person's");
 
-    // A reader that reached the end gets nothing more until something happens.
     let path = dir.journal(&handle, LogKind::Activity);
     let end = read_since(&path, 0, 1 << 20).unwrap().next;
     assert!(read_since(&path, end, 1 << 20).unwrap().lines.is_empty());

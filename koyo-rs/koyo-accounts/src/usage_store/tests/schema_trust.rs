@@ -5,8 +5,6 @@ use serde_json::{Value, json};
 
 use super::*;
 
-// TestSchema
-
 #[test]
 fn empty_when_missing() {
     let h = Harness::new();
@@ -55,8 +53,6 @@ fn the_table_lives_in_the_stores_cache() {
     assert!(cache.join(".usage.lock").exists());
 }
 
-// TestStaleOnError
-
 #[test]
 fn failure_preserves_last_good() {
     let h = Harness::new();
@@ -68,7 +64,6 @@ fn failure_preserves_last_good() {
     assert_eq!(entry.age_s, Some(60.));
     assert_eq!(entry.last_error.as_deref(), Some("http-429"));
     assert_eq!(entry.consecutive_failures, 1);
-    // Still trusted for decisions within STALE_OK_S.
     assert_eq!(decision(&entry), Some(&usage()));
 }
 
@@ -79,7 +74,6 @@ fn too_stale_is_unknown_for_decisions() {
     h.advance(STALE_OK_S + 1.);
     let entry = h.entry("1");
     assert_eq!(entry.decision_value(), None);
-    // ... but a view still sees the measurement and its age.
     assert_eq!(entry.last_good, Some(usage()));
     assert_eq!(entry.age_s, Some(STALE_OK_S + 1.));
 }
@@ -106,8 +100,6 @@ fn success_with_no_windows() {
     assert!(entry.fetched_at.is_some());
     assert_eq!(entry.decision_value(), None);
 }
-
-// TestExtendedTrust: deliberate staleness stays trusted.
 
 #[test]
 fn in_backoff_past_stale_ok_is_still_trusted() {
@@ -144,7 +136,6 @@ fn within_poll_plan_past_stale_ok_is_trusted() {
     let entry = h.entry("1");
     assert_eq!(entry.consecutive_failures, 0);
     assert_eq!(decision(&entry), Some(&usage()));
-    // Once overdue, the staleness is no longer the scheduler's choice.
     h.advance(250.);
     assert_eq!(h.entry("1").decision_value(), None);
 }
@@ -210,8 +201,6 @@ fn _429_staleness_without_reset_info_falls_back_to_ceiling() {
     h.record("1", err("http-429"));
     assert_eq!(h.entry("1").decision_value(), None);
 }
-
-// TestRateLimitTrustBounds
 
 fn bounded_usage(now: f64, five_h_ahead: Option<f64>, seven_d_ahead: Option<f64>) -> Value {
     let mut five = json!({"pct": 25.0});

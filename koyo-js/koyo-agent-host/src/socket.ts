@@ -1,10 +1,3 @@
-// Reaching a socket whatever folder it's in (docs/chat.md 4.1). A socket's address holds at most
-// 103 bytes of path on macOS, and the host's folder can be deeper than that leaves room for: a
-// checkout's own scratch folder, or a long `KOYO_DATA_DIR`. The way there from the working
-// directory is often short when the absolute path isn't, and the system takes it the same: the
-// host runs in its folder, so it binds its socket by name alone, and a test runs in the
-// workspace, inside the checkout.
-
 import { realpathSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 

@@ -133,14 +133,12 @@ pub(in super::super) fn keep_fresh(view: &mut ChatView, cx: &mut Context<ChatVie
     view.details.git.fresh = Some(cx.spawn(async move |this, cx| {
         let here = git.clone();
         let published = cx.background_spawn(async move { here.published() }).await;
-        // What's known here shows first: the network may take a while, or never answer.
         this.update(cx, |view, cx| {
             view.details.git.heard(published, Asked::NoAnswer);
             cx.notify();
         })
         .ok();
         let fetching = git.clone();
-        // Without the network, what's known here still holds.
         cx.background_spawn(async move { fetching.fetch().ok() })
             .await;
         let (published, asked) = cx

@@ -14,7 +14,6 @@ fn projects_are_added_selected_moved_and_removed(cx: &mut TestAppContext) {
     let second = repo("control-projects-b", &[("src/lib.rs", "pub fn b() {}\n")]);
     let rig = controlled("control-projects", &[&first], cx);
     let agent = terminal("term_1");
-    // A folder inside the repository adds it by its main checkout, selected as asked.
     let added = call(
         &agent,
         "project_add",
@@ -26,7 +25,6 @@ fn projects_are_added_selected_moved_and_removed(cx: &mut TestAppContext) {
     assert_eq!(added["project"]["selected"], json!(true));
     assert_eq!(added["project"]["worktrees"][0]["branch"], json!("main"));
     assert_eq!(added["project"]["worktrees"][0]["main"], json!(true));
-    // By its name, when no other project has it.
     let name = first.file_name().unwrap().to_string_lossy().into_owned();
     let selected = call(&agent, "project_select", json!({ "project": name }), cx).unwrap();
     assert_eq!(selected["project"]["path"], json!(first));
@@ -55,7 +53,6 @@ fn projects_are_added_selected_moved_and_removed(cx: &mut TestAppContext) {
         cx.read(|cx| crate::settings::get(cx).projects.clone()),
         vec![second]
     );
-    // The files stay where they are.
     assert!(first.join("README.md").exists());
 }
 

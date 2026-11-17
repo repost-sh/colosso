@@ -56,8 +56,6 @@ fn only_a_shell_at_its_prompt_or_a_program_that_ended_is_safe_to_end() {
     assert!(busy(&state(Status::Running, "command running")));
     assert!(busy(&state(Status::NeedsInput, "bell")));
     assert!(busy(&state(Status::Unknown, "started")));
-    // Without a shell's marks, quiet says nothing of what runs: a program waiting at its own
-    // prompt is quiet too.
     assert!(busy(&state(Status::Idle, "quiet")));
 }
 

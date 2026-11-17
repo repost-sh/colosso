@@ -66,7 +66,6 @@ pub(super) fn created(made: Registration, by: Authenticator, asked: Asked) -> Pa
             "The new passkey came without its key.",
         );
     };
-    // A platform passkey is always discoverable; a security key's only surely when required.
     let discoverable = (asked.cred_props
         && (by == Authenticator::Platform || asked.resident_key_required))
         .then_some(true);

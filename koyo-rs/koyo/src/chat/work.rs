@@ -115,7 +115,6 @@ fn line(drawing: &Drawing, item: &Item, index: usize) -> Div {
     let open = opens_up && shows != Shows::Line;
     let opens = drawing.opens(id, index);
     let says = match &item.body {
-        // The line is the thought's last, which what's opened under it says again.
         ItemBody::Reasoning(_) if open => THOUGHT.to_owned(),
         _ => work_line(item, &drawing.cwd),
     };
@@ -139,7 +138,6 @@ fn line(drawing: &Drawing, item: &Item, index: usize) -> Div {
                 SharedString::from(format!("work-says-{}", item.id)),
                 says,
             ))
-            // What it thought reads as an aside, in italics.
             .when(thought, Styled::italic),
         )
         .children(changed(item, p))
@@ -279,12 +277,9 @@ fn preview(drawing: &Drawing, id: &ItemId, output: &str, last: bool, index: usiz
     let output = output.trim_end();
     let hidden = output.lines().count().saturating_sub(PREVIEW_LINES);
     let boxed = |text: &str| block(format!("output-{id}"), text, p);
-    // A line more than shows isn't worth a line saying so.
     if hidden <= 1 {
         return div().child(boxed(output));
     }
-    // The lines kept are of a piece: what's after the line breaks before the last of them, or
-    // before the one after the first of them.
     let kept = if last {
         let breaks = output.rmatch_indices('\n').nth(PREVIEW_LINES - 1);
         breaks.map_or(output, |(at, _)| &output[at + 1..])

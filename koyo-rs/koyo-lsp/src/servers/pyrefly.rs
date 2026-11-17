@@ -15,7 +15,6 @@ pub static PYREFLY: ServerSpec = ServerSpec {
     release: Release {
         version: "1.4.0",
         url: "https://github.com/facebook/pyrefly/releases/download/{version}/pyrefly-{target}.tar.gz",
-        // Digests as the release's `.sha256` files list them, and the same as the downloads'.
         assets: &[
             (
                 ("aarch64", "macos"),

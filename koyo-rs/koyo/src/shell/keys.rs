@@ -79,15 +79,12 @@ impl Shell {
         self.workspace.enter_pane(id);
         self.navigate(Route::Workspace, cx);
         self.follow_selection(window, cx);
-        // What it shows is made as its tab is shown, to take the keyboard: a page brought back
-        // at launch, a chat's view, a terminal's.
         self.make_shown_browsers(window, cx);
         self.make_shown_chats(window, cx);
         let terminal = self.workspace.pane(id).and_then(|pane| pane.terminal);
         if let Some(terminal) = terminal {
             self.terminal_view(terminal, window, cx);
         }
-        // A chat is moved to, not typed in: its prompt is left alone, the window has the keys.
         let keys = (self.workspace.pane(id))
             .filter(|pane| pane.kind != PaneKind::Chat)
             .and_then(|pane| Some((self.keys_of(pane, cx)?, surface_of(pane, cx))));
@@ -97,7 +94,6 @@ impl Shell {
                 keyboard::set(window, surface, asked);
                 keys.take(window, cx);
             }
-            // A terminal whose view can't be made leaves the keyboard where it is.
             None if terminal.is_some() => {}
             None => {
                 keyboard::set(window, Surface::Gpui(Part::Window), asked);
@@ -199,7 +195,6 @@ impl Shell {
     /// prompt has the keyboard once they press in it.
     pub(crate) fn keys_to_shown_tab(&mut self, cx: &mut Context<Self>) {
         self.keys.to = self.shown_tab_key().map(|tab| (tab, false));
-        // With no tab to hand it to, what was asked is over.
         if self.keys.to.is_none() {
             self.keys.intent = None;
         }
@@ -239,14 +234,11 @@ impl Shell {
             self.keys.intent = None;
             return;
         };
-        // Settled now, by this tab or by none: its views are made, so a tab with nothing to
-        // take the keyboard, or another shown instead, leaves it where it is for good.
         self.keys.to = None;
         let cause = self.keys.intent.take().map_or(Cause::TabShown, Cause::Intent);
         let Some(tab) = (self.workspace.tab_shown()).filter(|tab| tab.first().id == to) else {
             return;
         };
-        // The page that had the keyboard as the tab was left has it again.
         if let Some(Surface::Page(page)) = keyboard::tab_shown(window, to)
             && let Some((id, view)) = page_in(&tab.panes(), page, cx)
         {
@@ -295,14 +287,12 @@ impl Shell {
         keyboard::key(window, cx);
         match (route == Route::Workspace, self.keys.left) {
             (false, None) => {
-                // With the keyboard at the window, no pane has it: none is read to find out.
                 let had =
                     !self.focus.is_focused(window) && self.pane_with_keyboard(window, cx).is_some();
                 self.keys.left = Some(had);
             }
             (true, Some(had)) => {
                 self.keys.left = None;
-                // Handed over as this frame draws the workspace.
                 if had && self.keys.to.is_none() {
                     self.keys.to = self.shown_tab_key().map(|tab| (tab, false));
                 }

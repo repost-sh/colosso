@@ -54,20 +54,16 @@ struct Drafts {
 impl Global for Drafts {}
 
 pub(super) fn init(cx: &mut App) {
-    // Tests read and write none of a person's.
     let data = settings::data_dir().filter(|_| !cfg!(test));
     open(
         data.map(|data| client::host_dir(&data).root().join(FILE)),
         attachments::folder(),
         cx,
     );
-    // A change still settling when the app quits is written on the way out.
     kept_file::write_on_quit(cx, due);
 }
 
 fn open(path: Option<PathBuf>, attachments: Option<PathBuf>, cx: &mut App) {
-    // A draft isn't worth stopping for: a file that can't be read is none. JSON can't have a
-    // chat as a key, so it's a list.
     let listed: Option<Vec<(DraftOf, Draft)>> = path.as_deref().and_then(kept_file::read);
     cx.set_global(Drafts {
         kept: listed.unwrap_or_default().into_iter().collect(),

@@ -61,7 +61,6 @@ struct Rig {
 /// The shell over `roots` under app control, without its socket: the prompts' times
 /// shortened, new worktrees named without a prefix in a scratch folder of `name`'s.
 fn controlled(name: &str, roots: &[&Path], cx: &mut TestAppContext) -> Rig {
-    // First, so app control follows the shell made next.
     let requests = cx.update(super::start_for_test);
     let (window, shell) = shell_with(roots, cx);
     let worktrees = scratch(&format!("{name}-worktrees"));
@@ -185,7 +184,6 @@ fn send(
     cx: &mut TestAppContext,
 ) -> Slot<Value> {
     let (answered, reply) = slot();
-    // A client's call comes on a connection that's open.
     if let Some(connection) = caller.connection {
         cx.update(|cx| handle(Request::Present { connection, open: true }, cx));
     }

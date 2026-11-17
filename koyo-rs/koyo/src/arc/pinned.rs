@@ -82,7 +82,6 @@ pub fn region(
     if pinned.is_empty() && !taking && settings::get(cx).pinned_zone_dismissed {
         return None;
     }
-    // Where it's drawn is where a tab in hand is off its list, to let go here.
     let hand = shell.tab_hand.clone();
     let note = move |bounds: Bounds<Pixels>, _: &mut Window, _: &mut App| hand.taken_at(bounds);
     let region = div()
@@ -105,7 +104,6 @@ pub fn region(
             }
         }))
         .on_prepaint(note);
-    // The visual check points at the region where it's drawn.
     #[cfg(feature = "visual-check")]
     let region = region.on_prepaint(crate::visual::noting("arc-pinned".into()));
     if pinned.is_empty() {
@@ -129,7 +127,6 @@ pub fn region(
         shell.pinned_hand.clone(),
         Rc::new(on_drop),
     );
-    // Round the tiles, where a tab let go joins them, without moving them.
     let outline = div()
         .absolute()
         .top(px(-OUTLINE))
@@ -240,7 +237,6 @@ fn tile(
         hand: hand.clone(),
         grab: Point::default(),
     };
-    // A page that isn't open, closed or not opened since the window came back, shows fainter.
     let open = page.view().is_some();
     let face = div()
         .when(!open, |face| face.opacity(CLOSED))
@@ -266,7 +262,6 @@ fn tile(
     .on_click(cx.listener(move |this, _, _, cx| {
         this.show_tab_holding(key, cx);
     }));
-    // Its menu is worked out as it's opened, not as the tile's drawn.
     let shell = cx.weak_entity();
     with_menu(tile, move |_, cx| {
         let menu = shell.read_with(cx, |shell, cx| Menu::of(shell, key, cx).build());

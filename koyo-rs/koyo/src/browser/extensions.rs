@@ -142,13 +142,11 @@ impl Store {
         let mut list: Vec<&Extension> = (list.iter())
             .filter(|extension| extension.enabled && (extension.pinned || !pinned_only))
             .collect();
-        // Stable: the engine's list is by name.
         list.sort_by_key(|extension| !extension.pinned);
         let mut shown = Vec::with_capacity(list.len());
         for extension in list {
             let actions = self.actions.get(&(profile.to_owned(), extension.id.clone()));
             let resolved = resolve(actions, pane);
-            // The picture set for the page, else the one set for all, else the manifest's.
             let own = (actions.and_then(|actions| actions.panes.get(&pane)))
                 .is_some_and(|own| !own.icon.is_empty());
             let slot = |pane| (profile.to_owned(), extension.id.clone(), pane);
@@ -200,7 +198,6 @@ fn resolve(actions: Option<&Actions>, pane: PaneId) -> ExtensionAction {
         badge_text: pick(&own.badge_text, &all.badge_text),
         badge_color: pick(&own.badge_color, &all.badge_color),
         badge_text_color: pick(&own.badge_text_color, &all.badge_text_color),
-        // The engine says a page's own with what's set for all already counted in.
         enabled: own.enabled,
     }
 }
@@ -291,7 +288,6 @@ mod tests {
     fn a_page_shows_what_was_set_for_it_else_what_was_set_for_all() {
         let mut store = Store::default();
         store.listed("p".into(), vec![extension("a", "Alpha", true, true)]);
-        // Nothing said yet: the name, no badge, enabled.
         let shown = &store.shown("p", 1, false)[0];
         assert_eq!((shown.title.as_str(), shown.badge.clone(), shown.enabled), ("Alpha", None, true));
 
@@ -306,7 +302,6 @@ mod tests {
         assert_eq!(on_seven.badge.as_ref().map(|badge| badge.text.as_str()), Some("12"));
         assert!(!on_seven.enabled);
 
-        // The page goes, and what was set for it.
         store.pane_closed(7);
         let back = &store.shown("p", 7, false)[0];
         assert_eq!(back.badge.as_ref().map(|badge| badge.text.as_str()), Some("3"));
@@ -319,19 +314,16 @@ mod tests {
         let mut store = Store::default();
         store.listed("p".into(), vec![extension("a", "Alpha", true, true)]);
         assert!(store.shown("p", 1, false)[0].icon.is_none(), "it has none of its own");
-        // Set for all, every page shows it; set for a page, that page shows its own.
         store.acted("p".into(), "a".into(), None, with_icon(png));
         let for_all = store.shown("p", 1, false)[0].icon.clone().expect("the one set for all");
         store.acted("p".into(), "a".into(), Some(7), with_icon(png));
         let for_seven = store.shown("p", 7, false)[0].icon.clone().expect("the one set for the page");
         assert!(!Arc::ptr_eq(&for_all, &for_seven));
         assert!(Arc::ptr_eq(&for_all, store.shown("p", 1, false)[0].icon.as_ref().expect("still")));
-        // Set again and again, as an animated icon is, one picture is kept for each place.
         for _ in 0..50 {
             store.acted("p".into(), "a".into(), Some(7), with_icon(png));
         }
         assert_eq!(store.set.len(), 2);
-        // Set to none, the page shows what's set for all again; closed, nothing of it stays.
         store.acted("p".into(), "a".into(), Some(7), with_icon(""));
         assert!(Arc::ptr_eq(&for_all, store.shown("p", 7, false)[0].icon.as_ref().expect("back")));
         store.acted("p".into(), "a".into(), Some(7), with_icon(png));
@@ -346,7 +338,6 @@ mod tests {
         store.acted("p".into(), "a".into(), None, set("3", "", true));
         store.listed("p".into(), Vec::new());
         assert!(store.shown("p", 1, false).is_empty());
-        // Installed again, it starts with nothing set.
         store.listed("p".into(), vec![extension("a", "Alpha", true, true)]);
         assert_eq!(store.shown("p", 1, false)[0].badge, None);
     }
@@ -362,7 +353,6 @@ mod tests {
 
     #[test]
     fn an_icon_is_a_png_an_extension_set_or_a_file_of_its_own() {
-        // A one-pixel PNG, as `chrome.action.setIcon` arrives.
         let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
         assert!(image(&format!("data:image/png;base64,{png}")).is_some());
         assert!(image("data:image/png;base64,not base64!").is_none());

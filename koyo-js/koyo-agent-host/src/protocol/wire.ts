@@ -1,7 +1,3 @@
-// The protocol's framing: one JSON object per line (docs/chat.md 4.3). A line from a client
-// is parsed into a request for a method the host has, with params of that method's shape;
-// what goes back is a result, an error, or an event.
-
 import { z } from "zod";
 
 import type { EventName, EventParams } from "./events";

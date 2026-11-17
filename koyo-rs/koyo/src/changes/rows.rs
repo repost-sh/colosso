@@ -127,8 +127,6 @@ fn file_rows(
             },
         });
     };
-    // Shows the unchanged run of `len` lines from `old`/`new`, keeping `before` lines at its
-    // start and `after` at its end and folding the middle if there's more than one line to it.
     let run = |rows: &mut Vec<Row>, old: u32, new: u32, len: u32, before: u32, after: u32| {
         let kept = before + after;
         if len <= kept + 1 || unfolded.is_some_and(|unfolded| unfolded.contains(&(new + before))) {
@@ -231,7 +229,6 @@ mod tests {
 
     #[test]
     fn a_long_unchanged_run_folds_beyond_the_context() {
-        // Line 10 of 20 replaced.
         let files = [diff("a", 20, &[(10..11, 10..11)])];
         let rows = rows(&files, Layout::Unified, &Shown::default());
         let mut expected = vec![
@@ -258,7 +255,6 @@ mod tests {
 
     #[test]
     fn a_fold_of_one_line_shows_the_line_instead() {
-        // Seven unchanged lines between two changes: three kept on each side, one in between.
         let files = [diff("a", 10, &[(0..1, 0..1), (8..9, 8..9)])];
         let rows = rows(&files, Layout::Unified, &Shown::default());
         assert!(
@@ -299,7 +295,6 @@ mod tests {
 
     #[test]
     fn split_pairs_the_nth_removed_line_with_the_nth_added() {
-        // Two lines replaced by three.
         let files = [diff("a", 2, &[(0..2, 0..3)])];
         let rows = rows(&files, Layout::Split, &Shown::default());
         let pair = |old, new| Row::Pair {

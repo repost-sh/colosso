@@ -57,7 +57,6 @@ fn options(path: &Path) -> usvg::Options<'static> {
                 *fonts = Arc::clone(&SYSTEM_FONTS);
             }
             default(font, fonts).or_else(|| {
-                // A family the system hasn't got, or one of CSS's own names: any sans-serif.
                 let query = fontdb::Query {
                     families: &[fontdb::Family::SansSerif],
                     ..fontdb::Query::default()
@@ -90,8 +89,6 @@ impl Source for Svg {
         let transform = Transform::from_row(scale, 0., 0., scale, -(left as f32), -(top as f32));
         resvg::render(&self.tree, transform, &mut pixmap.as_mut());
         let mut pixels = pixmap.take();
-        // resvg's pixels are red first, multiplied by their alpha; GPUI's are blue first,
-        // unmultiplied: both made so in one pass.
         for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
             unpremultiplied(pixel);

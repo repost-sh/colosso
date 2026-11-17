@@ -39,7 +39,6 @@ impl Tracker {
             self.burst = Some(now);
         }
         self.last_output = Some(now);
-        // A program that rings and goes on printing rang at its own work.
         self.bell = None;
         if (self.burst).is_some_and(|began| now.duration_since(began) >= ATTENTION) {
             self.asking = None;
@@ -225,7 +224,6 @@ mod tests {
                 "notification: Claude needs your permission".into()
             ))
         );
-        // Output keeps coming for over two seconds: the program got on without the person.
         for ms in (100..=2400).step_by(100) {
             tracker.output(at(start, ms), &[]);
         }

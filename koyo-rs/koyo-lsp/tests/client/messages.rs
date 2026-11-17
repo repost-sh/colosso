@@ -66,7 +66,6 @@ fn a_dropped_request_is_cancelled_and_its_late_answer_dropped() {
     let cancel = wait(5, received.next()).unwrap();
     assert_eq!(cancel["method"], "$/cancelRequest");
     assert_eq!(cancel["params"]["id"], id);
-    // The late answer came first, and was nobody's.
     let next = client.request::<Echo>(&json!("next"));
     assert_eq!(wait(5, next).unwrap(), json!("in time"));
 }
@@ -128,7 +127,6 @@ fn notifications_reach_each_subscriber_parsed_once() {
     assert_eq!(published.version, Some(3));
     assert_eq!(published.diagnostics[0].message, "boom");
     assert_eq!(published.diagnostics[0].range.end.character, 5);
-    // Both subscribers share the one parse.
     let also = wait(5, also_diagnostics.next()).unwrap();
     assert!(Arc::ptr_eq(&also, &published));
     let log = wait(5, logs.next()).unwrap();

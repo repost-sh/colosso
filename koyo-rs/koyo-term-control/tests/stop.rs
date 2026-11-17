@@ -52,7 +52,6 @@ fn a_daemon_that_ignores_sigterm_is_killed_so_this_builds_can_start() {
     let took = start.elapsed();
     let alive = deaf.try_wait().expect("its state").is_none();
     if alive {
-        // Not stopped: it would outlive the test.
         let _ = deaf.kill();
     }
     let status = deaf.wait().expect("it ends");

@@ -18,8 +18,6 @@ pub fn launch(test: &str) -> Launch {
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(engine.join("engine.json")).expect("engine.json"))
             .expect("json");
-    // Scratch inside the checkout, one root per test so they can run side by
-    // side; the host inherits the working directory.
     let scratch = PathBuf::from(format!(
         "../../.superpowers/t/{}-{test}",
         std::process::id()

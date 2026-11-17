@@ -1,7 +1,3 @@
-// The options each kind of query runs with (docs/chat.md 4.7): a chat's live session, the
-// initialization-only probe the catalog reads (4.5.9), and the one-shot title query (4.5.7);
-// and the names Claude gives Koyo's modes (C12).
-
 import type {
   CanUseTool,
   Options,

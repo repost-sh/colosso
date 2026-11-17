@@ -161,7 +161,6 @@ pub fn table(results: &Results) -> Result<String, std::fmt::Error> {
                 .map_or_else(|| "-".to_owned(), |s| format!("{:.2}", pick(s)))
         };
         let budget = row.budget.map_or_else(String::new, |budget| {
-            // A relative budget is whatever the run measured: a tenth of a ms says enough.
             format!(
                 "{} < {}",
                 budget.stat.name(),

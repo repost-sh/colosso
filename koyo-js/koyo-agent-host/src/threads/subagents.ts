@@ -1,9 +1,3 @@
-// A thread's subagents (docs/chat.md 4.5.10). A subagent works on a thread of its own, whose
-// timeline has what it did, and shows as a row in the timeline it was started from; it runs on
-// its own, past the run that started it if it's in the background, until its session says it
-// ended or goes. The actor of the thread with the session keeps them all, a subagent's own
-// subagents too, whose rows are in the timeline of the subagent that started them.
-
 import { newId, ThreadId } from "../protocol/ids";
 import type { SubagentUsage, Thread } from "../protocol/model";
 import type { Outcome, SubagentEvent } from "../providers/provider";

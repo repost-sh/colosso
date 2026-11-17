@@ -70,9 +70,6 @@ pub(crate) fn ask(pane: PaneId, origin: &str, question: Dialog, waiting: Waiting
 /// The person answered.
 pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
     if let Some(waiting) = with(|dialogs| dialogs.remove(pane, dialog)) {
-        // The person's own answer about the camera or the microphone is kept for the site,
-        // as Chromium keeps the others (`host/site.rs`).
-        // Not now isn't kept: the page may ask again, and blocking is the site controls'.
         if let Waiting::Media { bits, origin, .. } = &waiting
             && !matches!(answer, Answer::Dismiss)
         {
@@ -142,13 +139,11 @@ fn resolve(waiting: Waiting, answer: Answer) {
         Waiting::Prompt {
             location, callback, ..
         } => {
-            // Not now is no decision: Chromium keeps nothing, and the page may ask again.
             callback.cont(if accepted {
                 PermissionRequestResult::ACCEPT
             } else {
                 PermissionRequestResult::DISMISS
             });
-            // Chromium reads the position only once macOS lets the host know it.
             if accepted && location {
                 crate::location::allowed();
             }

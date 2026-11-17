@@ -185,7 +185,6 @@ fn a_chat_that_chose_no_model_shows_the_one_claudes_settings_run_not_the_first_r
     let mut ran = run("r1", RunStatus::Completed, 5);
     ran.model = None;
     assert_eq!(answer_meta(&ran, &settled), "Opus 5.5");
-    // What the CLI says it ran on, which a run that chose none keeps.
     ran.model = Some("claude-opus-5-5[1m]".into());
     assert_eq!(answer_meta(&ran, &settled), "Opus 5.5");
 

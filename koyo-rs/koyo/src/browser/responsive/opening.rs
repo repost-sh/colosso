@@ -17,7 +17,6 @@ pub fn opening(
     window: f32,
     by: &SetBy,
 ) -> Result<Option<Responsive>, String> {
-    // The person's size, kept within the largest page this window shows, as a drag stops.
     let default = default.map(|(width, height)| {
         let free = Responsive::free(width, height, Zoom::Fit, by.clone());
         free.kept_within(window).unwrap_or(free)
@@ -25,8 +24,6 @@ pub fn opening(
     let Some(asked) = asked else {
         return Ok(default);
     };
-    // `resolve` refuses the rest, `fill` with anything else among it; this says it in the
-    // words of an opening.
     if *asked == Change::default() {
         return Err(
             "`viewport` asks for nothing: give a `device`, a `width` or `height`, an \

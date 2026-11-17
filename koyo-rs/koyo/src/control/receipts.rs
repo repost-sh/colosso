@@ -134,7 +134,6 @@ mod tests {
             receipts.begin("a", "r1", &select("y")),
             Lookup::Conflict(error) if !error.retryable
         ));
-        // Another client's requestIds are its own.
         assert_eq!(receipts.begin("b", "r1", &select("y")), Lookup::New);
     }
 
@@ -154,7 +153,6 @@ mod tests {
             assert_eq!(receipts.begin("a", &id, &select("x")), Lookup::New);
             receipts.finish("a", &id, &Ok(Value::Null));
         }
-        // The first went, so its requestId is new again.
         assert_eq!(receipts.begin("a", "r0", &select("y")), Lookup::New);
         assert_eq!(
             receipts.begin("a", "r2", &select("x")),

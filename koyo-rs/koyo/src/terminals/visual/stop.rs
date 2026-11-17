@@ -79,7 +79,6 @@ fn closed(drawn: &mut Drawn, first: &Handle, said: &mut Vec<String>) -> Result<(
     };
     let before = tabs(drawn);
     (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));
-    // Nothing should change, so it can only be given the time to.
     let _ = drawn.until(Duration::from_secs(2), |drawn| Ok(tabs(drawn) != before));
     if tabs(drawn) != before {
         return Err("the closed terminal's tab came back".into());

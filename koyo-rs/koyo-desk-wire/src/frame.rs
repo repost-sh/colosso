@@ -96,7 +96,6 @@ mod tests {
             },
         )
         .unwrap();
-        // A byte string costs its length and a few bytes of header, not a number per byte.
         assert!(stream.len() < 1000 + 32, "{}", stream.len());
     }
 

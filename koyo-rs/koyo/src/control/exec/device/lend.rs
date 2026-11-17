@@ -20,7 +20,6 @@ pub(super) fn real(udid: &str, cx: &App) -> Option<(String, &'static str)> {
     if let Some(device) = registry.plugged_device(udid) {
         return Some((device.name.clone(), Chosen::from(device).kind()));
     }
-    // Open in a tab but not plugged in: which kind isn't listed.
     let link = registry.existing(udid).filter(|link| link.read(cx).phone)?;
     Some((link.read(cx).name.clone(), "device"))
 }
@@ -40,8 +39,6 @@ pub(super) fn usable(caller: &Caller, udid: &str, cx: &mut App) -> Result<(), Co
     let Some((name, kind)) = real(udid, cx) else {
         return Ok(());
     };
-    // Listed with a step missing: said at once, with no question put to the person for a device
-    // that can't be used, and nothing sent to it.
     let registry = devices::devices(cx);
     if let Some((_, why)) = registry.read(cx).misses(udid) {
         return Err(super::needs_person(why));
@@ -103,7 +100,6 @@ fn ask(agent: &Actor, udid: &str, name: &str, kind: &str, cx: &mut App) -> Resul
             registry.update(cx, |registry, cx| {
                 registry.lends.asked(&udid);
                 match decision {
-                    // Unplugged while the sheet was up, it isn't lent: it comes back unlent.
                     crate::control::activity::Decision::Allowed if registry.plugged_device(&udid).is_none() && registry.existing(&udid).is_none() => {}
                     crate::control::activity::Decision::Allowed => registry.lends.lend(&udid, Some(agent)),
                     crate::control::activity::Decision::Denied => registry.lends.decline(&udid, &agent, now),

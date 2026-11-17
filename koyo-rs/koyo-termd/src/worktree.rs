@@ -68,7 +68,6 @@ pub fn project_worktrees(repo_main: &Path) -> Vec<WorktreeRef> {
         return found;
     };
     for entry in entries.flatten() {
-        // `gitdir` holds the path of the linked checkout's `.git` file.
         let Ok(gitdir) = std::fs::read_to_string(entry.path().join("gitdir")) else {
             continue;
         };
@@ -264,7 +263,6 @@ pub(crate) mod tests {
                 .code,
             ErrorCode::WorktreeNotFound
         );
-        // A checkout the daemon knows from its terminals counts even without a cwd.
         let known = [discover(&root.join("feat")).unwrap()];
         assert_eq!(
             resolve(Some(&Selector::Branch("feat-x".into())), None, &known)

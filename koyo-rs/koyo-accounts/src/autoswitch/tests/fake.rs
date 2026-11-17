@@ -227,7 +227,6 @@ impl EngineHost for FakeHost {
                 credentials: Some(credentials(number, Some(now_ms + 8. * 3600. * 1000.))),
                 ..RefreshOutcome::default()
             });
-        // The gate persists a successor itself.
         if let (Some(fresh), Some(account)) =
             (outcome.credentials.as_ref(), fake.account_mut(number))
         {

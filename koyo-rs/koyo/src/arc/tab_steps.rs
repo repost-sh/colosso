@@ -58,7 +58,6 @@ impl Shell {
         let Some(&to) = to else {
             return;
         };
-        // The pill leaves a row, not a pinned page; rows and pages go by their first pane.
         let leaving = shown.and(self.shown_tab_key());
         let moved = match to {
             Row::Loose(at) => self.workspace.show_loose(at),
@@ -70,7 +69,6 @@ impl Shell {
         if !moved {
             return;
         }
-        // The pill passes from the row it leaves to this one.
         if let (Some(leaving), Some(coming)) = (leaving, self.shown_tab_key())
             && !cx.reduce_motion()
         {

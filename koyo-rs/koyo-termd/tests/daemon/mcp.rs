@@ -105,7 +105,6 @@ fn an_agent_drives_a_shell_over_mcp() {
         .unwrap();
     runtime.block_on(async move {
         let (ours, theirs) = tokio::io::duplex(1 << 20);
-        // No app runs in this test: the app's tools answer that it isn't running.
         let connect =
             koyo_term_mcp::socket_backend(Err(koyo_app_control::ControlError::app_not_running()));
         let server = koyo_term_mcp::Server::new(config, &connect, None);

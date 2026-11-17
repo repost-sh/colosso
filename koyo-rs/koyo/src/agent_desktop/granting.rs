@@ -69,7 +69,6 @@ impl Desk {
                 Step::Needs(Grant::ScreenRecording)
             }
             (State::Running, Some(_), Some(DesktopState::Ready { .. })) => Step::Ready,
-            // Starting, or running with its grants or its desktop not said yet.
             (State::Starting | State::Running, _, _) => Step::Starting,
         }
     }
@@ -148,8 +147,6 @@ impl Desk {
             loop {
                 cx.background_executor().timer(PROBED_EVERY).await;
                 let waits = this.update(cx, |this, cx| {
-                    // With the setup up and Koyo in front, the person is at giving them:
-                    // looked for from now on again, however long ago they last pressed.
                     if this.setup_open && cx.active_window().is_some() {
                         this.expected = Some(Instant::now());
                     }

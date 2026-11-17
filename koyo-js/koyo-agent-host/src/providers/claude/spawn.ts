@@ -1,9 +1,3 @@
-// The CLI's process (docs/chat.md 4.2): started in a process group of its own, so that ending
-// it ends what it started too, its MCP servers and its shells (T3 adapter pitfall 2). Closing
-// sends the group SIGTERM, then SIGKILL after 5 s; the host's exit ends every group it
-// started. The SDK talks to the process through its pipes and signals it through `kill`,
-// which reaches the whole group.
-
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 
@@ -17,7 +11,6 @@ const KILL_MS = 5_000;
 /** The groups the host started and that may still run, by their leader's pid. */
 const live = new Set<number>();
 
-// Every group still running when the host exits is killed, as the exit can't wait for them.
 process.once("exit", () => {
   for (const pid of live) {
     signalGroup(pid, "SIGKILL");
@@ -40,7 +33,6 @@ export class Group {
     this.#exited = exited.promise;
     child.once("exit", () => {
       this.#ended = true;
-      // What the CLI left behind in its group ends with it.
       this.#signal("SIGTERM");
       this.#forget();
       exited.resolve(undefined);
@@ -72,7 +64,6 @@ export class Group {
     child.stderr.on("data", (text: string) => {
       stderr(text);
     });
-    // The SDK aborts the signal once it gave up on the process ending by itself.
     options.signal.addEventListener("abort", () => {
       group.terminate().catch((error: unknown) => {
         log.warn("Ending Claude's process failed", error);

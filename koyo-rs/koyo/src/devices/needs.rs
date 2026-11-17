@@ -185,7 +185,6 @@ fn selected() -> (Option<String>, PathBuf) {
         Some(PathBuf::from(out.trim()))
     });
     let developer = developer.unwrap_or_else(|| PathBuf::from(COMMAND_LINE_TOOLS));
-    // `…/Xcode.app/Contents/Developer`
     let app = developer.parent().and_then(Path::parent).filter(|app| app.extension().is_some_and(|ext| ext == "app"));
     (app.and_then(version), developer)
 }

@@ -205,7 +205,6 @@ impl Finder {
 
 impl State {
     fn set_files(&mut self, folders: &[Folder], pool: &Pool) -> bool {
-        // Each folder as it was, if it's unchanged; or the new one, to be matched.
         let mut present = vec![false; self.folders.len()];
         let mut changed: HashMap<u32, &Folder> = HashMap::new();
         let mut added: Vec<Folder> = Vec::new();
@@ -242,7 +241,6 @@ impl State {
                 next.insert(at, (None, folder));
             }
         }
-        // Where each unchanged folder went, and which folders are to be matched.
         let mut moved = vec![None; self.folders.len()];
         let mut fresh = Vec::new();
         for (at, (was, _)) in next.iter().enumerate() {
@@ -311,7 +309,6 @@ impl State {
                 Some(scan::folders(folders, &all, &pattern, pool, gave_way))
             }
         };
-        // What a search that gave way matched may be missing some, so it isn't kept.
         if gave_way() {
             return None;
         }

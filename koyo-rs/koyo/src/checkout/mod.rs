@@ -72,7 +72,6 @@ pub struct Checkout {
 impl Checkout {
     /// Opens the checkout at `root`, selected, and starts reading and following its changes.
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Nothing is read while nobody can see it; what changed meanwhile is read on return.
         let _visibility = cx.observe_window_visibility(window, |this, visibility, _, cx| {
             this.waits.hidden = !visibility.is_visible();
             this.read(cx);
@@ -231,7 +230,6 @@ impl Checkout {
         };
         cx.spawn(async move |this, cx| {
             let done = cx.background_spawn(async move { work(&git) }).await;
-            // Even a failed command may have done part of it.
             this.update(cx, |this, cx| this.touched(touched, cx)).ok();
             done
         })
@@ -337,7 +335,6 @@ impl Checkout {
                 }
             }
             Err(error) => {
-                // Whatever is listed next is new.
                 self.listed.clear();
                 self.failed(error.message);
             }

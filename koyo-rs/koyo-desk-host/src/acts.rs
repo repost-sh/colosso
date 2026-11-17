@@ -82,7 +82,6 @@ impl Host {
             return Err(Refusal::new(RefusalCode::Failed, message));
         }
         self.focus = Some(id);
-        // The window server lists the new order a moment later.
         ns::pump_until(std::time::Duration::from_millis(600), || {
             let order = windows::on_desktop(self);
             order.first().map(|front| front.id) == Some(id)
@@ -163,8 +162,6 @@ impl Host {
     fn keys(&mut self, combo: &str, window: Option<u32>) -> Result<Answer, Refusal> {
         let combo = keys::combo(combo).map_err(|why| Refusal::new(RefusalCode::Invalid, why))?;
         let target = self.keys_to(window)?;
-        // The key that types the combo's character on the person's layout, which is how the
-        // app will read it; a key named otherwise (`return`, `left`) is where it always is.
         let code = (combo.character)
             .and_then(crate::layout::code_for)
             .unwrap_or(combo.code);
@@ -192,8 +189,6 @@ impl Host {
                 let (at, element) = self.spot(&spot)?;
                 let plain = button == Button::Left && count <= 1 && flags == 0;
                 if let (Some(element), true) = (&element, plain) {
-                    // A menu bar's title pressed opens the menu itself, which takes the
-                    // person's keyboard for as long as it's up: an item is pressed instead.
                     if element.text("AXRole").as_deref() == Some("AXMenuBarItem") {
                         let message = "a menu's title isn't pressed: press the item you want in \
                                        it by its ref, which needs no menu open";
@@ -201,8 +196,6 @@ impl Host {
                     }
                     match element.act("AXPress") {
                         Done::Yes | Done::NoAnswer => {
-                            // An element of a panel another process draws names that
-                            // process's window: the keys are in the agent's.
                             self.focus = (element.window_id())
                                 .map(|id| windows::listed_for(&self.hosted, id))
                                 .or(self.focus);
@@ -249,11 +242,8 @@ impl Host {
                 let (at, _) = self.spot(&spot)?;
                 let target = self.target_for(at, window)?;
                 self.pointer(at, false);
-                // The wheel's own sign is the other way round: a positive delta shows what
-                // is further up.
                 self.poster.scroll(target, at, -dx, -dy);
             }
-            // Typing answers later, turn by turn ([`Host::begin_typing`]).
             Act::Type { text, into } => {
                 let window = self.typing_window(into)?;
                 let target = self.keys_to(window)?;
@@ -443,8 +433,6 @@ impl Host {
                     );
                 };
                 if phase == 0 && momentum == 0 {
-                    // A wheel's click has no phases, and a window that isn't showing takes
-                    // only scrolling that has them: a gesture of one step.
                     scroll(0.0, 0.0, 1);
                     scroll(dx, dy, 2);
                     scroll(0.0, 0.0, 4);

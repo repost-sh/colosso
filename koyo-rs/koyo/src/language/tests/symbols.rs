@@ -39,7 +39,6 @@ async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_sele
     let (shell, _, server, lib_editor) = ready(&root, "src/lib.rs", launcher, cx).await;
     place_caret(shell.0, &lib_editor, 0, cx);
 
-    // The palette lists the symbols, the nested one after what it's in.
     cx.simulate_keystrokes(shell.0, "cmd-shift-o");
     let palette = cx
         .read(modal::current::<Symbols>)
@@ -56,7 +55,6 @@ async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_sele
         [("other", None), ("greet", None), ("s", Some("greet"))]
     );
 
-    // Typing narrows them, the characters typed marked; Enter selects the one picked.
     cx.simulate_keystrokes(window, "g r");
     assert_eq!(
         cx.read(|cx| palette.read(cx).rows()),
@@ -82,7 +80,6 @@ async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(
     let (launcher, _) = launcher(move |root, _| {
         let mut script = started_with(root, "src/lib.rs", json!({"workspaceSymbolProvider": true}));
         script.extend([
-            // Asked once the typing pauses, for what's typed by then.
             json!({"expect": {"method": "workspace/symbol", "params": {"query": "tar"}}}),
             json!({"reply": 1, "result": [{"name": "target", "kind": 12, "containerName": "other",
                 "location": {"uri": uri(&root.join("src/other.rs")), "range": target_range}}]}),
@@ -114,7 +111,6 @@ async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(
         )]
     );
 
-    // Enter: the file's opened with the name selected, its bytes found in the text shown.
     cx.simulate_keystrokes(window, "enter");
     let files = shell.1.clone();
     let other = root.join("src/other.rs");

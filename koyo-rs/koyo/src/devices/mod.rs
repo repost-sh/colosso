@@ -183,8 +183,6 @@ impl Devices {
         let link = cx.new(|cx| Link::new(udid.to_owned(), name.to_owned(), phone, cx));
         let misses = self.misses(udid).cloned();
         link.update(cx, |link, cx| link.set_misses(misses, cx));
-        // Said when it takes or lets go of its simulator, not at every change of the link; let
-        // go, the set is listed again: the simulator is down.
         let mut held = false;
         self._watching.push(cx.observe(&link, move |this, link, cx| {
             let holds = link.read(cx).holds_simulator();
@@ -196,7 +194,6 @@ impl Devices {
                 cx.notify();
             }
         }));
-        // A real device's lend ends when it's stopped; unplugged, when the list says so.
         let stopped = udid.to_owned();
         self._watching.push(cx.subscribe(&link, move |this, _, _: &link::Stopped, cx| this.lend_ends(&stopped, cx)));
         self.links.insert(udid.to_owned(), link.clone());
@@ -252,7 +249,6 @@ impl Devices {
         if self.listing || cfg!(test) {
             return;
         }
-        // Listed once; then the watcher has it listed again at each plug.
         if self.connected.is_none() || self.watcher.is_none() {
             self.look_connected(cx);
         }

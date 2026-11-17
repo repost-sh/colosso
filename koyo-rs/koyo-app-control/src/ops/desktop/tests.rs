@@ -130,7 +130,6 @@ fn typing_is_keys_unless_it_replaces_a_named_field() {
     let unnamed = typing(json!({ "text": "hi", "replace": true })).unwrap_err();
     assert_eq!(unnamed.code, ErrorCode::InvalidInput);
     assert!(unnamed.message.contains("`ref`"), "{}", unnamed.message);
-    // Long text goes in as a value, not as keys.
     let long = "é".repeat(MAX_TYPED + 1);
     let error = typing(json!({ "text": long })).unwrap_err();
     assert_eq!(error.code, ErrorCode::InvalidInput);

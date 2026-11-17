@@ -1,9 +1,3 @@
-// What a turn uses as it runs (docs/chat.md 4.7): each model message's tokens from its stream's
-// `message_start`, updated by its `message_delta`, which counts the message so far, and the
-// context the conversation holds after it: all the message read, cached or not, and what it
-// wrote. The model's window comes from a result's `modelUsage`, less the reserve Claude Code
-// keeps before it compacts (T3 adapter pitfall 38).
-
 import type { SDKPartialAssistantMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import type { Usage } from "../../protocol/model";

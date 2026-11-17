@@ -82,7 +82,6 @@ async fn tools_list_both_catalogs_with_their_annotations() {
     );
     assert_eq!(tools.len(), terminals.len() + catalog().len() + 1);
 
-    // A server without a launcher, as the app's own HTTP server is, has no app_launch.
     let (session, _) = connect(
         Server::new(config(&dir), &socket_backend(Ok(endpoint)), None),
         ProtocolVersion::V_2025_11_25,
@@ -126,7 +125,6 @@ async fn an_app_call_is_forwarded_with_its_request_id() {
         tab_opened()
     );
 
-    // The second call goes over the same connection.
     let again = call(&session, "tab_open", json!({ "kind": "browser" })).await;
     assert_eq!(again.is_error, Some(false));
     assert_eq!(
@@ -161,7 +159,6 @@ async fn an_app_error_is_an_is_error_result_with_the_error() {
     );
     assert_eq!(texts(&result)[0], "There's no pane 9.");
 
-    // Arguments that don't fit the operation are refused before anything is sent.
     let result = call(
         &session,
         "pane_focus",
@@ -193,7 +190,6 @@ async fn without_the_app_calls_fail_app_not_running_and_app_launch_is_listed() {
     let tools = session.peer().list_all_tools().await.unwrap();
     assert!(tools.iter().any(|tool| tool.name == APP_LAUNCH));
 
-    // Once the app runs, the next call reaches it.
     let app = FakeApp::start(&endpoint, Arc::new(|_| Ok(json!({}))));
     let result = call(&session, "settings_close", json!({})).await;
     assert_eq!(result.is_error, Some(false), "{result:?}");

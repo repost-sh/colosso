@@ -269,8 +269,6 @@ impl Engine {
             })
             .with_trim(true);
         let mut formatter = Formatter::new(&self.term, options)?;
-        // Written to a buffer rather than allocated by the formatter, since an empty screen
-        // formats to nothing, which the allocating call reports as a failure.
         let mut bytes = Vec::new();
         formatter.format_to(&mut bytes)?;
         Ok(String::from_utf8_lossy(&bytes).into_owned())
@@ -304,7 +302,6 @@ impl Engine {
                 } else {
                     let raw = row.raw_row()?;
                     let mut cells = Vec::with_capacity(cols as usize);
-                    // The columns of cells that are links, in a row that may have any.
                     let linked = raw.has_hyperlink().unwrap_or(false);
                     let mut linked_cols = Vec::new();
                     let mut cell_iteration = self.cells.update(row)?;
@@ -458,7 +455,6 @@ fn effect(event: Event) -> Effect {
             ProgressState::Pause => Progress::Paused(progress),
         }),
         Event::RenderHold(on) => Effect::RenderHold(on),
-        // The binding may grow events this build doesn't know; none is lost that matters here.
         #[expect(unreachable_patterns, reason = "the binding's enum may gain variants")]
         _ => Effect::RenderHold(false),
     }

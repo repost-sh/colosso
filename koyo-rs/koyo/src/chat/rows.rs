@@ -96,7 +96,6 @@ impl Drawing {
             .px_6()
             .pt(px(room_over(index, &self.prompts)))
             .pb(under)
-            // Its place is kept while it floats, so nothing under it moves.
             .when(self.floating == Some(index), gpui_kit::Styled::invisible)
             .text_color(self.p.text)
             .children(row.and_then(|row| self.content(row, index, cx)))
@@ -410,8 +409,6 @@ pub(super) fn hover_meta(group: &SharedString, p: Palette) -> Div {
 /// The space under a row: a conversation's turns further apart than the lines of its work.
 fn gap_after(kind: &RowKind) -> f32 {
     match kind {
-        // What's said on the way is a paragraph of the same turn, and the room for its copy button
-        // already keeps it from what follows.
         RowKind::Answer { last: false, .. } => 0.,
         RowKind::Work { .. }
         | RowKind::Fold { .. }

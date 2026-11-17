@@ -40,8 +40,6 @@ pub(crate) fn delete(
                     }
                     let deleted = Repo::open(&project)
                         .and_then(|repo| repo.remove_worktree(&path, &loss, delete_branch));
-                    // The worktree may be gone even if its branch couldn't go, so the shell
-                    // looks again whatever happened.
                     (deleted, read_worktrees(&project), path.exists())
                 }
             })

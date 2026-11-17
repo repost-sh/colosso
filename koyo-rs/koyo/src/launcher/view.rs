@@ -75,11 +75,9 @@ pub fn open(
     let behind = window.window_handle();
     let tone = Tone::new(pages, window.bounds().origin);
     let (text, kind) = match &page {
-        // Its address whatever was dismissed lately, which is left for the next ⌘T.
         Some(page) => (page.address.clone(), Kind::Browser),
         None => take_dismissed(cx),
     };
-    // Only a page opens where no checkout is selected.
     let kind = if here.pages_only { Kind::Browser } else { kind };
     let query = Query {
         kind,
@@ -169,14 +167,11 @@ impl Launcher {
                 InputEvent::PressEnter { .. } => this.pick(this.selected, window, cx),
                 _ => {}
             }),
-            // The simulators come a moment after they're asked for, when the kind is Device.
             cx.observe(&crate::devices::devices(cx), |this: &mut Self, _, cx| {
                 if this.kind == Kind::Device {
                     this.refresh(cx);
                 }
             }),
-            // Gone without a pick, what's typed is offered again when it next opens; not a
-            // page's address left as it was, which nobody typed.
             cx.on_release(|this, cx| {
                 let untouched = (this.page.as_ref()).is_some_and(|page| page.address == this.typed);
                 if !this.picked && !untouched && !this.typed.trim().is_empty() {
@@ -321,7 +316,6 @@ impl Launcher {
 
     /// Goes to the kind `by` steps on, what's typed kept, a completion let go.
     pub(super) fn step_kind(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
-        // Where only a page opens, there's no other kind to go to.
         if self.here.pages_only {
             return;
         }
@@ -406,15 +400,12 @@ impl Launcher {
         let act = match row {
             Some(row) => row.act.clone(),
             None if self.kind == Kind::Worktree => Act::StartWorktree(typed.clone()),
-            // On a page, no address is nowhere to go, as in any address bar.
             None if self.kind == Kind::Browser && self.page.is_some() => return,
             None if typed.is_empty() || matches!(self.kind, Kind::Desktop | Kind::Device) => {
                 Act::Empty(self.kind)
             }
             None => return,
         };
-        // What was typed led to an entry the history has, or a page a tab shows: typing it again
-        // offers that first.
         let learned = match (row.and_then(|row| row.entry.clone()), &act) {
             (Some((kind, text)), _) => Some((kind, text)),
             (None, Act::Switch(pane)) => (self.here.tabs.iter())

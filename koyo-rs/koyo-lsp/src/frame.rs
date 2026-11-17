@@ -25,7 +25,6 @@ pub(crate) fn read(reader: &mut impl BufRead, line: &mut String) -> io::Result<O
             if in_header {
                 break;
             }
-            // A stray line break between messages says nothing; skip it.
             continue;
         }
         in_header = true;
@@ -41,7 +40,6 @@ pub(crate) fn read(reader: &mut impl BufRead, line: &mut String) -> io::Result<O
         }
     }
     let length = length.ok_or_else(|| invalid("a message without a Content-Length".to_owned()))?;
-    // Read into spare capacity, not a zero-filled buffer the read then overwrites.
     let mut body = Vec::with_capacity(length);
     reader.take(length as u64).read_to_end(&mut body)?;
     if body.len() < length {
@@ -105,7 +103,6 @@ mod tests {
             sizes,
             next: 0,
         };
-        // A small buffer, so the reads really are split where the chunks say.
         let mut reader = BufReader::with_capacity(4, chunked);
         let mut line = String::new();
         let mut bodies = Vec::new();
@@ -127,12 +124,10 @@ mod tests {
     #[test]
     fn frames_split_anywhere_come_together() {
         let bytes = frames(&BODIES);
-        // One byte at a time: every header and body split at every point.
         assert_eq!(
             read_all(bytes.clone(), vec![1; bytes.len()]).unwrap(),
             BODIES
         );
-        // Split inside the header name, inside the number, and inside the body.
         assert_eq!(read_all(bytes, vec![3, 13, 5, 2, 7, 40]).unwrap(), BODIES);
     }
 

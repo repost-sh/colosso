@@ -31,7 +31,6 @@ impl DeviceBar {
     pub(super) fn new(view: WeakEntity<DeviceView>, chosen: Chosen, link: Entity<Link>, cx: &mut Context<Self>) -> Self {
         let watching = [
             cx.observe(&link, |_, _, cx| cx.notify()),
-            // Whether it's lent, and whether it's still there.
             cx.observe(&super::devices(cx), |_, _, cx| cx.notify()),
         ];
         DeviceBar {
@@ -46,8 +45,6 @@ impl DeviceBar {
 impl Render for DeviceBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = crate::theme::palette(cx);
-        // As wide as the room the pane's bar gives it: a width of its own to be laid out at,
-        // whichever pane or split it's drawn in next.
         let bar = div().w_full().flex().items_center().gap(px(2.));
         let Some(view) = self.view.upgrade() else {
             return bar;
@@ -58,7 +55,6 @@ impl Render for DeviceBar {
             let streaming = matches!(link.standing(), super::Standing::Ready(_) | super::Standing::Locked(_));
             (link.ready(), streaming, super::screens::standing(link, p))
         };
-        // What holding the stream costs, the person's to know while it's held (`docs/devices.md` 5).
         let awake = (chosen.phone && streaming)
             .then(|| format!("While this tab is open, your {kind} stays awake and its camera and microphone are off."));
         let button = |id: &'static str, glyph: IconName, name: &'static str, does: Does| {
@@ -66,7 +62,6 @@ impl Render for DeviceBar {
             crate::shell::icon_button(id, glyph, name, cx).xsmall().disabled(!ready).on_click(click)
         };
         let rule = || div().w(px(1.)).h(px(14.)).mx_1().bg(p.hairline);
-        // A real device not lent yet: the person may lend it ahead of an agent's asking.
         let lendable = chosen.phone && !super::devices(cx).read(cx).lends.is_lent(&chosen.udid);
         let lend = lendable.then(|| {
             let click = window.listener_for(&view, |view, _: &ClickEvent, _, cx| view.lend_ahead(cx));
@@ -79,7 +74,6 @@ impl Render for DeviceBar {
                 None => div().flex_1(),
             })
             .child(
-                // In a split's bar a press drags the pane: not from its buttons.
                 (div().flex().items_center().gap(px(2.)).flex_shrink_0())
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(button("device-home", IconName::House, "Home (⇧⌘H)", |view, cx| view.press_button(Button::Home, cx)))

@@ -178,7 +178,6 @@ pub fn json(max_bytes: usize, seed: u64) -> String {
     let mut id = 0usize;
     loop {
         let record = json_record(&mut rng, id);
-        // The comma before it, and the closing bracket after the last one.
         let separator = usize::from(id > 0);
         if out.len() + separator + record.len() + 1 > max_bytes {
             break;

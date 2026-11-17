@@ -1,9 +1,3 @@
-// Claude's subagents (docs/chat.md 4.5.10, 4.7). An Agent call starts one, and a frame that names
-// the call as its parent is its own: it goes to its own timeline, whatever turn of the
-// conversation runs by then, as one started in the background runs on past its turn. The call's
-// result says only that it was launched, then; how it ended comes in a `task_notification`, the
-// frames of its task saying what it does until then.
-
 import { randomUUID } from "node:crypto";
 
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";

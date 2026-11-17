@@ -73,7 +73,6 @@ impl Notice {
         use gpui_kit::component::spinner::Spinner;
         use gpui_kit::component::{Sizable as _, Size};
         let loader = self.busy.then(|| {
-            // An open arc turning at an even speed, as the app's other waits.
             let wheel = Spinner::new().icon(gpui_kit::assets::IconName::LoaderCircle).ease(|delta| delta);
             wheel.with_size(Size::Size(px(24.))).color(p.muted)
         });
@@ -122,8 +121,6 @@ impl DeviceView {
             return Some(self.not_there(name, cx));
         }
         match standing {
-            // Unplugged, in its host's words: back on its cable it starts again by itself; Start
-            // Again is there should the plug go unheard.
             Owned::Ended(None, why) if chosen.phone => {
                 let again = cx.listener(|this, _: &ClickEvent, window, cx| this.start_asking(window, cx));
                 Some(Notice::new(why, vec![Push::new("device-start", "Start Again", Tone::Plain).on_click(again)]))
@@ -152,7 +149,6 @@ impl DeviceView {
         let udid = self.device.as_ref().map(|device| device.udid.clone());
         match code {
             Missing::Simulator => self.not_there(&self.title(), cx),
-            // The one thing missing, with the setup; once it's there, Start Again.
             Missing::Xcode => match missing(cx) {
                 Some(said) => Notice::new(said, vec![set_up()]),
                 None => Notice::new(format!("{why}."), vec![self.start_button("Start Again", cx)]),
@@ -180,7 +176,6 @@ impl DeviceView {
     /// agents, what the agent is doing with it or that it's lent, with the way to take it back.
     pub(super) fn control_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let link = self.link.as_ref()?;
-        // Who has it, said as a browser's page says it, and whether that is an agent.
         let (name, contested) = {
             let link = link.read(cx);
             let (name, control) = (&link.name, &link.control);
@@ -204,8 +199,6 @@ impl DeviceView {
         });
         let weak = link.downgrade();
         let held = match (lent, contested) {
-            // Lent, the one thing to do about an agent, whatever it's doing, is to take the
-            // device back: that calls off what it had under way, and its next call asks again.
             (Some((udid, whom)), contested) => Held {
                 text: contested.map_or_else(|| format!("{name} is lent to {whom}"), |(text, _)| text),
                 id: "device-take-back",
@@ -232,7 +225,6 @@ impl DeviceView {
             },
             (None, None) => return None,
         };
-        // Its glass is a native view keyed by this id: one per tab, as a page's is.
         let glass = gpui_kit::ElementId::NamedInteger("device-control-glass".into(), cx.entity_id().as_u64());
         Some(crate::held::bar(glass, held, None, window, cx))
     }
@@ -242,7 +234,6 @@ impl DeviceView {
         let p = crate::theme::palette(cx);
         let (origin, fit) = self.placed?;
         let touch = link.read(cx).touch.clone()?;
-        // A finger on the glass is filled; one just lifted is a ring, until the mark goes.
         let fill = if touch.kind == Mark::Up { 0. } else { 0.25 };
         let marks = touch.at.into_iter().map(move |at| {
             let x = origin.x + px(at.x as f32 * fit) - px(11.);
@@ -310,7 +301,6 @@ pub(super) fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla
     match link.standing() {
         super::Standing::Ended { missing: None, .. } if link.phone => ("Unplugged", p.danger),
         super::Standing::Ended { missing: None, .. } => ("Gone", p.danger),
-        // A real device's step by its own name: "Needs update", not "Needs setup".
         super::Standing::Ended { missing: Some(code), .. } if link.phone => (koyo_device_wire::real::label(code), p.danger),
         super::Standing::Ended { .. } => ("Needs setup", p.danger),
         super::Standing::Off => ("Not running", p.muted),
@@ -336,7 +326,6 @@ pub(super) fn starting(name: &str, step: Step, since: Option<std::time::Instant>
     let so_far = since.map_or(0, |at| at.elapsed().as_secs());
     match step {
         Step::Booting { first: true } => format!(
-            // The figure and its unit never part at a line's end.
             "Starting {name} for the first time. This takes about a minute ({so_far}\u{a0}s so far)."
         ),
         Step::Booting { first: false } | Step::Picture => format!("Starting {name}…"),

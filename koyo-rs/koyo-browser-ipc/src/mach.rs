@@ -32,7 +32,7 @@ const MACH_MSG_PORT_DESCRIPTOR: u8 = 0;
 const MACH_PORT_RIGHT_RECEIVE: u32 = 1;
 
 /// The message id of a surface ring.
-const SURFACES_ID: i32 = 0x4d43_4252; // "MCBR"
+const SURFACES_ID: i32 = i32::from_be_bytes(*b"MCBR");
 
 unsafe extern "C" {
     static bootstrap_port: MachPort;
@@ -199,7 +199,6 @@ impl Receiver {
         check(kr, "mach_msg receive")?;
         let message = buffer.message;
         let ports: Vec<u32> = message.ports.iter().map(|p| p.name).collect();
-        // The audit token's sixth word is the sender's pid.
         let pid = buffer.trailer.audit[5];
         let header = message.header;
         let wellformed = header.id == SURFACES_ID
@@ -290,7 +289,6 @@ impl Sender {
                 ..PortDescriptor::default()
             };
         }
-        // Unused descriptors carry the null port.
         for slot in message.ports.iter_mut().skip(ports.len()) {
             slot.kind = MACH_MSG_PORT_DESCRIPTOR;
         }
@@ -367,7 +365,6 @@ mod tests {
             .expect("receive")
             .expect("a ring");
         assert_eq!((ring.pane, ring.generation, ring.ports.len()), (9, 4, 2));
-        // Within one task a moved send right keeps its name.
         assert_eq!(ring.ports, ports);
         ring.ports.into_iter().for_each(release);
     }

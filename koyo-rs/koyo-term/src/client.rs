@@ -342,8 +342,6 @@ impl TermClient {
         f: impl FnOnce(&Live) -> Result<T, ClientError>,
     ) -> Result<T, ClientError> {
         let mut live = self.live.lock();
-        // A connection the daemon ended is made again: the daemon restarted, or was
-        // upgraded, and the terminals it keeps are still there.
         if live.as_ref().is_none_or(|live| live.connection.is_closed()) {
             if self.stopped.load(Ordering::Acquire) {
                 return Err(ClientError::Closed);
@@ -459,8 +457,6 @@ pub fn is_other_build(error: &ClientError) -> bool {
 }
 
 fn hello() -> Hello {
-    // No `answers_queries`: the daemon's engine answers the programs' queries, as two windows
-    // on one terminal would otherwise answer twice.
     Hello::new(ClientKind::App, "koyo", env!("CARGO_PKG_VERSION"))
 }
 

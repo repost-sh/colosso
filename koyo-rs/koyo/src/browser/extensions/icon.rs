@@ -74,7 +74,6 @@ fn pack([r, g, b, a]: [u8; 4]) -> u32 {
 
 /// Whether black text reads better on `color` than white.
 fn is_light([r, g, b, _]: [u8; 4]) -> bool {
-    // Perceived brightness, as the eye weighs the three.
     299 * u32::from(r) + 587 * u32::from(g) + 114 * u32::from(b) > 150_000
 }
 
@@ -118,12 +117,9 @@ mod tests {
         let black: Hsla = rgba(0x0000_00ff).into();
         let (fill, text) = colors(&badge_of(None, None));
         assert_eq!((fill, text), (rgba(BADGE).into(), white));
-        // A colour that's wholly clear is none chosen.
         assert_eq!(colors(&badge_of(Some([0, 0, 0, 0]), None)).0, rgba(BADGE).into());
-        // On a light colour of its own the text is black; on a dark one white.
         assert_eq!(colors(&badge_of(Some([255, 230, 0, 255]), None)).1, black);
         assert_eq!(colors(&badge_of(Some([180, 0, 0, 255]), None)).1, white);
-        // The extension's own text colour wins.
         let (_, text) = colors(&badge_of(Some([255, 230, 0, 255]), Some([255, 0, 0, 255])));
         assert_eq!(text, rgba(0xff00_00ff).into());
     }

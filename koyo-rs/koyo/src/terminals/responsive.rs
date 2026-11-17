@@ -93,7 +93,6 @@ impl ResponsiveTerminal {
     fn room(&self, cx: &App) -> Option<(Pixels, Pixels)> {
         let view = self.view.read(cx);
         let laid = view.laid_out_in()?;
-        // Pinned, the terminal is laid out in the room already.
         if view.pinned().is_some() {
             return Some((laid.size.width, laid.size.height));
         }
@@ -158,7 +157,6 @@ impl ResponsiveTerminal {
         };
         let now = Some((pinned.cols, pinned.rows));
         if pinned.by.kind == ActorKind::Agent {
-            // An agent's size is a free one, as an agent's width or height is a page's.
             (self.preset, self.asked) = (None, None);
         } else if self.drag.is_none() && self.asked == now {
             self.asked = None;
@@ -281,7 +279,6 @@ impl Resizable for ResponsiveTerminal {
     }
 
     fn grip_size(&self, cx: &App) -> Option<((u32, u32), (f32, f32))> {
-        // A preset is dragged by no grip, as a device isn't.
         if self.shown_preset(cx).is_some() {
             return None;
         }
@@ -372,11 +369,9 @@ mod tests {
     fn the_presets_are_agent_terminals_sizes_and_any_other_size_is_free() {
         assert_eq!(preset_names(), ["80 × 24", "120 × 40", "200 × 60"]);
         assert_eq!(preset_at(Some((1, false)), (120, 40)), Some((1, false)));
-        // Turned, it's the preset at its landscape size only.
         assert_eq!(turn(PRESETS[0], true), (24, 80));
         assert_eq!(preset_at(Some((0, true)), (24, 80)), Some((0, true)));
         assert_eq!(preset_at(Some((0, true)), (80, 24)), None);
-        // Dragged, typed or set by an agent to another size, it's Responsive.
         assert_eq!(preset_at(Some((2, false)), (201, 60)), None);
         assert_eq!(preset_at(None, (80, 24)), None, "picked as a free size");
         assert_eq!(preset_at(Some((9, false)), (80, 24)), None);

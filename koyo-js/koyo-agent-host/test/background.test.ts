@@ -18,7 +18,6 @@ describe("what Claude runs in the background", () => {
     const background = new Background(sink.event);
     expect(background.hears(init("default"))).toBe(false);
     expect(background.hears(listed({ type: "local_bash" }, { type: "monitor" }))).toBe(true);
-    // A watcher the CLI started on its own isn't the agent's work.
     background.hears(listed({ type: "local_bash" }, { type: "monitor" }, {
       type: "monitor",
       ambient: true,
@@ -40,7 +39,6 @@ describe("Claude's session", () => {
     const { promptId, query } = await made.turn();
     query.send(listed({ type: "local_bash" }));
     query.send(...textTurn(promptId));
-    // The turn's over; the CLI lists what's left as a Monitor starts.
     query.send(listed({ type: "local_bash" }, { type: "monitor" }));
     await settle();
     expect(made.sink.of("background")).toStrictEqual([

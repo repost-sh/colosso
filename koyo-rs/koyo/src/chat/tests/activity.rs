@@ -55,13 +55,10 @@ fn the_working_edge_steps_alone_while_it_moves_and_draws_nothing_once_it_has_fad
     assert_eq!(drawn(&chat, cx).1, idle);
 
     run_is(&chat, RunStatus::Running, 20, cx);
-    // Past its fade in, so what goes on is the line going round.
     steps(30, cx);
     let (typed, moving) = drawn(&chat, cx);
     steps(10, cx);
     let (typed_after, moved) = drawn(&chat, cx);
-    // A running turn draws the tab again by itself now and then, as its time ticks on, and with
-    // it the composer at most once here; drawn in it, the edge drew the composer each step.
     assert!(
         typed_after - typed <= 1,
         "its steps draw no composer: {typed} to {typed_after}"
@@ -73,8 +70,6 @@ fn the_working_edge_steps_alone_while_it_moves_and_draws_nothing_once_it_has_fad
 
     run_is(&chat, RunStatus::Completed, 21, cx);
     assert!(stepping(&chat, cx), "it fades out");
-    // Past its fade out, it takes no step of its own: it's drawn again only as the tab around it
-    // is, as for the run that ended.
     steps(40, cx);
     assert!(!stepping(&chat, cx), "nothing steps once it's gone");
     let (_, faded) = drawn(&chat, cx);
@@ -90,7 +85,6 @@ fn the_working_edge_goes_round_with_another_app_in_front(cx: &mut TestAppContext
     let chat = Asking::new("chat-working-edge-elsewhere", Vec::new(), cx);
     cx.update(|cx| assert!(cx.active_window().is_none(), "Koyo isn't in front"));
     run_is(&chat, RunStatus::Running, 20, cx);
-    // Past its fade in, so what goes on is the line going round.
     steps(30, cx);
     let (_, moving) = drawn(&chat, cx);
     steps(10, cx);
@@ -112,7 +106,6 @@ fn the_working_edge_holds_still_with_reduced_motion_or_its_setting_and_shows_not
     cx.run_until_parked();
     cx.update(|cx| cx.set_reduce_motion(true));
     run_is(&chat, RunStatus::Running, 20, cx);
-    // Past its fade in, it holds still: nothing more is drawn while the chat works.
     steps(30, cx);
     let (_, still) = drawn(&chat, cx);
     steps(10, cx);

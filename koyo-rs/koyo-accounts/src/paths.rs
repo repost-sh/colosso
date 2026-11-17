@@ -36,7 +36,6 @@ pub fn claude_config_home(env: &Env) -> PathBuf {
 
 /// Claude Code 2.1.299's choice between `.config.json` and `.claude.json`.
 fn pick_global_config(legacy: &Path, global: PathBuf) -> PathBuf {
-    // Follows symlinks; an error makes the global file win.
     let Ok(meta) = legacy.metadata() else {
         return global;
     };
@@ -233,7 +232,6 @@ mod tests {
         let custom = sandbox.root().join("custom-claude");
         sandbox.vars.claude_config_dir = Some(custom.to_str().unwrap().to_owned());
         assert_eq!(claude_config_home(&sandbox.env()), custom);
-        // Empty is unset.
         sandbox.vars.claude_config_dir = Some(String::new());
         assert_eq!(
             claude_config_home(&sandbox.env()),
@@ -336,7 +334,6 @@ mod tests {
 
     #[test]
     fn a_hashed_service_hashes_the_string_as_written() {
-        // `/Users/schulzf/.claude` hashes to the `-7bbb8320` item the study found on the Mac.
         assert_eq!(
             keychain_service_name("/Users/schulzf/.claude"),
             "Claude Code-credentials-7bbb8320"
@@ -345,7 +342,6 @@ mod tests {
             keychain_service_name("/Users/schulzf/.claude/"),
             keychain_service_name("/Users/schulzf/.claude")
         );
-        // NFC: a decomposed é names the same item as a composed one.
         assert_eq!(
             keychain_service_name("/a/e\u{301}"),
             keychain_service_name("/a/\u{e9}")

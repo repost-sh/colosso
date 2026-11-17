@@ -33,8 +33,6 @@ impl Fixture {
         git(&seed, &["push", "origin", "shared"]);
         git(&root, &["clone", "origin.git", "app"]);
         let app = root.join("app");
-        // The library's own git calls read the clone's config, so the user's hooks and
-        // signing stay out of them too.
         git(&app, &["config", "core.hooksPath", "/dev/null"]);
         git(&app, &["config", "commit.gpgsign", "false"]);
         let repo = Repo::open(&app).unwrap();
@@ -105,7 +103,6 @@ fn opening_from_a_linked_worktree_finds_the_main_checkout() {
 
 #[test]
 fn opening_a_folder_outside_any_repository_is_refused() {
-    // The fixtures sit inside Koyo's own checkout, so ask about the filesystem root.
     let error = Repo::open(Path::new("/")).unwrap_err();
     assert_eq!(error.message, "/ is not in a git repository.");
 }
@@ -129,7 +126,6 @@ fn a_new_branch_is_named_after_the_worktree_and_records_its_base() {
         fixture.repo.recorded_base("me/fix-payouts").as_deref(),
         Some("origin/main")
     );
-    // Not tracking main, so a first push publishes a branch of its own.
     let upstream = Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
         .current_dir(&worktree.path)
@@ -199,7 +195,6 @@ fn an_existing_remote_branch_is_checked_out_tracking_it() {
         &["rev-parse", "--abbrev-ref", "@{upstream}"],
     );
     assert_eq!(upstream.trim(), "origin/shared");
-    // Koyo did not make this branch, so nothing marks it as one to delete.
     assert_eq!(fixture.repo.recorded_base("shared"), None);
 }
 

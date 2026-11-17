@@ -1,6 +1,3 @@
-// The host's executable as the app starts it: given its folder, on the fake provider, it says
-// `ready` once it listens, answers a message sent to a chat, and exits once asked to stop.
-
 import { join } from "node:path";
 
 import { afterEach, expect, test } from "bun:test";
@@ -52,7 +49,6 @@ test("starts in its folder, answers a message and exits once asked to stop", asy
     prompt: prompt("Find the ledger's rounding bug."),
     delivery: "auto",
   });
-  // The fake says back what was sent, and the run completes.
   let answer: unknown;
   let completed = false;
   while (!completed) {

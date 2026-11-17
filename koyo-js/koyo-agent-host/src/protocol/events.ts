@@ -1,5 +1,3 @@
-// What the host tells its clients without being asked (docs/chat.md 4.3.4).
-
 import { z } from "zod";
 
 import { ItemId, ThreadId } from "./ids";

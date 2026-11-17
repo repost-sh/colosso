@@ -250,7 +250,6 @@ pub fn own_profile(app: &Obj, bundle: Option<&str>, state: &Path) -> Option<Stri
     if !chromium(&PathBuf::from(ns::text(&*path?)?)) {
         return None;
     }
-    // Short: the app keeps a socket under it, whose path has a limit of 103 bytes.
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in bundle.unwrap_or("app").bytes() {
         hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);

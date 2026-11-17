@@ -25,10 +25,6 @@ fn timeless(mut answer: Value) -> Value {
 #[gpui_kit::test]
 fn agents_list_the_macs_login_with_its_week(cx: &mut TestAppContext) {
     let sandbox = kept();
-    // The week resets a day from now, whenever the test runs: six sevenths of it have passed,
-    // and 41 % used is behind that pace. The app reads the Mac's clock, so the reset is set by
-    // it; a fixed date had the answer turn with the day of the week (41 % is ahead of pace for
-    // the first days after a reset, and the test failed early in each UTC week).
     let resets_at = chrono::Utc::now().timestamp() + 86_400;
     let stamp = chrono::DateTime::from_timestamp(resets_at, 0)
         .unwrap()
@@ -43,7 +39,6 @@ fn agents_list_the_macs_login_with_its_week(cx: &mut TestAppContext) {
     cx.update(|cx| cx.set_global(TestEnv(env)));
     let root = repo("control-accounts", &[("README.md", "hi\n")]);
     let _rig = controlled("control-accounts", &[&root], cx);
-    // Koyo coming to the front is the cadence's first look.
     cx.update(accounts::window_activated);
     cx.run_until_parked();
     let listed = call(&terminal("term_1"), "claude_accounts_list", json!({}), cx).unwrap();

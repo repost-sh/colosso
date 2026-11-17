@@ -40,7 +40,6 @@ fn a_space_lists_its_projects_in_the_sidebars_order() {
         vec![path("app"), path("docs")],
         "as the sidebar lists them, not as they came"
     );
-    // The sidebar reordered, as app control's project_move does: the space follows.
     settings.projects = vec![path("docs"), path("site"), path("app")];
     settings.reconcile_spaces();
     assert_eq!(
@@ -122,7 +121,6 @@ fn deleting_a_space_moves_its_projects_or_removes_them() {
     assert!(removed.is_empty());
     assert_eq!(settings.spaces.len(), 2);
     assert_eq!(settings.spaces[0].projects, vec![path("app"), path("site")]);
-    // The space shown stays shown though it moved up the list.
     assert_eq!(settings.space, 1);
 
     let removed = settings.delete_space(1, Leftovers::Remove);
@@ -152,11 +150,9 @@ fn in_arc_each_space_keeps_its_own_colours_starting_from_the_windows() {
     settings.space = second;
     settings.shown_theme_mut(true).dots.push(point(200., 200.));
     assert_eq!(settings.shown_theme(true).dots.len(), 2);
-    // The window's, and the first space's with it, are as they were.
     assert_eq!(settings.dark_theme.dots.len(), 1);
     settings.space = 0;
     assert_eq!(settings.shown_theme(true).dots.len(), 1);
-    // The Orca layout has no spaces: the window's colours are shown and changed.
     settings.space = second;
     settings.layout = Layout::Orca;
     assert_eq!(settings.shown_theme(true).dots.len(), 1);
@@ -211,11 +207,9 @@ fn a_projects_worktrees_keep_their_order_and_folding_until_git_no_longer_lists_t
         settings.worktree_order(&app),
         [fix.clone(), app.clone(), feat.clone()]
     );
-    // Feat deleted: what was kept of it goes.
     settings.keep_worktrees(&app, &[app.clone(), fix.clone()]);
     assert_eq!(settings.worktree_order(&app), [fix.clone(), app.clone()]);
     assert!(!settings.is_collapsed(&app, &feat));
-    // Nothing left to keep, the project's look goes with it.
     settings.set_worktree_order(&app, Vec::new());
     assert!(settings.project_looks.is_empty());
 }
@@ -230,11 +224,9 @@ fn spaces_survive_a_round_trip() {
     let json = serde_json::to_vec(&settings).unwrap();
     let read: Settings = serde_json::from_slice(&json).unwrap();
     assert_eq!(read, settings);
-    // A file from when spaces had icons still reads.
     let older: Settings =
         serde_json::from_str(r#"{ "spaces": [{ "name": "Work", "icon": "rocket" }] }"#).unwrap();
     assert_eq!(older.spaces[0].name, "Work");
-    // And a project's look from before its worktrees had an order and folding.
     let older: Settings =
         serde_json::from_str(r#"{ "project_looks": { "/src/app": { "name": "App" } } }"#).unwrap();
     assert!(older.worktree_order(&path("app")).is_empty());

@@ -1,9 +1,3 @@
-// What the model writes, as it writes it (docs/chat.md C10): text and thinking stream per
-// content block, each block an item of its own that starts with its first text, and each is
-// reconciled with the `assistant` snapshot of its block. The CLI snapshots every block once it
-// ends, in a frame of its own, so a block is found by its message's id and its place among
-// that message's blocks of its kind (T3 adapter pitfall 30), not by its index in the frame.
-
 import type {
   SDKAssistantMessage,
   SDKPartialAssistantMessage,
@@ -143,7 +137,6 @@ export class Texts {
       }
       block.started = true;
     }
-    // A thinking block whose text the model withheld keeps what streamed of it.
     const text = final === "" ? block.text : final;
     if (block.closed && text === block.text) {
       return;

@@ -88,7 +88,6 @@ pub fn solid(id: impl Into<ElementId>, enabled: bool, cx: &App) -> Button {
         ButtonCustomVariant::new(cx)
             .color(p.text)
             .foreground(p.on_text)
-            // As a modal's leading button answers the pointer.
             .hover(p.text.opacity(0.85))
             .active(p.text.opacity(0.75)),
     );

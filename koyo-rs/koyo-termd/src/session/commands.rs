@@ -95,7 +95,6 @@ impl Session {
     }
 
     fn command_started(&mut self, offset: u64) {
-        // One that never said it ended is done now.
         self.command_done(None, offset);
         let command = self.command_line().unwrap_or_default();
         self.commands.running = Some(Running {

@@ -84,7 +84,6 @@ pub(crate) fn clear() {
 }
 
 fn cancel(which: impl Fn(PaneId) -> bool) {
-    // Taken first: cancelling calls into CEF, which may run a menu again.
     let menus = MENUS.with(|menus| menus.borrow_mut().take(|pane, _| which(pane)));
     for (_, callback) in menus {
         callback.cancel();

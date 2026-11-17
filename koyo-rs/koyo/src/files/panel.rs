@@ -54,8 +54,6 @@ impl FilesPanel {
     pub fn new(checkout: Entity<Checkout>, cx: &mut Context<Self>) -> Self {
         let _checkout = cx.observe(&checkout, |this, checkout, cx| {
             this.follow(cx);
-            // Until the checkout's open, what it says is what's shown; after, only new marks
-            // change how the rows look.
             let marks = checkout.read(cx).marks();
             if this._following.is_none() || !Arc::ptr_eq(marks, &this.marks) {
                 this.marks = marks.clone();
@@ -144,7 +142,6 @@ impl FilesPanel {
         }
         self.active.clone_from(&active);
         match active {
-            // Picked already, as a file previewed from the tree is: it's where it was left.
             Some(path) if self.selected.as_ref() != Some(&path) => self.reveal(&path, cx),
             _ => self.revealing = None,
         }
@@ -280,7 +277,6 @@ impl FilesPanel {
                 let place = Place::file(&*row.path);
                 cx.emit(FilesEvent::Open { place, kept });
             }
-            // Nothing is read through a link to a folder.
             Kind::Symlink { to_dir: true } => {}
         }
     }

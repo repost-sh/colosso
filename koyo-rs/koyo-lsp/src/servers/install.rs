@@ -32,7 +32,6 @@ impl Fetch for Curl {
     fn fetch(&self, url: &str, to: &Path) -> Result<(), String> {
         let mut curl = Command::new("curl");
         curl
-            // First, so no `.curlrc` changes what's fetched.
             .arg("--disable")
             .args(["--fail", "--location", "--silent", "--show-error"])
             .args(["--proto", "=https", "--proto-redir", "=https"])
@@ -85,12 +84,10 @@ pub(super) fn install(
 
     fs::create_dir_all(&folder).map_err(io_failed("create", &folder))?;
     let staging = staging(&folder);
-    // Beside the staging folder, so that it holds only what was unpacked.
     let download = staging.with_extension("download");
     log::info!("installing {name} {} from {url}", release.version);
     let installed = unpack(&staging, &download, name, &url, sha256, release, fetch)
         .and_then(|()| place(&staging, &version, Path::new(release.binary)));
-    // Gone already after the rename; what a failure left behind otherwise.
     let _ = fs::remove_dir_all(&staging);
     let _ = fs::remove_file(&download);
     installed?;
@@ -146,7 +143,6 @@ pub(super) fn staging(folder: &Path) -> PathBuf {
 pub(super) fn place(staging: &Path, version: &Path, proof: &Path) -> Result<(), LspError> {
     match fs::rename(staging, version) {
         Ok(()) => Ok(()),
-        // Another install got there first, and what it put there is the same.
         Err(_) if version.join(proof).is_file() => Ok(()),
         Err(error) => Err(LspError::Install(format!(
             "couldn't move {} into {}: {error}",
@@ -260,10 +256,8 @@ mod tests {
         assert_eq!(binary, data.join("servers/ts/1.0/package/lib/tsc"));
         assert!(runs(&binary));
         assert!(data.join("servers/ts/1.0/package/lib/lib.d.ts").is_file());
-        // Nothing of the install is left beside it: neither the staging folder nor the download.
         let left: Vec<_> = fs::read_dir(data.join("servers/ts")).unwrap().collect();
         assert_eq!(left.len(), 1);
-        // There already: not fetched again.
         assert_eq!(install("ts", &release, &data, &fetch).unwrap(), binary);
         assert_eq!(fetch.fetches.get(), 1);
         let _ = fs::remove_dir_all(&data);

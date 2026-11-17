@@ -29,14 +29,12 @@ async fn a_subscribed_resource_hears_its_topic() {
     app.push(Topic::Workspace);
     assert_eq!(next(&mut updates).await, "koyo://projects");
 
-    // A second resource on the same topic needs no second subscribe.
     legacy(&session, "koyo://tabs", true).await;
     app.push(Topic::Workspace);
     let mut heard = vec![next(&mut updates).await, next(&mut updates).await];
     heard.sort();
     assert_eq!(heard, ["koyo://projects", "koyo://tabs"]);
 
-    // Unsubscribed, a resource is no longer told about.
     legacy(&session, "koyo://projects", false).await;
     app.push(Topic::Workspace);
     assert_eq!(next(&mut updates).await, "koyo://tabs");
@@ -92,7 +90,6 @@ async fn subscriptions_follow_the_app_again_after_it_restarts() {
     };
     assert_eq!(hello.client.name, common::CLIENT);
     assert_eq!(second.next_subscribe(), [Topic::App]);
-    // What changed while the app was away is unknown, so the resource is said to have changed.
     assert_eq!(next(&mut updates).await, "koyo://app");
 
     second.push(Topic::App);

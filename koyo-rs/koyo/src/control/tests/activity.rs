@@ -25,7 +25,6 @@ fn agents_read_what_every_client_did_and_a_client_what_it_did(cx: &mut TestAppCo
     let agent = terminal("term_1");
     let cursor = external("Cursor");
     call(&agent, "layout_set", json!({ "sidebar": false }), cx).unwrap();
-    // Refused for want of a scope, and logged all the same.
     call(
         &cursor,
         "settings_set",
@@ -33,7 +32,6 @@ fn agents_read_what_every_client_did_and_a_client_what_it_did(cx: &mut TestAppCo
         cx,
     )
     .unwrap_err();
-    // Reads aren't logged.
     call(&cursor, "app_status", json!({}), cx).unwrap();
     cx.update(|cx| allow_denied("Codex", cx));
 
@@ -61,14 +59,12 @@ fn agents_read_what_every_client_did_and_a_client_what_it_did(cx: &mut TestAppCo
         "newest first"
     );
 
-    // A chat's agent reads it all too, as far as its `limit` goes.
     let latest = call(&chat("chat-1"), "activity_list", json!({ "limit": 1 }), cx).unwrap();
     let (entries, only_yours) = listed(&latest);
     assert!(!only_yours);
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["client"], "Codex");
 
-    // An external client reads only its own, not who else the person allowed.
     let own = call(&cursor, "activity_list", json!({}), cx).unwrap();
     let (entries, only_yours) = listed(&own);
     assert!(only_yours);
@@ -76,7 +72,6 @@ fn agents_read_what_every_client_did_and_a_client_what_it_did(cx: &mut TestAppCo
     assert_eq!(entries[0]["client"], "Cursor");
     assert_eq!(entries[0]["operation"], "settings_set");
 
-    // None of the listings above is in the log.
     let again = call(&agent, "activity_list", json!({ "limit": 200 }), cx).unwrap();
     assert_eq!(listed(&again).0.len(), 3);
 }

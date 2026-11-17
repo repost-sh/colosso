@@ -254,7 +254,6 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     let (terminal, existed) = a.open("echoer", &cwd, &ECHOER, false);
     assert!(!existed);
     assert_eq!(terminal.name, "echoer");
-    // target/ is inside this checkout, which the daemon found without being told.
     let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     assert_eq!(
         terminal
@@ -269,7 +268,6 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     let (index, offset) = a.attach(&handle, None);
     let (snapshot_offset, screen) = a.snapshot_text(index);
     assert_eq!(snapshot_offset, offset);
-    // A program quicker than the attach printed into the snapshot.
     if !screen.contains("ready") {
         a.output_until(index, "ready");
     }
@@ -278,7 +276,6 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     a.connection.close();
     drop(a);
 
-    // The program is still there for the next client.
     let b = connect(&dir, ClientKind::App);
     wait_until("the first client to be forgotten", || {
         b.list().iter().all(|t| t.record.attached_clients == 0)
@@ -293,7 +290,6 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     assert!(screen.contains("ready"), "{screen:?}");
     assert!(screen.contains("got:abc"), "{screen:?}");
 
-    // Two clients see the same output.
     let c = connect(&dir, ClientKind::Cli);
     let (index_c, _) = c.attach(&handle, None);
     c.snapshot_text(index_c);
@@ -301,7 +297,6 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     b.output_until(index_b, "got:xyz");
     c.output_until(index_c, "got:xyz");
 
-    // A client that holds state up to an offset resumes from the ring without a snapshot.
     b.connection
         .request(RequestBody::Detach {
             handle: handle.clone(),
@@ -315,7 +310,6 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
         "replay started at {reached}, not from the beginning: {replayed:?}"
     );
 
-    // Closing ends the program and forgets the terminal.
     b.connection
         .request(RequestBody::Close {
             handle: handle.clone(),
@@ -368,7 +362,6 @@ fn the_registry_survives_a_restart_and_respawns() {
         "{error:?}"
     );
 
-    // Its last screen reads as it was, kept across the restart.
     let read = RequestBody::ReadScreen {
         handle: handle.clone(),
     };
@@ -386,7 +379,6 @@ fn the_registry_survives_a_restart_and_respawns() {
     assert_eq!(again.handle, handle);
     assert_eq!(again.incarnation, 2);
     assert!(again.pid.is_some());
-    // Run again, it starts from the screen it had, then its program prints anew.
     let (index, _) = b.attach(&handle, None);
     let (_, screen) = b.snapshot_text(index);
     assert!(
@@ -410,7 +402,6 @@ fn worktree_selectors_scope_the_list() {
     let dir = test_dir("scoped");
     let _stop = StopOnDrop(dir.clone());
     let root = dir.root().parent().unwrap().to_path_buf();
-    // Two fake checkouts, as git lays them out.
     let main = root.join("repo");
     let feat = root.join("repo-feat");
     std::fs::create_dir_all(main.join(".git/worktrees/feat")).unwrap();

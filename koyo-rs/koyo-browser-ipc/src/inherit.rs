@@ -54,7 +54,6 @@ pub fn take(value: &str) -> io::Result<UnixStream> {
         if stat.st_mode & libc::S_IFMT != libc::S_IFSOCK {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "not a socket"));
         }
-        // Past the standard three, wherever it came in.
         let moved = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 3);
         if moved < 0 {
             return Err(io::Error::last_os_error());
@@ -90,7 +89,6 @@ mod tests {
         unsafe { libc::pthread_atfork(Some(forking), None, None) };
         let (mut ours, theirs) = UnixStream::pair().expect("pair");
         let mut command = Command::new("/bin/sh");
-        // The child writes through its standard input, the socket, and exits.
         command.args(["-c", "printf hello >&0"]);
         let mut child = spawn(command, theirs).expect("spawn");
         let mut got = String::new();
@@ -98,7 +96,6 @@ mod tests {
             .expect("read until the child's end closes");
         assert_eq!(got, "hello");
         assert!(child.wait().expect("wait").success());
-        // With the child gone, nothing else holds its end open.
         assert!(ours.write_all(b"x").is_err());
         assert_eq!(FORKS.get(), 0, "the app was forked to start it");
     }
@@ -107,7 +104,6 @@ mod tests {
     fn a_taken_socket_leaves_its_place_to_the_null_device() {
         let (mut ours, theirs) = UnixStream::pair().expect("pair");
         let came_in = theirs.as_raw_fd();
-        // As the host finds it: on a descriptor it was started with.
         let mut taken = take(&came_in.to_string()).expect("take");
         std::mem::forget(theirs);
         assert!(taken.as_raw_fd() > 2 && taken.as_raw_fd() != came_in);
@@ -115,7 +111,6 @@ mod tests {
         let mut got = [0; 2];
         ours.read_exact(&mut got).expect("read");
         assert_eq!(&got, b"hi");
-        // What it came in on is no socket now, and closing it closes nothing of the link's.
         // SAFETY: the descriptor is this test's own, the null device since `take`.
         unsafe {
             let mut stat: libc::stat = std::mem::zeroed();

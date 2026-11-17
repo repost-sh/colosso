@@ -45,7 +45,6 @@ pub(super) fn drawn(view: &View, cx: &App) -> AnyElement {
         (None, _) => "Claude accounts".to_owned(),
     }
     .into();
-    // The ring itself, as the composer's context ring is: a glass button's padding cuts it.
     div()
         .id("accounts-button")
         .debug_selector(|| "accounts-button".to_owned())
@@ -57,7 +56,6 @@ pub(super) fn drawn(view: &View, cx: &App) -> AnyElement {
         .cursor_pointer()
         .hover(move |button| button.bg(p.hover))
         .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
-        // A mask: it paints in its own text colour.
         .child(
             ring(used.map_or(0, |used| used.round() as u8))
                 .size(px(16.))

@@ -45,7 +45,6 @@ impl Face {
         let file = pane.file.as_ref().map(|file| file.read(cx));
         Face {
             id: pane.id,
-            // A file's pane is titled with its name; one brought back shows as what it opens.
             icon: if file.is_some() || pane.unopened_file().is_some() {
                 file_icon(&pane.title)
             } else if pane.shows_changes() {
@@ -139,8 +138,6 @@ fn split_halves(faces: &[Face], p: Palette, cx: &mut Context<Shell>) -> Div {
                     .into_any_element(),
             );
         }
-        // Shown while the pointer's on the half, and its dot for unsaved edits always; the
-        // title has all the half until then.
         let close = pane_close_button("pane-chip-close", face.id, (face.dirty, ROW_GLYPH), p, cx);
         let close = row_sized(close).when(!face.dirty, |close| {
             close

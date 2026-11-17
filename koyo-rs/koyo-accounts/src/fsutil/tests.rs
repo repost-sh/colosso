@@ -56,8 +56,6 @@ fn failed_publish_leaves_destination_untouched() {
 
 #[test]
 fn temp_is_private_from_creation() {
-    // With the mode step skipped, the published mode is the one the temp was made with: a
-    // write-then-chmod writer would show 0644 under the usual umask.
     let sandbox = Sandbox::new();
     let env = sandbox.env();
     let target = sandbox.home().join("secret.json");
@@ -247,8 +245,6 @@ fn a_destination_name_near_name_max_still_publishes() {
 
 #[test]
 fn every_write_asks_the_guard_first() {
-    // Mutation check for the wiring (pitfall 48): with a sandbox's env, a write just outside
-    // its folder is refused and nothing lands there.
     let sandbox = Sandbox::new();
     let env = sandbox.env();
     let outside = sandbox.root().with_extension("outside");

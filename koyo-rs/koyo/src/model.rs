@@ -293,7 +293,6 @@ impl Workspace {
                 .get(&project.path)
                 .and_then(|look| look.name.as_deref());
             let folder = project.path.file_name().and_then(|name| name.to_str());
-            // Named so already, nothing's made anew.
             if given.or(folder) == Some(project.name.as_ref()) {
                 continue;
             }
@@ -363,7 +362,6 @@ impl Workspace {
     pub fn set_error(&mut self, project: usize, error: impl Into<SharedString>) {
         let project = &mut self.projects[project];
         let error = error.into();
-        // Said once, rather than again each time the window comes back.
         if project.error.as_ref() != Some(&error) {
             log::warn!("couldn't read {}: {error}", project.path.display());
         }
@@ -424,7 +422,6 @@ impl Workspace {
         let Some(unit) = self.branch_mut() else {
             return;
         };
-        // With no tabs, that's first.
         let at = (unit.active_tab + 1).min(unit.tabs.len());
         unit.tabs.insert(at, tab);
         unit.active_tab = at;

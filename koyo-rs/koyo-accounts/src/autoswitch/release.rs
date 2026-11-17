@@ -46,8 +46,6 @@ pub(crate) fn no_return_account(
     if input.trigger != Trigger::Proactive {
         return None;
     }
-    // As text on both sides: `lastSwitchTo` is written as a string, `lastSwitchFrom` as the
-    // switch result's number, and a mismatch would disarm the bar everywhere.
     if let Some(landed_on) = &state.last_switch_to
         && landed_on.text() != input.current
     {
@@ -61,7 +59,7 @@ pub(crate) fn no_return_account(
         && let Some(left_headroom) = left.headroom
     {
         let released = match input.active_headroom {
-            Some(active_headroom) => all_above_margin_met(left_headroom, active_headroom), // beats us outright: no flip
+            Some(active_headroom) => all_above_margin_met(left_headroom, active_headroom),
             None => left.lands(),
         };
         if released {
@@ -90,7 +88,7 @@ pub(crate) fn no_return_account(
 /// moving off an account nobody can schedule around onto a real reset is the improvement).
 pub(crate) fn left_account_recovered(state: &AutoSwitchState, input: &RankInput<'_>) -> bool {
     let Some(came_from) = &state.last_switch_from else {
-        return true; // nothing was left: nothing bars
+        return true;
     };
     let left = input.readings.get(&came_from.text());
     let recovery = |reading: Option<&Reading<'_>>| {
@@ -106,9 +104,6 @@ pub(crate) fn left_account_recovered(state: &AutoSwitchState, input: &RankInput<
             && peer_recovery < active_recovery - RECOVERY_HYSTERESIS_S;
     }
     let h = left.and_then(|peer| peer.headroom);
-    // Dominance over the active, for a peer that was already ahead at departure (moved for
-    // another reason) and so never improves on its own baseline. An unreadable active isn't
-    // "no dominance": it falls back to the landing test.
     if let Some(h) = h {
         let dominant = match input.active_headroom {
             Some(active_headroom) => {

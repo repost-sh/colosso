@@ -90,7 +90,6 @@ impl Run {
     fn open(&self) -> Result<(Arc<Project>, Subscription, Duration)> {
         let started = Instant::now();
         let project = Project::open(Options {
-            // The user's own excludes would make the numbers depend on whose machine it is.
             excludes: Excludes::None,
             ..Options::new(self.root.clone(), Some(GitDirs::main(&self.root)))
         });
@@ -153,7 +152,6 @@ impl Run {
     fn burst_ignored(&mut self) -> Result<()> {
         let (project, updates, _) = self.open()?;
         let marker = format!("{}/bench-marker", module(0, 0, 0));
-        // Whatever opening left to report is taken first.
         through(&updates, &self.root, &marker)?;
         for remove in [false, true] {
             if self.out_of_time() {

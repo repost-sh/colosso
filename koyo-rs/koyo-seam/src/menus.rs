@@ -86,7 +86,6 @@ pub fn judge(what: &str, window: isize, on_screen: bool) -> Result<(), Refusal> 
     } else {
         decide(on_screen, Some((Duration::ZERO, Origin::Person { through: None })))
     };
-    // Whose the window's last input was and how long ago: never what was pressed.
     let said = last.map(|(ago, input)| (ago, input.origin));
     match verdict {
         Ok(()) => log::info!(
@@ -116,13 +115,11 @@ mod tests {
     #[test]
     fn the_persons_press_in_a_window_on_screen_shows_its_menu() {
         assert_eq!(decide(true, Some((NOW, PERSON))), Ok(()));
-        // A busy page asking late is still answered.
         assert_eq!(decide(true, Some((WITHIN, PERSON))), Ok(()));
     }
 
     #[test]
     fn a_press_posted_for_the_person_by_a_tool_of_theirs_shows_its_menu() {
-        // A remapped button or Screen Sharing posts as a process of its own.
         assert_eq!(decide(true, Some((NOW, Origin::Person { through: Some(777) }))), Ok(()));
     }
 
@@ -166,7 +163,6 @@ mod tests {
         assert_eq!(judge("a test's menu", 11, true), Ok(()));
         assert!(matches!(judge("a test's menu", 12, true), Err(Refusal::NotThePersons(_))));
         assert_eq!(judge("a test's menu", 13, true), Err(Refusal::NoInput));
-        // A later press of the person's in the window is what counts.
         heard::app_sends(12, HARDWARE, Kind::Press);
         assert_eq!(judge("a test's menu", 12, true), Ok(()));
     }

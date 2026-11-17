@@ -60,7 +60,6 @@ pub fn init() {
     if log::set_boxed_logger(Box::new(Logger { filter, sink })).is_err() {
         return;
     }
-    // A terminal shows a panic as it happens; a file has to be told.
     if file().is_some() {
         log_panics();
     }

@@ -77,7 +77,6 @@ pub fn run(drawn: &mut Drawn, udid: &str, lines: &mut Vec<String>) -> Result<()>
     let (frames, paints) = counted(drawn, &link, Duration::from_secs(3));
     lines.push(format!("live, the next 3 s: {frames} frames shown, {paints} paints"));
     lines.push(format!("{}", drawn.save("live.png")?.display()));
-    // QH1: the host killed; the link starts it again, and it stands ready again.
     let pid = drawn.cx.read(|cx| link.read(cx).pid()).ok_or("no host pid")?;
     // SAFETY: ending a process of this program's own making, by its pid.
     unsafe { libc::kill(i32::try_from(pid).unwrap_or(0), libc::SIGKILL) };
@@ -98,7 +97,6 @@ pub fn run(drawn: &mut Drawn, udid: &str, lines: &mut Vec<String>) -> Result<()>
     if let Ok(second) = std::env::var("KOYO_VISUAL_SECOND") {
         two(drawn, &link, &second, lines)?;
     }
-    // QH3: Koyo quits: every host told to go, nothing waited on; each shuts its simulator down.
     let started = Instant::now();
     drawn.cx.update(|cx| crate::devices::devices(cx).update(cx, crate::devices::Devices::stop_all));
     let told = started.elapsed();

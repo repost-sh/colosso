@@ -87,7 +87,6 @@ mod tests {
 
     #[test]
     fn letters_and_digits_have_a_key_and_distinct_ones() {
-        // Whatever the layout of the Mac the test runs on, it types these somewhere.
         let codes: Vec<Option<u16>> = "az19".chars().map(code_for).collect();
         assert!(codes.iter().all(Option::is_some), "{codes:?}");
         let mut distinct = codes.clone();
@@ -97,9 +96,6 @@ mod tests {
         assert_eq!(code_for('A'), code_for('a'));
         assert_eq!(code_for('\u{1F600}'), None);
 
-        // In this test too, as the layout is read by one thread at a time: the person's
-        // key goes to where the layout types its character, which is where an agent's
-        // shortcut for that character goes; a key that types none stays where it is.
         let z = koyo_desk_wire::keys::code("z").unwrap();
         assert_eq!(Some(placed(z)), code_for('z'));
         for named in ["left", "return", "f5", "escape", "tab"] {

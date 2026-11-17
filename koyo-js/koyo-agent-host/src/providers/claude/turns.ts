@@ -1,14 +1,3 @@
-// Which frames are a turn's (docs/chat.md 4.7; T3 adapter pitfalls 6, 7, 8). The CLI starts
-// turns of its own, when a background task ends or a scheduled wake fires, so the
-// conversation's frames are credited to the person's turn only once the CLI says it took the
-// turn's prompt: it echoes the prompt's uuid on the turn's first reply frames and its result
-// (`user_message_uuid(s)`), and reports it started in a `command_lifecycle` frame. Until then
-// the conversation's frames are held. A frame of the conversation while no turn runs is a turn
-// the CLI started: it's adopted, and shows as any other, with no message of the person's to
-// start it. A message steered into a turn that the CLI hadn't taken when the turn's result came
-// runs as a turn of its own right after; it's still this turn's, which ends with the last of
-// them. A subagent's frames are its own, whatever runs.
-
 import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
@@ -196,7 +185,6 @@ export class Turns {
         break;
       }
       case "completed": {
-        // A prompt the CLI had already recorded completes without a turn (pitfall 7).
         if (id === turn.promptId && !turn.echoed) {
           this.#finish({ outcome: "failed", failure: processFailure(NEVER_STARTED) }, null);
         } else if (!turn.taken.has(id)) {
@@ -243,13 +231,11 @@ export class Turns {
     const stamped = echoed(result).length > 0;
     const human = result.origin === undefined || result.origin.kind === "human";
     if (!ours && (stamped || !human)) {
-      // Another turn's, one the CLI ran of its own just before: what it said still shows.
       for (const frame of turn.held.splice(0)) {
         this.#frames.frame(frame);
       }
       return;
     }
-    // A CLI that echoes only on the result credits the turn with all it held.
     this.#echo();
     const { ending, usage: used } = this.#frames.result(result, turn.interrupted);
     const usage = summed(turn.usage, used);

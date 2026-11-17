@@ -41,7 +41,6 @@ impl FileLock {
             if start.elapsed() > timeout {
                 return Ok(None);
             }
-            // Clamped to what's left, so `timeout` bounds the call.
             fsutil::nap_within(STEP, start, timeout);
         }
     }

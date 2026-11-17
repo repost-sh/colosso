@@ -32,7 +32,6 @@ fn initialize_offers_our_capabilities_and_takes_the_encoding_chosen() {
     let result = wait(5, client.initialize(root())).unwrap();
     assert_eq!(client.encoding(), Encoding::Utf8);
     assert_eq!(client.capabilities().as_deref(), Some(&result.capabilities));
-    // Answered only once `initialized` came.
     wait(5, client.request::<Echo>(&json!(null))).unwrap();
 
     let params = &wait(5, received.next()).unwrap()["params"];
@@ -115,10 +114,8 @@ fn a_server_that_names_no_encoding_speaks_utf16() {
 
 #[test]
 fn stderr_is_added_to_the_log_as_its_written() {
-    // In the workspace's own target folder, wherever cargo builds.
     let log = std::path::Path::new(env!("KOYO_TARGET_DIR")).join("test-tmp/lsp-log/fake.log");
     std::fs::remove_file(&log).ok();
-    // A log there already is added to, its folder made the first time.
     for said in ["first", "second"] {
         let client = fake_logged(
             &json!([{"stderr": format!("{said} line")}, {"exit": 0}]),
@@ -153,14 +150,12 @@ fn a_crash_is_reported_with_its_last_stderr_and_fails_what_waits() {
     );
     let exit = expect_crash(&mut events);
     assert_eq!(exit.code, Some(3));
-    // Notification streams end with the server.
     assert_eq!(wait(5, received.next()), None);
     assert!(exit.crashed && !exit.killed);
     assert_eq!(
         exit.stderr,
         ["loading the workspace", "thread 'main' panicked: boom"]
     );
-    // Afterwards, everything fails at once, and a late listener still hears of the crash.
     assert_eq!(
         wait(5, client.request::<Echo>(&json!(null))),
         Err(LspError::Exited)
@@ -215,7 +210,6 @@ fn shutdown_asks_and_the_server_exits() {
 fn shutdown_kills_a_server_that_wont_exit() {
     let client = fake(&json!([
         {"recv": "shutdown"},
-        // The unanswered shutdown is given up on, and so cancelled.
         {"recv": "$/cancelRequest"},
         {"recv": "exit"},
         {"hang": true},
@@ -226,7 +220,6 @@ fn shutdown_kills_a_server_that_wont_exit() {
     let took = started.elapsed();
     assert!(exit.killed && !exit.crashed, "{exit:?}");
     assert_eq!(exit.code, None);
-    // One timeout for the unanswered shutdown, one for the exit that didn't happen.
     assert!(
         took >= timeout * 2 && took < Duration::from_secs(5),
         "{took:?}"

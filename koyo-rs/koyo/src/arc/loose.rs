@@ -90,7 +90,6 @@ fn strip(look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
         .text_xs()
         .text_color(look.label)
         .child("Drop to keep it in this space");
-    // The visual check lets a tab go where the strip is drawn.
     #[cfg(feature = "visual-check")]
     let strip = {
         use gpui_kit::base::ElementExt as _;
@@ -140,7 +139,6 @@ fn row(
         .debug_selector(move || format!("arc-loose-{at}"));
     let row = pill_row(row, (key, active), shell, look, cx)
         .pr(px(ROW_END))
-        // In hand, it's lifted off the list, over the rows it passes.
         .when(lifted, |row| row.bg(p.hover).shadow_sm())
         .on_click(cx.listener(move |this, _, _, cx| {
             this.show_tab_holding(key, cx);
@@ -158,13 +156,11 @@ fn row(
         })
         .child(tab_icon(&face, p))
         .child(title_with_end(title, close, active, "arc-loose"));
-    // The visual check takes a row up where it's drawn.
     #[cfg(feature = "visual-check")]
     let row = {
         use gpui_kit::base::ElementExt as _;
         row.on_prepaint(crate::visual::noting(format!("arc-loose-{at}")))
     };
-    // Its menu is worked out as it's opened, not as the row's drawn.
     let shell = cx.weak_entity();
     let row = with_menu(row, move |_, cx| {
         let worktree = shell.read_with(cx, |shell, _| shell.checkout_shown().is_some());

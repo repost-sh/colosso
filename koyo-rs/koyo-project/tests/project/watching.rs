@@ -94,7 +94,6 @@ fn editing_a_gitignore_flips_what_it_ignores() {
             |listing| names(listing) == ["b.txt"] && ignored(listing).is_empty()
         )));
 
-    // A folder's own rules reach the folders listed under it.
     checkout.write("out/.gitignore", "*.txt\n");
     assert!(until_listed(&updates, "out/sub", |listing| listing
         .is_some_and(|listing| ignored(listing) == ["b.txt"])));
@@ -121,7 +120,6 @@ fn only_the_git_files_consumers_read_are_reported() {
     checkout.write(".git/HEAD", "ref: refs/heads/main\n");
     let (project, _updates) = checkout.open();
     let written = project.subscribe(Feed::Written);
-    // Whatever the setup left for the watcher to report is taken first.
     through_marker(&checkout, &written, "before");
     checkout.write(".git/objects/ab/cdef", "x");
     checkout.write(".git/refs/heads/main.lock", "x");
@@ -147,13 +145,11 @@ fn a_burst_inside_an_ignored_folder_reaches_nobody() {
     let (project, _updates) = checkout.open();
     let written = project.subscribe(Feed::Written);
     let start = project.stats();
-    // Whatever the setup left for the watcher to report is taken first.
     through_marker(&checkout, &written, "src/before");
     let before = project.stats();
     for n in 0..2_000 {
         checkout.write(&format!("node_modules/pkg{}/f{n}.js", n % 40), "");
     }
-    // The platform reports in order: everything about the burst comes before the marker.
     let taken = through_marker(&checkout, &written, "src/after");
     let after = project.stats();
     assert!(after.dropped > before.dropped, "{after:?}");
@@ -166,9 +162,6 @@ fn a_burst_inside_an_ignored_folder_reaches_nobody() {
         );
         return;
     }
-    // The platform lost track of the checkout, under load: what was written is then read
-    // again whole, and a marker may come late or be part of that. Still, nothing names
-    // the ignored folder, nor anything in it.
     for update in &taken {
         let markers = match &update.written {
             Written::Paths(paths) => {

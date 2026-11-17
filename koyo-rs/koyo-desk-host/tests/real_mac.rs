@@ -137,8 +137,6 @@ fn opens(driver: &mut Driver, size: Size, scale: f64) -> Scene {
 fn shows(driver: &mut Driver, scene: &Scene) {
     let id = scene.window.id;
     driver.tell(&ToHost::Visible { visible: true });
-    // A window opens a point or two larger than it settles at: its frames are of the size
-    // it has once that has stood a moment.
     let wide = (scene.window.frame.width * scene.scale).round() as usize & !1;
     driver.until(Duration::from_secs(5), |driver| {
         driver.frames_of(id).size.0 == wide
@@ -146,8 +144,6 @@ fn shows(driver: &mut Driver, scene: &Scene) {
     let frames = driver.frames_of(id);
     assert!(frames.count > 0, "no frame came");
     assert_eq!(frames.size.0, wide);
-    // A window that doesn't change sends next to nothing more: its text cursor blinking,
-    // not the sixty frames a second the capture delivers.
     driver.rest(Duration::from_millis(600));
     let still = driver.frames_of(id).count;
     driver.rest(Duration::from_secs(1));
@@ -321,7 +317,6 @@ fn saves_and_quits(driver: &mut Driver, scene: &Scene) {
     assert!(saved.contains("Set by ref"), "saved: {saved:?}");
     let quit = Ask::Close(Close::App(scene.pid));
     assert_eq!(driver.ask(quit), Ok(Answer::Done));
-    // What stays is the desktop's own picture, no window of an app's.
     let gone = |driver: &Driver| driver.windows.is_empty();
     driver.until(Duration::from_secs(6), gone);
     assert!(gone(driver), "windows stayed: {:?}", driver.windows);

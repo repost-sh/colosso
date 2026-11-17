@@ -34,7 +34,6 @@ impl Shell {
                             break;
                         }
                     }
-                    // The views attach again, which starts it again; then it lists anew.
                     Notice::Disconnected => {
                         cx.background_executor().timer(Duration::from_secs(1)).await;
                         relist(&this, &client, cx).await;
@@ -64,7 +63,6 @@ impl Shell {
         }
         let after = &self.terminals.states.takeover;
         if after.is_some() && *after != before {
-            // The notice of a takeover goes by itself: draw again when it's due to.
             cx.spawn(async move |this, cx| {
                 let due = Duration::from_secs(NOTICE_SECS) + Duration::from_millis(100);
                 cx.background_executor().timer(due).await;

@@ -1,7 +1,3 @@
-// The driver against the person's real `claude`, run only with KOYO_LIVE_CLAUDE=1: it signs in
-// as them and spends a little of their usage. The chat runs in a scratch folder in the
-// checkout; Claude Code keeps its transcript in ~/.claude/projects/, as it does for any chat.
-
 import { randomUUID } from "node:crypto";
 
 import { afterAll, describe, expect, test } from "bun:test";

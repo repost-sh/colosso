@@ -83,8 +83,6 @@ impl Element for Picture {
         let Some((display, screen)) = screen(window, cx) else {
             return;
         };
-        // Held for as long as the chat draws it: dropped with the element's state the first
-        // frame that doesn't.
         if let Some(id) = id {
             window.with_element_state::<Hold, _>(id, |held, _| match held {
                 Some(held) if held.display == display => ((), held),
@@ -101,8 +99,6 @@ impl Element for Picture {
         let Some(placeholder) = screens::picture(display, recipe, self.settings, cx) else {
             return;
         };
-        // Clipped to the pane, which the renderer fades down; it draws only what's also on the
-        // screen.
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             window.paint_surface(screen, placeholder);
         });
@@ -126,7 +122,6 @@ fn screen(window: &Window, cx: &App) -> Option<(u64, Bounds<Pixels>)> {
         });
         return None;
     };
-    // The window's bounds are its screen's, from the screen's top left.
     let origin = window.bounds().origin;
     let screen = Bounds::new(point(-origin.x, -origin.y), display.bounds().size);
     Some((u64::from(display.id()), screen))

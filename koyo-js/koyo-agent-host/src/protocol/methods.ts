@@ -1,7 +1,3 @@
-// The requests a client makes of the host, each with the shape of its params and of its
-// result (docs/chat.md 4.3). The map is the contract: the server's handlers are typed from
-// it, and the protocol tests hold a fixture for every method.
-
 import { z } from "zod";
 
 import { RequestId, RunId, ThreadId } from "./ids";

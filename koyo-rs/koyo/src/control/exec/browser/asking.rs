@@ -112,7 +112,6 @@ pub(crate) fn duplicate(
             "This call has no connection of Koyo's to tie the person's answer to; call through Koyo's MCP server or control socket.",
         ));
     }
-    // It opens a tab, as tab_open does.
     if !gate::grant(caller, cx)?.contains(&Scope::Navigate) {
         return Err(ControlError::scope_denied(Scope::Navigate));
     }
@@ -129,7 +128,6 @@ pub(crate) fn duplicate(
             if !pages::still_open(&caller, cx) {
                 return Err(pages::gone());
             }
-            // The copy is of the page the person was asked about, at the address it had.
             let unchanged = match pages::find(&caller, Some(pane), cx)? {
                 Found::Persons(now) => now.same(&persons) && now.url == persons.url,
                 Found::Page(_) => false,
@@ -290,7 +288,6 @@ fn to_use(
     let (_, shell) = main_shell(cx).ok_or_else(window_closed)?;
     let asker = asker::named(caller, shell.read(cx), cx);
     let (title, site) = shown_as(persons);
-    // A takeover reads as one: allowed, it ends the consent of an agent using the page now.
     let what = if takeover {
         "It can read the page, run script in it, click, type and navigate it, signed in as you, until it lets go, you take the page back, or 10 minutes pass without it acting. If another agent uses the page now, it takes the page from that agent."
     } else {

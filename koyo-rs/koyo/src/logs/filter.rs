@@ -12,15 +12,9 @@ const DEFAULT: LevelFilter = LevelFilter::Info;
 /// Modules quieter than the rest unless a filter names them, for what they say every launch
 /// that no one can act on.
 const QUIET: [(&str, LevelFilter); 4] = [
-    // macOS lists two of its system fonts twice; GPUI warns about both each launch.
     ("gpui_apple::text_system", LevelFilter::Error),
-    // A Mermaid diagram's SVG carries the CSS of looks it isn't drawn in, `transform: none`
-    // and drop shadows, which the SVG renderer warns about for each element it's on, a page
-    // of warnings for each diagram drawn.
     ("usvg", LevelFilter::Error),
-    // Advice on making elements accessible, said again as focus moves.
     ("gpui::window::a11y", LevelFilter::Warn),
-    // An accessibility update sent, at debug, many times a second.
     ("gpui::window", LevelFilter::Info),
 ];
 
@@ -58,7 +52,6 @@ impl Filter {
                 }
                 None => match level_named(part) {
                     Some(level) => parsed.level = level,
-                    // A bare module name keeps everything it logs.
                     None => parsed.modules.push((part.to_owned(), LevelFilter::Trace)),
                 },
             }
@@ -70,7 +63,6 @@ impl Filter {
     pub(super) fn level(&self, target: &str) -> LevelFilter {
         (self.modules.iter())
             .filter(|(module, _)| covers(module, target))
-            // Of equally long names, the last: a filter's own over the quiet ones.
             .max_by_key(|(module, _)| module.len())
             .map_or(self.level, |(_, level)| *level)
     }
@@ -91,7 +83,6 @@ fn covers(module: &str, target: &str) -> bool {
 }
 
 fn level_named(name: &str) -> Option<LevelFilter> {
-    // `none` as well as `log`'s own `off`, as Zed reads it.
     if name.eq_ignore_ascii_case("none") {
         return Some(LevelFilter::Off);
     }
@@ -120,7 +111,6 @@ mod tests {
         assert_eq!(filter.level("koyo::shell"), LevelFilter::Info);
         assert_eq!(filter.level("koyo::changes"), LevelFilter::Trace);
         assert_eq!(filter.level("koyo::changes::state"), LevelFilter::Trace);
-        // A name only covers whole modules.
         assert_eq!(filter.level("koyo_git"), LevelFilter::Warn);
         assert_eq!(filter.most(), LevelFilter::Trace);
     }

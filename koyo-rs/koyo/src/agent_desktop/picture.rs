@@ -54,8 +54,6 @@ impl Picture {
 /// window blank. The next list drops what no window claims ([`Picture::keep`]).
 pub fn latest(rings: Vec<mach::Ring>) -> HashMap<WindowId, CFRetained<CVPixelBuffer>> {
     let mut latest = HashMap::new();
-    // Newest first: a window's older frames, which pile up while the app is busy, are let
-    // go unread.
     for ring in rings.into_iter().rev() {
         let window = WindowId::try_from(ring.pane).ok();
         for port in ring.ports.into_iter().rev() {

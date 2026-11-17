@@ -35,7 +35,6 @@ struct Random(u64);
 
 impl Random {
     fn below(&mut self, bound: usize) -> usize {
-        // xorshift64*
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
@@ -112,7 +111,6 @@ fn positions_between_characters_round_down_and_past_the_end_clamp() {
                 for character in 0..40 {
                     let offset = index.offset(&text, Position::new(line, character), encoding);
                     assert!(text.is_char_boundary(offset));
-                    // Offsets never go back as the column grows, and never leave the line.
                     if let Some(last) = last {
                         assert!(offset >= last, "{text:?} {line}:{character}");
                     }
@@ -152,7 +150,6 @@ fn edits_keep_the_index_and_the_server_in_step() {
                 ends.sort_unstable();
                 let new = random.text(6);
                 edits.push(text.edit(ends[0]..ends[1], &new, encoding).unwrap());
-                // Spliced, the index is the one made afresh.
                 assert_eq!(
                     text.lines(),
                     &LineIndex::new(text.as_str()),
@@ -175,7 +172,6 @@ fn edits_keep_the_index_and_the_server_in_step() {
 #[test]
 fn edits_outside_the_text_are_refused() {
     let mut text = IndexedText::new("a😀b".to_owned());
-    // Splitting the emoji, past the end, and backwards.
     let backwards = Range { start: 5, end: 1 };
     for range in [0..2, 0..9, backwards] {
         assert_eq!(

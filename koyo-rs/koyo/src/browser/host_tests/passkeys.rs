@@ -218,8 +218,6 @@ fn what_the_sheet_answers_reaches_the_page_as_a_public_key_credential(cx: &mut T
     assert_eq!(out["type"], "public-key");
     assert_eq!(out["attachment"], "platform");
     assert_eq!(out["algorithm"], -7);
-    // The P-256 key as DER, read out of the attestation object by the host; and the
-    // authenticator data around it, 148 bytes.
     let key = out["publicKey"].as_str().unwrap_or_default();
     assert!(
         key.starts_with("48,89,48,19,6,7,42,134,72,206,61,2,1"),
@@ -230,13 +228,11 @@ fn what_the_sheet_answers_reaches_the_page_as_a_public_key_credential(cx: &mut T
     assert_eq!(data.split(',').count(), 148, "{data}");
     assert_eq!(out["transports"], serde_json::json!(["hybrid", "internal"]));
     assert_eq!(out["discoverable"], true);
-    // The attestation object in base64url: 178 bytes.
     assert_eq!(out["json"], 238);
     assert_eq!(out["assertion"], true);
     assert_eq!(out["signature"], "6,6");
     assert_eq!(out["userHandle"], "7,7");
     assert_eq!(out["aborted"], "AbortError");
-    // The aborted request was withdrawn from the app, not just from the page.
     wait_for(cx, &view, "the withdrawn request to go", |view| {
         !view.passkey.waiting()
     });

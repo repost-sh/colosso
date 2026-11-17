@@ -66,9 +66,6 @@ impl Switcher {
         if extract_access_token(&info.creds).is_none_or(|token| token.is_empty()) {
             let unavailable = match info.active {
                 Some(verdict) => verdict.unavailable,
-                // This slot's own read verdict, through the display cache (a hit is the read
-                // the accounts info just made; after a failure the cooldown makes it free):
-                // "no credentials" would send the person to re-add a slot that has one.
                 None => {
                     self.store
                         .read_account_credentials_ex(info.num(), info.email(), true)
@@ -80,7 +77,6 @@ impl Switcher {
             }
             return Some(USAGE_NO_CREDENTIALS);
         }
-        // An expired token isn't a static state: the fetch path says so itself.
         None
     }
 

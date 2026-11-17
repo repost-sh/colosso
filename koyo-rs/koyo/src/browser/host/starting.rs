@@ -16,8 +16,6 @@ use super::{Browsers, Host, STARTING_QUIETLY};
 
 impl Browsers {
     pub(super) fn start(&mut self, cx: &mut Context<Self>) {
-        // A unit test starts only the engine it names: the app's would keep its profiles in
-        // the person's data folder.
         #[cfg(test)]
         let launch = match cx.try_global::<TestLaunch>() {
             Some(TestLaunch(launch)) => Ok(launch.clone()),
@@ -36,8 +34,6 @@ impl Browsers {
         self.starting_since = Some(Instant::now());
         self.notify_views(cx);
         let (tell, mut told) = mpsc::unbounded::<Incoming>();
-        // The host starts in the app's own process, on its main thread (`browser/native`), and
-        // is waited for off it.
         let started = cx.background_executor().spawn(async move {
             let sink = move |message: Incoming| {
                 tell.unbounded_send(message)
@@ -48,7 +44,6 @@ impl Browsers {
         });
         let quietly = cx.background_executor().timer(STARTING_QUIETLY);
         self._events = Some(cx.spawn(async move |this, cx| {
-            // Panes say the host is starting once it has taken a while.
             let started = futures::future::select(started, quietly).await;
             let started = match started {
                 futures::future::Either::Left((started, _)) => started,
@@ -64,8 +59,6 @@ impl Browsers {
             if running.is_none() {
                 return;
             }
-            // What came while the main thread was busy is handled in one update: a page's
-            // state and its cursor together.
             while let Some(first) = told.next().await {
                 let handled = this.update(cx, |this, cx| {
                     let mut next = Some(first);
@@ -101,7 +94,6 @@ impl Browsers {
                 return None;
             }
         };
-        // Socket writes stay off the main thread.
         let (requests, outgoing) = std::sync::mpsc::channel::<AppRequest>();
         std::thread::Builder::new()
             .name("browser-requests".into())

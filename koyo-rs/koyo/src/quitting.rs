@@ -65,7 +65,6 @@ impl OnQuit {
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-    // After the key's dispatch, which holds the window that `quit` looks in.
     cx.on_action(|_: &Quit, cx| cx.defer(quit));
     cx.on_action(|SetOnQuit(choice): &SetOnQuit, cx| {
         settings::update(cx, |settings| settings.on_quit = *choice);
@@ -76,7 +75,6 @@ pub fn init(cx: &mut App) {
 /// is left to hear ⌘Q but the menu.
 pub fn set_menu(cx: &App) {
     cx.set_menus(vec![Menu::new("Koyo").items([
-        // ⌘, beside it, as the key opens them anywhere.
         MenuItem::action("Settings…", OpenSettings),
         MenuItem::separator(),
         MenuItem::action("Quit Koyo", Quit),
@@ -144,7 +142,6 @@ fn deal_with_what_runs(cx: &mut App) {
         return cx.quit();
     }
     let shown = crate::control::main_shell(cx);
-    // The app's own clients where there are some: its views then don't start a daemon again.
     let terminals = shown
         .clone()
         .and_then(|(_, shell)| shell.update(cx, |shell, _| shell.terminals.client()))
@@ -344,7 +341,6 @@ impl QuitDialog {
                 counted(chats, "chat")
             ),
         };
-        // A chat's title may end its own sentence.
         if said.ends_with(['.', '!', '?', '…']) {
             said.into()
         } else {

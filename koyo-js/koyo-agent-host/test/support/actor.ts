@@ -1,6 +1,3 @@
-// A thread's actor as tests drive it: on a store of its own, with the fake provider, a clock
-// that ticks a second a call, and a subscriber that keeps every line it's sent.
-
 import { z } from "zod";
 
 import { events } from "../../src/protocol/events";

@@ -47,7 +47,6 @@ impl Chats {
         let config = Config {
             claude_path: settings.claude_path.clone(),
             default_mode: settings.chat_mode,
-            // This executable, so a debug build's chats reach this build's `koyo mcp`.
             koyo_tools: (settings.koyo_tools)
                 .then(std::env::current_exe)
                 .and_then(Result::ok)
@@ -60,7 +59,6 @@ impl Chats {
         let Some(told) = (self.client.as_ref()).and_then(|client| client.set_config(config)) else {
             return;
         };
-        // What the host offers has Koyo's settings in it, so it's asked for once it's heard them.
         cx.spawn(async move |chats, cx| match told.await {
             Ok(_) => {
                 let _ = chats.update(cx, Chats::refresh_catalogs);

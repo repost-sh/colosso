@@ -87,7 +87,6 @@ impl Shell {
             };
             workspace.bring_back_loose(space, pages, shown);
         }
-        // The Orca layout lists no pinned or loose pages to show one of.
         if orca {
             self.workspace.leave_apart();
         }

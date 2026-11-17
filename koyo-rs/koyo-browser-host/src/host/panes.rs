@@ -15,7 +15,6 @@ fn context(profile: &str) -> Option<RequestContext> {
         return Some(context);
     }
     let (root, generation) = with(|host| (host.profiles.clone(), host.generation))?;
-    // Chromium profiles must sit directly in the root cache folder.
     let dir = root.join(super::profiles::folder_of(profile, generation));
     let settings = RequestContextSettings {
         cache_path: dir.to_string_lossy().as_ref().into(),
@@ -29,8 +28,6 @@ fn context(profile: &str) -> Option<RequestContext> {
     Some(context)
 }
 
-// A profile's request context has initialized on disk: a page of it can be made
-// (`native.rs`).
 wrap_request_context_handler! {
     struct ContextReady {
         profile: String,
@@ -106,8 +103,6 @@ pub(super) fn view(pane: PaneId, action: ViewAction) {
     match action {
         ViewAction::Zoom { level } => host.set_zoom_level(level),
         ViewAction::Find { text, forward } => {
-            // Chromium starts afresh for text it didn't just find; CEF's last argument asks
-            // it to select a match, as Chrome's find bar always does.
             let text = cef::CefString::from(text.as_str());
             host.find(Some(&text), i32::from(forward), 0, 1);
         }
@@ -144,9 +139,6 @@ pub(crate) fn navigate_later(pane: PaneId, url: String) {
 }
 
 pub(super) fn close(pane: PaneId) {
-    // DevTools let go of their page at once rather than when Chromium has
-    // closed them, so the page can be inspected again straight away.
-    // Ending the frontend's session turns off all it turned on.
     let ended = with(|host| {
         let (target, _bridge) = host.panes.get_mut(&pane)?.inspector.take()?;
         let inspected = host
@@ -179,7 +171,6 @@ pub(crate) fn browser_created(pane: PaneId, browser: &Browser) {
     })
     .flatten()
     .unwrap_or(true);
-    // Closed or shutting down before it arrived.
     if closing && let Some(host) = browser.host() {
         host.close_browser(1);
         return;
@@ -187,7 +178,6 @@ pub(crate) fn browser_created(pane: PaneId, browser: &Browser) {
     for request in waiting {
         handle(request);
     }
-    // A page, not its developer tools, may be the one the person is on.
     if with_pane(pane, |p| p.inspector.is_none()) == Some(true) {
         crate::extensions::browser_created(pane);
     }
@@ -203,7 +193,6 @@ pub(crate) fn browser_closed(pane: PaneId) {
     crate::extensions::pane_closed(pane);
     let (done, devtools, calls, unasked) = with(|host| {
         let mut closed = host.panes.remove(&pane);
-        // A page nobody here asked to close: an extension closed its tab, or it closed itself.
         let unasked = !host.shutting_down
             && closed.as_ref().is_some_and(|c| !c.closing && c.inspector.is_none());
         let mut calls: Vec<u64> = closed

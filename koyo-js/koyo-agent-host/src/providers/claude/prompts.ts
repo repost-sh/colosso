@@ -1,8 +1,3 @@
-// What a session tells its CLI (docs/chat.md 4.7): one queue of prompts for the life of the
-// process (a `Queue`), which the SDK reads as its input; ended, it has the CLI finish what it
-// has and exit. Each prompt carries the uuid its frames are credited by. Pictures go with a
-// prompt as images; any other file is named by its path, so the agent can read it.
-
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import type { TurnInput } from "../provider";
@@ -28,7 +23,6 @@ export async function userMessage(turn: TurnInput, priority?: "next"): Promise<S
   const named = turn.attachments.filter((attachment) => imageType(attachment.mime) === undefined);
   const files = named.map((attachment) => `\n[Attached file: ${attachment.path}]`).join("");
   const text = `${turn.text}${files}`.trim();
-  // A message of pictures alone has no words, and the model refuses a block without any.
   const words: Block[] = text === "" ? [] : [{ type: "text", text }];
   const content: Block[] = [...images, ...words];
   return {

@@ -57,8 +57,6 @@ pub fn compute_pace(window: Option<&Value>, fetched_at: Option<f64>) -> Option<P
     let fetched_at = fetched_at?;
     let pct = window.get("pct").and_then(py_number)?;
     let next_reset = str_at(window, "resets_at").and_then(iso_timestamp)?;
-    // (next_reset - fetched_at) mod period: the time left to the next reset, folded into
-    // [0, period); the period less that is the time since the cycle started.
     let remaining = python_mod(next_reset - fetched_at, WEEKLY_PERIOD_S);
     let elapsed = if remaining == 0. {
         0.

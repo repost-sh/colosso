@@ -319,8 +319,6 @@ fn a_listed_chat_says_what_it_runs_with_and_a_message_takes_the_effort_shown(
         runs_with("opus", "Opus 5.5", Some("xhigh"), "auto")
     );
 
-    // A chat that chose no effort ran on Claude's own while Koyo showed its setting: it takes
-    // the one shown before the message goes.
     call_through_host(
         &agent,
         "chat_send",

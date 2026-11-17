@@ -34,7 +34,6 @@ pub fn ask(editors: Vec<Entity<FileEditor>>, then: Then, window: &mut Window, cx
         _ => format!("Save the changes to {} files?", editors.len()),
     }
     .into();
-    // Sized for the title as it wraps: a long file name takes it onto a second line.
     let heading = modal::heading_height(&title, WIDTH, window);
     let height = 2. * modal::PADDING + heading + GAP + SMALL_LINE + 2. * GAP + modal::FOOTER;
     let dialog = SaveDialog {

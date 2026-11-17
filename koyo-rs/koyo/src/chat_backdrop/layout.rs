@@ -22,7 +22,6 @@ impl Scaling {
     /// The layout an `NSImageScaling` of `raw` names, with clipping `allowed` or not. A value
     /// `AppKit` doesn't define is taken as Fill Screen, its default for a picture.
     pub fn from_options(raw: usize, allowed: bool) -> Scaling {
-        // NSImageScaleProportionallyDown, AxesIndependently, None, ProportionallyUpOrDown.
         match (raw, allowed) {
             (0, _) => Scaling::FitDown,
             (1, _) => Scaling::Stretch,
@@ -46,7 +45,6 @@ impl Rect {
     /// Whether it covers the whole of a screen `screen` points in size, leaving nothing for the
     /// fill colour.
     pub fn covers(&self, screen: (f64, f64)) -> bool {
-        // A part of a point short is a rounding, not a margin.
         const SLACK: f64 = 0.01;
         self.x <= SLACK
             && self.y <= SLACK

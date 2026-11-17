@@ -153,7 +153,6 @@ fn render(fades: &[Fade], width: u32, height: u32) -> Arc<RenderImage> {
         .collect();
     let image = RgbaImage::from_fn(width, height, |x, y| {
         let (x, y) = (x as f32 + 0.5, y as f32 + 0.5);
-        // Premultiplied, so fading to transparent keeps the color's hue.
         let mut out = [0f32; 4];
         for ramp in &ramps {
             let alpha = ramp.alpha_at(x, y);
@@ -170,7 +169,6 @@ fn render(fades: &[Fade], width: u32, height: u32) -> Arc<RenderImage> {
                 0
             }
         };
-        // GPUI reads image data as BGRA.
         image::Rgba([
             straight(out[2]),
             straight(out[1]),
@@ -274,7 +272,6 @@ fn paint_window(bounds: Bounds<Pixels>, fades: Vec<Fade>, window: &mut Window, c
 /// The grain tiled over its parent at `opacity`, clipped to `corners`. The parent must be
 /// `relative`.
 pub fn grain(opacity: f32, corners: Corners<Pixels>) -> impl IntoElement {
-    // Pinned, or it would sit below whatever comes before it in the parent.
     div()
         .absolute()
         .top_0()
@@ -290,8 +287,6 @@ pub fn grain(opacity: f32, corners: Corners<Pixels>) -> impl IntoElement {
                         .grain
                         .get_or_insert_with(render_grain)
                         .clone();
-                    // One noise pixel per screen pixel: any larger and the stretch blurs the
-                    // specks into blotches.
                     let side = px(GRAIN_TILE as f32 / window.scale_factor());
                     let mut y = bounds.top();
                     while y < bounds.bottom() {

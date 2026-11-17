@@ -45,7 +45,6 @@ Build with --release: that's the reference.";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn main() -> ExitCode {
-    // The terminal scenarios' daemon: this program run again, as the app runs itself.
     let mut args = std::env::args().skip(1);
     if args.next().as_deref() == Some("termd") {
         return koyo_termd::main(args);
@@ -127,12 +126,10 @@ fn all(only: &str, timeout: Duration) -> Result<()> {
     if scenarios.is_empty() {
         bail!("no scenario id contains {only:?}; see `list`");
     }
-    // Only what the scenarios run on: the repository alone takes minutes to make.
     let fixtures =
         fixtures::ensure(|fixture| (scenarios.iter()).any(|scenario| scenario.fixture == fixture))?;
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let outcomes = suite::run_all(&scenarios, timeout)?;
-    // The scans open no window, so leave the scale at 0.
     let scale_factor = outcomes.iter().find_map(|(_, outcome)| match outcome {
         Outcome::Measured(measured) if measured.scale_factor > 0. => Some(measured.scale_factor),
         _ => None,

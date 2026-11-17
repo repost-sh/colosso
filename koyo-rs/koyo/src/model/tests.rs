@@ -152,7 +152,6 @@ fn closed_tabs_of_a_checkout_gone_since_are_let_go() {
             devices: Vec::new(),
         });
     }
-    // The newest is of a checkout no longer listed, so the one before it comes back.
     let (_, at) = workspace.take_closed(|_| true).unwrap();
     assert_eq!(at, Spot::Checkout(0, 0, 0));
     assert!(workspace.take_closed(|_| true).is_none());
@@ -177,12 +176,10 @@ fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves
             devices: Vec::new(),
         });
     }
-    // An agent's tab_reopen: the worktree's tab, past the loose page closed after it.
     let checkout = |from: &ClosedFrom| matches!(from, ClosedFrom::Checkout(_));
     let (_, back) = workspace.take_closed(checkout).unwrap();
     assert_eq!(back, Spot::Checkout(0, 0, 0));
     assert!(workspace.take_closed(checkout).is_none());
-    // ⌘⇧T: the loose page, to its space.
     let (closed, back) = workspace.take_closed(|_| true).unwrap();
     assert_eq!((closed.from, back), (loose, Spot::Loose(7)));
 }
@@ -243,7 +240,6 @@ fn a_tab_moves_to_another_checkout_and_shows_there() {
         Some((0, 1, 0)),
         "it shows where it went"
     );
-    // Past the end, it goes last; on its own checkout, nothing moves.
     assert!(workspace.move_tab_to_checkout((0, 0, 0), (0, 1), 9));
     assert_eq!(titles(&workspace, 1), ["two", "three", "one"]);
     assert!(!workspace.move_tab_to_checkout((0, 1, 0), (0, 1), 2));
@@ -294,7 +290,6 @@ fn a_selected_worktree_that_went_away_falls_back_to_the_main_checkout() {
     first.select_branch(0, 1);
     first.set_worktrees(0, vec![worktree("/src/app", "main")], &[]);
     assert!(first.branch().unwrap().is_main());
-    // Wherever it's listed, as the person may have put it after their worktrees.
     let mut moved = workspace(&["feat", "fix"]);
     moved.select_branch(0, 2);
     let listed = vec![worktree("/work/feat", "feat"), worktree("/src/app", "main")];

@@ -84,10 +84,7 @@ impl Host {
                 })
             }
             Ask::Snapshot { text } => {
-                // The simulator's own tree first, unless the text is asked for; the text on the
-                // picture when the tree has none.
                 let tree = Arc::clone(&self.tree);
-                // A real device has no tree: its text is all there is, said nowhere.
                 let port = if text {
                     Err("the picture's text was asked for".to_owned())
                 } else if !self.device.has_tree() {
@@ -95,8 +92,6 @@ impl Host {
                 } else {
                     Ok(self.ax_port())
                 };
-                // The picture is taken only for the text: held meanwhile, its slot couldn't be
-                // copied into.
                 let first = self.next_ref;
                 self.next_ref += NUMBERED;
                 let (ring, scale) = (self.ring.clone(), self.device.scale());
@@ -117,14 +112,11 @@ impl Host {
     }
 
     fn app_job(&self, ask: Ask) -> mpsc::Receiver<Result<Done, Refusal>> {
-        // A real device's app asks were refused before ([`crate::device::Device::refuses`]).
         let (set, udid) = (self.device.simulator()).map_or_else(Default::default, |sim| (sim.set.clone(), sim.udid.clone()));
-        // The screen before a launch or a link, to tell when what they open has drawn.
         let settles = matches!(ask, Ask::Launch { .. } | Ask::OpenUrl { .. });
         let before = settles
             .then(|| self.ring.latest().and_then(|held| look::sample(&held.surface, self.device.scale())))
             .flatten();
-        // A launch waits for its app to be in front, as the accessibility tree tells.
         let tree = Arc::clone(&self.tree);
         let port = matches!(ask, Ask::Launch { .. }).then(|| self.ax_port()).flatten();
         simctl::later(move || {
@@ -202,11 +194,9 @@ impl Host {
                 first,
             }) => {
                 let elements = u32::try_from(refs.len()).unwrap_or(u32::MAX);
-                // The numbers it didn't use, given back unless another snapshot started after it.
                 if self.next_ref == first + NUMBERED {
                     self.next_ref = first + elements;
                 }
-                // A snapshot that started before the refs held now doesn't replace them.
                 if first >= self.refs_first {
                     self.refs = refs.into_iter().collect();
                     self.refs_first = first;
@@ -287,7 +277,6 @@ impl Host {
     /// The accessibility service's port, when no connection is kept: looked up only to make one.
     /// The lock is only tried, never waited on, so the host's loop goes on whatever a job holds.
     fn ax_port(&self) -> Option<u32> {
-        // Locked, it is being switched: the port is looked up, should no connection be kept.
         let connected = self.tree.try_lock().is_ok_and(|held| held.connected());
         (!connected).then(|| self.device.simulator()?.lookup(ax::SERVICE).ok()).flatten()
     }

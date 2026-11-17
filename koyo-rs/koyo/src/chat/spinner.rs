@@ -41,7 +41,6 @@ struct Spin {
 impl Render for Spin {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colour = theme::palette(cx).working;
-        // No limit on how often it's drawn: each frame the display shows turns it a little.
         let going = Animation::new(TURN).repeat_synced();
         let holder = div().size(px(self.size)).flex_shrink_0();
         holder.with_animation("chat-working", going, move |holder, turn| {
@@ -116,16 +115,13 @@ mod tests {
 
     #[test]
     fn the_ring_stays_in_its_square_and_leaves_its_gap() {
-        // A tile's, and the smaller one by a space's mark.
         for side in [SIZE, 7.5] {
             let (line, radius) = (side * LINE, side * (1. - LINE) / 2.);
             let drawn: Vec<(f32, f32)> = marks(side, 0.).collect();
             for &(x, y) in &drawn {
                 assert!((x.hypot(y) - radius).abs() < 1e-4, "on the ring");
-                // A mark is as wide as the line, so the line's outer edge is the square's.
                 assert!(x.abs().max(y.abs()) + line / 2. <= side / 2. + 1e-4);
             }
-            // From the top, clockwise, three quarters round: it ends at the left.
             let (first, last) = (drawn[0], drawn[drawn.len() - 1]);
             assert!(first.0.abs() < 1e-4 && (first.1 + radius).abs() < 1e-4);
             assert!((last.0 + radius).abs() < 1e-3 && last.1.abs() < 1e-3);
@@ -137,7 +133,6 @@ mod tests {
         let (still, turned): (Vec<_>, Vec<_>) =
             (marks(SIZE, 0.).collect(), marks(SIZE, 0.25).collect());
         assert_eq!(still.len(), turned.len());
-        // A quarter turn clockwise takes what was at the top to the right.
         for ((x, y), (turned_x, turned_y)) in still.into_iter().zip(turned) {
             assert!((turned_x + y).abs() < 1e-4 && (turned_y - x).abs() < 1e-4);
         }

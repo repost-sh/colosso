@@ -202,7 +202,6 @@ impl Host {
                         desktop.space
                     ),
                 );
-                // Apps that outlived a desktop the person removed go to the new one.
                 for app in &self.apps {
                     skylight::assign(app.pid, desktop.space);
                 }
@@ -231,7 +230,6 @@ impl Host {
     /// a later run cleans up by.
     pub fn apps_changed(&mut self) {
         self.front.set_ours(self.pids());
-        // A window looked at before may be a helper's of an app that came since.
         self.helpers = windows::Helpers::default();
         let started: Vec<Started> = (self.apps.iter())
             .map(|app| Started {
@@ -271,8 +269,6 @@ impl Host {
             return;
         };
         let (space, bounds) = (desktop.space, desktop.display);
-        // The person can remove a desktop in Mission Control: its windows would show on
-        // theirs, so another is made and the apps put there.
         let desktops = skylight::desktops();
         if !desktops.is_empty() && !desktops.contains(&space) {
             self.desktop = None;
@@ -315,8 +311,6 @@ impl Host {
     pub fn capture(&mut self) {
         let watched = self.visible || !self.waits.is_empty();
         if let Some(streams) = &mut self.streams {
-            // Every window is captured as long as it's there, slowly while nobody looks:
-            // one that isn't is hidden to its app (`capture::UNWATCHED_RATE`).
             if self.grants.screen_recording {
                 streams.sync(&self.windows, self.backdrop.as_ref(), watched);
             } else {

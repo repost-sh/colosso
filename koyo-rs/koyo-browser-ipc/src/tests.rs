@@ -248,7 +248,6 @@ fn extensions_have_stable_wire_names() {
         json!({ "type": "extensionAct", "pane": 3, "extension": "abc", "at": [100.0, 640.5],
                 "corner": "left" })
     );
-    // Left out, a popup hangs by its top right corner, as under Chrome's toolbar.
     let plain: AppRequest =
         serde_json::from_value(json!({ "type": "extensionAct", "pane": 3, "extension": "abc", "at": [1.0, 2.0] }))
             .unwrap();
@@ -276,7 +275,6 @@ fn extensions_have_stable_wire_names() {
         json!({ "type": "active", "pane": 3 })
     );
 
-    // What an extension leaves out is empty, not an error.
     let listed: HostEvent = serde_json::from_value(json!({
         "type": "extensions", "profile": "p",
         "extensions": [{ "id": "abc", "name": "Block", "version": "1.2", "enabled": true,

@@ -71,7 +71,6 @@ pub fn device_bar(
         .then(|| reload_hint(theme::palette(cx), cx).into_any_element());
     let bar = Bar {
         ids: "browser",
-        // The shared bar owns its names; each is the device's static name, not a copy of it.
         presets: DEVICES.iter().map(|device| device.name.into()).collect(),
         preset,
         pick_preset: Rc::new(move |device| Box::new(PickDevice { pane, device })),

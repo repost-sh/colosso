@@ -224,7 +224,6 @@ impl BrowserView {
         target: MenuTarget,
         cx: &mut Context<Self>,
     ) {
-        // A newer menu replaces one not shown or not picked from yet.
         self.resolve_menu(cx);
         if let Some(old) = self.menu_request.replace(MenuRequest {
             id,
@@ -258,11 +257,9 @@ impl BrowserView {
         }
         let at = self.window_point(request.page_at);
         self.open_menu = Some((request.id, request.page_at));
-        // The visual check runs unattended, where the menu's tracking would wait for a pick.
         if cfg!(feature = "visual-check") {
             return;
         }
-        // One the gate refuses is over for the page at once.
         if let Err(refusal) = self.menu_gate(window) {
             if refusal == Refusal::Agent {
                 log::warn!(target: "koyo::menus", "refused a page's menu: {}", refusal.why());
@@ -297,14 +294,12 @@ impl BrowserView {
         let page_at = match self.open_menu.take() {
             Some((open, page_at)) if open == menu => page_at,
             Some(other) => {
-                // Not the menu on screen: it's over, and so is the one picked from.
                 self.menu_command(other.0, None, cx);
                 ipc::Point::default()
             }
             None => ipc::Point::default(),
         };
         self.person_acts(Mode::Implicit, cx);
-        // The engine carries out its own rows; the app's rows close the menu with no command.
         let command = match pick {
             Pick::Engine(command) => Some(command),
             _ => None,

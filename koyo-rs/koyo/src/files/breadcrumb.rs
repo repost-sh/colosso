@@ -93,7 +93,6 @@ impl FilePane {
             } else if crumb.path.is_some() {
                 piece.min_w_0().child(ellipsized(crumb.label))
             } else {
-                // A folder the tree hasn't got is cut from its start: its end places the file.
                 let folder = div()
                     .min_w_0()
                     .overflow_hidden()

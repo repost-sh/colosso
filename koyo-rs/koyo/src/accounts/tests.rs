@@ -49,7 +49,6 @@ fn sign_in(sandbox: &Sandbox, email: &str) {
 /// A sandbox signed in as ana@example.com, the login not kept yet.
 fn signed_in() -> Sandbox {
     let sandbox = Sandbox::new();
-    // The app's clock is the Mac's: the crate's is too, here.
     sandbox.clock.set(now());
     sign_in(&sandbox, "ana@example.com");
     sandbox
@@ -150,7 +149,6 @@ fn the_active_accounts_week_and_models_show_once_read(cx: &mut TestAppContext) {
         assert_eq!(bars(row), [("7 days", Some(41.)), ("Fable", Some(70.))]);
         assert!(row.measured_at.is_some() && row.problem.is_none());
     });
-    // Read with the token Claude Code has; never a refresh.
     assert_eq!(sandbox.http.requests_to(USAGE).len(), 1);
     assert!(
         sandbox
@@ -173,7 +171,6 @@ fn a_failed_reading_keeps_the_last_bars_and_backs_off(cx: &mut TestAppContext) {
             body: b"{}".to_vec(),
         }),
     );
-    // Past the store's freshness floor.
     sandbox.clock.advance(600.);
     read(&accounts, cx);
     accounts.read_with(cx, |accounts, _| {
@@ -185,7 +182,6 @@ fn a_failed_reading_keeps_the_last_bars_and_backs_off(cx: &mut TestAppContext) {
             row.problem
         );
     });
-    // Inside the backoff, nothing is asked.
     read(&accounts, cx);
     assert_eq!(sandbox.http.requests_to(USAGE).len(), 2);
 }
@@ -212,7 +208,6 @@ fn a_chats_limits_move_the_week_and_the_model_at_once(cx: &mut TestAppContext) {
         seven_day: Some(window(0.4567)),
         seven_day_overage_included: Some(window(0.9)),
     };
-    // A reply after the reading: the store keeps whichever is newer.
     sandbox.clock.advance(5.);
     cx.update(|cx| limits_heard(&limits, cx));
     cx.run_until_parked();
@@ -267,7 +262,6 @@ fn the_panel_reads_another_account_and_skips_one_backing_off(cx: &mut TestAppCon
     switcher.switch_to("1").unwrap();
     sandbox.http.queue_json(USAGE, 200, &usage(41.));
     let accounts = on(&sandbox, cx);
-    // Opening it reads the first of the others, which is asked to wait.
     let limited = koyo_accounts::http::Response {
         status: 429,
         headers: vec![("retry-after".into(), "3600".into())],
@@ -276,7 +270,6 @@ fn the_panel_reads_another_account_and_skips_one_backing_off(cx: &mut TestAppCon
     sandbox.http.queue(USAGE, Ok(limited));
     open_panel(&accounts, cx);
     assert_eq!(sandbox.http.requests_to(USAGE).len(), 2);
-    // A minute on, the one backing off waits its turn and the next is read.
     sandbox.http.queue_json(USAGE, 200, &usage(7.));
     accounts.update(cx, |accounts, cx| {
         accounts.running.as_mut().unwrap().cadence = poll::Cadence::default();
@@ -327,7 +320,6 @@ fn holding_out_and_removing_change_the_list(cx: &mut TestAppContext) {
     accounts.read_with(cx, |accounts, _| {
         assert_eq!(disabled(accounts), [("ana@example.com".into(), false)]);
     });
-    // The Mac's login stays as it was.
     let live = sandbox.security.get(CLAUDE_CODE_KEYCHAIN_SERVICE, "tester");
     assert!(live.unwrap().contains("sk-ant-oat01-ana@example.com"));
 }
@@ -396,7 +388,6 @@ fn off_nothing_runs_and_the_button_is_empty(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn auto_switch_over_the_line_moves_the_macs_login_and_says_so(cx: &mut TestAppContext) {
     let sandbox = two_kept();
-    // The first look reads ana over the line; the tick reads bob, well under it.
     sandbox.http.queue_json(USAGE, 200, &usage(95.));
     sandbox.http.queue_json(USAGE, 200, &usage(10.));
     let accounts = on(&sandbox, cx);
@@ -416,7 +407,6 @@ fn auto_switch_over_the_line_moves_the_macs_login_and_says_so(cx: &mut TestAppCo
     });
     let live = sandbox.security.get(CLAUDE_CODE_KEYCHAIN_SERVICE, "tester");
     assert!(live.unwrap().contains("sk-ant-oat01-bob@example.com"));
-    // Its token was good for a day: nothing was refreshed to land.
     assert!(
         sandbox
             .http
@@ -428,11 +418,9 @@ fn auto_switch_over_the_line_moves_the_macs_login_and_says_so(cx: &mut TestAppCo
 #[gpui_kit::test]
 fn turning_auto_switch_off_drops_the_tick_waiting(cx: &mut TestAppContext) {
     let sandbox = two_kept();
-    // Bob is readable and well under the line: a tick that ran would switch to him.
     sandbox.http.queue_json(USAGE, 200, &usage(95.));
     sandbox.http.queue_json(USAGE, 200, &usage(10.));
     let accounts = on(&sandbox, cx);
-    // A reading on the line, so the tick that turning it on asks for waits behind it.
     accounts.update(cx, |accounts, cx| {
         let read = Job::Read {
             active: true,

@@ -63,13 +63,11 @@ fn a_worktree_is_made_listed_and_selected(cx: &mut TestAppContext) {
         .collect();
     assert!(names.contains(&("main".to_owned(), true)), "{names:?}");
     assert!(names.contains(&("feat-x".to_owned(), false)), "{names:?}");
-    // By its branch, then by its checkout's path.
     let main = call(&agent, "worktree_select", json!({ "worktree": "main" }), cx).unwrap();
     assert_eq!(main["worktree"]["path"], json!(root));
     assert_eq!(main["worktree"]["selected"], json!(true));
     let back = call(&agent, "worktree_select", json!({ "worktree": path }), cx).unwrap();
     assert_eq!(back["worktree"]["branch"], json!("feat-x"));
-    // Made without being selected, the selection stays.
     let quiet = call(
         &agent,
         "worktree_create",

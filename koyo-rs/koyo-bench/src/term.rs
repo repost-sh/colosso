@@ -42,7 +42,6 @@ const CAT_SCRIPT: &str = r#"while read n; do cat "$1"; printf '\102ENCH-CAT-DONE
 
 pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
     let dir = TermDir::at(in_checkout(DAEMON_DIR));
-    // What a run cut short may have left: its daemon, then its folder.
     stop(&dir);
     let _ = fs::remove_dir_all(dir.root());
     let mut measured = Measured::default();
@@ -95,11 +94,9 @@ fn cat(
     let command = ["/bin/sh", "-c", CAT_SCRIPT, "sh"].map(str::to_owned);
     let mut command = command.to_vec();
     command.push(path.display().to_string());
-    // Also reads the file into the disk's cache before the first sample.
     bare_pty(&path)?;
     let mut client = Client::open(dir, command)?;
     let mut received = 0;
-    // A bare PTY before each sample, so what slows the machine slows both alike.
     let mut bares = Vec::new();
     let mut bare_bytes = 0;
     stats::sample(deadline, measured, CATS, |i| {
@@ -163,7 +160,6 @@ fn bare_pty(path: &Path) -> Result<(Duration, u64)> {
     command.arg(path);
     let started = Instant::now();
     let mut child = pair.slave.spawn_command(command)?;
-    // The master reads to its end once the program's side is all closed.
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader()?;
     let fd = pair
@@ -204,7 +200,6 @@ fn bare_pty(path: &Path) -> Result<(Duration, u64)> {
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            // EIO once `cat` is done and its side closed.
             Err(_) => break,
         }
     }
@@ -332,7 +327,6 @@ impl Client {
     /// Reads until the output has `needle` in it, or a snapshot shows it on the screen.
     fn output_until(&mut self, needle: &[u8]) -> Result<()> {
         let until = Instant::now() + PATIENCE;
-        // The end of the output before, so a needle split across two frames is found.
         let mut tail: Vec<u8> = Vec::new();
         loop {
             match self.read(until)? {

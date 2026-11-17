@@ -21,7 +21,6 @@ impl BrowserView {
 
     /// The icon at `url` was fetched, as a PNG; empty when it couldn't be.
     pub(super) fn favicon_fetched(&mut self, url: &str, png: Vec<u8>, cx: &mut Context<Self>) {
-        // One the page has stopped naming since it was asked for is stale.
         if url != self.page.favicon {
             return;
         }

@@ -74,7 +74,6 @@ pub(super) fn folders(
     pool: &Pool,
     gave_way: GaveWay<'_>,
 ) -> Vec<Hit> {
-    // Where each folder's files start among all of theirs, so a block can start mid-folder.
     let mut starts = Vec::with_capacity(which.len());
     let mut total = 0;
     for &at in which {

@@ -37,8 +37,6 @@ fn refused(code: u16, body: &str) -> RefreshOutcome {
     refresh(&sandbox, &make_credentials())
 }
 
-// TestRefreshOAuthCredentials
-
 #[test]
 fn refresh_sends_correct_body() {
     let sandbox = Sandbox::new();
@@ -58,12 +56,9 @@ fn refresh_sends_correct_body() {
     assert!(body.get("scope").is_none());
     assert_eq!(request.method, "POST");
     assert_eq!(request.timeout, Duration::from_secs(10));
-    // The token endpoint answers 403 without a User-Agent.
     assert_eq!(header(&request, "User-Agent"), Some(USER_AGENT));
     assert_eq!(header(&request, "Content-Type"), Some("application/json"));
 }
-
-// TestTryRefreshOAuthCredentials
 
 #[test]
 fn success_rotates_and_has_no_error() {
@@ -119,12 +114,9 @@ fn missing_refresh_token_is_permanent() {
 
 #[test]
 fn invalid_json_is_transient() {
-    // An unparseable blob is likelier a torn read than a credential shape: no permanent verdict.
     let outcome = refresh(&Sandbox::new(), "not json");
     assert_eq!(outcome.error.as_deref(), Some("transient"));
 }
-
-// TestTokenAccountParsing
 
 fn refresh_with_response(payload: &Value) -> RefreshOutcome {
     let sandbox = Sandbox::new();
@@ -159,7 +151,6 @@ fn token_account_surfaced_when_present() {
         outcome.token_account,
         Some(identity("acc-uuid", Some("a@b.c"), Some("org-uuid")))
     );
-    // The identity's stored shape: cswap's keys.
     assert_eq!(
         serde_json::to_value(outcome.token_account.unwrap()).unwrap(),
         json!({"uuid": "acc-uuid", "email": "a@b.c", "organizationUuid": "org-uuid"})
@@ -211,8 +202,6 @@ fn token_account_non_string_optionals_normalized() {
         Some(identity("acc-uuid", None, None))
     );
 }
-
-// TestFetchOauthProfile
 
 fn profile(payload: &Value) -> Option<AccountIdentity> {
     let sandbox = Sandbox::new();
@@ -328,11 +317,8 @@ fn _401_is_unresolvable_with_log_file_warning() {
     let sandbox = Sandbox::new();
     sandbox.http.queue(PROFILE_URL, Ok(answer(401, &[], "")));
     assert_eq!(fetch_oauth_profile(&sandbox.env(), "sk-live"), None);
-    // The warning it logs names the status and the fail-open path, never the token.
     assert!(PROFILE_401_WARNING.contains("401") && PROFILE_401_WARNING.contains("pre-fix"));
 }
-
-// TestInvalidGrantTaxonomy
 
 fn refresh_with_body(code: u16, body: &str) -> RefreshOutcome {
     let sandbox = Sandbox::new();
@@ -378,8 +364,6 @@ fn error_description_variant_still_permanent() {
     );
     assert_eq!(out.error.as_deref(), Some("invalid_grant"));
 }
-
-// TestNoRefreshTokenStructuralGuard
 
 #[test]
 fn complete_dict_without_rt_is_permanent() {

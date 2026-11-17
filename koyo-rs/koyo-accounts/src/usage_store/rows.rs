@@ -29,10 +29,6 @@ pub(super) fn entry_of(row: &Row, now: f64, models: &[&str]) -> UsageEntry {
     let last_attempt_at = num_or_none(row.get("lastAttemptAt"));
     let claim_until = num_or_none(row.get("claimUntil"));
     let held_until = num_or_none(row.get("heldUntil"));
-    // A 429 throttles polling without moving the account's windows, so the reading is trusted
-    // to its earliest reset; any other failure is no evidence it holds, and takes the general
-    // ceiling. Strict `<` on `nextPollAt` as `due_candidate`: at it the entry is due. A live
-    // claim keeps the bridge up while another collector's result is in flight; a live hold too.
     let within_ceiling = if str_at(row, "lastError") == Some(crate::oauth::RATE_LIMITED_ERROR) {
         rate_limited_trust_ok(last_good.as_ref(), age_s, now, models)
     } else {
@@ -86,19 +82,15 @@ pub(super) fn apply_outcome(
             outcome.usage.clone().unwrap_or(Value::Null),
         );
         row.insert("fetchedAt".to_owned(), Value::from(now));
-        // The old, perhaps due, plan is replaced in the same transaction, so no collector
-        // slips into a record-then-replan gap.
         if let Some((next_poll_at, interval)) = plan {
             row.insert("nextPollAt".to_owned(), opt(*next_poll_at));
             row.insert("pollIntervalS".to_owned(), opt(*interval));
         }
         row.insert("consecutiveFailures".to_owned(), Value::from(0));
         row.insert("lastError".to_owned(), Value::Null);
-        // A confirmed refusal's Retry-After is a deadline no collector may fetch before.
         let backoff = rejection_backoff_until(outcome.usage.as_ref(), now);
         row.insert("backoffUntil".to_owned(), opt(backoff));
         row.insert("rejectedFingerprint".to_owned(), Value::Null);
-        // A success proves the token alive.
         row.insert("authDeadStrikes".to_owned(), Value::from(0));
         return;
     };
@@ -107,18 +99,13 @@ pub(super) fn apply_outcome(
     row.insert("lastError".to_owned(), Value::from(error.clone()));
     let rate_limited = error == crate::oauth::RATE_LIMITED_ERROR;
     if rate_limited {
-        // Kept across later successes: the planner floors the cadence while it is recent.
         row.insert("last429At".to_owned(), Value::from(now));
     }
     let wait = failure_backoff_s(failures, outcome.retry_after_s, rate_limited);
     row.insert("backoffUntil".to_owned(), Value::from(now + wait));
-    // Only a permanent-auth failure strikes; a transient one is no evidence either way and
-    // must not reset a real tally.
     if PERMANENT_AUTH_ERRORS.contains(&error.as_str()) {
         let strikes = py_int(row.get("authDeadStrikes")).saturating_add(1);
         row.insert("authDeadStrikes".to_owned(), Value::from(strikes));
-        // Always overwritten: a legacy writer's strike binds unconditionally rather than
-        // inheriting the fingerprint of an earlier, healed strike.
         row.insert(
             "struckFingerprint".to_owned(),
             outcome.struck_fp.clone().map_or(Value::Null, Value::from),

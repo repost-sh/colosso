@@ -65,7 +65,6 @@ describe("a turn", () => {
     expect(session.spec.resume).toBe(false);
     expect(chats.actor.thread.sessionId).toBe(session.spec.sessionId);
     expect(chats.actor.thread.title).toBe("Find the flaky test.");
-    // What was said last, for the tab's row: the prompt, until the reply has words.
     expect(chats.actor.summary().said).toBe("Find the flaky test.");
     session.started();
     session.startsText("m1:0");
@@ -74,7 +73,6 @@ describe("a turn", () => {
     await settle();
     expect(chats.appends()).toStrictEqual(["It shares ", "a folder."]);
     expect(chats.actor.summary().status).toBe("working");
-    // What streamed is in a snapshot before the store has it.
     const snapshot = chats.actor.open(nobody, null);
     expect(textOf(snapshot.items)).toBe("It shares a folder.");
 
@@ -186,7 +184,6 @@ describe("stopping", () => {
     expect(chats.rows().runs.at(0)?.status).toBe("stopping");
     expect(chats.provider.session.interrupts).toBe(1);
     expect(chats.actor.thread.queueHeld).toBe(true);
-    // The barrier: nothing joins a run that's stopping.
     expect(chats.actor.send(prompt("Wait."), "auto").delivered).toBe("queued");
     chats.provider.session.finished("interrupted");
     await settle();

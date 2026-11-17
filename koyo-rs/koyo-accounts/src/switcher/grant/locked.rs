@@ -55,10 +55,6 @@ impl Switcher {
         if let (Some(input_access), Some(snap_access)) = (input_access, snap_access)
             && input_access != snap_access
         {
-            // The world moved past the caller's snapshot and the current generation is fresh:
-            // the refresh the caller wanted happened (a racing gate's rotation, an adopted
-            // stash). Spending another grant burns a generation for nothing. When the re-read
-            // equals the snapshot (the 401-retry shape) this never fires.
             return RefreshOutcome {
                 credentials: Some(refresh_input),
                 consumed_fp,
@@ -74,7 +70,6 @@ impl Switcher {
                     token_account,
                     ..
                 } if !successor.is_empty() => (successor, token_account),
-                // Strikes follow the POSTed bytes, which may be a re-read, not the snapshot.
                 failed => {
                     return RefreshOutcome {
                         consumed_fp,
@@ -85,8 +80,6 @@ impl Switcher {
 
         let persisted =
             self.persist_successor(account_num, email, &successor, consumed_fp.as_deref());
-        // A demoting outcome: the slot still holds the generation whose grant was just spent,
-        // and callers read `error: None` as "freshened and safe to activate".
         let (credentials, demoted, stashed) = match persisted {
             Persisted::Written => (successor, false, false),
             Persisted::Conflict { current } => (current, false, false),
@@ -108,7 +101,6 @@ impl Switcher {
         let _lock = match FileLock::acquire(&self.env, &self.lock_file, self.lock_timeout) {
             Ok(Some(lock)) => lock,
             Ok(None) => {
-                // A holder (a switch, a collector) owns the slot; defer cleanly.
                 log::info!(
                     "Slot lock held elsewhere; deferring account {account_num}'s backup refresh \
                      to the next pass."
@@ -121,8 +113,6 @@ impl Switcher {
             self.store
                 .read_account_credentials_ex(account_num, email, false);
         if unreadable {
-            // The backup may exist but can't be seen (a locked Keychain): the snapshot is
-            // exactly the possibly-superseded copy this gate exists never to spend.
             log::info!(
                 "Backup for account {account_num} unreadable (keychain); deferring the refresh."
             );
@@ -132,10 +122,6 @@ impl Switcher {
             Ok(Some(adopted)) => current = adopted,
             Ok(None) => {}
             Err(AccountsError::CredentialRead(why)) => {
-                // The slot's only successor is unreadable: the bytes are the sole copy of a
-                // generation already spent, and nothing tells "locked for a minute" from
-                // "locked forever", so defer, but say so rather than "transient", which reads
-                // as network trouble on a condition only the person can clear.
                 log::info!(
                     "Account {account_num}'s stashed successor is unreadable; deferring the \
                      refresh: {why}"
@@ -145,9 +131,6 @@ impl Switcher {
             Err(error) => return Err(pre_consume_failed(account_num, &error)),
         }
         if current.is_empty() {
-            // Absent, not unreadable: the slot was removed since the caller read. The caller's
-            // snapshot would spend a grant for an account the person just deleted and stash a
-            // successor no slot can adopt.
             log::info!(
                 "Account {account_num}'s stored credential is gone; deferring the refresh rather \
                  than consuming a grant for a slot that no longer exists."
@@ -170,7 +153,6 @@ impl Switcher {
         let failure = match self.cas_locked(account_num, email, successor, consumed_fp) {
             Ok(persisted) => return persisted,
             Err(error) if error.is_lock() => {
-                // The token works; the next pass adopts it from the stash.
                 let reason = StashReason::PersistLockFailed;
                 match self.stash_successor(successor, account_num, consumed_fp, reason) {
                     Ok(()) => return Persisted::Stashed(reason),
@@ -187,8 +169,6 @@ impl Switcher {
         match self.stash_successor(successor, account_num, consumed_fp, reason) {
             Ok(()) => Persisted::Stashed(reason),
             Err(error) => {
-                // The stash is the last resort; when it fails too the successor survives only
-                // in the outcome.
                 log::error!(
                     "Account {account_num}'s consumed successor could not be persisted or \
                      stashed — it survives only for this pass. Fix the storage failure, then \
@@ -215,15 +195,10 @@ impl Switcher {
             self.store
                 .read_account_credentials_ex(account_num, email, false);
         let reason = if unreadable {
-            // The Keychain locked during the POST: the CAS can't be evaluated, and the slot
-            // may still hold the generation that was spent, so stash and demote.
             StashReason::StoreUnreadable
         } else if store_now.is_empty() {
-            // Emptied mid-POST (a removal): writing back would resurrect a deleted account.
             StashReason::SlotRemoved
         } else if credential_fingerprint(&store_now).as_deref() != consumed_fp {
-            // A writer replaced the lineage while the POST was in flight: stash ours, adopt
-            // the store's newer one.
             self.stash_successor(
                 successor,
                 account_num,

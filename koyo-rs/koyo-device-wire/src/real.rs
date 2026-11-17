@@ -90,7 +90,6 @@ pub fn label(missing: Missing) -> &'static str {
         Missing::System => "Needs update",
         Missing::DeveloperImage => "Not ready",
         Missing::InUse => "In use",
-        // A simulator's, which a real device never misses, and what has no name.
         Missing::Xcode | Missing::Simulator | Missing::Input | Missing::Other => "Needs setup",
     }
 }

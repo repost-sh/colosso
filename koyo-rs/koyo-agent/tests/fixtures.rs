@@ -104,7 +104,6 @@ fn every_method_writes_its_request_and_reads_its_result_as_the_fixture_has_them(
     method::<methods::QueueSendNow>(tested);
     method::<methods::QueueResume>(tested);
     method::<methods::RequestsRespond>(tested);
-    // The host keeps a fixture for each of its methods; the app has them all, and tests each.
     let mine: BTreeSet<String> = METHODS.iter().map(|&name| name.to_owned()).collect();
     assert_eq!(names("methods"), mine);
     assert_eq!(*tested, mine);

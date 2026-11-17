@@ -135,7 +135,6 @@ impl Responsive {
                 let room = crate::responsive::room(room);
                 let wide = room.width.as_f32() / self.width.max(1) as f32;
                 let tall = room.height.as_f32() / self.height.max(1) as f32;
-                // A pane too small for any page still shows a sliver of it.
                 wide.min(tall).clamp(0.05, 1.)
             }
         }
@@ -229,7 +228,6 @@ pub fn commands(applied: &Emulation, wanted: &Emulation) -> Vec<(&'static str, V
                 }
                 params
             }
-            // Empty is the engine's own again.
             None => json!({ "userAgent": "" }),
         };
         commands.push(("Emulation.setUserAgentOverride", agent));

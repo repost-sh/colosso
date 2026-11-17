@@ -81,26 +81,20 @@ impl CredentialStore {
     pub fn read_active_credentials(&self) -> ActiveCredentials {
         let keychain_failed = if self.use_keychain() {
             let (value, failed) = self.read_active_oauth_keychain();
-            // This read's own verdict, which a later success on another item can't erase.
             self.state().active_read_failed = failed;
             if let Some(value) = value.filter(|value| !value.is_empty()) {
                 return ActiveCredentials::new(Some(value), false, false);
             }
             failed
         } else {
-            // Known unusable: what follows covers a Keychain that couldn't be asked.
             let active_read_failed = self.state().active_read_failed;
             active_read_failed || self.keychain_unreadable()
         };
-        // Claude Code's own plaintext fallback. After a failed Keychain read it may hold a
-        // superseded generation, which `degraded` carries.
         let path = paths::credentials_path(&self.env);
         if path.exists() {
             match std::fs::read_to_string(&path) {
                 Err(error) => {
                     log::error!("Failed to read credentials file: {error}");
-                    // A denied Keychain and an unreadable file is the most unreadable state
-                    // there is, not "no credentials".
                     return ActiveCredentials::new(None, keychain_failed, keychain_failed);
                 }
                 Ok(text) if !text.trim().is_empty() => {

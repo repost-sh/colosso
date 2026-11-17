@@ -90,7 +90,6 @@ pub(crate) struct Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        // A no-op if the server has exited already.
         let _ = self.signal.send(Signal::Kill(None));
     }
 }
@@ -183,8 +182,6 @@ impl Client {
                     return exit;
                 }
             }
-            // Every stream is told of the end before it closes; were one closed without a
-            // word, the client's threads are gone, and the server with them.
             Exit {
                 code: None,
                 killed: false,

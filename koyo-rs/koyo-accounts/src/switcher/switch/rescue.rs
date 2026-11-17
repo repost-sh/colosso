@@ -106,15 +106,12 @@ impl Switcher {
         let stored = extract_oauth_data(&foreign.backup).unwrap_or_default();
         let stored_exp = stored.get("expiresAt");
         if has_login_token(&stored) && stored_exp.and_then(number).is_none() {
-            // A stored login with no expiry to compare can't be shown to be the older
-            // generation, so it stays. A backup holding no login has nothing to lose.
             return Ok(false);
         }
         let (Some(live_exp), Some(stored_exp)) = (
             expiry_or_zero(live.get("expiresAt")),
             expiry_or_zero(stored_exp),
         ) else {
-            // An expiry `float()` can't read is no ordering to write on.
             return Ok(false);
         };
         if live_exp <= stored_exp {

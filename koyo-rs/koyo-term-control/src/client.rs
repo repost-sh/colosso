@@ -217,8 +217,6 @@ impl Connection {
                                 let _ = tx.send(response);
                             }
                         }
-                        // A client that let its inbox go still gets its answers; what
-                        // else comes is dropped.
                         Ok(message) => {
                             let _ = inbox.send(message);
                         }
@@ -233,7 +231,6 @@ impl Connection {
                 }
             }
         }
-        // Whoever waits for an answer learns the connection is gone.
         self.closed.store(true, Ordering::Release);
         self.pending.lock().clear();
     }
@@ -270,8 +267,6 @@ impl DaemonCommand {
 pub fn stop_daemon(dir: &TermDir, hello: &Hello) -> Result<(), ClientError> {
     let ask = |stream| {
         let (tx, _inbox) = inbox();
-        // Another protocol refuses the hello; only the signal reaches it. A daemon that
-        // took the request may hang up before it answers.
         Connection::over(stream, hello, tx).is_ok_and(|(connection, _)| {
             matches!(
                 connection.request(RequestBody::Shutdown),

@@ -24,8 +24,6 @@ use crate::shell::pictures;
 use crate::shell::tab_face::Face;
 use crate::theme::Palette;
 
-// The sizes here are in points at the panel's full size, which a narrow screen shrinks.
-
 /// The room round what's in a card, and between its picture and its title.
 const INSET: f32 = 9.;
 /// The picture's size and corners: about 16:10, its corners concentric with the card's.

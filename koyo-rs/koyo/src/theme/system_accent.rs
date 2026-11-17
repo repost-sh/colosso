@@ -27,7 +27,6 @@ pub fn follow(cx: &mut App) {
     take_up(main, cx);
     let (tell, mut told) = mpsc::unbounded();
     let changed = RcBlock::new(move |_: NonNull<NSNotification>| {
-        // Unheard only once the app has stopped listening, on its way out.
         tell.unbounded_send(()).ok();
     });
     // SAFETY: the name is AppKit's own constant, and the block only sends on a channel,
@@ -41,7 +40,6 @@ pub fn follow(cx: &mut App) {
         )
     };
     cx.spawn(async move |cx| {
-        // Kept for as long as the app listens.
         let _observer = observer;
         while told.next().await.is_some() {
             cx.update(|cx| take_up(main, cx));

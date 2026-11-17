@@ -146,7 +146,6 @@ fn loose(drawn: &Drawn) -> (Vec<String>, Option<usize>) {
 fn start(drawn: &mut Drawn) -> Result<()> {
     let (shell, root) = (drawn.shell.clone(), checkout()?);
     drawn.cx.update(|cx| {
-        // The zone as a person first finds it, whatever the check's last run left put away.
         settings::update(cx, |settings| settings.pinned_zone_dismissed = false);
         shell.update(cx, |shell, cx| {
             shell.show_space(0, cx);
@@ -192,7 +191,6 @@ fn pin_by_drop(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let icon = site_icon()?;
     drawn.cx.update(|cx| {
         shell.update(cx, |shell, cx| {
-            // On a tab of the worktree's, where a page opened is the worktree's.
             if let Some((project, branch, tab)) = shell.workspace.shown_tab() {
                 shell.pick_tab(project, branch, tab, cx);
             }
@@ -235,7 +233,6 @@ fn loose_pages(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         loose(drawn),
         save_with(drawn, "arc-loose-one", Part::Rows)?
     ));
-    // Opened where the person is on a loose page, a page is a loose one, after it.
     let opened = (drawn.cx).update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
             shell.open_browser_tab(
@@ -332,8 +329,6 @@ fn across_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
             path.display()
         ));
     }
-    // In the space with no project, ⌘W closes the pinned page, and a page opened is the
-    // space's own: nothing of another space's shows.
     drawn.cx.simulate_keystrokes(window, "cmd-w");
     settle(drawn)?;
     let opened = (drawn.cx).update_window(window, |_, window, cx| {
@@ -383,7 +378,6 @@ fn put_away(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         });
     });
     settle(drawn)?;
-    // The pointer on the zone shows its ×, at its end.
     let zone = region()?;
     let end = point(zone.right() - px(18.), zone.center().y);
     (drawn.cx).simulate_mouse_move(window, end, None, Modifiers::default());
@@ -399,7 +393,6 @@ fn put_away(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         "its × pressed, the zone is put away ({away}): {}",
         save_with(drawn, "arc-pinned-put-away", Part::Rows)?
     ));
-    // A page's tab taken off its list brings it back, to take it.
     take_up(drawn, row(drawn, 0)?)?;
     let zone = region()?.center();
     carry(drawn, zone)?;

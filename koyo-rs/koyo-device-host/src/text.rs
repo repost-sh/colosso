@@ -67,7 +67,6 @@ pub fn read(surface: &IOSurfaceRef, scale: f64) -> Result<Vec<Piece>, String> {
         .filter(|(_, confidence, _)| *confidence >= NOISE)
         .map(|(text, _, frame)| Piece {
             text,
-            // Vision's boxes are shares of the picture from its bottom left.
             frame: Rect {
                 x: frame.origin.x * width,
                 y: (1. - frame.origin.y - frame.size.height) * height,
@@ -95,7 +94,6 @@ fn recognize(buffer: &CVPixelBuffer) -> Result<Found, String> {
     unsafe {
         let request: Allocated<AnyObject> = msg_send![request_class, alloc];
         let request: Retained<AnyObject> = msg_send![request, init];
-        // VNRequestTextRecognitionLevelAccurate.
         let () = msg_send![&request, setRecognitionLevel: 0isize];
         let () = msg_send![&request, setUsesLanguageCorrection: true];
         let options = NSDictionary::<NSString, AnyObject>::new();

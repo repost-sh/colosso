@@ -101,12 +101,10 @@ fn the_desktops_tab_opens_after_the_tab_of_the_chat_that_asked_not_where_the_per
         "after the asker's own tab, the tab its checkout shows left shown"
     );
 
-    // There is one desktop: another chat that asks finds its tab where it is.
     desktop_open(&chat("reading"), cx);
     person_untouched(&rig, &mine, cx);
     assert_eq!(tabs(&rig, &theirs, cx), beside_asker);
 
-    // The person on the asker's checkout, at another chat: theirs stays the one shown.
     close_desktop(&rig, cx);
     select(&rig.shell, &theirs, cx);
     desktop_open(&chat("asker"), cx);
@@ -118,7 +116,6 @@ fn the_desktops_tab_opens_after_the_tab_of_the_chat_that_asked_not_where_the_per
 fn an_agent_in_a_terminal_gets_the_desktops_tab_after_its_terminals(cx: &mut TestAppContext) {
     let (rig, mine, theirs) = rig("control-beside-terminal", cx);
     chat_tab(&rig, &theirs, "first", cx);
-    // The daemon runs a terminal on the agents' checkout: it gets a tab there.
     rig.shell.update(cx, |shell, cx| {
         let listed = vec![terminal_listed("term_9", "agent", &theirs)];
         shell.take_terminals(std::slice::from_ref(&theirs), listed, cx);
@@ -144,7 +141,6 @@ fn a_caller_with_no_tab_gets_it_on_its_worktree_and_one_outside_every_checkout_o
     for id in ["first", "last"] {
         chat_tab(&rig, &theirs, id, cx);
     }
-    // A chat no tab shows runs in its checkout all the same.
     let untabbed = Caller {
         cwd: Some(theirs.join("src")),
         ..chat("untabbed")
@@ -157,16 +153,12 @@ fn a_caller_with_no_tab_gets_it_on_its_worktree_and_one_outside_every_checkout_o
         "after the tab its checkout shows"
     );
 
-    // A client outside every checkout has no place of its own: the selected checkout, out
-    // of sight, as `tab_open` gives it.
     close_desktop(&rig, cx);
     allow("outside", &Scope::ALL, cx);
     desktop_open(&external("outside"), cx);
     assert_eq!(tabs(&rig, &mine, cx), ["[reading]", "desktop"]);
     assert_eq!(tabs(&rig, &theirs, cx), ["[first]", "last"]);
 
-    // A checkout with no tab at all has nothing to keep shown: the desktop's is its tab,
-    // and the person, elsewhere, stays where they are.
     close_desktop(&rig, cx);
     rig.shell.update(cx, |shell, cx| {
         let (project, branch) = shell.workspace.unit_at(&theirs).expect("the checkout");
@@ -193,7 +185,6 @@ fn switch_to_what_agents_open_takes_the_window_to_the_desktops_tab_wherever_it_i
     assert_eq!(tabs(&rig, &theirs, cx), shown_beside_asker);
     assert_eq!(tabs(&rig, &mine, cx), ["[reading]"]);
 
-    // Asked for again from the person's own checkout, the one tab there is shows.
     rig.shell.update(cx, |shell, cx| {
         shell.workspace.select_tab(1, 0, 0);
         shell.workspace.select_tab(0, 0, 0);

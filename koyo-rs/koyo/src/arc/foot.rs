@@ -72,7 +72,6 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
                 index == shown,
                 shell.arc_hover.on == Some(Hovered::Space(index)),
             );
-            // The space shown says it on its tiles.
             let activity = if index == shown {
                 Activity::Quiet
             } else {
@@ -104,7 +103,6 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
         .flex_shrink_0()
         .flex()
         .items_center()
-        // The accounts' button, as wide as the +, so the spaces sit in the middle.
         .child(div().w(px(PLUS)).children(crate::accounts::button(cx)))
         .child(
             div()
@@ -143,8 +141,6 @@ fn pill(
     }
     let (sign, wide) = match activity {
         Activity::Quiet => return None,
-        // As strong as a tile's, and never fading: the spinner is a view, drawn again only as
-        // it turns, so a fade round it would stay where its first frame had it.
         Activity::Working => (spinner_of(format!("space-{index}"), RING, cx), RING),
         Activity::Attention => {
             let waiting = theme::palette(cx).waiting;
@@ -152,7 +148,6 @@ fn pill(
             (dot, PILL)
         }
     };
-    // Whichever it is, its middle is where the dot's is.
     let out = (wide - PILL) / 2.;
     let pill = div()
         .debug_selector(move || format!("arc-space-pill-{index}"))
@@ -181,7 +176,6 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
         window,
         cx,
     );
-    // A dot, give or take what the spring is still settling: the space shown says nothing here.
     let pill = pill(index, activity, width < DOT + 1., window, cx);
     let strength = transition(
         ElementId::from(("arc-space-strength", index)),
@@ -207,7 +201,6 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
         .child(
             div()
                 .h(px(DOT))
-                // Going past its end on the way back could leave it narrower than a dot.
                 .w(px(width.max(DOT)))
                 .rounded_full()
                 .bg(colour)
@@ -222,9 +215,6 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
             MouseButton::Left,
             cx.listener(|this, _, _, cx| {
                 this.press_hovered(cx);
-                // A pinned page shown stays shown in the space picked, the keyboard where it
-                // is: the press doesn't take it to the window, as one elsewhere in the sidebar
-                // does (`docs/arc-sidebar.md` 11).
                 if this.workspace.pinned_shown().is_some() {
                     cx.stop_propagation();
                 }

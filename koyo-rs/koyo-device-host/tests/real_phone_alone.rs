@@ -42,7 +42,6 @@ fn a_device_turned_four_ways_is_followed_and_its_corner_lands() {
         act(&format!("turned {word} by devicectl (a simulated orientation)"));
         let turned = devicectl(&target.udid, &["orientation", "set"], &[word]);
         let asked = Instant::now();
-        // Held that way already, the host has nothing new to say.
         let followed = if now.orientation == way && upright(&now) {
             Some(FromHost::State { state: State::Ready { screen: now } })
         } else {
@@ -57,7 +56,6 @@ fn a_device_turned_four_ways_is_followed_and_its_corner_lands() {
         now = screen;
         let took = asked.elapsed();
         let got = format!("{:.0}x{:.0} points, {} ms after devicectl", screen.size.width, screen.size.height, took.as_millis());
-        // The host reads the way it's held every two seconds while shown.
         row("QR4", &format!("{word}: followed upright"), &got, took <= Duration::from_millis(2600));
         let _ = host.until(Duration::from_millis(800), |_| false);
         corner(&mut host, &screen);
@@ -90,7 +88,6 @@ fn the_camera_while_the_stream_is_held() {
         Ok(Answer::Screenshot { png, .. }) => middle_light(&png),
         _ => None,
     };
-    // The camera off while the device is viewed: its preview still, and dark.
     let dark = light.is_some_and(|(mean, _)| mean < 10.);
     let shown = light.map_or_else(|| "no light read".to_owned(), |(mean, spread)| format!("its middle's light {mean:.0} ± {spread:.0} of 255"));
     let got = format!("launched: {launched:?}; {} for 1.5 s; {shown}; {lines} lines of text read (not kept)", if still { "still" } else { "moving" });
@@ -168,7 +165,6 @@ fn auto_lock_reads_two_minutes() {
         let _ = tap(&mut host, at);
         let _ = host.until(Duration::from_millis(1500), |_| false);
     }
-    // Which of Auto-Lock's own values the page shows: yes or no for each, nothing else.
     let tree = match host.snapshot() {
         Ok(Answer::Snapshot { tree, .. }) => tree,
         _ => String::new(),
@@ -201,7 +197,6 @@ fn the_screen_sleeps_once_the_stream_is_let_go() {
         asked.map(|said| said["result"]["backlightState"].as_str().unwrap_or("unknown").to_owned())
     };
     let mut host = Driver::start(&target, true);
-    // Locked or not: the stream shows the lock screen too.
     let _ = host.until(Duration::from_secs(60), |message| matches!(message, FromHost::State { state: State::Ready { .. } | State::Locked { .. } }));
     host.tell(&ToHost::Visible { visible: true });
     let _ = host.until(Duration::from_secs(15), |_| false);

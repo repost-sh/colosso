@@ -182,7 +182,6 @@ impl Client {
         let written = self.writer.lock().write_all(line.as_bytes());
         if let Err(error) = written {
             self.waiting.replies.lock().remove(&id);
-            // A socket that can't be written to is one the next request shouldn't try.
             self.close();
             return Err(error.into());
         }
@@ -219,7 +218,6 @@ impl Drop for Client {
 fn read_loop(stream: UnixStream, waiting: &Waiting, events: &Sender<Event>) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    // A line longer than the limit reads as far as one byte past it, without its newline.
     let limit = u64::try_from(MAX_LINE_BYTES).map_or(u64::MAX, |limit| limit + 1);
     loop {
         line.clear();
@@ -249,7 +247,6 @@ fn read_loop(stream: UnixStream, waiting: &Waiting, events: &Sender<Event>) {
             Ok(Inbound::Reply { id: None, outcome }) => {
                 log::warn!("the agent host couldn't read a request: {outcome:?}");
             }
-            // Dropped once nobody listens; replies come either way.
             Ok(Inbound::Event(event)) => {
                 let _ = events.send(event);
             }
@@ -278,7 +275,6 @@ pub fn request_if_running<M: Method>(
 /// (`koyo_daemon::stop`). Returns once nothing listens in `dir`.
 pub fn stop_host(dir: &DaemonDir) -> Result<(), ClientError> {
     let ask = |stream| {
-        // A host that took the request may hang up before it answers.
         Client::over(stream, ClientKind::App).is_ok_and(|connected| {
             matches!(
                 connected.client.request::<Shutdown>(&Empty {}),

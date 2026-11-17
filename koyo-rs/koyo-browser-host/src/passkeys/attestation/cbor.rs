@@ -41,11 +41,9 @@ impl<'a> Reader<'a> {
         let (major, argument) = self.head()?;
         let item = match major {
             0 => i64::try_from(argument).map_or(Item::Other, Item::Int),
-            // -1 - n, which fits an `i64` whenever n does.
             1 => i64::try_from(argument).map_or(Item::Other, |n| Item::Int(-1 - n)),
             2 => Item::Bytes(self.take(usize::try_from(argument).ok()?)?),
             3 => Item::Text(self.take(usize::try_from(argument).ok()?)?),
-            // Every item takes a byte at least, so a count over what's left is malformed.
             4 => Item::Array(self.count(argument, 1)?),
             5 => Item::Map(self.count(argument, 2)?),
             6 => Item::Tag,
@@ -86,7 +84,6 @@ impl<'a> Reader<'a> {
             25 => u64::from(u16::from_be_bytes(self.array()?)),
             26 => u64::from(u32::from_be_bytes(self.array()?)),
             27 => u64::from_be_bytes(self.array()?),
-            // Reserved, or an indefinite length, which canonical CBOR never has.
             _ => return None,
         };
         Some((first >> 5, argument))

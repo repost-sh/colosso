@@ -30,7 +30,6 @@ impl Shell {
             return;
         };
         let unit = &self.workspace.projects[project].branches[branch];
-        // One brought back with the window has its diffs as soon as it's shown.
         let open =
             (unit.tabs.iter()).position(|tab| tab.panes().iter().any(|pane| pane.shows_changes()));
         if let Some(at) = open {
@@ -40,7 +39,6 @@ impl Shell {
             self.workspace
                 .open_beside_shown(Tab::Single(Pane::changes(changes)));
         }
-        // The diffs are something to look at, so leave settings for them.
         self.navigate(Route::Workspace, cx);
         cx.notify();
     }
@@ -57,7 +55,6 @@ impl Shell {
         if ids.is_empty() {
             return;
         }
-        // The checkout it's on is selected now; its panels are made after this change.
         self.follow_selection(window, cx);
         let Some(panel) = self.changes_panel(window, cx) else {
             return;

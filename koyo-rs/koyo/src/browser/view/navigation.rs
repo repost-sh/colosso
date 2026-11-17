@@ -129,7 +129,6 @@ impl BrowserView {
     pub(crate) fn go(&mut self, to: Go, cx: &mut Context<Self>) {
         self.person_acts(Mode::Implicit, cx);
         if to == Go::Reload && matches!(self.notice, Some(Notice::Gone(_))) {
-            // A crashed page needs a new browser, not a reload.
             self.notice = None;
             self.opened = None;
             self.ensure_open(cx);
@@ -220,10 +219,8 @@ mod tests {
             view.came = Some(How::Typed);
             view.page_changed(page(a, true, ""), cx);
             view.page_changed(page(a, false, "A"), cx);
-            // Reloaded, it's the page shown already.
             view.page_changed(page(a, true, "A"), cx);
             view.page_changed(page(a, false, "A"), cx);
-            // A link the page followed, then back: a title that comes meanwhile tells nothing.
             view.page_changed(page(b, false, "B"), cx);
             view.goes_through_history();
             view.page_changed(page(b, false, "B, retitled"), cx);

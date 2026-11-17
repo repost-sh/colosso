@@ -93,7 +93,6 @@ fn steps(on: bool) -> Vec<Vec<&'static str>> {
     if !on {
         steps.push(write(WHOLE));
     }
-    // Both in one call: each `simctl spawn` is a quarter of a second.
     steps.push(vec!["notifyutil", "-p", NOTICES[0], "-p", NOTICES[1]]);
     steps
 }
@@ -155,8 +154,6 @@ pub fn rest(shared: &Shared, busy: bool) {
         let Ok(mut held) = shared.lock() else {
             return;
         };
-        // A read came first: it's wanted on. Not switched on by this host, it's switched off
-        // only if an earlier one left it on.
         let left_on = || held.spawn(&["defaults", "read", DOMAIN, APPS]).is_ok_and(|said| said.trim() == "1");
         if held.rests.is_some() || !(held.on || left_on()) {
             return;
@@ -172,7 +169,6 @@ pub fn leave(shared: &Shared) {
     if let Ok(mut held) = shared.lock()
         && held.on
     {
-        // The settings only: nothing that runs is left to tell, the simulator shuts down next.
         let _ = held.run(&steps(false)[..2]);
     }
 }

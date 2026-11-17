@@ -63,8 +63,6 @@ fn expiring_two() -> Harness {
     h
 }
 
-// -- TestFreshening --------------------------------------------------------------------------
-
 #[test]
 fn near_expiry_target_is_refreshed_and_persisted() {
     let mut h = Harness::new(defaults());
@@ -76,7 +74,6 @@ fn near_expiry_target_is_refreshed_and_persisted() {
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(10.))]);
     assert_eq!(outcome, TickOutcome::Switched);
     assert_eq!(h.host.lock().grant_log, ["2"]);
-    // The rotated token went through the slot's backup, which the switch then activated.
     assert!(credentials_of(&h, 2).contains("sk-2-new"));
     assert_eq!(h.active(), Some(2));
 }
@@ -96,13 +93,13 @@ fn fresh_target_is_not_refreshed() {
 fn invalid_grant_quarantines_and_tries_next() {
     let mut h = Harness::new(defaults());
     h.seed(1, "a@example.com");
-    h.seed_expiring(2, "b@example.com", Some(1.)); // long expired
+    h.seed_expiring(2, "b@example.com", Some(1.));
     h.seed(3, "c@example.com");
     h.make_live(1);
     script(&h, "2", vec![RefreshOutcome::failed("invalid_grant")]);
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(10.)), ("3", usage(20.))]);
     assert_eq!(outcome, TickOutcome::Switched);
-    assert_eq!(h.active(), Some(3)); // the next candidate after 2 was quarantined
+    assert_eq!(h.active(), Some(3));
     let quarantined = h.all::<QuarantineEvent>().remove(0);
     assert_eq!(
         (quarantined.number.as_str(), quarantined.reason),
@@ -125,8 +122,6 @@ fn transient_failure_skips_without_quarantine() {
     assert!(!h.all::<ErrorEvent>().is_empty());
 }
 
-// -- TestTokenIdentity -----------------------------------------------------------------------
-
 #[test]
 fn uuid_backfill_from_token_account_on_freshen() {
     let h = expiring_two();
@@ -146,8 +141,6 @@ fn uuid_backfill_from_token_account_on_freshen() {
 
 #[test]
 fn conflicting_token_identity_returns_identity_conflict() {
-    // Not a viable target, but the rotated generation is still persisted: the grant consumed
-    // its predecessor.
     let h = expiring_two();
     let fresh = rotated("2", 99_999_999_999_000.);
     script(
@@ -175,7 +168,6 @@ fn identity_conflict_quarantines_instead_of_activating() {
         )],
     );
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(10.)), ("3", usage(80.))]);
-    // 2 had the most headroom but is conflicted: quarantined, and the switch landed elsewhere.
     assert!(h.kinds().contains(&"account-quarantined"));
     assert_eq!(h.state()["quarantine"]["2"]["reason"], "identity-conflict");
     assert_eq!(outcome, TickOutcome::Switched);
@@ -184,8 +176,6 @@ fn identity_conflict_quarantines_instead_of_activating() {
 
 #[test]
 fn an_identity_conflict_stays_quarantined_on_the_next_tick() {
-    // The quarantine records the successor the gate persisted, so the next tick doesn't read
-    // the rotation as a re-add, release the slot and switch onto the wrong account.
     let mut h = expiring_two();
     let fresh = rotated("2", 99_999_999_999_000.);
     script(
@@ -212,15 +202,12 @@ fn an_identity_conflict_stays_quarantined_on_the_next_tick() {
 
 #[test]
 fn an_invalid_grant_records_the_generation_the_gate_sent() {
-    // The gate may adopt a stashed successor into the slot before its POST: the quarantine keys
-    // on the generation it sent, so the next tick doesn't take the adoption for a re-add.
     let mut h = expiring_two();
     let adopted = rotated("2", 1.);
     script(
         &h,
         "2",
         vec![RefreshOutcome {
-            // The fake gate writes these to the slot, as the adoption did.
             credentials: Some(adopted.clone()),
             consumed_fp: credential_fingerprint(&adopted),
             ..RefreshOutcome::failed("invalid_grant")
@@ -243,8 +230,6 @@ fn an_invalid_grant_records_the_generation_the_gate_sent() {
 
 #[test]
 fn dead_slot_quarantined_even_with_safety_copy_present() {
-    // No automatic promotion of a stashed copy: a dead slot is quarantined outright (the stash
-    // itself is the gate's, behind the fake).
     let mut h = expiring_two();
     script(&h, "2", vec![RefreshOutcome::failed("invalid_grant")]);
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(10.)), ("3", usage(80.))]);
@@ -271,8 +256,6 @@ fn same_uuid_different_org_is_identity_conflict() {
 
 #[test]
 fn malformed_token_identity_never_breaks_freshen() {
-    // A uuid that isn't one (cswap: a number; here, the empty string the type can still carry)
-    // is ignored: the refreshed credential is already persisted.
     let h = expiring_two();
     let fresh = rotated("2", 99_999_999_999_000.);
     let malformed = AccountIdentity {
@@ -288,8 +271,6 @@ fn malformed_token_identity_never_breaks_freshen() {
 
 #[test]
 fn blank_uuid_slot_with_org_conflict_quarantines_not_backfills() {
-    // The org conflict is checked before the blank-uuid backfill: a wrong-org credential is
-    // evidence the slot holds the wrong account, and its uuid would stick to the slot.
     let h = expiring_two();
     {
         let mut fake = h.host.lock();
@@ -311,8 +292,6 @@ fn blank_uuid_slot_with_org_conflict_quarantines_not_backfills() {
     assert_eq!(credentials_of(&h, 2), fresh);
 }
 
-// -- TestFreshenRoutesThroughGate -------------------------------------------------------------
-
 fn gate_answers(error: &str) -> &'static str {
     let h = Harness::new(defaults());
     h.seed_expiring(2, "b@example.com", Some(1.));
@@ -322,14 +301,11 @@ fn gate_answers(error: &str) -> &'static str {
 
 #[test]
 fn lock_contention_is_not_reported_as_network_trouble() {
-    // Waiting on another gate is local: "(network?)" would send the person to check a
-    // connection that is fine.
     assert_eq!(gate_answers("consume-busy"), "consume-busy");
 }
 
 #[test]
 fn invalid_client_is_not_reported_as_network_trouble() {
-    // A rejected OAuth client is systemic and deterministic, nothing about the slot.
     assert_eq!(gate_answers("invalid_client"), "invalid_client");
 }
 
@@ -345,8 +321,6 @@ fn store_unmirrored_keeps_its_own_kind() {
 
 #[test]
 fn an_actionable_cause_is_not_hidden_by_a_self_clearing_one() {
-    // One systemic cause is reported, the actionable one: slot 2 needs a person (a variable is
-    // set), slot 3 clears itself, and 3 is tried last.
     let mut h = Harness::new(defaults());
     h.seed(1, "a@example.com");
     h.seed_expiring(2, "b@example.com", Some(1.));
@@ -355,7 +329,7 @@ fn an_actionable_cause_is_not_hidden_by_a_self_clearing_one() {
     script(&h, "2", vec![RefreshOutcome::failed("store-unmirrored")]);
     script(&h, "3", vec![RefreshOutcome::failed("consume-busy")]);
     h.tick_with_usage(&[
-        ("1", usage7(95., 95., Some(R_LATER))), // active, over the threshold
+        ("1", usage7(95., 95., Some(R_LATER))),
         ("2", usage7(10., 10., Some(R_SOON))),
         ("3", usage7(10., 10., Some(R_LATEST))),
     ]);
@@ -374,8 +348,6 @@ fn an_actionable_cause_is_not_hidden_by_a_self_clearing_one() {
 
 #[test]
 fn the_systemic_kinds_are_the_gates_deterministic_errors() {
-    // Every deterministic refusal the gate names has its remedy, each its own, the most
-    // actionable first.
     let systemic: BTreeSet<Systemic> = DETERMINISTIC_REFRESH_ERRORS
         .into_iter()
         .map(|kind| Systemic::from_kind(kind).expect(kind))
@@ -393,11 +365,10 @@ fn a_real_transient_still_reads_transient() {
 #[test]
 fn freshen_calls_consume_gate() {
     let h = Harness::new(defaults());
-    h.seed_expiring(2, "b@example.com", Some(1.)); // near expiry
+    h.seed_expiring(2, "b@example.com", Some(1.));
     let fresh = rotated("2", 9_999_999_999_000.);
     script(&h, "2", vec![granted(&fresh, None)]);
     assert_eq!(freshen(&h, "2"), "ok");
-    // The engine has no POST of its own: the gate is the only way to a refresh.
     assert_eq!(h.host.lock().grant_log, ["2"]);
     assert!(h.sandbox.http.requests().is_empty());
 }

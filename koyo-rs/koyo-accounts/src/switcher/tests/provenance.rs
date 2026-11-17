@@ -105,8 +105,6 @@ fn resolution_backfills_empty_slot_uuid() {
 
 #[test]
 fn foreign_credential_preserved_never_backed_into_any_slot() {
-    // The poisoning precondition: another managed slot's bytes, uuid-positive. Preserved,
-    // written into neither slot, and the target's stored backup still activates.
     let foreign = creds("sk-2-rotated", "rt-2-rotated", None);
     let h = guarded(&foreign);
     let a2 = h.backup("2", "account2@example.com").unwrap();
@@ -147,7 +145,6 @@ fn oauth_at(access: &str, refresh: Option<&str>, expires_at: u64) -> String {
 
 #[test]
 fn rotation_under_a_stale_label_advances_the_owning_slot() {
-    // #489: Claude Code rotated slot 3's token while the config named slot 1.
     let mut data = sample_sequence_data();
     data["accounts"]["3"] =
         json!({"email": "account3@example.com", "uuid": "uuid-3", "added": "2024-01-03T00:00:00Z"});
@@ -173,7 +170,6 @@ fn rotation_under_a_stale_label_advances_the_owning_slot() {
 
 #[test]
 fn newer_foreign_generation_of_the_target_is_what_activates() {
-    // The target is read after the rescue, so the newer generation activates.
     let successor = oauth_at("sk-2-new", Some("rt-2-new"), 2_000);
     let h = guarded(&successor);
     h.set_backup(
@@ -246,7 +242,6 @@ fn stored_login_without_a_comparable_expiry_is_never_replaced() {
 
 #[test]
 fn backup_holding_no_login_is_still_advanced() {
-    // A backup with no login in it (#383's MCP-only blob) has nothing to lose.
     let live = oauth_at("sk-2-live", Some("rt-2-live"), 2_000);
     let h = guarded(&live);
     h.set_backup(
@@ -277,7 +272,6 @@ fn alien_credential_preserved_and_skipped() {
 
 #[test]
 fn blank_stored_uuid_email_match_is_alien_not_foreign() {
-    // A cross-slot attribution must be uuid-positive.
     let mut data = sample_sequence_data();
     data["accounts"]["2"]["uuid"] = "".into();
     let h = guarded_with(&mut data, &creds("sk-d", "rt-d", None));

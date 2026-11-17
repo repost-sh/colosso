@@ -280,7 +280,6 @@ pub fn remove_leftovers(state: &Path) {
         .into_iter()
         .filter(|app| started_at(app.pid) == Some(app.at))
         .partition(|app| app.lent);
-    // The person's own go back to them as they are, before anything is ended.
     let agents = recorded.map(|(space, _)| space);
     for app in &lent {
         hand_back(app.pid, app.home, agents);
@@ -288,7 +287,6 @@ pub fn remove_leftovers(state: &Path) {
     if let Some(space) = agents
         && !lent.is_empty()
     {
-        // Their windows take a moment to leave the desktop, which is removed only empty.
         ns::pump_until(Duration::from_secs(1), || {
             !crate::windows::holds_app_windows(space)
         });
@@ -333,7 +331,6 @@ impl Desktop {
         let (name, on) = listed
             .map(|listed| (listed.name, listed.display))
             .unwrap_or_default();
-        // After the ones that couldn't be removed yet, which stay on record.
         let mut recorded = recorded_desktops(state);
         recorded.push((space, name));
         record_desktops(state, &recorded);

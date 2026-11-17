@@ -36,7 +36,6 @@ impl Sandbox {
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(root.join("home")).ok();
         std::fs::create_dir_all(root.join("store")).ok();
-        // Resolved, as the guard compares resolved paths.
         let root = root.canonicalize().unwrap_or(root);
         Sandbox {
             root,

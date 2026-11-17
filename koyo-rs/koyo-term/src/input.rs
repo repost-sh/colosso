@@ -55,7 +55,6 @@ impl TerminalView {
         cx: &mut Context<Self>,
     ) {
         if !self.is_attached() || keys::types_text(&event.keystroke, self.option_as_alt) {
-            // Text comes through the input method, which composes it first.
             return;
         }
         let action = if event.is_held {
@@ -83,7 +82,6 @@ impl TerminalView {
         if !self.is_attached() || keys::types_text(&event.keystroke, self.option_as_alt) {
             return;
         }
-        // The encoder sends releases only to programs that asked for them (kitty protocol).
         if let Some(key) = keys::encode(&event.keystroke, KeyAction::Release, self.option_as_alt) {
             self.send(Command::Key(key));
         }
@@ -213,7 +211,6 @@ impl TerminalView {
             return;
         };
         let at = grid.cell_at(event.position);
-        // ⌘-click on a link opens it, rather than selecting or telling the program.
         if pressed == MouseButton::Left
             && event.modifiers.platform
             && event.click_count == 1
@@ -222,7 +219,6 @@ impl TerminalView {
             cx.emit(TerminalEvent::OpenLink(target));
             return;
         }
-        // Shift selects even over a program that tracks the mouse, as in every terminal.
         if self.tracking() && !event.modifiers.shift {
             let input = self.mouse(
                 MouseAction::Press,
@@ -251,7 +247,6 @@ impl TerminalView {
         };
         let rectangle = event.modifiers.alt;
         if unit == SelectUnit::Cell {
-            // A click alone selects nothing; a drag from it does.
             self.send(Command::ClearSelection);
         } else {
             self.send(Command::Select {
@@ -278,11 +273,9 @@ impl TerminalView {
         hovered: bool,
         cx: &mut Context<Self>,
     ) {
-        // Held over the grid, ⌘ underlines the link under the pointer.
         let over = hovered && event.modifiers.platform && event.pressed_button.is_none();
         self.point_at_link(over.then(|| grid.cell_at(event.position)), cx);
         let Some(drag) = &mut self.drag else {
-            // Motion with nothing pressed matters only to a program tracking all of it.
             if hovered && self.tracking() {
                 let input = self.mouse(
                     MouseAction::Motion,
@@ -296,7 +289,6 @@ impl TerminalView {
             return;
         };
         if event.pressed_button.is_none() {
-            // The release happened outside the window.
             self.drag = None;
             return;
         }
@@ -338,7 +330,6 @@ impl TerminalView {
 
     pub(crate) fn scroll_wheel(&mut self, event: &ScrollEvent, grid: Grid, _: &mut Context<Self>) {
         let cell_height = grid.metrics.cell_height;
-        // Positive is towards the top, into the history: rows up are negative here.
         self.wheel_rest -= f32::from(event.delta.pixel_delta(cell_height).y);
         let rows = (self.wheel_rest / f32::from(cell_height)).trunc();
         if rows == 0. {
