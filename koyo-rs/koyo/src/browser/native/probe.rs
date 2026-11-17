@@ -86,15 +86,6 @@ unsafe extern "C" {
     static CGRectNull: CGRect;
     fn CGWindowListCreateImage(bounds: CGRect, option: u32, window: u32, image: u32) -> *mut c_void;
     fn CGImageRelease(image: *mut c_void);
-    fn CGEventCreateScrollWheelEvent2(
-        source: *const c_void,
-        units: u32,
-        wheels: u32,
-        wheel1: i32,
-        wheel2: i32,
-        wheel3: i32,
-    ) -> *mut c_void;
-    fn CGEventSetIntegerValueField(event: *mut c_void, field: u32, value: i64);
 }
 
 #[link(name = "ImageIO", kind = "framework")]
@@ -237,7 +228,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             mouse(&window, 5, point(&window, *x, *y), 0);
             "moved".into()
         }
-        ("scroll", [.., dy]) => scroll(&window, *dy as i32),
+        ("scroll", [.., dy]) => keys::scroll(&window, *dy as i32),
         ("type", _) => {
             for letter in rest.chars() {
                 let text = letter.to_string();
@@ -374,27 +365,6 @@ fn mouse_event(window: &NSWindow, kind: usize, at: NSPoint, clicks: isize) -> *m
             pressure: if clicks > 0 { 1.0f32 } else { 0.0f32 }
         ]
     }
-}
-
-fn scroll(window: &NSWindow, dy: i32) -> String {
-    // SAFETY: Core Graphics makes the event; the fields set are the window it's over, which
-    // `AppKit` reads back as the event's window.
-    unsafe {
-        let made = CGEventCreateScrollWheelEvent2(std::ptr::null(), 0, 1, dy, 0, 0);
-        if made.is_null() {
-            return "no scroll event".into();
-        }
-        let number = window.windowNumber() as i64;
-        CGEventSetIntegerValueField(made, 91, number);
-        CGEventSetIntegerValueField(made, 92, number);
-        let event: *mut AnyObject = msg_send![class!(NSEvent), eventWithCGEvent: made];
-        CFRelease(made);
-        if event.is_null() {
-            return "no NSEvent for the scroll".into();
-        }
-        let _: () = msg_send![window, sendEvent: event];
-    }
-    "scrolled".into()
 }
 
 /// A key down and up for `chars`. As a key equivalent first when `equivalent`, the window's
