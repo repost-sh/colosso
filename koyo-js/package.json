@@ -7,7 +7,7 @@
   "workspaces": ["koyo-*"],
   "scripts": {
     "typecheck": "tsc && bun run --workspaces typecheck",
-    "lint": "bun --bun eslint --max-warnings 0 ."
+    "lint": "eslint --max-warnings 0 ."
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

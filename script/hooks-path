@@ -1,0 +1,28 @@
+#!/bin/sh
+# Fails unless git runs this checkout's own hooks, script/hooks, whose pre-commit and
+# pre-merge-commit run script/lint; script/cargo, script/bun and script/dev ask it first. The
+# setting, core.hooksPath, lives in the clone's .git/config, which its worktrees share, and a
+# relative value resolves in each worktree's own root: `script/hooks` is the one value that
+# serves them all. Cherry-picks, reverts and a rebase's picks commit without either hook.
+set -eu
+cd "$(dirname "$0")/.."
+
+# Not a git checkout, a source archive say: nothing here commits.
+[ -e .git ] || exit 0
+
+for hook in pre-commit pre-merge-commit; do
+  if [ ! -x "script/hooks/$hook" ]; then
+    echo "script/hooks-path: script/hooks/$hook is missing or not executable, and git skips" >&2
+    echo "a hook it can't run. Restore it:" >&2
+    echo "  git checkout -- script/hooks" >&2
+    exit 1
+  fi
+done
+
+hooks=$(git rev-parse --git-path hooks)
+if [ "$(cd "$hooks" 2>/dev/null && pwd -P)" != "$(cd script/hooks && pwd -P)" ]; then
+  echo "script/hooks-path: git runs this checkout's hooks from $hooks, not script/hooks." >&2
+  echo "Point the clone and its worktrees at script/hooks:" >&2
+  echo "  git config core.hooksPath script/hooks" >&2
+  exit 1
+fi

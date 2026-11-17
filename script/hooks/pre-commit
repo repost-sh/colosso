@@ -1,5 +1,5 @@
 #!/bin/sh
-# Lints what's about to be committed; script/check adds the tests.
+# Lints the working tree, staged or not, when `git commit` runs; script/check adds the tests.
 #
 # Git runs a hook with GIT_DIR and GIT_INDEX_FILE set, and with GIT_DIR set a git call made from
 # a folder inside the checkout (koyo-hygiene's, from koyo-rs) takes that folder for the checkout's
