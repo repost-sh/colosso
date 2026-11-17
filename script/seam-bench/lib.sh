@@ -9,7 +9,20 @@ fixture="file://$here/.superpowers/v/fixture/focus.html"
 
 probe() { "$B" probe "$@"; }
 
-fail() { echo "FAIL: $*" >&2; exit 1; }
+# A check that didn't hold ends the sequence, unless it's run to see every one of them
+# (SEAM_BENCH_ALL=1): then each is counted, and `finish` fails at the end.
+failed=0
+fail() {
+  echo "FAIL: $*" >&2
+  [ -n "${SEAM_BENCH_ALL:-}" ] || exit 1
+  failed=$((failed + 1))
+}
+
+# Ends a sequence by its name: passed, or how many checks didn't hold.
+finish() {
+  [ "$failed" -eq 0 ] || { echo "FAILED $1: $failed checks didn't hold" >&2; exit 1; }
+  echo "PASS $1"
+}
 
 # The host's id of the page a pane draws, the latest made.
 shown_page() {
@@ -42,8 +55,7 @@ print(json.loads(line)["result"].get("value"))'
 # Fails unless page <page>'s <script> gives <want>, saying <what> it checks.
 expect() {
   got="$(page_eval "$1" "$2")"
-  [ "$got" = "$3" ] || fail "$4: got $got, wanted $3"
-  echo "ok: $4"
+  if [ "$got" = "$3" ]; then echo "ok: $4"; else fail "$4: got $got, wanted $3"; fi
 }
 
 # What the native layer keeps (the probe's `seam`), its answer alone.
