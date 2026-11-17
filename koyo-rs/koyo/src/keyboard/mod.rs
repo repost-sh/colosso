@@ -10,32 +10,26 @@
 //!
 //! The holders are the one say over `AppKit`'s first responder, which only the reconciler
 //! moves (`reconcile.rs`), told by the window of each change, each press and each key
-//! (`hooks.rs`, `appkit.rs`, the vendored gpui-fast-macos's `responders`).
+//! (`hooks.rs`, `appkit.rs`, the vendored gpui-fast-macos's `responders`). The holders and their
+//! rules are the native layer's (`koyo-seam`, `keyboard`); here GPUI's windows and focus are
+//! told to them, and `AppKit` is given them.
 //!
 //! It's on the main thread, where `AppKit` and GPUI are, and is read and changed there only.
 
-use std::cell::RefCell;
-
 use gpui_kit::{AnyWindowHandle, App, Window};
+use koyo_seam::keyboard as seam;
+use koyo_seam::keyboard::state::WindowKey;
 
 #[cfg(all(target_os = "macos", not(test)))]
 mod appkit;
 #[cfg(target_os = "macos")]
 mod characters;
-mod hooks;
-mod lines;
-mod rate;
-mod reconcile;
-mod state;
 #[cfg(test)]
 mod tests;
 
-pub use state::{Cause, Holder, Intent, PaneId, Part, Surface};
-use state::{Change, Keyboards, WindowKey};
-
-thread_local! {
-    static KEYBOARDS: RefCell<Keyboards> = RefCell::default();
-}
+#[cfg(test)]
+pub use koyo_seam::keyboard::Holder;
+pub use koyo_seam::keyboard::{Cause, Intent, PaneId, Part, Surface};
 
 /// Has the window's say over the keyboard go through the holders, in the app; tests, with no
 /// `AppKit` of their own, only keep the holders.
@@ -60,45 +54,15 @@ fn known(window: &Window) -> WindowKey {
     key_of(window.window_handle())
 }
 
-/// What has the keyboard in `window`, and what the person put it in there, if it's known.
-fn held(window: WindowKey) -> Option<(Holder, Surface)> {
-    KEYBOARDS.with(|keyboards| {
-        let keyboards = keyboards.borrow();
-        Some((keyboards.holder(window)?, keyboards.surface(window)?))
-    })
-}
-
-/// Runs `with` on the holders; each change it made moves the first responder to match, and is
-/// logged with how it moved.
-fn change<C: IntoIterator<Item = Change>>(with: impl FnOnce(&mut Keyboards) -> C) {
-    let changes: Vec<Change> =
-        KEYBOARDS.with(|keyboards| with(&mut keyboards.borrow_mut()).into_iter().collect());
-    if changes.iter().any(|change| change.cause != Cause::Click) {
-        hooks::end_click();
-    }
-    for change in changes {
-        let moved = hooks::reconcile(change.window);
-        lines::tell(&change, moved);
-    }
-}
-
 /// The person's keyboard in `window` is in `surface` now, because of `cause`.
 pub fn set(window: &Window, surface: Surface, cause: Cause) {
-    set_in(known(window), surface, cause);
-}
-
-fn set_in(window: WindowKey, surface: Surface, cause: Cause) {
-    if cause != Cause::Click {
-        hooks::end_click();
-    }
-    change(|keyboards| keyboards.set(window, surface, cause));
+    seam::set_in(known(window), surface, cause);
 }
 
 /// `window` shows the tab known by `tab` now, and hands it the keyboard: what that tab had
 /// the keyboard in when it was last left, if it's known.
 pub fn tab_shown(window: &Window, tab: u64) -> Option<Surface> {
-    let window = known(window);
-    KEYBOARDS.with(|keyboards| keyboards.borrow_mut().tab_shown(window, tab))
+    seam::tab_shown(known(window), tab)
 }
 
 /// GPUI's focus moved into the page in `pane`, the view whose focus is the page's.
@@ -108,8 +72,7 @@ pub fn entered_page(window: &Window, pane: PaneId) {
 
 /// GPUI's focus left the page in `pane` for `part` of Koyo's own.
 pub fn left_page(window: &Window, pane: PaneId, part: Part) {
-    let window = known(window);
-    change(|keyboards| keyboards.left_page(window, pane, part));
+    seam::left_page(known(window), pane, part);
 }
 
 /// `window` became the key window, or stopped being it; and GPUI's focus is where it is now
@@ -118,8 +81,7 @@ pub fn left_page(window: &Window, pane: PaneId, part: Part) {
 pub fn key(window: &Window, cx: &mut App) {
     follow_focus(window, cx);
     let key = window.is_window_active();
-    let window = known(window);
-    change(|keyboards| keyboards.key(window, key));
+    seam::key(known(window), key);
 }
 
 /// A page the person put the keyboard in has it only while GPUI's focus is its view's: if it
@@ -132,7 +94,7 @@ pub fn follow_focus(window: &Window, cx: &mut App) {
         return;
     }
     let key = known(window);
-    let Some((_, Surface::Page(pane))) = held(key) else {
+    let Some((_, Surface::Page(pane))) = seam::held(key) else {
         return;
     };
     let view = crate::browser::page_view(pane, cx);
@@ -142,12 +104,12 @@ pub fn follow_focus(window: &Window, cx: &mut App) {
     }) else {
         return;
     };
-    change(|keyboards| keyboards.left_page(key, pane, part));
+    seam::left_page(key, pane, part);
 }
 
 /// The page in `pane` closed.
 pub fn page_closed(pane: PaneId) {
-    change(|keyboards| keyboards.page_closed(pane));
+    seam::page_closed(pane);
 }
 
 /// `window`, a floating window of Koyo's (a menu, a dialog, the launcher, the tab switcher's
@@ -164,16 +126,14 @@ pub struct DialogOver(AnyWindowHandle);
 
 impl DialogOver {
     pub fn new(over: AnyWindowHandle) -> DialogOver {
-        let window = key_of(over);
-        change(|keyboards| keyboards.dialog(window, true));
+        seam::dialog(key_of(over), true);
         DialogOver(over)
     }
 }
 
 impl Drop for DialogOver {
     fn drop(&mut self) {
-        let window = key_of(self.0);
-        change(|keyboards| keyboards.dialog(window, false));
+        seam::dialog(key_of(self.0), false);
     }
 }
 
@@ -187,5 +147,5 @@ pub fn describe() -> String {
 /// What has the keyboard in `window`, as a test reads it.
 #[cfg(test)]
 pub fn holder(window: AnyWindowHandle) -> Option<Holder> {
-    KEYBOARDS.with(|keyboards| keyboards.borrow().holder(key_of(window)))
+    seam::holder(key_of(window))
 }

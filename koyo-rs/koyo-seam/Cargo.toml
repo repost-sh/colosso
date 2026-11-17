@@ -6,6 +6,10 @@ license.workspace = true
 publish.workspace = true
 description = "The one owner of the seam between GPUI's window and the native views in it (docs/native-layer.md): its rules, kept apart from AppKit so they're tested as they run."
 
+[features]
+# The keyboard's fake `AppKit` (`keyboard::testing`), for other crates' tests.
+testing = []
+
 [dependencies]
 log = "0.4"
 

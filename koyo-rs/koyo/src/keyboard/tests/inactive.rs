@@ -3,10 +3,10 @@
 
 use gpui_kit::{AnyWindowHandle, AppContext as _, TestAppContext, VisualTestContext};
 
-use super::fake::installed;
-use crate::keyboard::reconcile::{AppKit as _, Responder};
-use crate::keyboard::state::{Holder, Part};
-use crate::keyboard::{held, hooks};
+use koyo_seam::keyboard::testing::installed;
+use koyo_seam::keyboard::reconcile::{AppKit as _, Responder};
+use koyo_seam::keyboard::state::{Holder, Part};
+use koyo_seam::keyboard::{held, hooks};
 use crate::test_support::{draw, open_page, repo, select, shell_with};
 
 fn activate(window: AnyWindowHandle, cx: &mut TestAppContext) {
