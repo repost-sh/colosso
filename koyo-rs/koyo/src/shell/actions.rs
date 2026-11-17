@@ -48,7 +48,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-tab", SwitchTab, None),
         KeyBinding::new("ctrl-shift-tab", SwitchTabBack, None),
     ]);
-    // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
         settings::update(cx, |settings| settings.layout = settings.layout.other());
     });
@@ -80,8 +79,6 @@ impl Shell {
             .on_action(cx.listener(|this, _: &GoForward, _, cx| {
                 this.update_history(NavigationHistory::go_forward, cx);
             }))
-            // The mouse's side buttons step through the app's history wherever a browser pane,
-            // heard first, didn't take them for its page.
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Back),
                 cx.listener(|this, _, _, cx| {
@@ -98,9 +95,6 @@ impl Shell {
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
-            // ⌘W closes what's looked at: the settings, or else the tab shown, asking about
-            // its unsaved edits first. Never the window. A pinned page shown closes and stays
-            // pinned; a loose one closes (`docs/arc-sidebar.md` 11).
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
                 if matches!(this.route(cx), Route::Settings(_)) {
                     this.navigate(Route::Workspace, cx);
@@ -116,7 +110,6 @@ impl Shell {
             .on_action(cx.listener(|this, _: &SwitchTabBack, window, cx| {
                 switcher::switch(this, cx.entity(), -1, window, cx);
             }))
-            // ⌃ let go shows the tab the switcher has picked: its panel never has the keyboard.
             .on_modifiers_changed(|event: &ModifiersChangedEvent, _, cx| {
                 if !event.modifiers.control {
                     switcher::released(cx);
@@ -150,8 +143,6 @@ impl Shell {
                 settings::update(cx, |settings| settings.claude_path = None);
             })
             .on_drag_move(cx.listener(Self::resize_sidebar))
-            // A press in the window puts what floats over it away, so what's typed next goes
-            // where the person pressed.
             .child(crate::popup::listener())
             .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
                 picker::open(this.rails_menu_at, window, cx);

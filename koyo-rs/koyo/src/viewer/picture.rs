@@ -136,7 +136,6 @@ pub fn probe(path: &Path) -> Result<Probe, String> {
         return Err("it doesn't say how big it is".into());
     };
     let (width, height) = (width as u32, height as u32);
-    // Orientations 5 to 8 turn the picture on its side.
     let pixels = if matches!(orientation.map(|o| o as u32), Some(5..=8)) {
         (height, width)
     } else {
@@ -145,7 +144,6 @@ pub fn probe(path: &Path) -> Result<Probe, String> {
     Ok(Probe {
         pixels,
         density: density(dpi),
-        // A format that doesn't say (JPEG) is asked its image, which isn't decoded for it.
         see_through: alpha.unwrap_or_else(|| has_alpha(&source, index)),
         index,
         delays,

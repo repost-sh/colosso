@@ -114,7 +114,6 @@ impl TileHand {
         let origin = if away {
             slot.origin - bounds.origin
         } else {
-            // Under the pointer, as far as the grid goes.
             let free = pointer - drag.grab - bounds.origin;
             let across = (bounds.size.width - slot.size.width).max(px(0.));
             let down = (bounds.size.height - slot.size.height).max(px(0.));
@@ -148,8 +147,6 @@ fn cells(slots: &[Bounds<Pixels>], per_row: usize) -> Vec<(usize, Point<Pixels>)
         .map(|(at, slot)| (at, slot.center()))
         .collect();
     let (count, per_row) = (slots.len(), per_row.max(1));
-    // Only a grid of more than one row has a short row, and so a tile under another to tell
-    // how far apart the rows are.
     if let (Some(first), Some(beside), Some(under)) =
         (slots.first(), slots.get(1), slots.get(per_row))
     {
@@ -267,7 +264,6 @@ impl Element for TileGrid {
             .map(|(_, tile)| tile.request_layout(window, cx))
             .collect();
         let gap = self.gap.into();
-        // Columns sharing the width evenly, so a short last row's tiles are as wide as the rest.
         let style = Style {
             display: Display::Grid,
             grid_cols: Some(GridTemplate {
@@ -297,8 +293,6 @@ impl Element for TileGrid {
         let pointer = window.mouse_position();
         let grid = (slots.as_slice(), self.per_row);
         let held = (self.hand).place(&keys, grid, bounds, pointer, cx.has_active_drag());
-        // Each tile's place is a transitioned value only while one's in hand or settling: the
-        // rest of the time there's no state, so a tile is where it's laid out at once.
         let moving = held.is_some() || self.hand.settling.get();
         let slide = Transition::new(MOTION);
         let at_once = Transition::new(Duration::ZERO);
@@ -308,9 +302,7 @@ impl Element for TileGrid {
                 .map(|(at, slot)| {
                     let laid = slot.origin - bounds.origin;
                     let (target, policy) = match held {
-                        // Under the pointer, or back to its slot once it's away from the grid.
                         Some(h) if h.at == at => (h.origin, if h.away { &slide } else { &at_once }),
-                        // Out of the way of the tile in hand, towards the slot it left.
                         Some(h) => {
                             let slot = slots[shifted(at, h.at, h.to)];
                             (slot.origin - bounds.origin, &slide)
@@ -333,7 +325,6 @@ impl Element for TileGrid {
             offsets,
             held: held.map(|held| held.at),
         };
-        // The tile in hand last, so the pointer is over it rather than the tiles it passes.
         for at in placement.order() {
             window.with_element_offset(placement.offsets[at], |window| {
                 self.tiles[at].1.prepaint(window, cx);
@@ -355,8 +346,6 @@ impl Element for TileGrid {
         for at in placement.order() {
             self.tiles[at].1.paint(window, cx);
         }
-        // The grid lets its tile go wherever the pointer is, before anything under it hears
-        // the release.
         if placement.held.is_some() {
             let (hand, on_drop) = (self.hand.clone(), self.on_drop.clone());
             window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
@@ -415,12 +404,9 @@ mod tests {
         assert_eq!(place(60., 22.).to, 0, "not half way to the next yet");
         assert_eq!(place(70., 22.).to, 1);
         assert_eq!(place(166., 30.).to, 2, "the end of its row");
-        // Down a row: under the second tile, which is the fifth's slot.
         let held = place(98., 74.);
         assert_eq!(held.to, 4);
         assert_eq!(held.origin, point(px(68.), px(52.)));
-        // Past the last tile, in the room its row has left, it goes last, not to the slot
-        // above, though that tile is the nearer.
         assert_eq!(place(166., 74.).to, 4);
         assert_eq!(hand.release(), Some((0, 4)));
         assert!(hand.holding().is_none());
@@ -429,17 +415,14 @@ mod tests {
 
     #[test]
     fn the_tiles_between_step_into_the_slot_left_and_it_stops_at_the_grids_edges() {
-        // From the first slot to the fourth, the three after it each step back one.
         let stepped: Vec<usize> = (0..5).map(|at| shifted(at, 0, 3)).collect();
         assert_eq!(stepped, [0, 0, 1, 2, 4]);
-        // From the last to the second, those from the second on each step on one.
         let stepped: Vec<usize> = (0..5).map(|at| shifted(at, 4, 1)).collect();
         assert_eq!(stepped, [0, 2, 3, 4, 4]);
 
         let hand = TileHand::default();
         let (keys, slots, bounds) = grid(5);
         hand.take(104, point(px(30.), px(22.)));
-        // A little outside, it's drawn as far as the grid goes.
         let held = hand.place(&keys, (&slots, 3), bounds, middle_at(-20., -10.), true);
         let held = held.expect("a tile in hand");
         assert_eq!(
@@ -459,7 +442,6 @@ mod tests {
         assert_eq!((held.to, held.origin), (1, point(px(68.), px(0.))));
         assert_eq!(hand.release(), None, "it's where it was");
 
-        // gpui's drag over, or the tile gone, the grid has none in hand and settles.
         hand.take(101, point(px(30.), px(22.)));
         let grid = (slots.as_slice(), 3);
         assert!(

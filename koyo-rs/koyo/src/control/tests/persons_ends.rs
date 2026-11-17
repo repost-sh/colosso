@@ -37,7 +37,6 @@ fn consent_ends_as_the_page_moves_closes_or_is_pinned_elsewhere(cx: &mut TestApp
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
 
-    // Unpinned onto the worktree, it's an ordinary page, which needs none.
     let page = persons_page(&rig, &agent, "https://a.example/", true, cx);
     allowed(&agent, page, cx);
     rig.shell.update(cx, |shell, cx| shell.unpin(page, cx));
@@ -49,14 +48,12 @@ fn consent_ends_as_the_page_moves_closes_or_is_pinned_elsewhere(cx: &mut TestApp
     );
     assert_eq!(ordinary["controller"], Value::Null, "its lease went with the consent");
 
-    // A loose page pinned is moved: asked for again.
     let page = persons_page(&rig, &agent, "https://b.example/", false, cx);
     allowed(&agent, page, cx);
     rig.shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(page, cx)));
     cx.run_until_parked();
     ended(&agent, page, cx);
 
-    // Pinned at another address, from its menu, it's another pinned page.
     allowed(&agent, page, cx);
     rig.shell.update(cx, |shell, cx| {
         shell.repin_at(page, "https://b.example/other".into(), cx);
@@ -64,7 +61,6 @@ fn consent_ends_as_the_page_moves_closes_or_is_pinned_elsewhere(cx: &mut TestApp
     cx.run_until_parked();
     ended(&agent, page, cx);
 
-    // Closed, a pinned page's pane shows another page once it's opened again.
     allowed(&agent, page, cx);
     rig.shell.update(cx, |shell, cx| shell.close_pinned(page, cx));
     cx.run_until_parked();
@@ -90,7 +86,6 @@ fn consent_ends_unused_or_with_the_connection_it_was_given_on(cx: &mut TestAppCo
     let agent = terminal("term_1");
     let page = persons_page(&rig, &agent, "https://a.example/", true, cx);
 
-    // Ten minutes without the client using it; each use moves that on.
     allowed(&agent, page, cx);
     cx.executor().advance_clock(IDLE / 2);
     assert_eq!(reading(&agent, page, cx).code, ErrorCode::BrowserUnavailable);
@@ -101,7 +96,6 @@ fn consent_ends_unused_or_with_the_connection_it_was_given_on(cx: &mut TestAppCo
     cx.run_until_parked();
     ended(&agent, page, cx);
 
-    // Its connection closing.
     let connected = Caller {
         connection: Some(7),
         ..agent.clone()
@@ -112,7 +106,6 @@ fn consent_ends_unused_or_with_the_connection_it_was_given_on(cx: &mut TestAppCo
     present(7, false, cx);
     ended(&connected, page, cx);
 
-    // A connection that closed before the person answered is granted nothing.
     let leaving = Caller {
         connection: Some(8),
         ..agent.clone()
@@ -128,7 +121,6 @@ fn consent_ends_unused_or_with_the_connection_it_was_given_on(cx: &mut TestAppCo
     assert_eq!(refused.code, ErrorCode::NotFound, "{}", refused.message);
     assert!(refused.message.contains("had closed"), "{}", refused.message);
     assert_eq!(listed(&leaving, page, cx)["controller"], Value::Null);
-    // The log says the person allowed it, and that the call failed for that.
     let logged: Vec<_> = (activity(cx).into_iter().take(2))
         .map(|entry| match entry.kind {
             ActivityKind::Confirmation { decision, .. } => format!("{decision:?}"),
@@ -152,11 +144,8 @@ fn consent_ends_as_the_person_takes_the_page_and_no_lease_brings_it_back(
     draw(rig.window, cx);
     allowed(&agent, page, cx);
 
-    // The person pressing on the page takes it.
     click_pane(rig.window, page, cx);
     assert_eq!(listed(&agent, page, cx)["controller"], json!("person"));
-    // Given back as they leave it be, the page is free; a lease the client comes to hold
-    // after that, by any way at all, is another, which the consent doesn't cover.
     cx.executor().advance_clock(IMPLICIT_HOLD + Duration::from_millis(100));
     cx.run_until_parked();
     assert_eq!(listed(&agent, page, cx)["controller"], Value::Null);
@@ -169,12 +158,10 @@ fn consent_ends_as_the_person_takes_the_page_and_no_lease_brings_it_back(
     assert_eq!(reading(&agent, page, cx).code, ErrorCode::ConsentRequired);
     let released = call(&agent, "browser_release", json!({ "pane": page }), cx).unwrap();
     assert_eq!(released["held"], json!(false));
-    // Nothing the client does takes the page again unasked.
     let click = json!({ "pane": page, "x": 1, "y": 1 });
     let refused = call(&agent, "browser_click", click, cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::ConsentRequired);
     ended(&agent, page, cx);
-    // Asked again, the person is asked.
     allowed(&agent, page, cx);
     assert_eq!(listed(&agent, page, cx)["controller"], json!("you"));
 }
@@ -187,7 +174,6 @@ fn a_call_under_way_stops_once_consent_ends_or_its_page_closes(cx: &mut TestAppC
     let agent = terminal("term_1");
     let page = persons_page(&rig, &agent, "https://a.example/", true, cx);
     allowed(&agent, page, cx);
-    // A wait for an address the page never has goes on until it's told to stop.
     let wait = json!({ "pane": page, "for": "url", "value": "never", "timeoutMs": 20_000 });
     let waiting = send(&agent, None, op("browser_wait", wait), cx);
     cx.executor().advance_clock(Duration::from_secs(1));
@@ -200,7 +186,6 @@ fn a_call_under_way_stops_once_consent_ends_or_its_page_closes(cx: &mut TestAppC
     assert_eq!(stopped.code, ErrorCode::ConsentRequired, "{}", stopped.message);
     assert_eq!(listed(&agent, page, cx)["controller"], Value::Null, "no lease is left");
 
-    // Its page closed meanwhile, the call says so.
     let page = persons_page(&rig, &agent, "https://b.example/", true, cx);
     allowed(&agent, page, cx);
     let wait = json!({ "pane": page, "for": "url", "value": "never", "timeoutMs": 20_000 });
@@ -221,7 +206,6 @@ fn a_page_an_extension_closes_ends_consent_as_any_close_does(cx: &mut TestAppCon
     let rig = controlled("control-persons-extension", &[&root], cx);
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
-    // A pinned page and a loose one, each used with the person's consent, a call under way.
     for pinned in [true, false] {
         let page = persons_page(&rig, &agent, "https://a.example/", pinned, cx);
         allowed(&agent, page, cx);
@@ -230,8 +214,6 @@ fn a_page_an_extension_closes_ends_consent_as_any_close_does(cx: &mut TestAppCon
         cx.executor().advance_clock(Duration::from_secs(1));
         cx.run_until_parked();
         assert!(taken(&waiting).is_none(), "still waiting");
-        // The engine says the page closed without the app asking: an extension closed its
-        // tab (`chrome.tabs.remove`). Its tab closes as it does when the person closes it.
         let view = read_shell(&rig, cx, |shell, _| shell.workspace.pane(page)?.view().cloned());
         (view.expect("the page")).update(cx, |_, cx| cx.emit(BrowserEvent::ClosedItself));
         cx.executor().advance_clock(Duration::from_secs(1));
@@ -239,8 +221,6 @@ fn a_page_an_extension_closes_ends_consent_as_any_close_does(cx: &mut TestAppCon
         let closed = taken(&waiting).expect("answered").unwrap_err();
         assert_eq!(closed.code, ErrorCode::BrowserUnavailable, "{}", closed.message);
         assert!(closed.message.contains("closed"), "{}", closed.message);
-        // No page is left for the consent to be for: a pinned page's tile has none open, and
-        // a loose page is gone.
         let open = read_shell(&rig, cx, |shell, _| shell.workspace.pane(page)?.view().cloned());
         assert!(open.is_none(), "pinned {pinned}: the page is closed");
     }
@@ -260,7 +240,6 @@ fn a_worktrees_page_that_becomes_the_persons_during_a_call_is_theirs(cx: &mut Te
     let waiting = send(&agent, None, op("browser_wait", wait), cx);
     cx.executor().advance_clock(Duration::from_secs(1));
     cx.run_until_parked();
-    // The person pins it: theirs, and the agent's lease of it goes.
     rig.shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(page, cx)));
     cx.run_until_parked();
     assert_eq!(listed(&agent, page, cx)["controller"], Value::Null);

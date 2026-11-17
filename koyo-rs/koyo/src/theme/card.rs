@@ -44,8 +44,6 @@ pub fn island(p: Palette) -> Div {
         .bg(p.card)
         .shadow(vec![SHADOW])
         .overflow_hidden()
-        // Prepainted before what the island holds, which is added after it; and what's
-        // prepainted once the island is done is in it no longer.
         .child(
             canvas(|bounds, _, _| PREPAINTED.set(Some(bounds)), |_, (), _, _| {})
                 .absolute()

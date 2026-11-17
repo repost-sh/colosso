@@ -115,8 +115,6 @@ pub fn init(cx: &mut App) {
     follow(&desk, cx);
     let following = desk.clone();
     settings::observe_app(cx, move |cx| follow(&following, cx)).detach();
-    // The host closes the agent's apps and removes the desktop when told, and does the same
-    // on its own if the app just goes.
     cx.on_app_quit(move |cx| {
         desk.update(cx, Desk::stop);
         async {}
@@ -190,20 +188,14 @@ impl Desk {
         });
         self.starts += 1;
         let mine = self.starts;
-        // Left to run to its end whatever comes after: a start that a later one overtook
-        // still has its host told to quit once it connects.
         cx.spawn(async move |this, cx| {
             let started = started.await;
             let running = this.update(cx, |this, cx| this.started(mine, started, cx));
             if !matches!(running, Ok(true)) {
                 return;
             }
-            // What came while the main thread was busy is handled in one update: of a
-            // window's frames, the last.
             while let Some(first) = told.next().await {
                 let handled = this.update(cx, |this, cx| {
-                    // Turned off or started again since: this host was told to quit, and
-                    // what it still says is nothing to the desk.
                     if this.starts != mine {
                         return false;
                     }
@@ -237,13 +229,11 @@ impl Desk {
         let current = mine == self.starts && self.state == State::Starting;
         match started {
             Ok(running) => {
-                // Turned off, or started again, while it started.
                 if !current {
                     let _ = running.tell.send(ToHost::Quit);
                     return false;
                 }
                 log::info!("the agent desktop's host runs as process {}", running.pid);
-                // What it posts never shows a native menu (`docs/browser.md` 14).
                 koyo_seam::heard::desk_host(Some(running.pid));
                 let visible = !self.shown_by.is_empty();
                 let _ = (running.tell).send(ToHost::Visible { visible });
@@ -270,7 +260,6 @@ impl Desk {
         if let Some(running) = self.running.take() {
             let _ = running.tell.send(ToHost::Quit);
         }
-        // What the host still says after this is nothing to the desk.
         self.starts += 1;
         self.state = State::Off;
         self.forget("The agent desktop is off.", cx);
@@ -309,7 +298,6 @@ impl Desk {
 
     fn receive(&mut self, incoming: host::Incoming, cx: &mut Context<Self>) {
         match incoming {
-            // An answer goes to who asked and a line to the log: nothing that shows changed.
             host::Incoming::Said(said @ (FromHost::Answer { .. } | FromHost::Log { .. })) => {
                 return self.said(said, cx);
             }
@@ -318,8 +306,6 @@ impl Desk {
             host::Incoming::Closed => {
                 if matches!(self.state, State::Starting | State::Running) {
                     self.fail("The agent desktop's host stopped.".into(), cx);
-                    // macOS offers to quit it as Screen Recording is given, for the grant
-                    // to take hold: it's started again, as the person meant.
                     if self.expecting() {
                         self.start(cx);
                     }

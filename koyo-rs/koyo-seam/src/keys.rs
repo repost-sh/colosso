@@ -57,8 +57,6 @@ pub enum Route {
 pub fn route(key: Key, pass: Pass, first: First) -> Route {
     match (first, pass) {
         (First::Gpui, Pass::Equivalent) => Route::Whole,
-        // The page that handed it back no longer has the keyboard: the person has moved on,
-        // and the key isn't for what they moved to.
         (First::Gpui, Pass::HandBack) => Route::Drop,
         (First::Native, Pass::Equivalent) if key.command || key.control => Route::Bindings,
         (First::Native, Pass::Equivalent) => Route::Deliver,

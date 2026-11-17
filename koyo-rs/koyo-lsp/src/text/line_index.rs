@@ -107,7 +107,6 @@ impl LineIndex {
     /// after move by the difference in length. Only the lines from the edit on are touched.
     pub fn edit(&mut self, range: Range<usize>, new_text: &str) {
         let range = range.start..range.end.max(range.start);
-        // The lines starting inside the range: their `\n` was in it.
         let first = self.starts.partition_point(|&start| start <= range.start);
         let after = self.starts.partition_point(|&start| start <= range.end);
         for start in &mut self.starts[after..] {
@@ -210,7 +209,6 @@ mod tests {
 
     #[test]
     fn columns_count_the_negotiated_units() {
-        // "a", an emoji (4 bytes, 2 UTF-16 units), "b".
         let text = "x\na😀b";
         let index = LineIndex::new(text);
         let b = "x\na😀".len();
@@ -236,9 +234,7 @@ mod tests {
     fn positions_outside_the_text_are_clamped() {
         let text = "ab\r\ncd";
         let index = LineIndex::new(text);
-        // Past the end of a line: before its `\r\n`.
         assert_eq!(index.offset(text, Position::new(0, 9), Encoding::Utf16), 2);
-        // Past the last line: the end.
         assert_eq!(index.offset(text, Position::new(5, 0), Encoding::Utf8), 6);
         assert_eq!(
             index.position(text, 99, Encoding::Utf8),
@@ -266,7 +262,6 @@ mod tests {
         let emoji = "x\na".len().."x\na😀".len();
         let range = index.range(text, emoji.clone(), Encoding::Utf16);
         assert_eq!(index.offsets(text, range, Encoding::Utf16), emoji);
-        // Backwards, it's empty where it starts; past the line's end, before its `\r\n`.
         let backwards = lsp_types::Range::new(Position::new(1, 3), Position::new(0, 0));
         assert_eq!(
             index.offsets(text, backwards, Encoding::Utf16),
@@ -282,7 +277,6 @@ mod tests {
     #[test]
     fn edits_splice_the_line_starts() {
         let mut text = IndexedText::new("ab\ncd\nef\ngh".to_owned());
-        // Joins three lines into one, then breaks one in two.
         text.edit(1..7, "X", Encoding::Utf8).unwrap();
         assert_eq!(text.as_str(), "aXf\ngh");
         text.edit(2..2, "\n\n", Encoding::Utf8).unwrap();

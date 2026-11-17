@@ -105,7 +105,6 @@ mod tests {
             read_since(&path, first, 1024).unwrap().lines,
             ["{\"id\":2}"]
         );
-        // A third line would pass 40 bytes: the log starts over, the old one kept as `.1`.
         journal.append(
             LogKind::Commands,
             &serde_json::json!({ "id": 3, "pad": "xxxxxxxx" }),

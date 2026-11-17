@@ -48,10 +48,8 @@ fn settings_set_changes_the_allowlisted_settings_only(cx: &mut TestAppContext) {
         assert_eq!(settings.branch_prefix, BranchPrefix::Custom("fs".into()));
         assert!((settings.sidebar_width - 300.).abs() < f32::EPSILON);
     });
-    // The worktrees folder back to its default.
     let reset = call(&agent, "settings_set", json!({ "worktreesDir": null }), cx).unwrap();
     assert_eq!(reset["worktreesDir"], json!(null));
-    // A field out of bounds refuses the whole call.
     let refused = call(
         &agent,
         "settings_set",

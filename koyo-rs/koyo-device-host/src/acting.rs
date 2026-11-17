@@ -116,7 +116,6 @@ impl Waiting {
     /// from `before` and went still, or the time ran out.
     pub fn settling(request: RequestId, before: Option<Sample>, host: &Host) -> Waiting {
         let mut watch = Watch::new(host, before);
-        // What drew before the watch began is looked at at once: a still screen sends no frame.
         watch.seen = host.ring.copied_count().wrapping_sub(1);
         Waiting {
             request,
@@ -133,8 +132,6 @@ impl Host {
     /// steps are sent, its look goes on, waits are checked. Whether the loop should come back
     /// soon.
     pub fn act_on(&mut self) -> bool {
-        // Locked under an act (the person's side button): nothing more goes to the device, whose
-        // keys would go to its passcode field; at a lock notice, nothing until it's known.
         if self.device.locked() && (self.running.is_some() || !self.acts.is_empty()) {
             let why = "the device was locked: only the person can unlock it, in their hands";
             self.interrupt(RefusalCode::Locked, why);
@@ -236,8 +233,6 @@ impl Host {
         let watch = running
             .watch
             .get_or_insert_with(|| Watch::new(self, running.before.clone()));
-        // Until the picture has changed and then stood still, or the time is up: a press whose
-        // effect is a moment coming isn't taken for one that did nothing.
         let still = watch.still_for(self, QUIET);
         if !(still && watch.changed) && watch.since.elapsed() < SETTLES_WITHIN {
             return true;

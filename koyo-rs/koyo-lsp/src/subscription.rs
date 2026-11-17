@@ -75,7 +75,6 @@ impl<P: DeserializeOwned + Send + Sync + 'static> Stream for Notifications<P> {
             let Some(notice) = ready!(self.receiver.poll_next_unpin(cx)) else {
                 return Poll::Ready(None);
             };
-            // One that doesn't parse is skipped; the stream goes on with the next.
             if let Some(params) = notice.parsed(&self.server, self.method) {
                 return Poll::Ready(Some(params));
             }
@@ -87,7 +86,6 @@ impl Shared {
     pub(crate) fn subscribe<P>(&self, method: &'static str) -> Notifications<P> {
         let (sender, receiver) = unbounded();
         let mut subscribers = lock(&self.subscribers);
-        // Once the server has ended, the stream ends before it starts.
         if !self.has_exited() {
             subscribers
                 .entry(method.to_owned())
@@ -125,7 +123,6 @@ pub(crate) fn publish(subscribers: &[UnboundedSender<Arc<Notice>>], payload: Pay
         parsed: Mutex::default(),
     });
     for sender in subscribers {
-        // One that stopped listening since the copy was made is dropped next time.
         let _ = sender.unbounded_send(Arc::clone(&notice));
     }
 }

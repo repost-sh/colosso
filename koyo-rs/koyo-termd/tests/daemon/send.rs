@@ -82,8 +82,6 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
     let refused = refusal(agent.connection.request(RequestBody::Send(unknown)));
     assert_eq!(refused, Some(ErrorCode::InvalidArgument));
 
-    // Ctrl-C by name stops what runs. The program says it started, so the interrupt reaches
-    // it and not the shell still starting it; `sh` and its `sleep` die of it together.
     let sleeping = SendRequest {
         text: Some("sh -c 'echo asleep; sleep 30'".into()),
         enter: true,
@@ -113,7 +111,6 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
         record.status == Status::Idle && record.last_exit == Some(130)
     });
 
-    // The person typing takes the terminal; the agent's sends are refused from then on.
     let (index, _) = person.attach(&handle, None);
     person.connection.input(index, b" ").unwrap();
     wait_until("the agent to be refused", || {

@@ -7,9 +7,6 @@ use koyo_daemon::{SOCKET_PATH_MAX, bind, connect, socket_address};
 
 #[test]
 fn a_socket_too_deep_for_its_address_is_bound_and_reached_where_it_is() {
-    // A folder of this test's own in the checkout's scratch folder, deep enough that its socket's
-    // absolute path is too long for an address whatever the checkout's, and the way to it from
-    // the package, where tests run, isn't.
     let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let name = format!("socket-{}-{}", std::process::id(), "d".repeat(60));
     let dir = checkout.join(".superpowers/t").join(name);

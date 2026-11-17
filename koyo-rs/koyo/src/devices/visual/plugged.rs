@@ -45,7 +45,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         screen.orientation,
     ));
 
-    // The rows that need the owner's hands, when he's there for them.
     let hands = std::env::var("KOYO_VISUAL_PHONE").unwrap_or_default();
     if hands.starts_with("hands") {
         return super::hands::run(drawn, view, &link, &ipad.udid, screen, hands == "hands-plug", lines);

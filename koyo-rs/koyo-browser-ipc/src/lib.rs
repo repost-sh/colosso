@@ -110,7 +110,6 @@ pub type PaneId = u64;
 /// # Errors
 /// When the message is larger than [`MAX_FRAME`] or the writer fails.
 pub fn write_frame<T: Serialize>(writer: &mut impl Write, message: &T) -> io::Result<()> {
-    // The length goes in front once the body is written after it.
     let mut frame = vec![0u8; 4];
     serde_json::to_writer(&mut frame, message).map_err(io::Error::other)?;
     let body = frame.len() - 4;
@@ -165,7 +164,6 @@ pub fn check_hello(hello: &Hello, token: &str) -> Result<(), String> {
             hello.protocol
         ));
     }
-    // Compare without an early exit on the first differing byte.
     let same = hello.token.len() == token.len()
         && hello
             .token

@@ -25,7 +25,6 @@ fn capability_cache_sticky_false() {
     assert!(world.store.use_keychain(), "optimistic before any op");
     assert!(locked_read(&world).is_err());
     assert!(!world.store.use_keychain());
-    // A later success doesn't send operations back within the cooldown: no split.
     world.security.fake.set("svc", "acct", "ok");
     world
         .store
@@ -50,8 +49,6 @@ fn kc_call_failure_schedules_a_recheck() {
 
 #[test]
 fn keychain_recovers_after_cooldown() {
-    // A long-running app re-probes after the cooldown, so a transient timeout doesn't
-    // disable the Keychain for the whole process.
     let world = World::new();
     world.store.set_keychain_usable_cache(Some(false));
     world.store.lapse_keychain_cooldown();

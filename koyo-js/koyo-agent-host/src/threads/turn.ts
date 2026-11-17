@@ -1,9 +1,3 @@
-// The turn a session works on (docs/chat.md 4.5.8): its items by the provider's names for
-// them, as they are now. Streaming text grows here first; the store keeps it at most every
-// half second without a change number, since clients have it from the appends, and the step
-// that closes an item writes it whole. The thread's state starts a turn with its run and ends
-// it with the commit that settles the run.
-
 import { log } from "../log";
 import type { ItemId, RunId } from "../protocol/ids";
 import type { Item, Run } from "../protocol/model";

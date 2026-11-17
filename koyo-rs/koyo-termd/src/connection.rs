@@ -191,7 +191,6 @@ fn handshake(daemon: &Arc<Daemon>, stream: &mut UnixStream, id: u32) -> io::Resu
         {
             outbound.send(Bytes::from(out));
         }
-        // Written before the hang-up, so the client learns why.
         outbound.close_after(std::time::Instant::now() + Duration::from_secs(1));
         return Err(io::Error::other(format!(
             "client speaks protocol {}",

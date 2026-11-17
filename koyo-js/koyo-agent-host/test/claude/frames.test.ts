@@ -125,7 +125,6 @@ describe("text and thinking", () => {
     const shown = events.length;
     frames.end("completed");
     expect(events).toHaveLength(shown);
-    // Forgotten, the block starts anew rather than growing what the last turn wrote.
     send(...streamed);
     expect(events.at(shown)).toMatchObject({ type: "item.started", key: "m1:text:0" });
   });
@@ -287,7 +286,6 @@ describe("notices", () => {
       resetsAt: 1_793_865_600,
       rateLimitType: "seven_day",
       utilization: 0.82,
-      // Claude Code's internal field, outside the SDK's types: a window it can't read is dropped.
       unifiedWindows: {
         five_hour: { utilization: 0.31, resetsAt: 1_793_822_400, status: "allowed" },
         seven_day: { utilization: 0.82, resetsAt: 1_793_865_600, status: "allowed_warning" },

@@ -19,7 +19,6 @@ impl BrowserView {
     }
 
     pub(in crate::browser) fn send(&self, request: AppRequest, cx: &mut Context<Self>) {
-        // A running host takes it without `Browsers` changing, which every page view reads.
         if let Some(request) = self.browsers.read(cx).send_now(request) {
             self.browsers
                 .update(cx, |browsers, _| browsers.send(request));
@@ -71,7 +70,6 @@ impl BrowserView {
         }
         match status {
             HostStatus::Idle => {
-                // The view is attached from its making to its release.
                 self.browsers.update(cx, Browsers::start_if_idle);
                 return;
             }
@@ -90,8 +88,6 @@ impl BrowserView {
                 project,
                 by,
             } => {
-                // Of the profile its pages use now: that changed, the page closes and opens again
-                // in it (`Browsers::profiles_changed`).
                 crate::browser::profile(project, *by, cx).clone_into(profile);
                 AppRequest::Open {
                     pane: self.pane,
@@ -118,14 +114,11 @@ impl BrowserView {
         };
         let page = matches!(request, AppRequest::Open { .. });
         self.opened = Some(epoch);
-        // A page opens on screen: the host is told at once whether it is (`sight.rs`), as
-        // one no pane draws, or a hidden tab's opened again, isn't.
         self.visible = None;
         self.seen = false;
         self.send(request, cx);
         self.tell_sight(cx);
         if page {
-            // Its session is new: what responsive mode emulates is told it again.
             self.session_opened(cx);
         }
     }
@@ -149,12 +142,10 @@ impl BrowserView {
         let epoch = self.browsers.read(cx).epoch();
         if self.opened.is_some_and(|opened| opened != epoch) {
             self.opened = None;
-            // The host that asked is gone.
             self.dialogs.clear();
             self.forget_passkey();
             self.menu_request = None;
             self.open_menu = None;
-            // A page full screen in it isn't, in the one now.
             if self.is_fullscreen() {
                 self.fullscreen_changed(false, cx);
             }

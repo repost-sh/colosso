@@ -76,7 +76,6 @@ impl Shell {
                         worktree: None,
                         status: None,
                     };
-                    // Terminals remembered from before a restart need the daemon to come back.
                     if client.dir().remembers_terminals() {
                         client.request(list).map(Some)
                     } else {
@@ -86,11 +85,8 @@ impl Shell {
                 .await;
             let terminals: Vec<TerminalSummary> = match listed {
                 Ok(Some(ResponseBody::Terminals { terminals })) => terminals,
-                // No daemon runs and none is remembered: no terminal outlived the window.
                 Ok(None) => Vec::new(),
                 Ok(Some(_)) => return,
-                // Another build's daemon: the shells it would bring back get tabs, which say
-                // so and offer to replace it.
                 Err(error) if is_other_build(&error) => {
                     log::warn!("couldn't list the running terminals: {error}");
                     this.update(cx, |this, cx| this.add_remembered_shells(&fresh, cx))
@@ -124,8 +120,6 @@ impl Shell {
                 continue;
             };
             let name = record.name.clone();
-            // A shell the person opened that a daemon restart ended runs again, from the
-            // screen it had; other ended terminals stay closed.
             let source = match record.exit {
                 None => Source::Existing {
                     handle: record.handle.clone(),
@@ -142,7 +136,6 @@ impl Shell {
             };
             self.place_terminal(fresh, &worktree, Some(&record.handle), (source, name));
         }
-        // What's left the daemon doesn't run any more: ended, or closed, while the window was.
         for gone in std::mem::take(&mut self.terminals.unconfirmed) {
             self.workspace.close_terminal_pane(gone);
         }
@@ -197,7 +190,6 @@ impl Shell {
                 (request, name.to_owned()),
             );
         }
-        // The rest stay as they were brought back: the other build's daemon may run them yet.
         self.terminals.unconfirmed.clear();
         cx.notify();
     }

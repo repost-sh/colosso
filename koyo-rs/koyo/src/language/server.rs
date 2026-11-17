@@ -181,7 +181,6 @@ impl Server {
         self.restarting = None;
         self.running = None;
         self.reset();
-        // A new process: starting until it's first ready, and said ready again then.
         self.ready_once = false;
         self.started = Some(cx.background_executor().now());
         self.set_state(State::Starting, cx);
@@ -211,7 +210,6 @@ impl Server {
                     return;
                 }
             };
-            // Subscribed before it's initialized, so nothing it says is missed.
             let heard = hear(&client);
             match client.initialize(&root).await {
                 Ok(_) => {
@@ -220,7 +218,6 @@ impl Server {
                         return;
                     }
                 }
-                // It ended: how it did comes with its events.
                 Err(LspError::Exited) => {}
                 Err(error) => {
                     let why = format!("it couldn't be initialized: {error}");
@@ -247,7 +244,6 @@ impl Server {
         self.set_state(State::Stopped, cx);
         self.tell(log::Level::Info, &format!("stopping: {why}"));
         let (name, root) = (self.kind.name(), self.root.display().to_string());
-        // Dropped while it was starting, the client was killed with the task.
         let Some(client) = client else {
             return Task::ready(());
         };
@@ -392,8 +388,6 @@ impl Server {
         };
         if state == State::Ready && !self.ready_once {
             self.ready_once = true;
-            // A file shown before now got no hints or colours, or ones from before it had
-            // read everything: fetched again.
             self.hints_refreshed += 1;
             self.tokens_refreshed += 1;
             let took = (self.started).map(|started| {
@@ -424,7 +418,6 @@ impl Server {
         let said: Vec<&str> = (exit.stderr.iter().map(|line| line.trim()))
             .filter(|line| !line.is_empty())
             .collect();
-        // The last few lines say most: a panic's message, or what it gave up on.
         let last = said.get(said.len().saturating_sub(3)..).unwrap_or_default();
         let why = if last.is_empty() {
             format!("it exited with {:?}", exit.code)

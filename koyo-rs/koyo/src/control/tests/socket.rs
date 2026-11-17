@@ -63,7 +63,6 @@ fn a_socket_client_says_hello_and_its_calls_are_answered(cx: &mut TestAppContext
         next_frame(&mut reader),
         json!({ "type": "welcome", "grant": grant })
     );
-    // An operation that doesn't exist is answered without the UI thread.
     let unknown = json!({ "type": "call", "id": 7, "operation": "nope", "input": {} });
     writer.write(&unknown, MAX_CLIENT_FRAME).unwrap();
     let answer = next_frame(&mut reader);
@@ -85,7 +84,6 @@ fn a_socket_client_says_hello_and_its_calls_are_answered(cx: &mut TestAppContext
     assert_eq!(answer["type"], json!("result"));
     assert_eq!(answer["id"], json!(9));
     assert_eq!(answer["output"]["windowOpen"], json!(true));
-    // A second hello ends the connection.
     writer.write(&hello, MAX_CLIENT_FRAME).unwrap();
     let refusal = next_frame(&mut reader);
     assert_eq!(refusal["type"], json!("error"));

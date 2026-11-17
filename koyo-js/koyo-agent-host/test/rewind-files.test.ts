@@ -1,6 +1,3 @@
-// Going back with the files (docs/chat.md C11): what's offered, what stands in its way, and that
-// the conversation and the files go together or not at all.
-
 import { utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -175,7 +172,6 @@ describe("going back with the files", () => {
     await Bun.sleep(5);
     const second = await said(on, "Second");
     on.provider.entry = "an entry";
-    // Written by the run that's going, later than the one that's left ended.
     const file = fileOf(on, "a.txt", -1);
     await on.threads.rewind(on.thread.id, second, false);
     on.provider.changes = changing(file);

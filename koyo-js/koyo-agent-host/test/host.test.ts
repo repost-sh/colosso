@@ -1,6 +1,3 @@
-// The host's methods over its socket, as a client sees them: what each answers, and the events
-// a thread's steps send, in order.
-
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 

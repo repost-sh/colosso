@@ -42,9 +42,6 @@ impl Kept {
                     let types: Obj = msg_send![&**item, types];
                     ns::items(&types)
                         .into_iter()
-                        // A promise is kept by its owner until asked for: asking would make
-                        // the owner write the file it promises. It's left out, and so gone
-                        // from what is put back.
                         .filter(|kind| {
                             ns::text(kind)
                                 .is_none_or(|kind| !kind.to_lowercase().contains("promise"))

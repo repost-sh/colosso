@@ -1,5 +1,3 @@
-// What the CLI says of a session's subagents and other tasks, as recorded (0.3.317).
-
 import { randomUUID } from "node:crypto";
 
 import type {

@@ -113,7 +113,6 @@ fn pressed(event: &KeystrokeEvent, window: &mut Window, cx: &mut App) {
     let window_handle = window.window_handle();
     let now = cx.background_executor().now();
     let repeat = settings::get(cx).key_repeat;
-    // A terminal's program hears keys repeat as macOS repeats them, as in any terminal.
     let in_terminal =
         (window.context_stack().iter()).any(|context| context.contains(koyo_term::CONTEXT));
     let repeater = cx.default_global::<Repeater>();

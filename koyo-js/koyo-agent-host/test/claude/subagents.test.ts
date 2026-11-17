@@ -1,6 +1,3 @@
-// A session's subagents, frame by frame as a real CLI sent them (0.3.317, recorded running one
-// subagent in the foreground and one in the background).
-
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { DriverEvent, ItemEvent } from "../../src/providers/provider";

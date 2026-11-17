@@ -16,7 +16,6 @@ fn colossos_data_moves_once_its_daemon_has_stopped() {
     fs::write(former.join("control/colosso-control.sock"), "").unwrap();
     let stopped = Cell::new(None);
     let moved = move_data_folder(&former, &data, |dir| {
-        // Stopped while its folder is still where it runs.
         stopped.set(Some(dir.to_path_buf()));
         assert!(dir.join("term").is_dir());
         Ok(())
@@ -115,9 +114,6 @@ fn a_koyo_is_running_while_its_socket_answers() {
     let listener = koyo_daemon::bind(&socket).unwrap();
     assert!(answers(&socket));
     drop(listener);
-    // A process being started holds a copy of every descriptor until it becomes its program,
-    // the listener's among them, and other tests start git all the while: it's let go of
-    // within moments.
     let let_go = (0..200).any(|_| {
         let quiet = !answers(&socket);
         if !quiet {

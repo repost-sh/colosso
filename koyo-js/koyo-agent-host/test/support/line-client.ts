@@ -1,6 +1,3 @@
-// A client of the host's socket as tests drive it: raw lines out, as much as the socket takes
-// at a time, and each line in parsed, in order.
-
 import type { Socket } from "bun";
 import { z } from "zod";
 

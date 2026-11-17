@@ -71,13 +71,9 @@ pub unsafe extern "C" fn koyo_desk_host_main(
         })
         .collect();
     let value = |name: &str| {
-        // The last one given: what Koyo passes comes last, after anything put before it.
         let at = given.iter().rposition(|one| one == name)?;
         given.get(at + 1).map(PathBuf::from)
     };
-    // A probe: what this process holds now, written to the file named, and nothing else. A
-    // host that runs can't tell that Screen Recording was given since it started; a process
-    // started afresh can.
     if let Some(file) = value("--grants") {
         let wrote = std::fs::write(file, grants::Grants::read().said());
         return i32::from(wrote.is_err());

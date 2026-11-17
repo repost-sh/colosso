@@ -83,7 +83,6 @@ impl Element for Pages {
         let scale = window.scale_factor();
         let view = self.view.clone();
         if (view.read(cx).viewport, view.read(cx).scale) != (viewport, scale) {
-            // Not while drawing: the viewer asks for what's in sight at the new size.
             cx.defer(move |cx| view.update(cx, |view, cx| view.set_viewport(viewport, scale, cx)));
         }
         window.insert_hitbox(bounds, HitboxBehavior::Normal)
@@ -119,7 +118,6 @@ impl Element for Pages {
         };
         window.set_cursor_style(cursor, hitbox);
         let scale = window.scale_factor();
-        // Each page's place in the window, on the screen's pixels.
         let snap = |value: Pixels| px((f32::from(value) * scale).round() / scale);
         let placed: Vec<Bounds<Pixels>> = (laid.pages.iter())
             .map(|page| {
@@ -241,7 +239,6 @@ impl Pages {
 fn paint_checker(area: Bounds<Pixels>, dark: bool, window: &mut Window) {
     let (one, other) = if dark { (0x26, 0x31) } else { (0xff, 0xe9) };
     let grey = |shade: u32| gpui_kit::rgb(shade * 0x01_01_01);
-    // The pattern starts at its quad's corner: one on a pair of squares' corner in the window.
     let pair = 2. * SQUARE;
     let corner = |from: Pixels| px((f32::from(from) / pair).floor() * pair);
     let from = point(corner(area.origin.x), corner(area.origin.y));

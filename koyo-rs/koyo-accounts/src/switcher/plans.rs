@@ -85,9 +85,6 @@ impl Switcher {
             }
             let mut token = usable_access_token(Some(&info.creds), self.env.now());
             if token.is_none() && !info.is_active() {
-                // The accounts info was read before the usage pass, which may have changed
-                // this slot's backup since; a backup write drops the display cache, so the
-                // cached read sees the new token.
                 let backup = self
                     .store
                     .read_account_credentials(info.num(), info.email(), true);

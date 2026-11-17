@@ -24,8 +24,6 @@ fn request(payload: &Dict) -> Dict {
 
 /// The touch screen's id in the list the service gives of its devices.
 pub fn touchscreen_in(list: &str) -> Option<u64> {
-    // Each device is a dictionary with its usage and its id; the touch screen's usage page is
-    // the digitizer's (0x0D) and its usage a touch screen's (0x04).
     let at = list
         .find("TouchScreen")
         .or_else(|| list.find("touchscreen"))?;
@@ -114,7 +112,6 @@ mod tests {
         assert_eq!(report.len(), 58);
         assert_eq!(&report[..3], &[0x09, 3, 0x05]);
         assert_eq!(&report[3..8], &[0xC0, 0, 0, 0xFF, 0xFF]);
-        // 0.5 of 65535 rounds to 32768, 0.25 to 16384.
         assert_eq!(&report[8..13], &[0xC1, 0x00, 0x80, 0x00, 0x40]);
         assert_eq!(&report[13..18], &[0xC2, 0xFF, 0xFF, 0, 0]);
         assert_eq!(report[40], 0x02);

@@ -100,7 +100,6 @@ pub const WORDS_TINT: f32 = 0.3;
 
 impl Columns {
     fn new(width: Pixels, halves: usize, look: &Look) -> Self {
-        // Inside the card's two borders, a divider between the halves.
         let inner = width - look.inset * 2. - px(2.);
         let dividers = px((halves - 1) as f32);
         let half = (inner - dividers) / halves as f32;
@@ -205,7 +204,6 @@ impl Element for CodeLine {
     ) -> Shaped {
         let look = &self.look;
         let columns = Columns::new(bounds.size.width, self.halves.len(), look);
-        // Shaped again as laying out shaped it, which GPUI keeps for the frame.
         let code = (self.halves.iter().enumerate())
             .map(|(index, half)| shape(half, columns.code(index, half).1, look, window))
             .collect();
@@ -431,7 +429,6 @@ mod tests {
     #[test]
     #[expect(clippy::single_range_in_vec_init, reason = "one changed word's bytes")]
     fn runs_cover_the_line_in_colours_and_marks() {
-        // `fn total(x)`: a keyword, then plain with a changed word inside it.
         let runs = runs_of(11, &[(0..2, Token::Keyword)], &[(3..8)]);
         assert_eq!(
             runs,

@@ -131,8 +131,6 @@ pub fn rows(query: &Query, cx: &mut App) -> Vec<Row> {
         (Kind::Chat, false) => chat(query.here, typed, cx),
         (Kind::Terminal, true) => words(history::Kind::Command, "", query.here, MOST_EMPTY, cx),
         (Kind::Terminal, false) => terminal(query.here, typed, cx),
-        // A worktree's name lists nothing: Enter takes it to the New Worktree dialog. Nor
-        // does the agent desktop, of which there is one.
         (Kind::Device, _) => devices(query.here, typed, cx),
         (Kind::Worktree | Kind::Desktop, _) => Vec::new(),
     };
@@ -165,7 +163,6 @@ fn browser_empty(here: &Here, cx: &mut App) -> Vec<Row> {
 fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
     let (here, now) = (query.here, history::now());
     let mut rows = Vec::new();
-    // The first row: the host completing what's typed, or the address typed, or a search.
     let address = match read_address(typed) {
         Some(Address::Page(url)) => Some(url),
         _ => None,
@@ -184,7 +181,6 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
         }
         (None, None) => {}
     }
-    // An address without a scheme might be a search too, as Firefox offers.
     let has_scheme = typed.contains("://") || typed.starts_with("about:");
     if address.is_none() || !has_scheme {
         let search = Row::new(
@@ -199,8 +195,6 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
     } else {
         Vec::new()
     };
-    // A page the first row visits already isn't listed again, as Firefox drops what dupes its
-    // first result; a tab showing it still is, to switch to.
     let first = rows.first().and_then(|row| match &row.act {
         Act::Visit(url) => Some(history::same_page_key(url)),
         _ => None,
@@ -208,8 +202,6 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
     let general: Vec<Row> = (pages(here, typed, now, cx).into_iter())
         .filter(|row| !matches!((&row.act, &first), (Act::Visit(url), Some(key)) if history::same_page_key(url) == *key))
         .collect();
-    // Of the rows left, searches take two in three and pages the rest, as Firefox shares them out
-    // with suggestions shown first; either takes what the other leaves.
     let room = MOST.saturating_sub(rows.len());
     let searches_room = (room * 2)
         .div_ceil(3)
@@ -292,7 +284,6 @@ fn pages(here: &Here, typed: &str, now: i64, cx: &mut App) -> Vec<Row> {
         .map(|found| match here.tab_showing(&found.text) {
             Some(tab) if !switched.contains(&tab.pane) => {
                 switched.push(tab.pane);
-                // The tab's own title may not be the one the history kept.
                 matching_tab(tab, typed).unwrap_or_else(|| switch(tab, Vec::new(), Vec::new()))
             }
             _ => page(found, cx),
@@ -453,7 +444,6 @@ fn devices(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
         _ => &[],
     };
     let simulators = simulators.iter().map(|simulator| (Chosen::from(simulator), simulator.system.clone()));
-    // A device that misses a step says which in two or three words; picked, its tab says what to do.
     let plugged = (devices.plugged().iter()).map(|device| {
         let detail = (device.missing.as_ref()).map_or_else(|| device.system.clone(), |(code, _)| koyo_device_wire::real::label(*code).to_owned());
         (Chosen::from(device), detail)

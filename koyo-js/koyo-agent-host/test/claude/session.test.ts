@@ -176,7 +176,6 @@ describe("a settings change", () => {
     await made.query();
     expect(made.session.configure({ model: null })).toBe("reopen");
     expect(made.session.configure({ effort: null })).toBe("reopen");
-    // Asking the person can't become bypassing them in a process opened to ask.
     expect(made.session.configure({ permission: "full_access" })).toBe("reopen");
     const bypassing = bench(spec({ permission: "full_access" }));
     await bypassing.query();
@@ -248,7 +247,6 @@ describe("a session's end", () => {
         resolve();
       });
     });
-    // What it wrote comes on its own pipe, a little after it exits.
     await settle(3);
     query.end(new Error("Claude Code process exited with code 1"));
     await settle();

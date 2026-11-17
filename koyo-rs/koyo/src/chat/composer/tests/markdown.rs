@@ -139,7 +139,6 @@ fn typing_styles_whats_typed_in_place_and_edits_by_its_marks_style_it_again(
     assert_eq!(styled(&chat, cx), owned(&bold));
     assert_eq!(chat.typed(cx), "**bold**", "the marks stay");
 
-    // Inside the marks, the words grow; next to them, what's typed is plain.
     caret_at(&chat, 4..4, cx);
     typing(&chat, "ld bo", cx);
     caret_at(&chat, 13..13, cx);
@@ -148,7 +147,6 @@ fn typing_styles_whats_typed_in_place_and_edits_by_its_marks_style_it_again(
     assert_eq!(styled(&chat, cx), owned(&grown));
     assert_eq!(chat.typed(cx), "**bold bold** then");
 
-    // A mark taken away undoes what it made.
     caret_at(&chat, 12..12, cx);
     chat.keys("backspace", cx);
     assert_eq!(chat.typed(cx), "**bold bold* then");
@@ -166,7 +164,6 @@ fn a_message_goes_as_the_markdown_that_was_typed(cx: &mut TestAppContext) {
     type_in(&chat, typed, cx);
     assert!(!styled(&chat, cx).is_empty());
 
-    // These chats have no host, so it doesn't go, and what it would have said is kept.
     let composer = chat.composer.clone();
     cx.update_window(chat.window, |_, window, cx| {
         composer.update(cx, |composer, cx| composer.send(window, cx));

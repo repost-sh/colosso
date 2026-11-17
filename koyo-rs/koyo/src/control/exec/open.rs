@@ -91,7 +91,6 @@ pub(crate) fn open_on(
 ) -> Result<Opened, ControlError> {
     check(spec)?;
     let mode = page_mode(caller, spec, window, cx)?;
-    // A file opens through the checkout's right panel, and so do the Changes.
     let panel = spec.kind == PaneKind::Changes || spec.file.is_some();
     Ok(on_checkout(
         shell,
@@ -217,7 +216,6 @@ fn check(spec: &PaneSpec) -> Result<(), ControlError> {
             "`line` and `column` need a `file`.",
         )),
         None => match &spec.name {
-            // A name the daemon refuses would leave a tab whose terminal never opens.
             Some(name) if !is_terminal_name(name) => Err(ControlError::invalid_input(format!(
                 "“{name}” isn't a terminal name: lowercase letters, digits and dashes, up to 32, \
                  starting with a letter or digit."
@@ -275,9 +273,6 @@ fn open(
                         "Koyo couldn't reach its terminal daemon to open a terminal.",
                     )
                 })?;
-                // The terminal starts with its view, which the window makes once it draws the
-                // tab; a caller may go on to use the terminal before that, or with the window
-                // hidden, so its view is made now.
                 this.update_in(cx, |shell, window, cx| {
                     let terminal = (shell.workspace.find_pane(|found| found.id == pane)).and_then(
                         |((project, branch, _), _)| {
@@ -318,7 +313,6 @@ fn open(
             ))),
         },
         PaneKind::Changes => Opened::Now(open_changes(shell, window, cx)),
-        // There is one agent desktop: the pane that shows it, or a new one.
         PaneKind::Desktop => {
             let pane = shell.desktop_pane(shown, cx).ok_or_else(|| {
                 ControlError::not_found("No checkout is selected to open the agent desktop on.")
@@ -333,7 +327,6 @@ fn open(
             beside,
             cx,
         ))),
-        // A device's tab opens as the picker; device_open opens one device.
         PaneKind::Device => {
             let pane = shell.device_pane(None, shown, cx).ok_or_else(|| {
                 ControlError::not_found("No checkout is selected to open a device's tab on.")

@@ -80,9 +80,6 @@ impl Host {
                 format!("the simulator's picture isn't there: {why}"),
             );
         }
-        // A simulator may have been left turned: the picture is put upright from the start.
-        // Right after a boot its display's info often isn't served yet; `follow_on` asks
-        // again while the picture is wanted, so this is no warning.
         if let Err(why) = sim.follow(&self.ring) {
             self.teller
                 .log(LogLevel::Info, format!("which way it faces, not yet: {why}; asked again"));
@@ -200,7 +197,6 @@ impl Host {
                     self.tell_standing();
                 }
             }
-            // Said once, not every read: it may go unread for minutes after a first boot.
             Err(why) if self.unread.as_ref() != Some(&why) => {
                 self.teller.log(LogLevel::Warn, format!("which way it faces: {why}"));
                 self.unread = Some(why);

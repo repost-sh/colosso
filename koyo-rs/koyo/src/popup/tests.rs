@@ -91,11 +91,9 @@ fn a_press_in_the_window_puts_away_what_floats_over_it_but_on_a_menus_trigger(
     source.drawn.set(trigger);
     let menu = float(Kind::Menu, Some(source), false, over, cx);
     let dialog = float(Kind::Dialog, None, false, over, cx);
-    // On the trigger, which toggles the menu itself; a dialog goes all the same.
     cx.update(|cx| pressed(over, point(px(15.), px(15.)), cx));
     assert!(up(menu, cx));
     assert!(!up(dialog, cx));
-    // Anywhere else, whatever the page shows.
     cx.update(|cx| pressed(over, point(px(400.), px(300.)), cx));
     assert!(!up(menu, cx));
 }
@@ -119,7 +117,6 @@ fn the_window_showing_something_else_puts_away_a_menu_and_a_card_but_not_a_dialo
     let menu = float(Kind::Menu, None, false, over, cx);
     let card = float(Kind::Card, None, false, over, cx);
     let dialog = float(Kind::Dialog, None, false, over, cx);
-    // The same again, as the window redraws, changes nothing.
     cx.update(|cx| showing(over, &"a page", cx));
     assert!(up(menu, cx));
     cx.update(|cx| showing(over, &"another page", cx));
@@ -152,7 +149,6 @@ fn leaving_puts_away_all_but_a_kept_dialog(cx: &mut TestAppContext) {
     (cx.update_window(over, |_, window, _| window.activate_window())).unwrap();
     let menu = float(Kind::Menu, None, false, over, cx);
     let kept = float(Kind::Dialog, None, true, over, cx);
-    // The person goes to another window.
     let (elsewhere, _) = in_window(size(px(400.), px(300.)), cx, |_, cx| cx.new(|_| Blank));
     (cx.update_window(elsewhere, |_, window, _| window.activate_window())).unwrap();
     cx.executor()
@@ -166,7 +162,6 @@ fn the_person_moving_into_a_floating_window_keeps_it_up(cx: &mut TestAppContext)
     let over = behind(cx);
     (cx.update_window(over, |_, window, _| window.activate_window())).unwrap();
     let dialog = float(Kind::Dialog, None, false, over, cx);
-    // As it takes the keyboard: not leaving.
     (cx.update_window(dialog, |_, window, _| window.activate_window())).unwrap();
     cx.executor()
         .advance_clock(Duration::from_millis(2 * SETTLE));
@@ -184,10 +179,8 @@ fn a_key_a_menu_has_no_use_for_puts_it_away(cx: &mut TestAppContext) {
     .unwrap();
     cx.run_until_parked();
     let menu = cx.read(|cx| window(Kind::Menu, cx)).unwrap();
-    // One it hears keeps it up.
     cx.simulate_keystrokes(over, "down");
     assert!(up(menu, cx));
-    // One it doesn't, as the shortcut to Settings, puts it away on its way to the window.
     cx.simulate_keystrokes(over, "cmd-,");
     assert!(!up(menu, cx));
 }
@@ -209,7 +202,6 @@ fn a_panel_fits_what_it_holds_as_that_changes(cx: &mut TestAppContext) {
         cx.notify();
     });
     cx.run_until_parked();
-    // With the window's padding round it.
     let fitted = cx.update_window(menu, |_, window, _| window.bounds().size);
     let padded = size(px(200. + 2. * PADDING), px(180. + 2. * PADDING));
     assert_eq!(fitted.unwrap(), padded);

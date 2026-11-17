@@ -60,7 +60,6 @@ pub(super) fn switch(
     if cards.len() < 2 {
         return;
     }
-    // The tab shown has its picture taken anew, by the frame this asks for, for its card.
     if let Some(shown) = shell.shown_tab_key() {
         super::pictures::retake(shown, cx);
         window.refresh();
@@ -128,7 +127,6 @@ fn open(shell: Entity<Shell>, cards: Vec<Card>, picked: usize, window: &mut Wind
             cx.background_executor().timer(HOLD).await;
             this.update_in(cx, Switcher::show).ok();
         });
-        // Heard before the pane the person is in hears it, and kept from it.
         let escape = cx.intercept_keystrokes(|event, _, cx| {
             if event.keystroke.key == "escape" {
                 popup::close(Kind::Switcher, cx);

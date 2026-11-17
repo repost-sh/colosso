@@ -73,7 +73,6 @@ impl ChatTabs {
                 notifications::post(&notifications::chat(&id.0), title, said);
             }
         });
-        // A click on what a chat told a person shows that chat.
         let _clicked = notifications_clicked(cx);
         ChatTabs {
             chats,
@@ -238,7 +237,6 @@ impl Shell {
             .and_then(|pane| self.chat_tabs.view(pane))
             .map(|chat| chat.focus_handle(cx));
         match chat {
-            // With the keyboard in the chat it heard this first, and let it by.
             Some(chat) if !chat.contains_focused(window, cx) => {
                 chat.dispatch_action(action, window, cx);
             }
@@ -275,7 +273,6 @@ impl Shell {
         select: bool,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
-        // Moved to, not opened to type in: the keyboard stays where it is (`shell/keys.rs`).
         let pane = self.workspace.add_chat_tab(cwd, id, select)?;
         self.follow_chats(cx);
         Some(pane)
@@ -325,8 +322,6 @@ impl Shell {
             let title = chats.summary(id).map(|summary| summary.title.as_str());
             title.filter(|title| !title.is_empty())
         });
-        // Whatever changed, the tabs and rows may say something else of them now, and what the
-        // panes show may have changed.
         cx.notify();
     }
 

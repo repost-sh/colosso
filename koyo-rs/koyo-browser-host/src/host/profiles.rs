@@ -87,7 +87,6 @@ pub(crate) fn drop_cleared(root: &Path) {
             Err(_) => stuck = true,
         }
     }
-    // A deleted profile whose folder wouldn't go is tried again the next time.
     if !deleted.is_empty() && !stuck {
         let _ = std::fs::remove_file(root.join(DELETED));
     }

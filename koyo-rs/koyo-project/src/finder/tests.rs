@@ -262,6 +262,5 @@ fn a_search_gives_way_to_one_asked_for_after_it() {
     let found = |results: Results| results.found.into_iter().map(|found| found.path);
     let fresh = search(&finder_of(REPO), "crm", 50);
     assert!(latest.map(found).into_iter().flatten().eq(found(fresh)));
-    // What gave way left nothing half matched for the next keystroke to narrow.
     typed_as_searched_afresh(&finder, REPO, "crmo");
 }

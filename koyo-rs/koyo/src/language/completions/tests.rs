@@ -37,7 +37,6 @@ fn rows_are_ranked_by_match_then_preselection_then_sort_text() {
     assert_eq!(labels(&ranked(&items, "gr")), ["greet", "GREP_ALL", "grab"]);
     assert_eq!(labels(&ranked(&items, "grb")), ["grab"]);
     assert_eq!(labels(&ranked(&items, "zzz")), Vec::<&str>::new());
-    // Nothing typed: the server's order, the preselected row first.
     assert_eq!(
         labels(&ranked(&items, "")),
         ["greet", "GREP_ALL", "grab", "other_thing"]
@@ -81,8 +80,6 @@ fn a_list_serves_longer_words_moved_past_what_was_typed_unless_incomplete() {
     );
     let served = completions.ranked(4, "gre").unwrap();
     assert_eq!(labels(&served), ["greet"]);
-    // The word's edit ends at the caret, which the "re" typed since moved; so did an
-    // edit after it on the line, but not one on another line.
     let Some(CompletionTextEdit::Edit(text_edit)) = &served[0].text_edit else {
         panic!("the edit as given");
     };
@@ -98,7 +95,6 @@ fn a_list_serves_longer_words_moved_past_what_was_typed_unless_incomplete() {
     );
     assert!(completions.ranked(4, "a").is_none(), "another word");
     assert!(completions.ranked(5, "gre").is_none(), "another start");
-    // A row filled in stays so, brought up to the word.
     let mut filled = item("greet", None, false);
     filled.detail = Some("fn greet()".to_owned());
     filled.text_edit = Some(CompletionTextEdit::Edit(edit(4, 5)));

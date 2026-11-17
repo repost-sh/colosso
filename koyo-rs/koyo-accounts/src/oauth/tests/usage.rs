@@ -16,8 +16,6 @@ fn fetch_with_response(payload: &Value) -> Option<Value> {
     fetch_usage(&sandbox.env(), "sk-test-token")
 }
 
-// TestFetchUsage
-
 #[test]
 fn success() {
     let future = iso(fixed_now() + 3600.);
@@ -43,7 +41,6 @@ fn http_error_logs_in_debug_mode() {
     let sandbox = Sandbox::new();
     sandbox.http.queue(USAGE_URL, Ok(answer(429, &[], "")));
     assert_eq!(fetch_usage(&sandbox.env(), "sk-test-token"), None);
-    // What the warning and its debug detail say.
     assert!(usage_failure_line("", "http-429", None).starts_with("Usage fetch failed"));
     let error = FetchError::Status(Response {
         status: 429,
@@ -151,7 +148,6 @@ fn scoped_per_model_limits() {
         ],
     }))
     .unwrap();
-    // Only the model-scoped entry is surfaced; session/weekly_all (scope null) are not.
     let scoped = result["scoped"].as_array().unwrap();
     assert_eq!(scoped.len(), 1);
     let fable = &scoped[0];
@@ -167,8 +163,6 @@ fn no_limits_no_scoped_key() {
     let result = fetch_with_response(&windows_and(&json!({}))).unwrap();
     assert!(result.get("scoped").is_none());
 }
-
-// TestFetchUsageForAccount, under the spec's rule: no refresh to read usage.
 
 fn account_credentials(sandbox: &Sandbox, expires_at_ms: Option<f64>) -> String {
     let now_ms = sandbox.env().now() * 1000.;
@@ -254,8 +248,6 @@ fn active_account_skips_refresh_even_when_expired() {
     assert_eq!(outcome.usage, None);
     assert!(sandbox.http.requests().is_empty());
 }
-
-// TestClassifyUsageError
 
 fn http_error(code: u16, headers: &[(&str, &str)], body: Option<&str>) -> FetchError {
     FetchError::Status(answer(code, headers, body.unwrap_or_default()))
@@ -382,8 +374,6 @@ fn fallback_type_name() {
     );
 }
 
-// TestTryFetchUsageOutcome
-
 #[test]
 fn success_outcome() {
     let sandbox = Sandbox::new();
@@ -412,8 +402,6 @@ fn _429_outcome_carries_retry_after() {
     assert_eq!(outcome.usage, None);
     assert_eq!(outcome.error.as_deref(), Some("http-429"));
     assert_eq!(outcome.retry_after_s, Some(42.));
-    // The line people paste into public issues: the account number and the server's
-    // Retry-After, never the email; any 429 is the usage endpoint's own budget.
     let line = usage_failure_line("for account 1", "http-429", Some(42.));
     assert!(line.contains("account 1"), "{line}");
     assert!(line.contains("retry-after 42s"), "{line}");
@@ -451,8 +439,6 @@ fn no_access_token_outcome() {
     let outcome = try_fetch_usage_for_account(&sandbox.env(), "1", &creds);
     assert_eq!(outcome.error.as_deref(), Some("no-access-token"));
 }
-
-// TestSetupTokenHeaderProbe, the cases that hold without the probe
 
 #[test]
 fn disabled_sends_no_request() {

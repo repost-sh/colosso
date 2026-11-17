@@ -113,8 +113,6 @@ fn askable(asked: &str, document: Option<&str>) -> Result<(Obj, Option<String>),
         ));
     };
     let bundle = apps::bundle_id(&url);
-    // Koyo itself isn't for agents to drive, nor an older Koyo still installed: a second
-    // Koyo on the person's data would let an agent grant itself what the person didn't.
     if (bundle.as_deref()).is_some_and(is_koyo) {
         return Err(Refusal::new(
             RefusalCode::Invalid,
@@ -157,8 +155,6 @@ impl Host {
         let theirs: Vec<i32> = (running.iter().copied())
             .filter(|pid| !ours.contains(pid))
             .collect();
-        // The instance to open in: the one lent already when theirs is asked for, the
-        // agent's own otherwise, and the lent one when that's all the agent has.
         let lent = self.staying(&running, true);
         let mine = if wish.theirs {
             lent
@@ -172,9 +168,6 @@ impl Host {
             );
             return Some(Err(Refusal::new(RefusalCode::NotFound, message)));
         }
-        // Asked again with nothing to open, the instance that runs is the answer: shown if
-        // it's hidden, and asked for a window if it has none (as a click on a Dock icon asks),
-        // unless the person runs the app too and Launch Services could ask theirs.
         if let (Some(pid), None, true) = (mine, document, arguments.is_empty()) {
             let shows = |host: &Host| {
                 (host.desktop.as_ref())
@@ -195,8 +188,6 @@ impl Host {
         let hands_over = bundle
             .as_deref()
             .is_some_and(|bundle| HANDS_OVER.contains(&bundle));
-        // The person's own is what there is to use, or what was asked for: taken in on
-        // their word, and what was to be opened goes to it as it runs.
         if lent.is_none() && !theirs.is_empty() && (wish.theirs || hands_over) {
             let pid = theirs[0];
             let mut opening = Opening {
@@ -207,15 +198,12 @@ impl Host {
             if let Err(refusal) = self.lends(&mut opening, pid) {
                 return Some(Err(refusal));
             }
-            // Arguments are for an instance that starts: theirs runs already.
             if document.is_some() {
                 apps::ask_running(&opening.url, document);
             }
             self.openings.push(opening);
             return None;
         }
-        // The person's own, lent already, takes what's opened as it runs: nothing about it
-        // is changed, and it gets none of what a start of the agent's own gets.
         if let Some(pid) = lent.filter(|_| mine == lent) {
             apps::ask_running(&url, document);
             self.openings.push(Opening {
@@ -229,19 +217,14 @@ impl Host {
         }
         let mut arguments = arguments.to_vec();
         if let Some(profile) = app::own_profile(&url, bundle.as_deref(), &self.state) {
-            // The agent's instance keeps to its own data folder, whatever is asked: with the
-            // person's, the launch would be handed to their instance.
             arguments.retain(|argument| !argument.starts_with("--user-data-dir"));
             arguments.push(format!("--user-data-dir={profile}"));
             arguments.push("--no-first-run".to_owned());
             arguments.push("--no-default-browser-check".to_owned());
-            // Started anew, it starts with what it's asked to open and nothing else.
             if mine.is_none() {
                 app::forget_windows(Path::new(&profile));
             }
         }
-        // A document goes to the agent's instance when it's the only one running; with the
-        // person's running too, Launch Services could pick theirs, so a new one is started.
         let fresh = mine.is_none() || !theirs.is_empty();
         self.openings.push(Opening {
             theirs,
@@ -328,9 +311,6 @@ impl Host {
                 }
                 Some(Ok(launched)) => launched,
             };
-            // Launch Services came back with an instance of the person's: not ours to touch
-            // but on their word. So is any instance but the agent's own, when its own was to
-            // take the launch: the person may have started theirs since.
             let known = self.apps.iter().any(|app| app.pid == launched.pid);
             let pid = launched.pid;
             if opening.theirs.contains(&pid) || (!opening.fresh && !known) {
@@ -349,7 +329,6 @@ impl Host {
             }
         }
         let pid = opening.pid?;
-        // Whatever it does while it starts is the start's doing.
         self.front.acted(pid);
         let Some(app) = (self.apps.iter()).find(|app| app.pid == pid && !app.ended()) else {
             return self.ended_early(opening);
@@ -360,7 +339,6 @@ impl Host {
                 opening.since = Instant::now();
                 apps::unhide(&app.running);
             } else if opening.since.elapsed() > ASSIGNS_WITHIN {
-                // The agent's own is stopped; the person's is theirs again as it was.
                 if app.lent {
                     self.give_back(pid, Back::Quiet);
                 } else {
@@ -375,8 +353,6 @@ impl Host {
         if count == 0 && app.lent && windows::elsewhere(pid, space) {
             return self.astray(opening, pid, space);
         }
-        // An app hides itself once it has finished starting, which can be after it was
-        // shown: it's shown again until its windows are up.
         if count == 0 && apps::hidden(&app.running) {
             apps::unhide(&app.running);
         } else if count == 0 {
@@ -385,9 +361,6 @@ impl Host {
                 opening.nudge = Nudge::ToldActive;
                 Poster::tell_active(pid);
             }
-            // Launch Services asks the instance that runs to open again; with one of the
-            // person's running too it could ask theirs, so only without, or when theirs is
-            // the one that was lent.
             let alone = opening.theirs.is_empty();
             if waited >= REOPENED_AFTER && opening.nudge == Nudge::ToldActive && alone {
                 opening.nudge = Nudge::Reopened;
@@ -449,15 +422,12 @@ impl Host {
             .map(apps::running)
             .unwrap_or_default();
         let ours = self.pids();
-        // It handed over to an instance of the agent's own, as a Chromium app does.
         if let Some(pid) = self.staying(&running, false) {
             return Some(Ok(self.opened(pid)));
         }
-        // Or to the person's, which takes no second instance beside it.
         if let Some(pid) = running.iter().copied().find(|pid| !ours.contains(pid)) {
             return self.lends(opening, pid).err().map(Err);
         }
-        // Or to one that was closing: gone with it.
         let message = if running.is_empty() {
             format!("{} quit right after starting", opening.asked)
         } else {

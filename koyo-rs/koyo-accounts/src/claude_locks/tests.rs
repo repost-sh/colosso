@@ -48,7 +48,6 @@ fn contention_times_out() {
     let held = proper_lockfile(&env, &dir, SHORT, CONFIG_STALENESS);
     assert!(matches!(held, Err(AccountsError::ClaudeCodeLockTimeout(_))));
     assert!(start.elapsed() < Duration::from_secs(2));
-    // Someone else's lock is left as it was.
     assert!(dir.is_dir());
 }
 
@@ -168,7 +167,6 @@ fn a_fresh_takeover_dir_is_respected() {
     fs::create_dir(&dir).unwrap();
     fs::create_dir(sandbox.home().join("x.lock.takeover")).unwrap();
     age_by(&dir, Duration::from_secs(30));
-    // Another waiter is mid-takeover: this one doesn't remove the lock under it.
     assert!(!remove_if_still_stale(&env, &dir, CONFIG_STALENESS));
     assert!(dir.is_dir());
 }

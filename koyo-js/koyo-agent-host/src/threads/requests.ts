@@ -1,8 +1,3 @@
-// What a thread's agent waits on its person for (docs/chat.md 4.5.5, C14). A request is
-// written pending with its place in the timeline; while the agent waits on it, the actor holds
-// the promise the provider's answer comes through. The answer is checked against the row and
-// written before it's handed over, so a turn ending as the person answers can't erase it.
-
 import type { RequestId } from "../protocol/ids";
 import type { Request, RequestPayload, Response, Run } from "../protocol/model";
 import { HostError } from "../protocol/wire";
@@ -80,7 +75,6 @@ export class Requests {
       throw new HostError("bad_request", `The request takes a response of kind \`${kind}\`.`);
     }
     const waiter = this.#waiters.get(requestId);
-    // A plan is answered where it's shown; a question or an approval only while it's waited on.
     if (waiter === undefined && response.kind !== "plan") {
       throw new HostError("conflict", "The agent stopped waiting; send the answer as a message.");
     }

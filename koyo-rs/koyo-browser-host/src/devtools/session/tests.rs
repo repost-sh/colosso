@@ -51,7 +51,6 @@ fn each_frontend_talks_in_a_session_of_its_own_and_ends_it() {
         json!({"id": 1, "method": "Runtime.enable", "sessionId": "OWN"})
     );
 
-    // The frontend's session answers it as if it were the page's own.
     let answer = session.said(r#"{"id":1,"result":{},"sessionId":"OWN"}"#);
     assert_eq!(answer.to_frontend, [r#"{"id":1,"result":{}}"#]);
     let event = session
@@ -60,7 +59,6 @@ fn each_frontend_talks_in_a_session_of_its_own_and_ends_it() {
         json(&event.to_frontend[0]),
         json!({"method": "Runtime.consoleAPICalled", "params": {"type": "log"}})
     );
-    // The root session and other clients' sessions are not the frontend's.
     assert!(
         session
             .said(r#"{"id":1,"result":{}}"#)
@@ -74,7 +72,6 @@ fn each_frontend_talks_in_a_session_of_its_own_and_ends_it() {
             .is_empty()
     );
 
-    // Frames attached under the frontend's session reach it as they are.
     session.said(
         r#"{"sessionId":"OWN","method":"Target.attachedToTarget","params":{"sessionId":"FRAME"}}"#,
     );
@@ -140,10 +137,8 @@ fn revealing_an_element_waits_for_the_dom_and_asks_in_the_frontends_session() {
         json(&found.to_frontend[0]),
         json!({"method": "Overlay.inspectNodeRequested", "params": {"backendNodeId": 42}})
     );
-    // The host's other answers stay with the host.
     let other = json!({"id": id + 1_000, "result": {}, "sessionId": "OWN"}).to_string();
     assert!(session.said(&other).to_frontend.is_empty());
-    // Once the DOM is on, a reveal is asked for at once.
     let again = json(&session.inspect(Point { x: 1., y: 2. }).expect("a lookup"));
     assert_eq!(again["sessionId"], "OWN");
 }
@@ -168,7 +163,6 @@ fn the_frontends_device_emulation_is_answered_and_goes_no_further() {
     assert!(routed.to_page.is_empty());
     assert_eq!(routed.to_frontend, [r#"{"id":4,"result":{}}"#]);
 
-    // The rest of the frontend's emulation, and a session under its own, go to the page.
     let touch = r#"{"id":5,"method":"Emulation.setTouchEmulationEnabled","params":{}}"#;
     assert_eq!(session.frontend_said(touch).to_page.len(), 1);
     let other = r#"{"id":6,"method":"Emulation.setDeviceMetricsOverride","sessionId":"LH"}"#;

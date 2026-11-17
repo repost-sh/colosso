@@ -24,7 +24,6 @@ describe("takeLock", () => {
     expect(first.kind).toBe("held");
     expect(readFileSync(path, "utf8")).toBe(String(process.pid));
     expect(takeLock(path)).toStrictEqual({ kind: "taken", holder: `pid ${String(process.pid)}` });
-    // A look that failed left the pid as it was.
     expect(readFileSync(path, "utf8")).toBe(String(process.pid));
     release(first);
     const again = takeLock(path);

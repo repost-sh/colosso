@@ -6,8 +6,6 @@ use std::collections::BTreeMap;
 
 use super::*;
 
-// TestIdentityGuard
-
 #[test]
 fn slot_reuse_hides_old_usage() {
     let h = Harness::new();
@@ -48,8 +46,6 @@ fn untouched_slots_survive_subset_writes() {
     );
     assert_eq!(h.entry("2").last_good, Some(usage()));
 }
-
-// TestClaims
 
 #[test]
 fn claim_marks_in_flight() {
@@ -250,8 +246,6 @@ fn success_commits_its_new_plan_without_a_duplicate_window() {
     assert!(h.reserve(&["1"], false).is_empty());
 }
 
-// TestSentinels
-
 #[test]
 fn sentinel_record_is_a_store_noop() {
     let h = Harness::new();
@@ -304,8 +298,6 @@ fn with_sentinel_none_is_identity() {
     assert_eq!(with_sentinel(entry.clone(), None), entry);
 }
 
-// TestFreshness
-
 #[test]
 fn fresh_within_serve_ttl() {
     let h = Harness::new();
@@ -315,8 +307,6 @@ fn fresh_within_serve_ttl() {
     assert!(entry.fresh(h.now() + SERVE_TTL_S));
     assert!(!entry.fresh(h.now() + SERVE_TTL_S + 1.));
 }
-
-// TestPollPlan
 
 #[test]
 fn set_and_read_poll_plan() {
@@ -338,8 +328,6 @@ fn poll_plan_clear() {
     assert_eq!(entry.next_poll_at, None);
     assert_eq!(entry.poll_interval_s, None);
 }
-
-// TestClaimTrustBridge
 
 #[test]
 fn in_flight_claim_keeps_decision_trust() {

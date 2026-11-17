@@ -132,17 +132,14 @@ mod tests {
         glide.start(1, 2, true, at);
         let half = at + PASSING / 2;
         let (left, right) = (glide.lit(1, half).unwrap(), glide.lit(2, half).unwrap());
-        // Going on: out the end of the first, in at the start of the next, the two together.
         assert!(left.from > 0. && near(left.to, 1.), "{left:?}");
         assert!(near(right.from, 0.) && right.to < 1., "{right:?}");
         assert!(near(left.from, right.to), "as far, {left:?} {right:?}");
         assert_eq!(glide.lit(3, half), None, "no other");
-        // Going back, the other way about.
         glide.start(2, 1, false, at);
         let (going, coming) = (glide.lit(2, half).unwrap(), glide.lit(1, half).unwrap());
         assert!(near(going.from, 0.) && going.to < 1., "{going:?}");
         assert!(coming.from > 0. && near(coming.to, 1.), "{coming:?}");
-        // Whole where it left at first, and gone once it's passed.
         assert_eq!(glide.lit(2, at), Some(Lit { from: 0., to: 1. }));
         assert_eq!(glide.lit(1, at), Some(Lit { from: 1., to: 1. }));
         assert!(glide.passing(half).is_some() && glide.passing(at + PASSING).is_none());

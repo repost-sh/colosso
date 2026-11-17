@@ -34,7 +34,6 @@ use crate::common::{data_dir, fixture, wait};
 const MANIFEST: &str = "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
     # A workspace of its own, not the checkout's it sits in.\n[workspace]\n";
 const LIB: &str = "pub mod a;\npub mod b;\n";
-// The crab before the call puts its column at different numbers in UTF-8 and UTF-16.
 const A: &str = "use crate::b::make_counter;\n\npub fn total() -> i32 {\n    \
     let counter = /* 🦀 */ make_counter(2);\n    counter.doubled()\n}\n\n\
     pub fn wrong() -> u32 {\n    \"not a number\"\n}\n";

@@ -1,12 +1,3 @@
-// A chat's live Claude session (docs/chat.md 4.5.6, 4.7): one CLI process, one `query()` fed
-// by a queue of prompts for as long as the session lives. The driver iterates the query
-// itself, not its raw generator, whose `return()` would wait behind a pending read (T3
-// adapter pitfall 1). A stop interrupts the turn and keeps the process when the turn's result
-// comes, closing it when none comes in time (7); what the CLI wrote on stderr before its
-// first frame goes with an error, as a refusal may be told only there (45). A settings change
-// the live process can't take is said at once, so the actor reopens the session before its
-// next turn; one the process failed to take half-way restarts it, resumed, before the next.
-
 import type {
   CanUseTool,
   Options,
@@ -128,7 +119,6 @@ export class ClaudeSession implements ProviderSession {
       sink.event(event);
     }, deps.stopMs);
     this.#turns = new Turns((event) => {
-      // From now on the conversation has that turn: a restart goes on from it.
       if (event.type === "turn.started") {
         this.#spec = { ...this.#spec, resumeAt: null };
       }
@@ -192,7 +182,6 @@ export class ClaudeSession implements ProviderSession {
       this.#end();
     }, this.#deps.stopMs);
     const receipt = await conversation.interrupt();
-    // A prompt of the turn still queued would run after it: the process goes instead.
     if (receipt?.still_queued.some((id) => prompts.has(id)) === true) {
       log.info("A stopped turn's message was still queued; Claude's process is closed.");
       this.#end();
@@ -208,7 +197,6 @@ export class ClaudeSession implements ProviderSession {
     const next: SessionSpec = { ...this.#spec, ...change };
     const conversation = this.#conversation;
     if (conversation === undefined || this.#stale) {
-      // Not opened yet, or restarting before the next turn: it opens with the change.
       this.#spec = next;
       return "applied";
     }
@@ -217,11 +205,9 @@ export class ClaudeSession implements ProviderSession {
       return "reopen";
     }
     this.#spec = next;
-    // In the order asked, before the next turn's prompt, which waits behind it.
     this.#then(async () => {
       await this.#apply(conversation, applying);
     }, (error) => {
-      // A change that failed half-way is made whole by a new process (pitfall 27).
       log.warn("Claude's session didn't take a settings change; it restarts before the next turn",
         error);
       this.#stale = true;
@@ -289,7 +275,6 @@ export class ClaudeSession implements ProviderSession {
     log.info("Claude's process restarts, resumed, with the chat's settings.");
     const conversation = this.#conversation;
     const groups = this.#groups;
-    // The process that's ending is no longer the session's: its end isn't the session's.
     this.#conversation = undefined;
     this.#groups = undefined;
     this.#prompts.end();
@@ -314,7 +299,6 @@ export class ClaudeSession implements ProviderSession {
     }
     if (conversation !== this.#conversation) {
       log.debug("A process Claude's session restarted away from ended.");
-      // What it ran in the background went with it, once the last it said has been heard.
       this.#frames.background.reset();
       return;
     }
@@ -326,7 +310,6 @@ export class ClaudeSession implements ProviderSession {
 
   #frame(frame: SDKMessage): void {
     try {
-      // The one frame outside the SDK's union that the driver reads, seen by its type first.
       const { type }: { readonly type: string } = frame;
       const lifecycle = type === "command_lifecycle" ? Lifecycle.safeParse(frame) : undefined;
       if (lifecycle?.success === true) {
@@ -348,7 +331,6 @@ export class ClaudeSession implements ProviderSession {
   #init(frame: SDKSystemMessage): void {
     this.#mode = frame.permissionMode;
     if (!this.#opened.plan && this.#opened.mode === null) {
-      // Opened with no mode, the session runs in the one Claude's settings chose.
       this.#settled ??= frame.permissionMode;
     }
     this.#frames.init(frame);
@@ -458,7 +440,6 @@ export class ClaudeSession implements ProviderSession {
   }
 
   readonly #canUseTool: CanUseTool = async (name, input, request) => {
-    // A subagent asks with or without a turn, and says nothing of the turn if there's one.
     if (request.agentID !== undefined) {
       const asking = this.#frames.subagents.asking(request.agentID, this.#sink);
       return await answerTool(asking, name, input, request);

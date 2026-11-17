@@ -1,9 +1,3 @@
-// A thread's one provider session (docs/chat.md 4.5.6): opened for a turn, kept between turns
-// and while it runs tasks in the background, closed after a while idle or when another thread
-// needs the room. What a session reports is handed on as a step of its own, after the one
-// running; what a dropped session reports reaches nothing, so a session killed mid-turn can't
-// change the turn after it.
-
 import { errorMessage, log } from "../log";
 import type { RequestPayload, Thread } from "../protocol/model";
 import type {
@@ -29,7 +23,6 @@ export function specFor(thread: Thread, sessionId: string, config: Config): Sess
     threadId: thread.id,
     cwd: thread.cwd,
     sessionId,
-    // The thread had a conversation before, so there's one to resume.
     resume: thread.sessionId !== null,
     model: thread.model,
     effort: thread.effort,

@@ -119,7 +119,6 @@ impl History {
         }
         let mut found = self.learned_for(kind, query, &tokens, MOST_LEARNED.min(most), now);
         let typed = query.trim().to_lowercase();
-        // Each entry holding every word, and whether each starts a word in it.
         let held: Vec<(&Entry, bool)> = (self.of(kind))
             .filter(|entry| !found.iter().any(|learned| learned.text == entry.text))
             .filter_map(|entry| Some((entry, holds(entry, &tokens)?)))
@@ -146,7 +145,6 @@ impl History {
     /// Pages with nothing typed, as Firefox's top sites: the most frecent page of each host, the
     /// host weighed by all its pages, those that reach a top site's least.
     fn top_sites(&self, place: &Place, most: usize, now: i64) -> Vec<Found> {
-        // Each host: the strength of all its pages, and its strongest page and how strong.
         let mut hosts: HashMap<String, (f64, f64, &Entry)> = HashMap::new();
         for entry in self.of(Kind::Page) {
             let page = strength(entry, now) * nearness(entry, place);
@@ -161,7 +159,6 @@ impl History {
             .filter(|(weight, ..)| *weight >= TOP_SITE_LEAST)
             .map(|(weight, _, entry)| (weight, entry))
             .collect();
-        // Ties go to the page used last, the store keeping it last.
         hosts.sort_by(|a, b| {
             b.0.total_cmp(&a.0)
                 .then_with(|| b.1.last_used().cmp(&a.1.last_used()))
@@ -173,7 +170,6 @@ impl History {
 
     /// Words with nothing typed, the latest first, those used in `place`'s project ahead.
     fn latest(&self, kind: Kind, place: &Place, most: usize) -> Vec<Found> {
-        // The store keeps the entry used last at its end: ties go to it.
         let mut entries: Vec<&Entry> = self.of(kind).rev().collect();
         entries.sort_by_key(|entry| {
             let here = nearness(entry, place) > 1.;
@@ -233,7 +229,6 @@ impl History {
     /// the median of them, which a host completing what's typed has to reach. What's typed doesn't
     /// change them, so the launcher works them out once.
     pub fn origins(&self, now: i64) -> Origins {
-        // Each host: the strength of its pages, how many, and the days it was typed on.
         let mut hosts: HashMap<String, (f64, usize, HashSet<i64>)> = HashMap::new();
         for entry in self.of(Kind::Page) {
             let Some(host) = host(&entry.text) else {
@@ -410,7 +405,6 @@ fn find_all(text: &str, token: &str) -> Vec<Range<usize>> {
         return Vec::new();
     }
     let mut lower = String::with_capacity(text.len());
-    // For each byte of `lower`, the character of `text` it comes from.
     let mut from: Vec<Range<usize>> = Vec::with_capacity(text.len());
     for (at, c) in text.char_indices() {
         for l in c.to_lowercase() {

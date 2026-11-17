@@ -110,7 +110,6 @@ mod tests {
     fn the_turn_the_way_held_and_the_scale_are_read_and_flat_takes_the_last_way() {
         let held_up = display(&answer("rot180", "landscapeRight", "landscapeRight"));
         assert_eq!(held_up, Some(Display { quarters: 2, held: Orientation::LandscapeRight, scale: 2., pixels: None }));
-        // As the iPad lay on the desk in M6: face up, last held landscape left, the LCD at rot0.
         let flat = display(&answer("rot0", "faceUp", "landscapeLeft"));
         assert_eq!(flat, Some(Display { quarters: 0, held: Orientation::LandscapeLeft, scale: 2., pixels: None }));
         assert_eq!(display(&plist::Value::Boolean(true)), None);
@@ -127,7 +126,6 @@ mod tests {
         };
         let mut said = answer("rot0", "portrait", "portrait");
         let displays = said.as_dictionary_mut().and_then(|said| said.get_mut("displays")).and_then(plist::Value::as_array_mut).unwrap();
-        // The display a stream is made on is larger than the screen, and isn't the screen.
         *displays = vec![sized("Wireless", 1184., 2560.), sized("LCD", 1179., 2556.)];
         let screen = PixelSize { width: 1179, height: 2556 };
         assert_eq!(display(&said).and_then(|display| display.pixels), Some(screen));

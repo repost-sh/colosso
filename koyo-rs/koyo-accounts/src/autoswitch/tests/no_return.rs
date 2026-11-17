@@ -101,7 +101,6 @@ fn burn_walk(
 
 #[test]
 fn a_burn_walk_settles_instead_of_oscillating() {
-    // Only the active burns, both resets days out: at most two moves in 24 ticks, then still.
     let mut h = Harness::standard();
     let seen = burn_walk(&mut h, [96., 92.], [20., 80.], 24, 0.25);
     assert!(moves(&seen).len() <= 2, "move sequence {:?}", moves(&seen));
@@ -115,8 +114,6 @@ fn a_burn_walk_settles_instead_of_oscillating() {
 
 #[test]
 fn the_no_return_filter_does_not_block_the_at_limit_escape() {
-    // The bar is scoped to the proactive triggers: escaping a dead account, the account left
-    // may be the only place to go (measured unscoped: 720 ticks of "no-candidates").
     let mut h = Harness::standard();
     h.update_state(&json!({"lastSwitchFrom": "2"}));
     let outcome = h.tick_with_usage(&[("1", usage(100.)), ("2", usage(0.))]);
@@ -126,7 +123,6 @@ fn the_no_return_filter_does_not_block_the_at_limit_escape() {
 
 #[test]
 fn a_burn_walk_never_returns_to_what_it_left() {
-    // The walk is bounded, not return-free: it settles (60 ticks, the last eight still).
     let mut h = Harness::standard();
     let seen = burn_walk(&mut h, [92., 92.], [500., 400.], 60, 0.5);
     let tail: BTreeSet<u32> = seen[seen.len() - 8..].iter().copied().collect();
@@ -135,8 +131,6 @@ fn a_burn_walk_never_returns_to_what_it_left() {
 
 #[test]
 fn a_proactive_move_does_not_lock_out_the_next_one() {
-    // On two accounts the bar removes the only candidate, and only a switch rewrites it: after
-    // one ordinary move the peer resets to full while the active burns, and a move must happen.
     let mut h = Harness::standard();
     let mut days = DaysOut::default();
     let first = [
@@ -175,12 +169,11 @@ fn moved_with_a_spent_third() -> (Harness, DaysOut) {
 
 #[test]
 fn a_filtered_candidate_does_not_forge_an_all_exhausted_claim() {
-    // A barred peer can't vanish from the census, or "all exhausted" is claimed with it at 0%.
     let (mut h, mut days) = moved_with_a_spent_third();
     let fleet = [
-        ("1", usage_r(0., &days.at(&h, 400.))), // the one left: full
+        ("1", usage_r(0., &days.at(&h, 400.))),
         ("2", usage_r(97., &days.at(&h, 500.))),
-        ("3", usage_r(100., &days.at(&h, 300.))), // genuinely spent
+        ("3", usage_r(100., &days.at(&h, 300.))),
     ];
     h.tick_with_usage(&fleet);
     assert!(h.all::<AllExhaustedEvent>().is_empty(), "{:?}", h.kinds());
@@ -188,11 +181,10 @@ fn a_filtered_candidate_does_not_forge_an_all_exhausted_claim() {
 
 #[test]
 fn the_bar_does_not_hide_the_account_from_the_census() {
-    // The barred branch itself: 15 points against an active on 10 doesn't release.
     let (mut h, mut days) = moved_with_a_spent_third();
     let fleet = [
-        ("1", usage_r(85., &days.at(&h, 400.))), // left; 15 points, barred
-        ("2", usage_r(90., &days.at(&h, 500.))), // active; 10 points
+        ("1", usage_r(85., &days.at(&h, 400.))),
+        ("2", usage_r(90., &days.at(&h, 500.))),
         ("3", usage_r(100., &days.at(&h, 300.))),
     ];
     h.tick_with_usage(&fleet);
@@ -201,8 +193,6 @@ fn the_bar_does_not_hide_the_account_from_the_census() {
 
 #[test]
 fn the_bar_never_applies_to_an_escape() {
-    // 12 points against an active on 10 doesn't clear the capped margin (13), so only the
-    // trigger check can answer.
     let state = json!({"lastSwitchFrom": 1});
     let headroom = [("1", Some(12.)), ("2", Some(10.)), ("3", Some(1.))];
     let usage: Vec<(&str, Value)> = headroom
@@ -219,7 +209,6 @@ fn the_bar_never_applies_to_an_escape() {
             );
         }
     }
-    // The control: the same state bars on a proactive tick.
     let direct = Direct::new(&usage, &headroom, Some(10.), "2");
     assert_eq!(
         direct.barred(Trigger::Proactive, &state, true).as_deref(),

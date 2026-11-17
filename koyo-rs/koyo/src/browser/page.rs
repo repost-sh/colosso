@@ -100,7 +100,6 @@ impl Element for PageSurface {
             (laid, mode.is_some(), free, placed, view.pane, view.is_open(cx))
         };
         let shown = laid.1;
-        // An update counts as a change to the view, so it's made only when one happened.
         if !placed {
             self.view.update(cx, |view, cx| {
                 view.place_page(laid, bounds.size, window, cx);
@@ -148,10 +147,6 @@ impl Element for PageSurface {
         }
         let (pane, open) = (placed.pane, placed.open);
         let cursor = self.view.read(cx).cursor;
-        // A drag that resizes the page (a split's divider, a panel's edge) moves its view
-        // against what GPUI draws beside it: from the first frame that did, each move of the
-        // drag is drawn at once, in the transaction the view moves in, so the edge and the
-        // page land together (`docs/native-pages.md` 6).
         #[cfg(all(target_os = "macos", not(test)))]
         if let Some(native) = placed.native.as_ref().map(Entity::downgrade) {
             window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, window, cx| {
@@ -166,15 +161,12 @@ impl Element for PageSurface {
                 }
             });
         }
-        // Drawn with nothing over it, the page is on screen whether or not it has painted yet:
-        // one opened out of sight, or hidden before it painted, paints once it's shown.
         if !self.covered {
             let key = ElementId::NamedInteger("browser-page-view".into(), pane);
             let owner = self.view.downgrade();
             let shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
             let shown = shown.downgrade();
             let view = self.view.read(cx);
-            // An update counts as a change to the view, so it's made only when one happened.
             if view.shown.as_ref() != Some(&shown) || view.visible != Some(true) {
                 self.view.update(cx, |view, cx| {
                     view.shown = Some(shown);
@@ -182,9 +174,6 @@ impl Element for PageSurface {
                 });
             }
         }
-        // The page's pointer, keys and text are Chromium's own, handed to it by `AppKit`. GPUI
-        // sets the window's cursor after each of its frames from what's under the pointer: over
-        // a page, the page's own, which Chromium sets as well.
         if open {
             window.set_cursor_style(cursor_style(cursor), hitbox);
         }
@@ -216,8 +205,6 @@ impl PageSurface {
                 .inspect_err(|why| log::error!("no place for a page: {why}"))
                 .ok()
         });
-        // A page the keyboard is wanted in takes it as its views come into the window
-        // (`docs/keyboard.md`).
         if let Some(native) = kept.read(cx).0.as_ref() {
             native.place(shown, clip, window);
         }
@@ -251,12 +238,9 @@ impl BrowserView {
         let start = self.is_start_page();
         let inspector = self.is_inspector();
         let responsive = self.responsive.mode.is_some();
-        // The pane's own colour until the page has said how its canvas is painted, so a page
-        // never opens on a blank white one; DevTools keep it.
         let blank = self.tone.is_none() || inspector;
         let overlay = toolbar::overlay(self, &status, cx);
         let bar = toolbar::control_bar(self, window, cx);
-        // Under the bar, which names the agent the marks show at work.
         let marks = pointer::overlay(self, window, cx);
         let page = div()
             .id(ElementId::NamedInteger("browser-page".into(), self.pane))
@@ -268,8 +252,6 @@ impl BrowserView {
             .bg(match (responsive, blank) {
                 (true, _) => p.sunken,
                 (false, true) => p.card,
-                // Behind the page, what its own canvas is painted: that's what shows beside it
-                // for the frame or two its picture lags a pane's edge by.
                 (false, false) => (self.tone.as_ref()).map_or_else(white, super::tone::Tone::canvas),
             })
             .child(PageSurface {

@@ -60,8 +60,6 @@ impl Here {
             worktree: unit.worktree.path.clone(),
             project: project.path.clone(),
         };
-        // A pinned or a loose page shown is no tab of the checkout's: all of its tabs can be
-        // switched to.
         let shown: Vec<u64> = (workspace.shown_checkout_tab())
             .and_then(|at| workspace.tab(at))
             .map(|tab| tab.panes().iter().map(|pane| pane.id).collect())
@@ -73,7 +71,6 @@ impl Here {
                 if pane.is_inspector(cx) {
                     return None;
                 }
-                // A page brought back at launch and not shown yet has the address it opens at.
                 let (url, favicon) = (pane.address(cx).unwrap_or_default(), pane.favicon(cx));
                 let title = pane.title.clone();
                 let device = (pane.device_view())

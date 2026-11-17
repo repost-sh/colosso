@@ -201,7 +201,6 @@ mod tests {
         let _requests = cx.update(control::start_for_test);
         cx.update(|cx| {
             settings::update(cx, |settings| settings.external_control.enabled = true);
-            // Something for a list of activity to show, were there one.
             control::allow_denied("Windsurf", cx);
         });
         let matches = |query: &str, cx: &mut TestAppContext| {
@@ -214,7 +213,6 @@ mod tests {
         assert!(matches("1440 × 900", cx));
         cx.update(|cx| control::set_pages_open_at(control::PageSize::Fill, cx));
         assert!(matches("fills its pane", cx) && !matches("1440 × 900", cx));
-        // The Agents section shows with the server off, as it holds for Koyo's own agents.
         cx.update(|cx| {
             settings::update(cx, |settings| settings.external_control.enabled = false);
         });

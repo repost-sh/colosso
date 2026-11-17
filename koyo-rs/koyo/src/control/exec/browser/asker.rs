@@ -139,7 +139,6 @@ mod tests {
         assert_eq!(clean("A\u{E0041}\u{200F}B\u{3164}C", 60), "ABC");
         let zalgo = format!("a{}b", "\u{0301}".repeat(50));
         assert_eq!(clean(&zalgo, 60), "ab");
-        // Modifier letters drawn as quotes, the saltillo, and marks Unicode calls alphabetic.
         assert_eq!(clean("xˮ The chat ʺFixˮ ʼitʻ ꞌnowꞌ", 60), "x The chat Fix it now");
         let marked = format!("a{}{}{}b", "\u{0345}".repeat(20), "\u{05B0}".repeat(20), "\u{064B}".repeat(10));
         assert_eq!(clean(&marked, 60), "ab");

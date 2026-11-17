@@ -87,7 +87,6 @@ fn a_group_that_starts_running_goes_by_the_same_id_once_it_is_done() {
 
 #[test]
 fn a_live_row_shows_unless_what_the_run_does_shows_for_itself() {
-    // Nothing yet, not even an item: it still has its row.
     let starting = replica(vec![run("r1", RunStatus::Starting, 5)], Vec::new());
     assert_eq!(made(&starting)[0].kind, RowKind::Live { item: None });
 

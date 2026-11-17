@@ -116,7 +116,6 @@ fn a_client_that_falls_behind_catches_up_from_a_snapshot() {
     let _stop = StopOnDrop(dir.clone());
     let app = connect(&dir, ClientKind::Cli);
     let cwd = dir.root().parent().unwrap().to_path_buf();
-    // About 15 MB once told to go, far past the 4 MiB a client may fall behind by.
     let flood = [
         "/bin/sh",
         "-c",
@@ -126,7 +125,6 @@ fn a_client_that_falls_behind_catches_up_from_a_snapshot() {
     let mut slow = Slow::connect(&dir);
     let index = slow.attach(&handle);
     slow.type_in(index, "go\r");
-    // It reads nothing while the flood goes by.
     wait_until("the flood to end", || {
         live_screen(&app, &handle)
             .iter()
@@ -158,7 +156,6 @@ fn a_client_that_falls_behind_catches_up_from_a_snapshot() {
     let live = rows(&live_screen(&app, &handle).join("\n"));
     assert!(rows(&text).ends_with(&live), "{text}\n---\n{live:?}");
 
-    // The stream goes on from the snapshot, with nothing missing.
     slow.type_in(index, "after\r");
     while !engine
         .screen_text(TextFormat::Plain)

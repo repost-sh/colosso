@@ -101,15 +101,12 @@ fn a_diagram_is_drawn_in_the_palette_s_colours(cx: &mut TestAppContext) {
     for look in [light, dark] {
         let drawn = diagram::draw(FLOW, &look).expect("drawn");
         assert!(drawn.width > 0. && drawn.height > 0.);
-        // Its labels as SVG text GPUI paints, not HTML it can't.
         assert!(!drawn.text.contains("<foreignObject"), "no HTML labels");
         assert!(drawn.text.contains("Preview"));
-        // The nodes' fill is the theme's, not Mermaid's lavender.
         assert!(
             !drawn.text.to_ascii_lowercase().contains("#ececff"),
             "Mermaid's own colours"
         );
-        // The same source in the same look draws the same picture.
         assert_eq!(diagram::draw(FLOW, &look).unwrap().text, drawn.text);
     }
 }
@@ -119,7 +116,6 @@ fn a_diagram_is_drawn_in_the_palette_s_colours(cx: &mut TestAppContext) {
 fn a_diagram_s_card_is_a_code_block_s(cx: &mut TestAppContext) {
     init(cx);
     let card = cx.update(|cx| Card::of(cx));
-    // Solid, as its labels' boxes are painted in it.
     assert_eq!(card.paper.a, 1.);
     assert!(
         card.corners.top_left.is_some(),
@@ -150,14 +146,12 @@ fn a_markdown_file_flips_between_its_code_and_how_it_reads(cx: &mut TestAppConte
     let root = checkout("markdown-flip");
     let (window, shell, _) = shell_showing(&root, cx);
     draw(window, cx);
-    // README.md opens as it reads, with the keyboard.
     assert_eq!(mode(&shell, cx), Mode::Preview);
     assert_eq!(preview(&shell, cx, MarkdownPreview::text).trim(), "Test");
     assert!(
         has_focus(window, &shell, cx),
         "the keyboard goes with what's shown"
     );
-    // ⌘⇧V shows its code, and back.
     for shown in [Mode::Code, Mode::Preview] {
         press(window, "cmd-shift-v", cx);
         draw(window, cx);
@@ -184,16 +178,13 @@ fn a_markdown_file_opens_as_set_and_as_code_at_a_place(cx: &mut TestAppContext) 
         draw(window, cx);
         mode(&shell, cx)
     };
-    // Set to open as code, from the Editor settings' menu.
     cx.dispatch_action(window, SetMarkdownOpensAs(Mode::Code));
     assert_eq!(
         cx.read(|cx| settings::get(cx).markdown_opens_as),
         Mode::Code
     );
     assert_eq!(open(Place::file("docs/one.md"), cx), Mode::Code);
-    // A file open already stays as it's shown.
     assert_eq!(open(Place::file("README.md"), cx), Mode::Preview);
-    // As it reads again; opened at a place in its text, as a search result is, as code.
     cx.dispatch_action(window, SetMarkdownOpensAs(Mode::Preview));
     assert_eq!(open(Place::file("docs/two.md"), cx), Mode::Preview);
     let at_a_line = Place {
@@ -210,7 +201,6 @@ fn a_place_in_a_file_shown_as_it_reads_shows_its_code(cx: &mut TestAppContext) {
     let (window, shell, _) = shell_showing(&root, cx);
     previewed(window, &shell, "README.md", cx);
     assert_eq!(mode(&shell, cx), Mode::Preview);
-    // Gone to, as a definition or a search result is.
     with_shell(window, &shell, cx, |shell, window, cx| {
         shell.view_file(
             Place {
@@ -234,9 +224,7 @@ fn a_preview_shows_the_text_as_it_s_edited(cx: &mut TestAppContext) {
     typed(window, &editor, "\nUnsaved words.\n", cx);
     previewed(window, &shell, "README.md", cx);
     let text = |cx: &TestAppContext| preview(&shell, cx, MarkdownPreview::text);
-    // What's in the editor, saved or not.
     assert!(text(cx).contains("Unsaved words."), "{}", text(cx));
-    // Typed into while it's shown as it reads, by an agent say, it reads again.
     typed(window, &editor, "More words.", cx);
     assert!(text(cx).contains("More words."), "{}", text(cx));
     let _ = std::fs::remove_dir_all(&root);
@@ -273,19 +261,15 @@ fn a_preview_keeps_the_diagrams_it_shows_and_lets_go_of_the_rest(cx: &mut TestAp
     );
     let (window, shell, _) = shell_showing(&root, cx);
     previewed(window, &shell, "docs/flow.md", cx);
-    // Asked for as it's drawn, drawn off the main thread, and drawn again once it is.
     draw(window, cx);
-    // A fenced block's source, as markdown has it, ends without its last newline.
     let key = (
         SharedString::from(FLOW.trim_end()),
         cx.update(|cx| look(cx)),
     );
     let drawn = cx.update(|cx| cx.fetch_asset::<Diagram>(&key));
     assert!(matches!(drawn, Some(Ok(_))), "{drawn:?}");
-    // Its source is what it reads as, to copy.
     let text = preview(&shell, cx, MarkdownPreview::text);
     assert!(text.contains("Code --> Preview"), "{text}");
-    // Drawn again and again, scrolled say, it's kept.
     for _ in 0..3 {
         press(window, "down", cx);
         draw(window, cx);
@@ -295,7 +279,6 @@ fn a_preview_keeps_the_diagrams_it_shows_and_lets_go_of_the_rest(cx: &mut TestAp
         "kept while it's shown"
     );
     assert_eq!(cx.read(diagram::shown), 1);
-    // Its source changed, the diagram it drew goes.
     let (_, editor, _) = editing(window, &shell, "docs/flow.md", At::Line(4), cx);
     typed(window, &editor, "    Preview --> Code\n", cx);
     previewed(window, &shell, "docs/flow.md", cx);
@@ -307,7 +290,6 @@ fn a_preview_keeps_the_diagrams_it_shows_and_lets_go_of_the_rest(cx: &mut TestAp
         "let go once it's not shown"
     );
     assert_eq!(cx.read(diagram::shown), 1, "the one it shows now");
-    // Closed, it lets go of all it showed.
     with_shell(window, &shell, cx, |shell, _, cx| {
         shell.forget_files(&root, cx);
     });
@@ -326,7 +308,6 @@ fn a_preview_scrolls_by_the_keys_a_reader_scrolls_by(cx: &mut TestAppContext) {
     let long = "A paragraph.\n\n".repeat(200);
     write(&root, "docs/long.md", long.as_bytes());
     let (window, shell, _) = shell_showing(&root, cx);
-    // Shown as it reads before it's read, as a file is just opened: the keyboard stays with it.
     previewed(window, &shell, "docs/long.md", cx);
     let scrolled = |keys: &str, cx: &mut TestAppContext| {
         press(window, keys, cx);
@@ -357,7 +338,6 @@ fn how_long_a_long_file_takes_to_draw_as_it_scrolls(cx: &mut TestAppContext) {
     let (window, shell, _) = shell_showing(&root, cx);
     previewed(window, &shell, "docs/long.md", cx);
     draw(window, cx);
-    // A page each, as Space scrolls: an arrow held is repeated by the app, not by presses.
     let started = std::time::Instant::now();
     for _ in 0..20 {
         press(window, "space", cx);

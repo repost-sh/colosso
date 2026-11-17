@@ -81,7 +81,6 @@ impl BrowserView {
     /// Puts the person's dialog for question `id` away, if it's up.
     pub(super) fn put_away(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.asked.take_if(|asked| *asked == id).is_some() {
-            // A permission's question is in the site controls' popover, any other in a dialog.
             if std::mem::take(&mut self.asked_in) == Put::Site {
                 self.site_trigger.close(cx);
             } else {
@@ -100,8 +99,6 @@ impl BrowserView {
             return;
         };
         let id = question.id;
-        // A permission is asked for from the site controls' button, as in Arc
-        // (`site/prompt.rs`); from a dialog only where that button isn't drawn.
         if let Dialog::Permission { permissions } = &question.asked
             && self.has_site_button()
         {
@@ -109,7 +106,6 @@ impl BrowserView {
             let (page, from) = (cx.weak_entity(), self.site_trigger.clone());
             self.asked = Some(id);
             self.asked_in = Put::Site;
-            // The button is lit, and there, while its popover is up.
             cx.refresh_windows();
             window.defer(cx, move |window, cx| {
                 let prompt =
@@ -346,7 +342,6 @@ fn words(question: &Dialog, origin: &str) -> Words {
             accept_default: false,
             carries: Carries::Nothing,
         },
-        // File choosers use the system panel and never show a dialog.
         Dialog::File { .. } => Words {
             heading: "Choose a file".into(),
             text: None,

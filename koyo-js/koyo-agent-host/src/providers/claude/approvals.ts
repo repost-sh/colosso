@@ -1,9 +1,3 @@
-// What Claude asks the person before a tool runs (docs/chat.md 4.7, C14), through the SDK's
-// `canUseTool`: an approval, a question (AskUserQuestion), or a proposed plan (ExitPlanMode),
-// which is captured and denied at once so the agent stops for the person. The SDK's abort
-// signal goes with a request to the actor, which withdraws it once the CLI no longer needs
-// the answer (4.5.5); a request refused or withdrawn denies the tool.
-
 import type {
   CanUseTool,
   PermissionResult,
@@ -78,7 +72,6 @@ export async function answerTool(
     if (!plan.success) {
       return { behavior: "deny", message: "The plan couldn't be read." };
     }
-    // The CLI gives what's in its plan file, if it's there: with none there's nothing to decide.
     const markdown = plan.data.plan ?? "";
     if (markdown.trim() === "") {
       return { behavior: "deny", message: EMPTY_PLAN };
@@ -89,7 +82,6 @@ export async function answerTool(
   if (tool === "AskUserQuestion") {
     return await askQuestions(asking, input, request.signal);
   }
-  // The request stands in the timeline for these two; every other call has an item.
   const kept = bounded(input);
   asking.started(request.toolUseID, name, input, kept);
   const response = await answer(asking.ask(approval(name, input, request, kept), request.signal));
@@ -117,7 +109,6 @@ export function approval(
     detail: detail(name, input, kept),
     change: change(name, input),
     input: kept,
-    // Claude's reasons sometimes carry terminal escapes.
     reason: request.decisionReason === undefined ? null : Bun.stripANSI(request.decisionReason),
     allowSession: suggestions.length === 0 ? null : { label: sessionLabel(suggestions) },
   };
@@ -168,7 +159,6 @@ async function askQuestions(
     return { behavior: "deny", message: "The questions couldn't be read." };
   }
   const questions: Question[] = parsed.data.questions.map((each) => ({
-    // The question's text is its id: the CLI takes the answers keyed by it.
     id: each.question,
     header: each.header,
     question: each.question,

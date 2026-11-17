@@ -91,7 +91,6 @@ impl Shared {
     fn ready(&self) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
         let mut readiness = lock(&self.readiness);
-        // Checked under the lock `ended` takes after it sets the exit, so it can't be missed.
         if self.has_exited() {
             drop(sender);
         } else if readiness.quiescent {

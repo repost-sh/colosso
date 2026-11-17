@@ -183,8 +183,6 @@ fn inputs_come_from_the_file_then_the_pin_then_the_file_again() {
 
 #[test]
 fn plans_after_fetch_hands_the_planner_both_lines() {
-    // The 7-day window rose from 70 to 75 on the active account: inside the band under the
-    // 85 line (urgent cadence), outside the band under a 97 weekly line (halved cadence).
     let h = Harness::new();
     let infos = [info("2", EMAIL, "", true, "")];
     let before = UsageEntry {

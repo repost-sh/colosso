@@ -110,7 +110,6 @@ pub(crate) fn tap(caller: &Caller, input: &DeviceTapInput, cx: &mut App) -> Resu
         (3, _) => format!("Triple-tapped {}", named(&spot)),
         _ => format!("Tapped {}", named(&spot)),
     };
-    // Each touch held as long as asked comes on top of the act's own time.
     let limit = ACT + Duration::from_millis(u64::from(hold_ms) * u64::from(count));
     let act_ = Act::Tap { spot, count, hold_ms, fingers };
     act(caller, (input.device.as_deref(), input.pane), Ok((act_, did)), limit, cx)
@@ -202,7 +201,6 @@ pub(crate) fn type_text(caller: &Caller, input: &DeviceTypeInput, cx: &mut App) 
     let Some(into) = input.into.clone() else {
         return act(caller, at, Ok((Act::Type { text }, did)), limit, cx);
     };
-    // Into a field: tapped first, then typed, both as this caller's.
     let target = which(caller, at.0, at.1, cx)?;
     if let Some(error) = super::not_running(target.link.read(cx)) {
         return Err(error);
@@ -219,7 +217,6 @@ pub(crate) fn type_text(caller: &Caller, input: &DeviceTypeInput, cx: &mut App) 
     let agent = caller.actor();
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         tapped.await.map_err(refused)?;
-        // Still the caller's to use: the person may have taken their device back meanwhile.
         if !cx.update(|cx| super::lend::usable_unasked(&agent, &udid, cx)) {
             return Err(ControlError::user_declined(format!("The person took {name} back.")));
         }

@@ -1,6 +1,3 @@
-// The host's process as its starter sees it: ready once it listens, gone with its socket once
-// asked to stop, and leaving its folder to a host that already serves it.
-
 import { existsSync } from "node:fs";
 
 import { afterEach, expect, test } from "bun:test";
@@ -65,7 +62,6 @@ test("stopping ends a live run as the host", async () => {
   const { session } = provider;
   session.started();
   client.request(3, "shutdown", {});
-  // The host asks the turn to stop, and the agent stops it.
   while (session.interrupts === 0) {
     await Bun.sleep(5);
   }

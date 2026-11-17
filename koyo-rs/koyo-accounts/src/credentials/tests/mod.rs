@@ -86,7 +86,6 @@ impl Security for Scripted {
             stdin: input.map(str::to_owned),
         };
         locked(&self.calls).push(call.clone());
-        // Cloned out, so a rule that calls back into the store doesn't wait on itself.
         let rule = locked(&self.rule).clone();
         match rule.and_then(|rule| rule(&call)) {
             Some(Answer::Exit(status)) => Ok(Output {

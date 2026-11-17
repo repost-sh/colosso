@@ -69,7 +69,6 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Only a space's mark looks different pointed at; a tile lights by its own hover style.
         let redraw = matches!(what, Hovered::Space(_));
         if !hovered {
             if self.arc_hover.on == Some(what) {

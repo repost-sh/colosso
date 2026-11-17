@@ -36,17 +36,13 @@ pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
         Kind::Resize => Run::resize,
         Kind::SearchQuery => Run::search_query,
         Kind::SearchEdit => Run::search_edit,
-        // The scans run no editor and open no window.
         Kind::Scan | Kind::ScanTouch | Kind::BurstIgnored | Kind::BurstTracked => {
             return scan::run(scenario, deadline);
         }
-        // Nor do the file tree's rows.
         Kind::RowsExpand | Kind::RowsCollapse | Kind::RowsUpdate | Kind::RowsReveal => {
             return rows::run(scenario, deadline);
         }
-        // Nor does Go to File's search.
         Kind::FinderQuery | Kind::FinderUpdate => return finder::run(scenario, deadline),
-        // Nor the terminal's, whose samples end where the view would paint.
         Kind::TermEcho | Kind::TermCat => return term::run(scenario, deadline),
     };
     let text = SharedString::from(fixture.read()?);
@@ -108,7 +104,6 @@ impl Run {
             .bench
             .read_editor(|state, _| state.line_height())
             .unwrap_or(px(20.));
-        // Half a page in wheel lines, which the editor turns back into pixels by its line height.
         let half_page = if sideways { WIDTH / 2. } else { HEIGHT / 2. };
         let lines = (half_page / line_height.as_f32()).floor().max(1.);
         let mut direction = -1.;
@@ -125,7 +120,6 @@ impl Run {
             let moved = (after.x - before.x).abs().as_f32() + (after.y - before.y).abs().as_f32();
             travelled += moved;
             if moved == 0. {
-                // At an end: come back the other way.
                 direction = -direction;
             }
             Ok(took)
@@ -142,7 +136,6 @@ impl Run {
     /// the line never grows past one letter, so the view stays put and every sample is the
     /// same plain edit. Checks after each keystroke, untimed, that the text took it.
     fn type_keys(&mut self) -> Result<()> {
-        // Built before sampling, so the timing holds no allocation of the bench's own.
         let mut keys: Vec<Keystroke> = (0..KEYSTROKES)
             .map(|i| {
                 if i % 2 == 0 {
@@ -182,7 +175,6 @@ impl Run {
 
     fn resize(&mut self, text: SharedString) -> Result<()> {
         self.bench.load(text)?;
-        // Down from the full width to half of it in even steps, and back up.
         let half = RESIZE_STEPS / 2;
         let step = WIDTH / 2. / half as f32;
         self.sample(RESIZE_STEPS, |bench, i| {
@@ -230,8 +222,6 @@ impl Run {
         self.bench.load(text)?;
         self.open_search()?;
         self.check_panel_typing()?;
-        // The query typed a letter at a time, then erased, over and over: each change
-        // searches the whole file again.
         let steps: Vec<&str> = (1..=QUERY.len())
             .chain((0..QUERY.len()).rev())
             .map(|length| &QUERY[..length])

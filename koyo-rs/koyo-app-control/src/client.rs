@@ -93,8 +93,6 @@ impl Client {
             waiting: Mutex::new(Waiting::default()),
             notices: notify,
         });
-        // The reader thread reads the welcome too, so the hello's deadline is a wait on a
-        // channel rather than a socket timeout, which macOS won't change once the app hangs up.
         let (welcomed, welcome) = crossbeam_channel::bounded(1);
         let reading = Arc::clone(&shared);
         let reader = std::thread::Builder::new()
@@ -199,7 +197,6 @@ impl Client {
             Ok(result) => result,
             Err(RecvTimeoutError::Timeout) => {
                 self.shared.waiting.lock().calls.remove(&id);
-                // The answer may have come between the timeout and forgetting the call.
                 answer.try_recv().unwrap_or_else(|_| {
                     Err(ControlError::timeout(format!(
                         "Koyo didn't answer {operation} within {} seconds.",

@@ -124,7 +124,6 @@ fn an_ed25519_key_reads_under_id_ed25519() {
 
 #[test]
 fn an_rsa_key_reads_as_its_modulus_and_exponent_under_rsa_encryption() {
-    // A 2048-bit modulus with its first bit set takes a zero before it, as DER integers do.
     let modulus = [&[0xc3][..], &[0x99; 255]].concat();
     let key = map(&[
         (int(1), int(3)),
@@ -153,7 +152,6 @@ fn a_key_type_koyo_doesnt_know_still_tells_its_algorithm() {
     let attested = read(&attestation_object(&authenticator_data(&key))).unwrap();
     assert_eq!(attested.public_key, None);
     assert_eq!(attested.algorithm, 5);
-    // A P-256 key of the wrong size, likewise.
     let key = p256_key(&[1; 31], &[2; 32]);
     let attested = read(&attestation_object(&authenticator_data(&key))).unwrap();
     assert_eq!((attested.public_key, attested.algorithm), (None, -7));
@@ -165,7 +163,6 @@ fn entries_in_any_order_and_a_full_attestation_statement_are_read_past() {
     let statement = map(&[
         (text("alg"), int(-7)),
         (text("sig"), bytes(&[0x30; 70])),
-        // x5c: an array of certificates, under a tag for good measure.
         (
             text("x5c"),
             [head(4, 2), head(6, 24), bytes(&[1; 300]), bytes(&[2; 3])].concat(),
@@ -191,14 +188,11 @@ fn authenticator_data_without_a_new_key_reads_as_nothing() {
     let mut data = authenticator_data(&p256_key(&[1; 32], &[2; 32]));
     data[32] &= !0x40;
     assert_eq!(read(&attestation_object(&data)), None);
-    // A credential id longer than the data.
     let mut data = authenticator_data(&p256_key(&[1; 32], &[2; 32]));
     data[53..55].copy_from_slice(&0xffffu16.to_be_bytes());
     assert_eq!(read(&attestation_object(&data)), None);
-    // A key with no algorithm.
     let key = map(&[(int(1), int(2)), (int(-1), int(1))]);
     assert_eq!(read(&attestation_object(&authenticator_data(&key))), None);
-    // `authData` that isn't bytes, and an object with none.
     assert_eq!(read(&map(&[(text("authData"), text("no"))])), None);
     assert_eq!(read(&map(&[(text("fmt"), text("none"))])), None);
 }
@@ -216,14 +210,12 @@ fn every_truncation_of_an_attestation_object_reads_as_nothing() {
 fn malformed_cbor_reads_as_nothing_without_panicking() {
     let key = p256_key(&[1; 32], &[2; 32]);
     let data = authenticator_data(&key);
-    // Not a map; an indefinite-length map; a reserved length.
     assert_eq!(read(&bytes(&data)), None);
     assert_eq!(
         read(&[&[0xbf][..], &text("authData"), &bytes(&data), &[0xff]].concat()),
         None
     );
     assert_eq!(read(&[0xbc]), None);
-    // Lengths and counts far past the end, which mustn't be taken at their word.
     assert_eq!(
         read(&[&[0xa1][..], &text("authData"), &head(2, u64::MAX)].concat()),
         None
@@ -233,11 +225,9 @@ fn malformed_cbor_reads_as_nothing_without_panicking() {
         read(&[&[0xa1][..], &text("x"), &head(4, 1 << 40)].concat()),
         None
     );
-    // Arrays nested deeper than any attestation object goes.
     let deep = [vec![0x81; 10_000], vec![0x00]].concat();
     let object = map(&[(text("attStmt"), deep), (text("authData"), bytes(&data))]);
     assert_eq!(read(&object), None);
-    // A key that isn't a map, and one cut short.
     let mut short = authenticator_data(&key[..key.len() - 1]);
     assert_eq!(read(&attestation_object(&short)), None);
     short.truncate(55 + 16);
@@ -247,7 +237,6 @@ fn malformed_cbor_reads_as_nothing_without_panicking() {
 
 #[test]
 fn arbitrary_bytes_never_panic() {
-    // A fixed linear congruential sequence: the same inputs on every run.
     let mut state: u64 = 0x2545_f491_4f6c_dd1d;
     let mut next = || {
         state = state

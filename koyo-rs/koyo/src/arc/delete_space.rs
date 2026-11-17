@@ -80,7 +80,6 @@ impl DeleteSpace {
             Leftovers::MoveTo(self.target)
         };
         let index = self.index;
-        // Its loose pages go where its projects do: to the space that takes them, or with it.
         let id = |at: usize| settings::get(cx).spaces.get(at).map(|space| space.id);
         let gone = id(index);
         let takes = match leftovers {

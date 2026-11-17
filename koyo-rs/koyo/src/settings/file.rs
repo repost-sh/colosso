@@ -54,7 +54,6 @@ pub(super) fn read(path: &Path) -> Result<Settings, String> {
 pub(super) fn load(path: &Path) -> Settings {
     match read(path) {
         Ok(settings) => settings,
-        // Before anything was saved.
         Err(_) if !path.exists() => Settings::default(),
         Err(error) => {
             log::warn!("ignoring unreadable {}: {error}", path.display());

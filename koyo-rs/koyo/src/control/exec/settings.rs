@@ -104,7 +104,6 @@ fn check(input: &SettingsSetInput) -> Result<(), ControlError> {
 
 /// Changes the settings `input` names, all or none, and answers the settings after.
 pub(crate) fn set(input: SettingsSetInput, cx: &mut App) -> Result<Value, ControlError> {
-    // Checked first, so a refused field changes nothing.
     check(&input)?;
     let sidebar_width = (input.sidebar_width)
         .map(|width| {

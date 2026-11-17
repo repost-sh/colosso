@@ -33,7 +33,6 @@ pub(super) fn other_build(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<(
         .ok_or("the app has no terminal client")?
         .dir()
         .clone();
-    // Held while the daemons change places, so the app can't start one in between.
     let lock = std::fs::File::create(dir.start_lock()).map_err(|error| error.to_string())?;
     lock.lock().map_err(|error| error.to_string())?;
     stop_daemon(&dir)?;
@@ -54,7 +53,6 @@ pub(super) fn other_build(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<(
     )?;
     said.push(format!("{}", drawn.save("other-build.png")?.display()));
 
-    // As the notice's button does.
     let view = terminal(drawn)?;
     (drawn.cx).update(|cx| view.update(cx, TerminalView::replace_daemon));
     drop(view);

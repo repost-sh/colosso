@@ -116,8 +116,6 @@ impl Listed {
         let facts = view.read(cx).facts(cx);
         let (controller, dialog) = match spot {
             None => (facts.controller, facts.dialog),
-            // Of the person's page, nothing names another client, and only a caller they let
-            // use it hears what it asks.
             Some(_) => (
                 holder(self.pane, view, caller, cx),
                 facts.dialog.filter(|_| granted),

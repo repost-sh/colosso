@@ -195,8 +195,6 @@ fn found(answer: WorkspaceSymbolResponse, encoding: Encoding) -> Vec<Symbol> {
                     OneOf::Left(location) => {
                         (location.uri, Some(At::Server(location.range, encoding)))
                     }
-                    // Only the file. The client doesn't offer to ask for the range after, so
-                    // no server should say so little.
                     OneOf::Right(location) => (location.uri, None),
                 };
                 let path = uri::to_path(&uri)?;

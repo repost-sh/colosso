@@ -161,7 +161,6 @@ fn run_of<'a>(replica: &'a Replica, item: &Item) -> Option<(usize, &'a Run)> {
 fn live_row(run: &Run, item: Option<usize>) -> Row {
     Row {
         id: RowId::Live(run.id.clone()),
-        // One line, whatever it says.
         seq: 0,
         kind: RowKind::Live { item },
     }
@@ -197,7 +196,6 @@ impl RunRows<'_> {
             .iter()
             .rfind(|item| is_text(item))
             .map(|item| &item.id);
-        // Failed and interrupted runs show what they did, as that's what someone reads them for.
         let fold = if self.run.status == RunStatus::Completed {
             fold
         } else {
@@ -362,7 +360,6 @@ impl RunRows<'_> {
         if asking {
             return;
         }
-        // A subagent shows for itself, however long it takes.
         let running = (items.iter().enumerate().rev())
             .filter(|(_, item)| !matches!(item.body, ItemBody::Subagent(_)))
             .find(|(_, item)| item.status == ItemStatus::Running);
@@ -398,8 +395,6 @@ fn is_work(item: &Item) -> bool {
 /// with how many. Rows above and below it keep their places and heights, however their places in
 /// the replica moved.
 pub fn changed(old: &[Row], new: &[Row]) -> Option<(Range<usize>, usize)> {
-    // A row follows its records, an answer whether it's still the last, and a request whether
-    // it's the one asked.
     let told = |row: &Row| match row.kind {
         RowKind::Answer { last, .. } => last,
         RowKind::Request { asking, .. } => asking,

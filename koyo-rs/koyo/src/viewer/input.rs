@@ -87,7 +87,6 @@ impl Viewer {
                 cx,
             );
         } else {
-            // The wheel's deltas say where the pages go; the scroll is how far they've gone.
             self.scroll_by((-dx, -dy), cx);
         }
     }

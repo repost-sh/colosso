@@ -68,7 +68,6 @@ impl Repo {
     /// A worktree already gone, from an earlier try that couldn't delete its branch, is
     /// skipped.
     pub fn remove_worktree(&self, path: &Path, shown: &Loss, delete_branch: bool) -> Result<()> {
-        // Git lists worktrees by their real path, which `path` may spell differently.
         let listed = self
             .worktrees()?
             .iter()
@@ -80,7 +79,6 @@ impl Repo {
                 ));
             }
             let mut remove = Git::new(&self.path).args(["worktree", "remove"]);
-            // Without changes to lose, git itself refuses if some appear at the last moment.
             if !shown.changes.is_empty() {
                 remove = remove.arg("--force");
             }
@@ -117,7 +115,6 @@ impl Repo {
     fn commits_only_in(&self, tip: &str, except: Option<&str>) -> Result<usize> {
         let mut count = Git::new(&self.path).args(["rev-list", "--count", tip, "--not"]);
         if let Some(branch) = except {
-            // `--exclude` leaves the branch out of the `--branches` that follow it.
             count = count.arg(format!("--exclude={branch}"));
         }
         let count = count

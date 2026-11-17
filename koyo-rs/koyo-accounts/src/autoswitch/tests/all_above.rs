@@ -9,11 +9,8 @@ use serde_json::{Value, json};
 use super::super::windows::Reading;
 use super::*;
 
-// -- TestEveryAccountAboveThreshold ----------------------------------------------------------
-
 #[test]
 fn moves_to_the_account_with_the_most_room() {
-    // The measured shape: active 99, peers 100 and 95; 3 is the only one with room.
     let mut h = Harness::standard();
     let fleet = [
         ("1", r(99., &h, 7200.)),
@@ -38,9 +35,6 @@ fn most_room_wins_over_a_sooner_reset() {
 
 #[test]
 fn the_measured_late_switch_lands_on_the_most_room() {
-    // 2026-10-16, threshold 80 (cswap runs it under consume-first; the all-above ranking and its
-    // capped margin are every strategy's). 3 has 19 points against the active's 10, short of the
-    // uncapped ratio's 20.
     let mut h = Harness::numbered(5, threshold(80.));
     let fleet = [
         ("1", usage57(0., None, 90., Some(&at(&h, 3. * 86400.)))),
@@ -64,8 +58,6 @@ fn the_measured_late_switch_lands_on_the_most_room() {
 
 #[test]
 fn a_failover_ranks_by_room_when_every_candidate_is_above() {
-    // Failover can't read the active, so the candidates alone decide nothing is under a line
-    // (cswap runs it under consume-first).
     let mut h = Harness::numbered(3, defaults());
     let mut outcome = TickOutcome::NoAction;
     for _ in 0..3 {
@@ -127,7 +119,6 @@ fn an_unknown_reset_loses_a_headroom_tie() {
 
 #[test]
 fn does_not_flap_between_two_near_equal_accounts() {
-    // One point of room isn't worth a move: the target burns it back within a poll or two.
     let mut h = Harness::standard();
     let first = h.tick_with_usage(&[("1", usage(96.)), ("2", usage(95.)), ("3", usage(100.))]);
     assert_eq!(first, TickOutcome::Blocked);
@@ -136,7 +127,6 @@ fn does_not_flap_between_two_near_equal_accounts() {
 
 #[test]
 fn the_margin_is_capped_at_spent_headroom_points() {
-    // Above SPENT_HEADROOM_PCT the margin is that many points, not twice the active.
     for (peer, moves) in [(87., true), (87.1, false)] {
         let mut h = Harness::numbered(2, threshold(80.));
         let outcome = h.tick_with_usage(&[("1", usage(90.)), ("2", usage(peer))]);
@@ -147,7 +137,6 @@ fn the_margin_is_capped_at_spent_headroom_points() {
 
 #[test]
 fn a_recovered_account_clears_the_bar_at_the_capped_margin() {
-    // The no-return release asks for the ranking's capped margin on both sides of the cap.
     for (departure, recovery) in [
         ([95., 85., 92.], [81., 90., 87.]),
         ([98.5, 97., 99.], [95.5, 98., 96.]),
@@ -191,8 +180,6 @@ fn at_limit_trigger_still_ignores_the_landing_rule() {
     assert_eq!(h.active(), Some(2));
     assert_eq!(h.trigger(), Trigger::AtLimit);
 }
-
-// -- TestASoonerResetNeverBuysAMove -----------------------------------------------------------
 
 #[test]
 fn a_sooner_reset_on_less_room_does_not_move() {
@@ -261,8 +248,6 @@ fn a_peer_with_real_headroom_wins_whatever_its_reset() {
 
 #[test]
 fn an_unreadable_peer_does_not_veto_the_escape() {
-    // The census counts the measured candidates: a sentinel row (headroom unknown) would keep the
-    // landing rule on with nowhere to land.
     let mut h = Harness::fleet(4, defaults());
     let fleet = [
         ("1", r(99., &h, 109. * 3600.)),
@@ -285,8 +270,6 @@ fn equal_headroom_takes_the_sooner_reset() {
     assert_eq!(h.tick_with_usage(&fleet), TickOutcome::Switched);
     assert_eq!(h.active(), Some(3));
 }
-
-// -- TestASpentFleetRanksByRoomToo ------------------------------------------------------------
 
 #[test]
 fn an_even_spent_fleet_stays_put() {
@@ -324,8 +307,6 @@ fn a_spent_fleet_takes_the_most_room() {
     assert_eq!(h.active(), Some(3));
 }
 
-// -- TestEscapeBeforeTheLimitLands ------------------------------------------------------------
-
 #[test]
 fn at_99_the_proactive_path_already_escapes() {
     let mut h = Harness::standard();
@@ -336,7 +317,6 @@ fn at_99_the_proactive_path_already_escapes() {
     ];
     assert_eq!(h.tick_with_usage(&fleet), TickOutcome::Switched);
     assert_eq!(h.active(), Some(2));
-    // At-limit stays bound to headroom <= 0: it skips the anti-flap margin proactive owns.
     assert_eq!(h.trigger(), Trigger::Proactive);
 }
 
@@ -362,12 +342,8 @@ fn below_the_brink_the_ordinary_rules_still_decide() {
     assert_ne!(h.tick_with_usage(&fleet), TickOutcome::Switched);
 }
 
-// -- TestReviewFindings202 --------------------------------------------------------------------
-
 #[test]
 fn a_short_interval_is_never_lengthened() {
-    // max(min(delay, due_in), URGENT) raised a delay already below URGENT: a 15 s interval
-    // slept 60 s.
     let mut h = Harness::standard();
     h.engine.active_plan = ActivePlan::Kept(h.now() + 5.);
     h.engine.settings.interval_seconds = 15.;

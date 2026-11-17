@@ -99,7 +99,6 @@ impl Digitizer {
         let kind = match &self.down {
             Some(was) if was.len() == points.len() => Kind::Moves,
             Some(was) => {
-                // One finger became two, or two one: the contact there was ends first.
                 let was = was.clone();
                 self.contact(&was, Kind::Ends, self.edge);
                 Kind::Begins

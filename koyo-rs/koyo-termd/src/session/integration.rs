@@ -26,8 +26,6 @@ pub fn variables(
         .trim_start_matches('-');
     match name {
         "zsh" => {
-            // zsh reads Ghostty's .zshenv first, which puts the person's ZDOTDIR back and
-            // reads their own files from it.
             let zdotdir = scripts.join("zsh").to_string_lossy().into_owned();
             let mut variables = vec![("ZDOTDIR".to_owned(), zdotdir)];
             if let Some(own) = get("ZDOTDIR") {
@@ -36,8 +34,6 @@ pub fn variables(
             variables
         }
         "fish" => {
-            // fish's vendor_conf.d loads the integration, which then takes its folder back
-            // out of XDG_DATA_DIRS.
             let dir = scripts.to_string_lossy().into_owned();
             let rest = (get("XDG_DATA_DIRS").filter(|dirs| !dirs.is_empty()))
                 .unwrap_or_else(|| "/usr/local/share:/usr/share".to_owned());

@@ -90,7 +90,6 @@ impl Shared {
         let Some(sender) = lock(&self.pending).remove(&id) else {
             return false;
         };
-        // Its future may be dropped this very moment, and then nobody needs the answer.
         let _ = sender.send(answer);
         true
     }
@@ -164,7 +163,6 @@ impl Shared {
         } else {
             log::info!("{} exited (exit code {code:?})", self.name);
         }
-        // The process is waited for once, so this is the only exit set.
         let _ = self.exit.set(exit.clone());
 
         let waiting = std::mem::take(&mut *lock(&self.pending));

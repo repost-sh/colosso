@@ -13,7 +13,6 @@ fn nothing_running_quits_and_a_choice_made_is_kept_to() {
     assert_eq!(next(OnQuit::Ask, 1), Next::Ask);
     assert_eq!(next(OnQuit::Keep, 2), Next::Quit);
     assert_eq!(next(OnQuit::End, 2), Next::End);
-    // An ended terminal it keeps could come back, and the daemon would stay.
     assert_eq!(next(OnQuit::End, 0), Next::End);
 }
 

@@ -151,7 +151,6 @@ fn newest(listed: &Value) -> Option<Runtime> {
             })
         })
         .collect();
-    // Stable: each family keeps simctl's order, newest first.
     models.sort_by_key(|model| model.ipad);
     Some(Runtime {
         id: runtime["identifier"].as_str()?.to_owned(),
@@ -291,7 +290,6 @@ mod tests {
         assert_eq!((runtime.id.as_str(), runtime.version.as_str()), ("com.apple.CoreSimulator.SimRuntime.iOS-27-2", "27.2"));
         let names: Vec<&str> = runtime.models.iter().map(|model| model.name.as_str()).collect();
         assert_eq!(names, ["iPhone 18 Pro", "iPad Pro 13-inch (M5)"]);
-        // With no name, the newest iPhone; a name in any case; one the system hasn't, refused.
         assert_eq!(model_in(&runtime, None).unwrap().kind, "T-18");
         assert_eq!(model_in(&runtime, Some("ipad pro 13-inch (m5)")).unwrap().kind, "T-IPAD");
         assert!(matches!(model_in(&runtime, Some("iPhone 99")), Err(Unmade::Model(_))));
@@ -305,8 +303,6 @@ mod tests {
         assert!(lock(&state, "HELD").is_none(), "a host holds it");
         assert!(lock(&state, "FREE").is_some(), "nobody does");
         drop(held);
-        // Let go with the last copy of the descriptor: a process another test is starting holds
-        // one for a moment, until it has become its program.
         let free = (0..200).any(|_| {
             lock(&state, "HELD").is_some() || {
                 std::thread::park_timeout(Duration::from_millis(5));

@@ -56,7 +56,6 @@ fn a_tick_over_the_line_switches_the_mac_to_the_other_account() {
     assert_eq!(switches.len(), 1, "{:?}", report.events);
     assert_eq!(switches[0].from_ref, Some(AccountRef::new(Some(1), A)));
     assert_eq!(switches[0].to_ref, Some(AccountRef::new(Some(2), B)));
-    // The target's token was fresh: nothing was spent to activate it.
     assert!(h.sandbox.http.requests_to(OAUTH_TOKEN_URL).is_empty());
 }
 

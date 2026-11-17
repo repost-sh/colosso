@@ -29,7 +29,6 @@ fn the_prompt_of_the_section_at_the_top_floats_once_its_place_has_gone_past_the_
         };
         floating(&prompts, top, px(line)).map(|at| prompts[at])
     };
-    // The card in place, 8 pt down.
     assert_eq!(at(0, 0., 8.), None, "at the top the first is in place");
     assert_eq!(
         at(0, 8., 8.),
@@ -49,7 +48,6 @@ fn the_prompt_of_the_section_at_the_top_floats_once_its_place_has_gone_past_the_
         "and lifts out as its place goes past"
     );
     assert_eq!(at(12, 0., 8.), Some(10));
-    // The card partly out of sight, its top 50 pt up: a bubble under that is where it is.
     assert_eq!(
         at(5, 30., -50.),
         None,
@@ -97,7 +95,6 @@ fn the_next_prompt_pushes_the_floating_one_up_ahead_of_it() {
 #[test]
 fn the_card_comes_down_as_far_as_a_person_scrolls_up_and_goes_as_they_scroll_down() {
     let card = px(100.);
-    // Out of sight at first; 30 pt up brings 30 pt of it down.
     let hidden = hidden_after(Pixels::MAX, px(-30.), card, None);
     assert_eq!(hidden, px(78.));
     assert_eq!(
@@ -115,8 +112,6 @@ fn the_card_comes_down_as_far_as_a_person_scrolls_up_and_goes_as_they_scroll_dow
         px(108.),
         "all out of sight and no further, so it comes back at the first turn up"
     );
-    // Out of sight, with the prompt itself still in view, its bubble 150 pt up: the card's held at
-    // that bubble, which comes down by itself.
     assert_eq!(
         hidden_after(Pixels::MAX, px(-20.), card, Some(px(-150.))),
         px(158.)
@@ -265,13 +260,11 @@ fn scrolled_back_into(
 
 fn wheel(by: f32, window: AnyWindowHandle, cx: &mut TestAppContext) {
     VisualTestContext::from_window(window, cx).simulate_event(ScrollEvent {
-        // Over the timeline, in the middle of the window.
         position: point(px(700.), px(400.)),
         delta: ScrollDelta::Pixels(point(px(0.), px(-by))),
         ..ScrollEvent::default()
     });
     settled(window, cx);
-    // How far the next prompt pushes the card follows its height as it was last laid out.
     settled(window, cx);
 }
 
@@ -344,7 +337,6 @@ fn a_jump_shows_no_prompt_and_the_one_of_the_section_read_comes_down_on_a_scroll
 
     scroll_to(&view, second + 1, window, cx);
     assert_eq!(floats(&view, window, cx), None, "gone to, nothing floats");
-    // Down into its answer, then back up a little: its prompt stays far above.
     wheel(600., window, cx);
     assert_eq!(
         floats(&view, window, cx),
@@ -420,10 +412,8 @@ fn the_next_prompt_coming_up_pushes_the_floating_one_out_rather_than_under_it(
         "the third is at the top, in its place"
     );
 
-    // A turn up: the third's row 30 pt under the top, the second coming down over it.
     wheel(-30., window, cx);
     assert_eq!(floats(&view, window, cx), Some(second));
-    // The third's bubble starts a prompt's room into its row; the card ends that much above it.
     let mut drawn = VisualTestContext::from_window(window, cx);
     let card = drawn.debug_bounds("chat-floating-prompt").unwrap();
     let row = drawn

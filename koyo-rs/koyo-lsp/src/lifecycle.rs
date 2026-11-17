@@ -58,7 +58,6 @@ impl Client {
                 );
             }
         }
-        // Set once: a second initialize is the protocol's error, and the server's to answer.
         let _ = shared
             .capabilities
             .set(Arc::new(result.capabilities.clone()));
@@ -73,7 +72,6 @@ impl Client {
         shared.stopping();
         let exited = self.exited();
         if !shared.has_exited() {
-            // The answer doesn't matter: the server exits next either way.
             let _ = within(timeout, self.request::<Shutdown>(&())).await;
             let _ = self.notify::<ExitNotification>(&());
         }

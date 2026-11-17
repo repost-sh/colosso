@@ -44,7 +44,6 @@ impl ParentElement for SettingsPageColumn {
 impl RenderOnce for SettingsPageColumn {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
-        // Each page keeps a scroll position of its own.
         div()
             .id(("settings-page", self.page as usize))
             .size_full()

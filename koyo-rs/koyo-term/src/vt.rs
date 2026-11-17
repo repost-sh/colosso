@@ -103,7 +103,6 @@ impl Vt {
             signalled: AtomicBool::new(false),
         });
         let for_thread = Arc::clone(&slot);
-        // The engine can't cross threads, so the thread's state is made on the thread.
         std::thread::Builder::new()
             .name(format!("term-vt {name}"))
             .spawn(move || {
@@ -166,13 +165,11 @@ impl Thread {
                 recv(stream) -> message => match message {
                     Ok(message) => self.stream(message),
                     Err(_) => {
-                        // The client let this terminal go.
                         stream = never();
                     }
                 },
                 recv(commands) -> command => match command {
                     Ok(command) => self.command(command),
-                    // The view is gone.
                     Err(_) => return,
                 },
                 recv(timer) -> _ => {}
@@ -224,7 +221,6 @@ impl Thread {
                 let _ = self.updates.unbounded_send(Update::Lagging);
             }
             Stream::Event(EventKind::Size { size, pinned }) => {
-                // The view lays a pinned grid out from it.
                 let event = EventKind::Size { size, pinned };
                 let _ = self.updates.unbounded_send(Update::Event(Box::new(event)));
                 if let Some(engine) = &mut self.engine
@@ -257,7 +253,6 @@ impl Thread {
             return;
         }
         if self.engine.is_none() {
-            // Output with no snapshot before it: the daemon replayed its ring instead.
             match Engine::new(Size::cells(80, 24), SCROLLBACK_BYTES) {
                 Ok(engine) => self.engine = Some(engine),
                 Err(error) => return log::error!("couldn't make an engine: {error}"),
@@ -297,7 +292,6 @@ impl Thread {
                 self.engine = Some(engine);
                 self.offset = chunk.offset;
                 self.apply_colors();
-                // Only what follows the snapshot is news: a restored screen rings no bells.
                 if let Some(engine) = &mut self.engine {
                     engine.take_effects();
                 }
@@ -317,7 +311,6 @@ impl Thread {
                     self.hold_until = Some(Instant::now() + RENDER_HOLD_LIMIT);
                 }
                 Effect::RenderHold(false) => self.hold_until = None,
-                // The daemon's engine answers queries and reports the rest as events.
                 Effect::Bell
                 | Effect::WriteBack(_)
                 | Effect::Title(_)
@@ -349,7 +342,6 @@ impl Thread {
             }
             Command::OptionAsAlt(option) => self.option_as_alt = option,
             Command::Paste { handle, text } => {
-                // Answered once the daemon wrote it: what's typed next comes after it.
                 if let Err(error) = self.connection.request(RequestBody::Paste { handle, text }) {
                     log::warn!("couldn't paste: {error}");
                 }
@@ -393,7 +385,6 @@ fn drive(
         Command::Key(key) => {
             let bytes = engine.encode_key(&key.as_input(), option_as_alt)?;
             if !bytes.is_empty() && key.action != KeyAction::Release {
-                // Typing shows where the typing goes.
                 engine.scroll(Scroll::Bottom);
                 engine.clear_selection()?;
             }

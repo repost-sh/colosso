@@ -20,9 +20,6 @@ wrap_keyboard_handler! {
     }
 
     impl KeyboardHandler {
-        // A key the person pressed, before the page hears it: the app is told the person is
-        // at the page, as a press on it tells it. A key an agent sends has no event of the
-        // system's behind it.
         fn on_pre_key_event(
             &self,
             _browser: Option<&mut Browser>,
@@ -34,8 +31,6 @@ wrap_keyboard_handler! {
             if down.is_some() && !os_event.is_null() && due(self.pane) {
                 crate::host::send(&koyo_browser_ipc::HostEvent::Typed { pane: self.pane });
             }
-            // Escape takes a page out of full screen, as in any browser, before the page hears
-            // it: Chromium's own does so only in a window of its own that has the keys.
             let escape = down.is_some_and(|event| event.windows_key_code == ESCAPE);
             c_int::from(escape && crate::host::leave_fullscreen(self.pane))
         }
@@ -74,7 +69,6 @@ fn due(pane: PaneId) -> bool {
     let now = std::time::Instant::now();
     TOLD.with(|told| {
         let mut told = told.borrow_mut();
-        // Panes long closed needn't be kept.
         told.retain(|_, at| now.duration_since(*at) < std::time::Duration::from_secs(60));
         let due = told.get(&pane).is_none_or(|at| now.duration_since(*at) >= TELL_EVERY);
         if due {

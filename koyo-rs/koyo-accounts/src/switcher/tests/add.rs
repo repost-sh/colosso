@@ -31,7 +31,6 @@ fn readd_existing_account_updates_credentials() {
     let second = h.switcher.add_account().unwrap();
     assert_eq!(h.accounts().len(), 1);
     assert_eq!(h.sequence()["sequence"].as_array().unwrap().len(), 1);
-    // cswap prints "Updated credentials".
     assert!(second.updated);
     assert!(
         h.backup("1", "test@example.com")
@@ -116,8 +115,6 @@ fn add_with_no_live_login_raises() {
 
 #[test]
 fn a_secure_store_miss_does_not_capture_the_other_profiles_key() {
-    // The API-key tail follows `CLAUDE_CONFIG_DIR`; a miss in the secure store (a logged-out
-    // environment to Claude Code) must not capture the other profile's key.
     let mut h = Harness::new();
     let active = h.home().join("profileA");
     let secure = h.home().join("profileB");
@@ -140,8 +137,6 @@ fn a_secure_store_miss_does_not_capture_the_other_profiles_key() {
 
 #[test]
 fn refuse_degraded_capture_is_not_a_toctou() {
-    // The guard's check and the captured value are one read: exactly one Keychain read, and
-    // its healthy value, never the stale file a second read could fall to.
     let h = Harness::new();
     h.switcher.setup_directories().unwrap();
     std::fs::write(h.credentials_file(), "STALE-FALLBACK-PLAINTEXT").unwrap();
@@ -196,7 +191,6 @@ fn the_default_capture_path_refuses_a_degraded_read() {
 
 #[test]
 fn a_degraded_add_writes_nothing() {
-    // The same refusal through `add_account`: no slot, no backup.
     let h = Harness::new();
     h.mock_claude_config();
     std::fs::write(

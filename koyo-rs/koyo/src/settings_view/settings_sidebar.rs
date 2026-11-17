@@ -111,7 +111,6 @@ impl Render for SettingsSidebar {
                     .gap_1()
                     .text_base()
                     .font_weight(FontWeight::SEMIBOLD)
-                    // Back to the workspace, as Escape and ⌘W go.
                     .child(
                         action_button(
                             "settings-back",

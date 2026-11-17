@@ -22,7 +22,6 @@ pub(crate) struct Places {
 
 impl Places {
     pub(crate) fn new(root: &Path, git: Option<&GitDirs>) -> Places {
-        // The platform reports real paths, so a folder reached through a link is named as it.
         let real = |path: &Path| {
             let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
             text(&path).into_owned()
@@ -61,7 +60,6 @@ impl Places {
             }
         }
         let relative = inside(&self.root, path)?;
-        // Another checkout's git folder, or a nested repository's: not this checkout's files.
         if relative.is_empty() || relative.split('/').any(|part| part == ".git") {
             return None;
         }
@@ -86,7 +84,6 @@ impl Places {
                 (!unread).then(|| Seen::Rescan(relative.into()))
             }
             None if path.is_empty() || inside(path, &self.root).is_some() => Some(Seen::Everything),
-            // Above a git folder elsewhere, and not the checkout.
             None => Some(Seen::Git(Git::ALL)),
         }
     }
@@ -123,9 +120,7 @@ fn git_path(inside: &str) -> Option<Seen> {
         "index" => git(true, false),
         "HEAD" | "packed-refs" => git(false, true),
         "info/exclude" => Some(Seen::Everything),
-        // The lock git writes the new ref into first is renamed over it, which is reported too.
         refs if refs.starts_with("refs/heads/") && !refs.ends_with(".lock") => git(false, true),
-        // Objects, logs, the lock files, hooks and the like change nothing shown.
         _ => None,
     }
 }

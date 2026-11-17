@@ -75,9 +75,7 @@ impl Render for DraggedPane {
 /// The chip under the pointer for what's in hand, by its panes' `faces`, taken up `grab` in
 /// from its corner: a tab off its list, a pane of a split, or a pinned page off its grid.
 pub fn drag_chip(faces: &[Face], grab: Point<Pixels>, p: Palette) -> Div {
-    // Drawn from where the pointer is less how far in it took hold, so set back by that.
     let by = (grab - CHIP_AT).max(&Point::default());
-    // A split's panes each in a chip of their own, as its tab shows them.
     let split = faces.len() > 1;
     let faces = faces
         .iter()
@@ -111,7 +109,6 @@ impl Shell {
     /// The shown tab: its pane, or its split.
     pub(super) fn tab_content(&self, tab: &Tab, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
-        // A pinned or a loose page is split with nothing: no side of it takes what's in hand.
         let in_hand = cx.has_active_drag() && !self.workspace.apart_shown();
         self.part(tab, Vec::new(), p, in_hand, cx)
     }
@@ -219,7 +216,6 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (id, bar) = (pane.id, pane.bar());
-        // In Arc an island of its own, a split's sides the glass apart.
         part(p, theme::card::islands(cx))
             .debug_selector(move || format!("pane-{id}"))
             .size_full()
@@ -227,8 +223,6 @@ impl Shell {
             .flex_col()
             .children(crate::chat_backdrop::behind(pane, cx))
             .child(hears_presses(id, cx))
-            // A pane whose content has a bar (a device's standing and buttons) has its header
-            // alone too.
             .when(in_split || bar.is_some(), |part| part.child(self.pane_header(pane, bar, in_split, p, cx)))
             .child(
                 div()
@@ -238,7 +232,6 @@ impl Shell {
                     .child(self.pane_content(pane, p, cx)),
             )
             .when(in_hand, |part| {
-                // Among the window's overlays, over the pane and whatever's drawn after it.
                 part.children(drop_zones(pane.id, p, cx).into_iter().map(deferred))
             })
             .into_any_element()
@@ -250,8 +243,6 @@ impl Shell {
     fn pane_header(&self, pane: &Pane, bar: Option<AnyView>, in_split: bool, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let (id, face) = (pane.id, Face::of(pane, cx));
         let (icon_of_pane, label, dirty) = (face.icon(12.), face.label(), face.dirty);
-        // A pinned or a loose page's panes, its `DevTools` beside it, stay where they are: they
-        // close only.
         let moves = in_split && !self.workspace.apart_shown();
         let held = DraggedPane {
             what: Dragged::Pane(id),
@@ -283,8 +274,6 @@ impl Shell {
             })
             .child(icon_of_pane)
             .map(|header| match bar {
-                // The room left is given here, by what's laid out with every frame: a view kept
-                // from one frame to the next fills it, and isn't the one to stretch into it.
                 Some(bar) => header.child(label.flex_shrink_0()).child(div().flex_1().min_w_0().child(bar)),
                 None => header.child(label.flex_1()),
             })
@@ -323,7 +312,6 @@ impl Shell {
             Dragged::Tab(project, branch, at) if Some((project, branch)) == selected => {
                 unit.drop_tab(at, target, edge)
             }
-            // A loose page isn't split with a checkout's tab: it's let go on a list.
             Dragged::Tab(..) | Dragged::Loose => false,
             Dragged::Pane(id) => unit.move_pane(id, target, edge),
         };
@@ -350,8 +338,6 @@ impl Shell {
                     cx.notify();
                 }
             }
-            // From another checkout's list, or the loose pages': it goes where the tab it's
-            // dropped on is.
             Dragged::Tab(..) | Dragged::Loose => {
                 self.drop_tab_on_checkout(held, (project, branch), to, cx);
             }
@@ -374,7 +360,6 @@ impl Shell {
         };
         match held.what {
             Dragged::Tab(..) => {}
-            // A loose page let go there is a tab of the checkout's.
             Dragged::Loose => return self.settle_loose(face.id, to, at, cx),
             Dragged::Pane(_) => return,
         }
@@ -413,7 +398,6 @@ fn drop_zones(target: u64, p: Palette, cx: &mut Context<Shell>) -> Vec<AnyElemen
     let line = p.accent.opacity(0.6);
     let zones = Edge::ALL.into_iter().map(|edge| {
         let group = SharedString::from(format!("drop-{target}-{edge:?}"));
-        // Where it's dropped: a quarter along the sides, the middle split top and bottom.
         let zone = div().absolute().map(|zone| match edge {
             Edge::Left => zone.left_0().top_0().bottom_0().w(relative(0.25)),
             Edge::Right => zone.right_0().top_0().bottom_0().w(relative(0.25)),
@@ -428,8 +412,6 @@ fn drop_zones(target: u64, p: Palette, cx: &mut Context<Shell>) -> Vec<AnyElemen
                 .bottom_0()
                 .h(relative(0.5)),
         });
-        // Where it would go, the half of the pane on that side, twice the zone's width. It's
-        // drawn from inside the zone, as only what's in a group finds the group.
         let reach = div()
             .absolute()
             .top_0()
@@ -444,8 +426,6 @@ fn drop_zones(target: u64, p: Palette, cx: &mut Context<Shell>) -> Vec<AnyElemen
             .group_drag_over::<DraggedPane>(group.clone(), move |style| {
                 style.bg(lit).border_2().border_color(line)
             })
-            // gpui styles only what has a hitbox, which a drag-over style gives it; one that
-            // doesn't block the zone under it, which still takes the drop.
             .drag_over::<DraggedPane>(|style, _, _, _| style);
         zone.id(group.clone())
             .debug_selector({

@@ -155,7 +155,6 @@ mod tests {
         );
         assert_eq!(closes(up, long_ago, false, false), None);
         assert_eq!(closes(up, just_now, false, false), Some(Closes::Typed));
-        // Typed just before it opened: theirs went to their own app.
         assert_eq!(
             closes(Duration::from_millis(20), just_now, false, false),
             None

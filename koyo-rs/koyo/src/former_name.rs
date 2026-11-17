@@ -32,7 +32,6 @@ pub fn move_logs() {
         dirs::data_local_dir().map(|dir| dir.join("Colosso/logs"))
     };
     if let (Some(former), Some(logs)) = (former, crate::logs::logs_dir()) {
-        // Nowhere to say it went wrong yet; a log that didn't move is only an old log.
         let _ = move_log_folder(&former, &logs);
     }
 }
@@ -128,7 +127,6 @@ fn move_data_folder(
     }
     stop(former)?;
     fs::rename(former, data)?;
-    // The socket Colosso listened on; Koyo's has its own name, and nothing listens on it.
     let _ = fs::remove_file(data.join("control/colosso-control.sock"));
     Ok(true)
 }

@@ -30,7 +30,6 @@ fn vtsls_says_what_a_call_is() {
         took.elapsed().as_secs_f64()
     );
     let root = fixture(VTSLS.name, &[(GREET_TS.file, GREET_TS.text)]);
-    // Run on the TypeScript vtsls brought along, named as a project's would be.
     let typescript = script.ancestors().nth(4).unwrap().join("typescript");
     assert!(
         typescript.join("lib/tsserver.js").is_file(),

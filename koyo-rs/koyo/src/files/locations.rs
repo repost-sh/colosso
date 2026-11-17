@@ -136,7 +136,6 @@ impl Locations {
             path: file.path.clone(),
             at: Some(file.rows[row].at.clone()),
         };
-        // Kept, it takes the keyboard; previewed, the list keeps it to go on stepping.
         (self.shell.update(cx, |shell, cx| {
             shell.open_file(place, kept, kept, window, cx);
         }))
@@ -256,7 +255,6 @@ impl Locations {
         match self.items.get(index) {
             Some(&Item::File(file)) => self.file_row(file, p),
             Some(&Item::Place { file, row }) => {
-                // The places are listed in order, so the row's is found by its index.
                 let at = self.places.binary_search(&index).unwrap_or(0);
                 self.place_row(at, file, row, p, cx)
             }

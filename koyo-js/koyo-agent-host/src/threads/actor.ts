@@ -1,10 +1,3 @@
-// One thread's actor (docs/chat.md C5, 4.5). Every decision about the thread and every write
-// of its rows is a step: a method that runs to its end without awaiting, each commit it makes
-// one transaction the thread's subscribers are told of as it's made (a run settling and the
-// next one starting are two). What a session reports is handled in a step of its own, queued
-// behind the one running, so no step runs inside another, and a snapshot is never taken
-// between two commits of one step.
-
 import { errorMessage, log } from "../log";
 import { PlainUUID, type RequestId, type RunId } from "../protocol/ids";
 import type { Delivered, Delivery, Rows, ThreadSnapshot } from "../protocol/methods";
@@ -141,8 +134,6 @@ export class ThreadActor {
     return this.#session.live !== undefined;
   }
 
-  // What clients see.
-
   /** Registers `subscriber` and takes the snapshot it starts from, in one step (4.3.4). */
   open(subscriber: Subscriber, sinceSeq: number | null): ThreadSnapshot {
     return this.#state.open(subscriber, sinceSeq);
@@ -155,8 +146,6 @@ export class ThreadActor {
   history(before: RunId | null, runs: number): Rows {
     return this.#state.history(before, runs);
   }
-
-  // Turns (4.5.1 to 4.5.4).
 
   /** Starts `prompt`, joins it to the running turn, or queues it. */
   send(prompt: Prompt, delivery: Delivery): { runId: RunId; delivered: Delivered } {
@@ -204,8 +193,6 @@ export class ThreadActor {
     }
   }
 
-  // The queue (4.5.3).
-
   removeQueued(runId: RunId): void {
     this.#state.commit({ runs: [moved(this.#state.queued(runId), "removed")] });
   }
@@ -240,32 +227,24 @@ export class ThreadActor {
     this.#next();
   }
 
-  // Requests (4.5.5).
-
   respond(requestId: RequestId, response: Response): void {
     this.#requests.answer(requestId, response);
-    // Implementing a plan starts a turn in the mode the chat had before planning.
     if (response.kind === "plan" && response.decision === "implement") {
       this.update({ plan: false });
       this.send(textPrompt(IMPLEMENT), "auto");
     }
   }
 
-  // The thread itself.
-
   /** Changes the title or the settings; a live session takes them before the next turn. */
   update(change: ThreadChange): Thread {
     const before = this.#state.thread;
     const after = updatedThread(before, change, this.#cx.now());
-    // Told what already holds, nothing happened, so nobody hears of it.
     if (!Bun.deepEquals(after, before)) {
       this.#state.commit({ thread: after });
       this.#session.configure(settingsChanged(before, after, this.#cx.config().defaultMode));
     }
     return this.#state.thread;
   }
-
-  // A subagent's thread and its row (4.5.10).
 
   /** Starts working on `prompt`, as a subagent does whether a person's there or not. */
   takeUp(prompt: string): void {
@@ -306,7 +285,6 @@ export class ThreadActor {
         this.#stopping(live, stopBy("host", this.#cx.now()));
       }
       await within(ended, SHUTDOWN_MS);
-      // A turn that didn't stop in time ends with its process.
       this.stop(true);
     }
     await this.#session.drop()?.close();
@@ -319,8 +297,6 @@ export class ThreadActor {
     this.#session.drop()?.kill();
     this.#state.dispose();
   }
-
-  // Runs.
 
   #queue(prompt: Prompt): Run {
     return this.#state.queue(prompt, this.#cx.now());
@@ -367,7 +343,6 @@ export class ThreadActor {
       return run.id;
     }
     this.#cx.sessionUsed(this);
-    // A message of pictures alone leaves the title to the first words.
     if (thread.title === "" && run.prompt.text !== "") {
       askForTitle(this.#cx.provider, this.#state, run.prompt.text, (write) => {
         this.#step(write);
@@ -407,7 +382,6 @@ export class ThreadActor {
     }
     const at = this.#cx.now();
     const ended = settled(live, outcome, this.#state.turn?.open() ?? [], { ...ending, at });
-    // A run that didn't complete holds what's queued behind it, for the person to release.
     const thread = (outcome === "completed" ? null : this.#state.holding()) ?? this.#state.thread;
     this.#state.commit({
       thread: { ...thread, updatedAt: at, filesSettledAt: at },
@@ -425,8 +399,6 @@ export class ThreadActor {
       this.#begin(next);
     }
   }
-
-  // What the session reports.
 
   #on(event: DriverEvent): void {
     switch (event.type) {

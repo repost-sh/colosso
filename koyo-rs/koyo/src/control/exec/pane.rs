@@ -35,7 +35,6 @@ pub(crate) fn split(
     cx: &mut App,
 ) -> Result<Exec, ControlError> {
     let (source, target, side) = (input.source()?, input.pane, input.edge.into());
-    // A page split off new is the caller's; one moved stays whoever's it was.
     let made_by = matches!(source, SplitSource::New(_)).then(|| caller.clone());
     let shown = policy::shows(input.select, cx);
     let opened = try_update_shell(cx, |shell, window, cx| {
@@ -66,8 +65,6 @@ pub(crate) fn split(
                     "That pane is open on another worktree, so it can't split this one.",
                 ));
             }
-            // The tab the checkout shows, found again by a pane of it: moving the pane shows
-            // the split's tab instead.
             let showing = unit.tabs.get(unit.active_tab).map(|tab| tab.first().id);
             if !unit.move_pane(pane, target, side) {
                 return Err(ControlError::invalid_input("A pane can't split itself."));

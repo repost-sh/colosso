@@ -77,7 +77,6 @@ impl Workspace {
         let mut order = group.to_vec();
         let moved = order.remove(from);
         order.insert(to, moved);
-        // The group's places in the list, which its projects fill again in their new order.
         let mut places = group.to_vec();
         places.sort_unstable();
         let mut projects: Vec<_> = std::mem::take(&mut self.projects)
@@ -169,7 +168,6 @@ impl BranchUnit {
         }
         let incoming = self.tabs.remove(from);
         let to = if from < to { to - 1 } else { to };
-        // The tab at `to` holds `target`, so the tab dropped always finds its place there.
         self.tabs[to].place(target, edge, incoming);
         self.active_tab = to;
         true
@@ -275,7 +273,6 @@ mod tests {
                 .map(|project| project.name.to_string())
                 .collect()
         };
-        // A space holds a, b and c; x and y are another's.
         let space = [0, 2, 3];
         assert!(workspace.move_project_among(&space, 0, 2));
         assert_eq!(names(&workspace), ["b", "x", "c", "a", "y"]);
@@ -326,7 +323,6 @@ mod tests {
     fn a_pane_moves_between_splits_and_out_into_a_tab_of_its_own() {
         let (mut unit, ids) = unit(3);
         unit.drop_tab(1, ids[0], Edge::Bottom);
-        // [a / b], [c]
         assert!(unit.move_pane(ids[1], ids[2], Edge::Left));
         assert_eq!(layout(&unit), [vec![ids[0]], vec![ids[1], ids[2]]]);
         assert_eq!(unit.active_tab, 1);
@@ -344,7 +340,6 @@ mod tests {
             [vec![ids[1]], vec![ids[2], ids[0]], vec![ids[3]]]
         );
         assert_eq!(unit.active_tab, 1, "the pair shows");
-        // Joining a row adds a column to it rather than splitting one of its sides.
         assert!(unit.join_tabs(2, 1, false));
         assert_eq!(layout(&unit), [vec![ids[1]], vec![ids[3], ids[2], ids[0]]]);
         let Tab::Split(row) = &unit.tabs[1] else {

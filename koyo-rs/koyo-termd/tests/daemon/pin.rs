@@ -93,7 +93,6 @@ fn a_pin_sizes_the_terminal_over_its_clients_and_unpinning_gives_it_back() {
             pinned: Some(pinned.clone()),
         }
     );
-    // The program and the engine both have the pinned size.
     assert_eq!(person.stty(index), "30 100");
     let ResponseBody::Screen(screen) = (person.connection)
         .request(RequestBody::ReadScreen {
@@ -105,14 +104,12 @@ fn a_pin_sizes_the_terminal_over_its_clients_and_unpinning_gives_it_back() {
     };
     assert_eq!((screen.cols, screen.rows), (100, 30));
 
-    // A smaller client attaching doesn't size it while the pin holds.
     let other = connect(&dir, ClientKind::Cli);
     other.attach(&handle, None);
     let record = person.record(&handle);
     assert_eq!(cells(record.size), (100, 30));
     assert_eq!(record.pinned, Some(pinned));
 
-    // Unpinned, the clients' smallest size is its size again.
     let (size, pinned) = person.pin(&handle, None).unwrap();
     assert_eq!((cells(size), pinned), ((60, 12), None));
     assert_eq!(person.stty(index), "12 60");
@@ -130,7 +127,6 @@ fn a_pin_goes_with_the_connection_that_set_it_and_a_later_one_replaces_it() {
     person.attach_ready(&handle);
     person.pin(&handle, Some((80, 24))).unwrap();
 
-    // An agent never attaches: it pins from its own connection, which replaces the person's.
     let agent = connect(&dir, ClientKind::Relay);
     let claim = RequestBody::Claim {
         handle: handle.clone(),
@@ -172,7 +168,6 @@ fn an_agents_pin_needs_its_lease_and_is_logged_and_a_persons_takes_nothing_from_
     agent.connection.request(claim).unwrap();
     agent.pin(&handle, Some((120, 40))).unwrap();
 
-    // The person's pin replaces the agent's and leaves the agent holding the terminal.
     let (_, pinned) = person.pin(&handle, Some((80, 24))).unwrap();
     assert_eq!(pinned.unwrap().by.kind, ActorKind::Human);
     let holder = person.record(&handle).control.holder.unwrap();
@@ -222,7 +217,6 @@ fn pins_outside_the_limits_or_on_a_program_that_ended_are_refused() {
     });
     let error = person.pin(&ended.handle, Some((80, 24))).unwrap_err();
     assert_eq!(error.code, ErrorCode::Exited);
-    // Unpinning one is harmless.
     assert_eq!(person.pin(&ended.handle, None).unwrap().1, None);
 }
 
@@ -258,7 +252,6 @@ fn an_agent_sizes_a_terminal_by_opening_it_and_resizing_it_and_reads_the_redraw(
     );
     assert_eq!(waited["met"], true, "{waited}");
 
-    // The person's view attaching doesn't size away what the agent opened it at.
     let person = connect(&dir, ClientKind::App);
     person.attach(&handle, None);
     let record = person.record(&handle);
@@ -266,7 +259,6 @@ fn an_agent_sizes_a_terminal_by_opening_it_and_resizing_it_and_reads_the_redraw(
     let listed = call("terminal_list", json!({}));
     assert_eq!(listed["terminals"][0]["pinned"]["rows"], 8, "{listed}");
 
-    // A resize answers with the screen the program redrew after it.
     let resized = call("terminal_resize", json!({ "cols": 60, "rows": 10 }));
     assert_eq!(resized["size"], json!({ "cols": 60, "rows": 10 }));
     assert_eq!(resized["pinned"]["cols"], 60);
@@ -275,7 +267,6 @@ fn an_agent_sizes_a_terminal_by_opening_it_and_resizing_it_and_reads_the_redraw(
     assert_eq!(resized["read"]["lines"][0], "Size: 60x10", "{resized}");
     assert_eq!(resized["read"]["header"]["cols"], 60, "{resized}");
 
-    // `then: {}` answers at once, without waiting or reading.
     let quick = call(
         "terminal_resize",
         json!({ "cols": 70, "rows": 9, "then": {} }),
@@ -286,7 +277,6 @@ fn an_agent_sizes_a_terminal_by_opening_it_and_resizing_it_and_reads_the_redraw(
         "{quick}"
     );
 
-    // Filling again, the person's view sizes it.
     let filled = call("terminal_resize", json!({ "fill": true }));
     assert_eq!(filled["pinned"], Value::Null, "{filled}");
     assert_eq!(filled["size"], json!({ "cols": 60, "rows": 12 }));
@@ -329,7 +319,6 @@ fn an_open_pins_its_size_only_with_the_hold_and_says_so_when_refused() {
         agent.call("terminal_open", args).unwrap()
     };
 
-    // Without the claim, the size is the one it starts at, and nothing was refused.
     let unclaimed = open(&first, "unclaimed", json!({ "claim": false }));
     let structured = &unclaimed.structured;
     assert!(
@@ -351,12 +340,10 @@ fn an_open_pins_its_size_only_with_the_hold_and_says_so_when_refused() {
     let record = relays[0].record(&handle);
     assert_eq!((cells(record.size), record.pinned), ((50, 8), None));
 
-    // Claimed, it's pinned, as the answer says.
     let held = open(&first, "held", json!({}));
     assert_eq!(held.structured["pinned"]["cols"], 50, "{}", held.structured);
     assert_eq!(held.structured["pinned"]["by"]["kind"], "agent");
 
-    // Another agent's hold refuses a second agent's size, in the answer as in its summary.
     let refused = open(
         &second,
         "held",

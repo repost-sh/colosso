@@ -1,7 +1,3 @@
-// How long a session stays (docs/chat.md 4.5.6): closed after the idle time, unless the agent has
-// tasks running in the background, shells and Monitors, as the turn each one's end starts can't
-// start without it; then closed after the idle time once none runs. Its clock is the test's.
-
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 
 import type { Thread } from "../src/protocol/model";
@@ -108,7 +104,6 @@ describe("a session with a task in the background", () => {
     await inBackground(session, 1);
     await finished(session);
     await idleFor(20 * 60_000);
-    // As the CLI says it: the task leaves what runs, then the agent takes up its notification.
     await inBackground(session, 0);
     session.report({ type: "turn.adopted" });
     const item: ItemBody = { kind: "assistant_text", payload: { text: "The build finished." } };
@@ -204,7 +199,6 @@ describe("the host's sessions", () => {
       }
       expect(kept.closed).toBe(false);
       expect(passed.closed).toBe(true);
-      // Once nothing runs in the background, it's the least recently used again.
       await inBackground(kept, 0);
       await turnOf(threads, provider, oldest);
       expect(kept.closed).toBe(true);

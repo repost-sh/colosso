@@ -87,7 +87,6 @@ impl Rows {
         if path.is_empty() {
             return None;
         }
-        // Whether it's a folder decides its place among its siblings; it's tried as each.
         [true, false].into_iter().find_map(|folder| {
             (self.rows)
                 .binary_search_by(|row| {
@@ -149,7 +148,6 @@ impl Rows {
         listings: &impl Listings,
     ) -> bool {
         let mut dirs: Vec<_> = changed.iter().collect();
-        // Folders above first, so each finds its own row as its parent's listing left it.
         dirs.sort_by_key(|(dir, _)| depth_of(dir));
         let mut any = false;
         for (dir, entries) in dirs {
@@ -162,8 +160,6 @@ impl Rows {
     /// folder on the way that's not been read is asked for: the path is shown once its
     /// listing comes, and revealing it again then finds it.
     pub fn reveal(&mut self, path: &str, listings: &impl Listings) -> Reveal {
-        // The highest folder that's closed: those above it are open, so it's shown, and
-        // opening it shows the rest in one go.
         let mut closed = None;
         for dir in path.match_indices('/').map(|(at, _)| &path[..at]) {
             if !self.expanded.contains(dir) {
@@ -177,7 +173,6 @@ impl Rows {
         if let Some(at) = self.position(path) {
             return Reveal::Shown(at);
         }
-        // Not shown: either a folder on the way isn't read yet, or one isn't there.
         let mut dir = "";
         for part in path.split('/') {
             let Some(entries) = listings.listing(dir) else {
@@ -223,7 +218,6 @@ impl Rows {
                 }
             }
             None if ignored => listings.load(dir),
-            // Not read yet: the first scan brings it.
             None => {}
         }
     }
@@ -256,7 +250,6 @@ impl Rows {
             return self.rows.len();
         };
         let dir = &self.rows[at].path;
-        // What's under a folder follows it, all together.
         at + 1 + self.rows[at + 1..].partition_point(|row| is_under(&row.path, dir))
     }
 
@@ -274,7 +267,6 @@ impl Rows {
         };
         let depth = at.map_or(0, |at| self.rows[at].depth + 1);
         let end = self.end_of(at);
-        // Where each of the entries shown now starts.
         let mut shown = Vec::new();
         let mut index = at.map_or(0, |at| at + 1);
         while index < end {
@@ -336,7 +328,6 @@ fn tree_order((one, one_folder): (&str, bool), (other, other_folder): (&str, boo
             (Some(_), None) => return Ordering::Greater,
             (Some(part), Some(other_part)) if part == other_part => {}
             (Some(part), Some(other_part)) => {
-                // A part with more after it is a folder; the last is whatever the path is.
                 let folder = one_folder || ones.next().is_some();
                 let other_is_folder = other_folder || others.next().is_some();
                 return by_place((folder, part), (other_is_folder, other_part));

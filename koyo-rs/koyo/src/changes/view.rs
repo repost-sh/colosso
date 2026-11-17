@@ -198,7 +198,6 @@ impl ChangesPanel {
         let _subscriptions = [
             settings::observe(cx),
             cx.observe(&checkout, |this, checkout, cx| {
-                // Colouring files says so too; the same files only need drawing again.
                 let files = checkout.read(cx).files();
                 let same = files.len() == this.files.len()
                     && files
@@ -213,8 +212,6 @@ impl ChangesPanel {
             }),
         ];
         let list = ListState::new(0, ListAlignment::Top, px(400.));
-        // Scrolling by hand takes over from a glide, and the keyboard follows to the file in
-        // view. The list is mid-update when it calls this, so it's asked where it is after.
         list.set_scroll_handler(cx.listener(|this, _: &ListScrollEvent, window, cx| {
             this.glide = None;
             this.folder = None;
@@ -239,7 +236,6 @@ impl ChangesPanel {
             files_scroll: UniformListScrollHandle::new(),
             _subscriptions,
         };
-        // What was read before the panel opened.
         panel.rebuild(cx);
         panel
     }
@@ -277,8 +273,6 @@ impl ChangesPanel {
             .zip(rows[prefix..].iter().rev())
             .take_while(|(old, new)| same(old, new))
             .count();
-        // A file at the top whose rows all changed would leave the list at the top of the
-        // change; keep it on that file instead.
         let top = self.list.logical_scroll_top();
         let gliding = (self.glide.as_ref()).map(|glide| self.files[glide.file].key());
         let kept = (self.rows.get(top.item_ix))
@@ -304,7 +298,6 @@ impl ChangesPanel {
         self.rows = rows;
         self.files = files;
         self.rebuild_entries(cx);
-        // A glide carries on to its file wherever that is now.
         let gliding = gliding.and_then(|gliding| find(&self.files, &gliding));
         if let (Some(glide), Some(file)) = (&mut self.glide, gliding) {
             glide.file = file;
@@ -363,7 +356,6 @@ impl ChangesPanel {
             return;
         };
         let done = (glide.start.elapsed().as_secs_f32() / GLIDE.as_secs_f32()).min(1.);
-        // Eased out, so it sets off fast and settles on the file.
         let left = glide.from * (1. - done).powi(3);
         self.scroll_to_row(self.headers[glide.file]);
         self.list.scroll_by(px(left));
@@ -375,7 +367,6 @@ impl ChangesPanel {
     }
 
     fn show(&mut self, file: usize, cx: &mut Context<Self>) {
-        // A collapsed file opens when it's picked from the list.
         if self.shown.collapsed.remove(&self.files[file].key()) {
             self.rebuild(cx);
         }
@@ -446,7 +437,6 @@ impl ChangesPanel {
     /// at its ends. With `files_only`, folders are passed over.
     fn step(&mut self, step: isize, files_only: bool, cx: &mut Context<Self>) {
         let len = self.entries.len() as isize;
-        // With nothing picked, the first step lands on the list's first or last entry.
         let mut index = match self.cursor() {
             Some(index) => index as isize,
             None if step > 0 => -1,
@@ -552,7 +542,6 @@ impl ChangesPanel {
         let toggle = |id: &'static str, glyph: IconName, tip: &'static str, on: bool| {
             icon_button(id, glyph, tip, cx).xsmall().selected(on)
         };
-        // The title says what's here; the file list's top row, how big.
         panel_header(p)
             .child(div().flex_1().child(title("Changes", p)))
             .when_some(self.checkout.read(cx).unwatched(), |header, reason| {
@@ -654,7 +643,6 @@ impl ChangesPanel {
                     .child(div().flex_1())
                     .map(|row| {
                         if group {
-                            // A group's actions sit beside its count.
                             row.child(self.entry_actions(index, cx))
                                 .child(badge(self.entry_files(index).len(), p))
                         } else {
@@ -682,7 +670,6 @@ impl ChangesPanel {
                         row.child(ellipsized(dir.to_owned()).text_xs().text_color(p.muted))
                     })
                     .child(div().flex_1())
-                    // The actions take the counts' place while the row is hovered.
                     .child(counts(added, removed, p).group_hover(ENTRY, Styled::invisible))
                     .child(over_the_end(self.entry_actions(index, cx)))
                     .into_any_element()
@@ -721,7 +708,6 @@ impl ChangesPanel {
             icon_button((id, index), glyph, tip, cx)
                 .xsmall()
                 .on_click(cx.listener(move |this, _, window, cx| {
-                    // Not the row's own click, which shows the file or opens the folder.
                     cx.stop_propagation();
                     this.act(act, index, window, cx);
                 }))
@@ -731,8 +717,6 @@ impl ChangesPanel {
         } else {
             (IconName::Plus, Act::Stage)
         };
-        // Hidden by visibility, not display: a row laid out without them and then hovered
-        // would paint them unlaid.
         div()
             .invisible()
             .group_hover(ENTRY, Styled::visible)

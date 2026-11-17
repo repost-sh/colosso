@@ -55,8 +55,6 @@ pub(super) const R_SOON: &str = "2024-01-05T00:00:00Z";
 pub(super) const R_LATER: &str = "2024-01-08T00:00:00Z";
 pub(super) const R_LATEST: &str = "2024-01-10T00:00:00Z";
 
-// -- usage -----------------------------------------------------------------------------------
-
 /// `_usage` with the 5h window resetting at `resets_at`.
 pub(super) fn usage_r(pct: f64, resets_at: &str) -> Value {
     json!({"five_hour": {"pct": pct, "resets_at": resets_at}, "seven_day": {"pct": 0.0}})
@@ -125,8 +123,6 @@ pub(super) fn entry_for(value: &Value, now: f64) -> UsageEntry {
     }
 }
 
-// -- settings --------------------------------------------------------------------------------
-
 /// cswap's defaults.
 pub(super) fn defaults() -> AutoSwitchSettings {
     AutoSwitchSettings::new(DEFAULT_THRESHOLD)
@@ -136,8 +132,6 @@ pub(super) fn defaults() -> AutoSwitchSettings {
 pub(super) fn threshold(threshold: f64) -> AutoSwitchSettings {
     AutoSwitchSettings::new(threshold)
 }
-
-// -- events ----------------------------------------------------------------------------------
 
 /// An event type, picked out of [`AutoSwitchEvent`].
 pub(super) trait Pick: Sized {
@@ -165,8 +159,6 @@ pick!(
     AllExhausted => AllExhaustedEvent,
     Error => ErrorEvent,
 );
-
-// -- the harness -----------------------------------------------------------------------------
 
 /// cswap's `EngineHarness`: a sandbox, the fake switcher, the settings and the captured events.
 pub(super) struct Harness {

@@ -129,7 +129,6 @@ pub(crate) fn changed_by(
     if let Some(named) = asked.model {
         next.with_model(model_named(catalog, named)?, catalog.default_mode);
     }
-    // The model it runs on: the one it chose, or the one the agent's settings choose.
     let on = next.model_in(catalog);
     let checking = |what: &str| match on {
         Some(on) => Ok(on),

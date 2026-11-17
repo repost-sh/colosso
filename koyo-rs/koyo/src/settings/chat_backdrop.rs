@@ -248,7 +248,6 @@ mod tests {
             "fade_end": 0.72,
             "quality": "astc8_full",
         });
-        // f32s widen to f64s that print a little off: compare as the file would read back.
         let back: ChatBackdrop = serde_json::from_value(expected).unwrap();
         assert_eq!(back, ChatBackdrop::default());
         assert_eq!(json["quality"], "astc8_full");
@@ -303,7 +302,6 @@ mod tests {
 
     #[test]
     fn each_quality_stop_takes_the_memory_section_3_1_names() {
-        // In tenths of a megabyte.
         let tenths = |quality: Quality| (quality.bytes(5120, 2880) as f64 / 1e5).round() as u32;
         assert_eq!(Quality::ALL.map(tenths), [9, 37, 147]);
         for quality in Quality::ALL {

@@ -43,8 +43,6 @@ pub fn run() -> ExitCode {
 
 fn draw() -> Result<Vec<String>> {
     let out = out_dir(OUT)?;
-    // Koyo off the Mac's login before anything starts, so only the made-up accounts are drawn
-    // and the real login is never read.
     let config = std::env::var_os("KOYO_CONFIG_DIR").ok_or("set KOYO_CONFIG_DIR")?;
     let settings = std::path::Path::new(&config).join("settings.json");
     std::fs::write(&settings, r#"{"accounts": {"manage": false}}"#)
@@ -104,7 +102,6 @@ impl Render for Stage {
         let p = theme::palette(cx);
         let view = self.accounts.read(cx).view.clone();
         let extent = self.panel.read(cx).extent(window, cx);
-        // Something like what's behind the glass: the app's backdrop, a little lighter.
         let dark = p.text.l > 0.5;
         let backdrop = if dark {
             hsla(0.08, 0.2, 0.16, 1.)
@@ -138,7 +135,6 @@ impl Render for Stage {
             .flex_col()
             .gap(px(8.))
             .child(
-                // As the menu's window holds it: padded all round, no edge of its own.
                 div()
                     .w(extent.width + px(2. * PADDING))
                     .h(extent.height + px(2. * PADDING))

@@ -142,7 +142,6 @@ pub fn init(cx: &mut App) {
             KeyBinding::new("cmd-]", Forward, context),
             KeyBinding::new("cmd-alt-i", ToggleDevTools, context),
             KeyBinding::new("f12", ToggleDevTools, context),
-            // Chrome's ⇧⌘M is the sidebar's here.
             KeyBinding::new("cmd-alt-r", ToggleResponsive, context),
             KeyBinding::new("cmd-f", FindInPage, context),
             KeyBinding::new("cmd-g", FindNext, context),
@@ -189,7 +188,6 @@ pub fn read_address(text: &str) -> Option<Address> {
         return None;
     }
     let lower = text.to_ascii_lowercase();
-    // Lowercased above, so the suffix check is as the lint asks for, case-insensitive.
     if LINK_SCHEMES
         .iter()
         .chain(&["data:", "chrome://"])

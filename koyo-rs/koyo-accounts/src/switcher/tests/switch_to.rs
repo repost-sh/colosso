@@ -23,7 +23,6 @@ use crate::{AccountsError, Clock as _, poll_policy};
 
 #[test]
 fn switch_to_current_slot_is_noop_preserving_backup() {
-    // A self-switch neither poisons a freshly imported backup nor rewrites the live login.
     let h = two_accounts(&mut sample_sequence_data());
     let imported = creds("sk-imported-1", "rt-imported-1", None);
     let live = creds("sk-live-1", "rt-live-1", None);
@@ -53,7 +52,6 @@ fn matching_self_switch_is_noop() {
 
 #[test]
 fn diverged_unresolvable_self_switch_noops_silently() {
-    // Endpoint trouble is invisible on the self-switch path, and nothing moves.
     let h = two_accounts(&mut sample_sequence_data());
     let backup = creds("sk-1", "rt-1", None);
     let diverged = creds("sk-1-new", "rt-1-rotated", None);
@@ -69,7 +67,6 @@ fn diverged_unresolvable_self_switch_noops_silently() {
 
 #[test]
 fn diverged_resolved_self_switch_reconciles() {
-    // A rotation proven to be the slot's own is re-synced into its backup.
     let h = two_accounts(&mut sample_sequence_data());
     let rotated = creds("sk-1-new", "rt-1-rotated", None);
     h.set_backup("1", "test@example.com", &creds("sk-1", "rt-1", None));
@@ -153,7 +150,6 @@ fn switch_holds_both_cc_locks_at_write_time() {
     assert_eq!(h.sequence()["activeAccountNumber"], 2);
     let seen = spy.seen.lock().unwrap();
     assert!(!seen.is_empty() && seen.iter().all(|held| held.iter().all(|&held| held)));
-    // Released after the switch.
     assert!(locks.iter().all(|lock| !lock.exists()));
 }
 
@@ -165,23 +161,19 @@ fn preheld_cc_lock_fails_cleanly_without_mutation() {
     make_live(&h, "a@example.com", 1);
     h.switcher.claude_lock_timeout = Some(Duration::from_millis(300));
     let held = credentials_lock_dir(&h.sandbox.env());
-    // A fresh mtime: a live Claude Code refresh.
     std::fs::create_dir(&held).unwrap();
     let live_before = h.live();
     assert!(matches!(
         h.switcher.switch_to("2"),
         Err(AccountsError::ClaudeCodeLockTimeout(_))
     ));
-    // Nothing moved: the locks are taken before any write.
     assert_eq!(h.sequence()["activeAccountNumber"], 1);
     assert_eq!(h.live(), live_before);
-    // The holder's lock is left alone.
     assert!(held.is_dir());
 }
 
 #[test]
 fn switch_to_unreadable_backup_says_keychain() {
-    // The direct-activation branch: the live identity (test@) matches no slot.
     let h = Harness::new();
     h.mock_claude_config();
     h.write_sequence(&sample_sequence_data());
@@ -191,16 +183,11 @@ fn switch_to_unreadable_backup_says_keychain() {
     };
     let why = why.to_lowercase();
     assert!(why.contains("keychain"), "{why}");
-    // The remedy must not be a re-add.
     assert!(!why.contains("add the current login"), "{why}");
 }
 
 #[test]
 fn normal_path_switch_to_unreadable_backup_says_keychain() {
-    // The ordinary switch, a live login that resolves to slot 1. cswap's store writes the
-    // outgoing backup to a file while the Keychain is unreadable and fails on the target's
-    // read; Koyo has no file, so the switch stops at the outgoing backup, with nothing changed.
-    // Either way it names the Keychain and never sends the person to re-add.
     let h = Harness::new();
     h.write_sequence(&sample_sequence_data());
     h.write_config(&json!({"oauthAccount": {
@@ -247,7 +234,6 @@ fn usage() -> serde_json::Value {
 
 #[test]
 fn replan_new_active_pulls_candidate_plan_to_floor() {
-    // A plan learned while the account idled as a candidate must not gate it once active.
     let h = Harness::new();
     h.switcher.setup_directories().unwrap();
     let store = &h.switcher.usage_store;
@@ -278,7 +264,6 @@ fn replan_new_active_pulls_candidate_plan_to_floor() {
     assert_eq!(entry.poll_interval_s, Some(poll_policy::MIN_INTERVAL_S));
     assert!(entry.next_poll_at.unwrap() <= now + poll_policy::MIN_INTERVAL_S + 1.);
 
-    // An already-eager plan is never pushed later.
     plan("1", now + 60., 60., &ident1);
     h.switcher.replan_new_active("1", "a@x.com", "");
     assert_eq!(
@@ -290,7 +275,6 @@ fn replan_new_active_pulls_candidate_plan_to_floor() {
         Some(60.)
     );
 
-    // A never-measured account gets no plan.
     let ident2 = one_identity("2", "b@x.com", "");
     h.switcher.replan_new_active("2", "b@x.com", "");
     assert_eq!(
@@ -302,7 +286,6 @@ fn replan_new_active_pulls_candidate_plan_to_floor() {
         None
     );
 
-    // An already-old measurement comes due now, not 180 s from now.
     h.sandbox.clock.set(now - 400.);
     record("2", &ident2);
     h.sandbox.clock.set(now);
@@ -321,7 +304,6 @@ fn replan_new_active_pulls_candidate_plan_to_floor() {
 
 #[test]
 fn replan_new_active_failure_is_logged_not_raised() {
-    // The switch it rides on has committed: a cache failure never surfaces.
     let h = Harness::new();
     h.switcher.setup_directories().unwrap();
     let ident1 = one_identity("1", "a@x.com", "");
@@ -334,7 +316,6 @@ fn replan_new_active_failure_is_logged_not_raised() {
             None,
         )
         .unwrap();
-    // The store's lock can't be opened: its write fails.
     let lock = crate::paths::store::cache_dir(&h.sandbox.env()).join(".usage.lock");
     std::fs::set_permissions(&lock, std::os::unix::fs::PermissionsExt::from_mode(0o400)).unwrap();
     h.switcher.replan_new_active("1", "a@x.com", "");
@@ -366,7 +347,6 @@ fn a_switch_reports_where_it_came_from_and_went() {
 
 #[test]
 fn remove_account_removes_the_slot() {
-    // cswap's `test_remove_account_prunes_mappings`, the mappings left out.
     let h = Harness::new();
     seed(&h, 1, "a@x.com");
     let removed = h.switcher.remove_account("1").unwrap();
@@ -390,8 +370,6 @@ fn remove_account_invalid_identifier_still_raises_validation() {
 
 #[test]
 fn switch_to_invalid_identifier_raises_validation() {
-    // cswap's `test_switch_to_unknown_alias_raises_account_not_found_not_validation`, its
-    // format gate.
     let h = Harness::new();
     h.write_sequence(&sample_sequence_data());
     assert!(matches!(

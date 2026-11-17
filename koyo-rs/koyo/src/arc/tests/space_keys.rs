@@ -82,8 +82,6 @@ pub(super) fn pressed(
     .unwrap();
     draw(window, cx);
     let heard = heard.borrow_mut().take();
-    // A view's own key handler that takes a key keeps it from the window's observers: no
-    // binding ran, and the key went to what has the keyboard.
     heard.unwrap_or_else(|| {
         let stack = cx.update_window(window, |_, window, _| window.context_stack());
         (None, stack.unwrap())
@@ -107,19 +105,16 @@ fn pressed_in(
 #[gpui_kit::test]
 fn the_keys_show_the_project_and_the_space_beside_and_stop_at_the_ends(cx: &mut TestAppContext) {
     let (window, shell, _) = two_spaces("space-keys-ends", cx);
-    // With nothing focused, as when the window has just come forward.
     (cx.update_window(window, |_, window, cx| window.blur(cx))).unwrap();
     for ([previous, next], [back, on]) in [
         (PROJECTS_MOVE, ["alt-left", "alt-right"]),
         (SPACES_MOVE, ["alt-shift-left", "alt-shift-right"]),
     ] {
         assert_eq!((pressed(window, on, cx).0, space(cx)), (next, 1), "{on}");
-        // The last: nothing past it, and no wrapping round to the first.
         assert_eq!((pressed(window, on, cx).0, space(cx)), (next, 1), "{on}");
         assert_eq!((pressed(window, back, cx).0, space(cx)), (previous, 0));
         assert_eq!((pressed(window, back, cx).0, space(cx)), (previous, 0));
     }
-    // From the shell's own focus, where the keyboard is with no tab's view in it.
     let root = cx.read(|cx| shell.read(cx).focus.clone());
     focus(window, &root, cx);
     assert_eq!(
@@ -183,7 +178,6 @@ fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
     let action = pressed_in(window, "cmd-alt-right", "Input", cx);
     assert_eq!((action, space(cx)), (PROJECTS_MOVE[1], 1));
 
-    // The chat's composer, where a new chat leaves the keyboard.
     back_to_first(window, &shell, &app, cx);
     new_chat(window, cx);
     draw(window, cx);
@@ -201,7 +195,6 @@ fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
 #[gpui_kit::test]
 fn the_keys_show_the_space_beside_from_a_web_page(cx: &mut TestAppContext) {
     let (window, shell, _) = two_spaces("space-keys-page", cx);
-    // Opened at an address, the page has the keyboard.
     open_page(window, &shell, Some("https://www.example.com/"), cx);
     for key in ["alt-left", "alt-right", "alt-shift-left", "alt-shift-right"] {
         let action = pressed_in(window, key, "BrowserPage", cx);
@@ -220,7 +213,6 @@ fn the_keys_move_nothing_in_the_orca_layout_or_the_settings(cx: &mut TestAppCont
     for key in ["cmd-alt-right", "cmd-alt-shift-right"] {
         assert_eq!((pressed(window, key, cx).0, space(cx)), (None, 0), "{key}");
     }
-    // Nor on a settings page in the Arc layout, where the sidebar lists the pages.
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
     press(window, "cmd-,", cx);
     for key in ["cmd-alt-right", "cmd-alt-shift-right"] {
@@ -307,8 +299,6 @@ fn another_space_shown_from_a_prompt_leaves_the_keyboard_at_the_window(cx: &mut 
         "back in the first space"
     );
 
-    // Its tab picked in the sidebar, the chat still isn't typed in, and ⌥→ still moves
-    // between projects; pressed in its prompt, it is.
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
     assert!(keyboard_at_window(window, &shell, cx), "its tab picked");
     assert_eq!(
@@ -340,8 +330,6 @@ fn a_press_in_the_sidebar_takes_the_keyboard_out_of_a_prompt_and_a_files_text(
         (PROJECTS_MOVE[1], 1)
     );
 
-    // A file's text, pressed into: ⌥← is a word back there, and after a press in the sidebar
-    // the space to the left.
     back_to_first(window, &shell, &app, cx);
     write(&app, "notes.txt", b"hello world");
     editing(window, &shell, "notes.txt", At::Bytes(11..11), cx);
@@ -411,9 +399,6 @@ fn the_keymap_has_projects_spaces_and_tabs_on_the_option_arrows_outside_text(
             ["alt-up", "alt-down"],
         ];
         let terminal = [Some("terminal::SendText"); 2];
-        // Where spaces show, ⌘⌥← and ⌘⌥→ move between projects and ⌘⌥⇧← and ⌘⌥⇧→ between
-        // spaces; the ⌥ arrows move between projects, spaces and tabs too, but where text keeps
-        // them. A terminal binds only ⌥← and ⌥→, and hands its program the others.
         let places: &[Keyed] = &[
             (&["Root", SPACES], [PROJECTS_MOVE, SPACES_MOVE, TABS_MOVE]),
             (
@@ -447,7 +432,6 @@ fn the_keymap_has_projects_spaces_and_tabs_on_the_option_arrows_outside_text(
                 assert_eq!(fires(stack, *keys), *expected, "{keys:?} in {stack:?}");
             }
         }
-        // The Orca layout, and a settings page: no spaces shown, so the keys are unbound.
         for stack in [&["Root"][..], &["Root", "Settings"]] {
             for keys in [command, command_shift].iter().chain(&option) {
                 assert_eq!(fires(stack, *keys), NONE, "{keys:?} in {stack:?}");

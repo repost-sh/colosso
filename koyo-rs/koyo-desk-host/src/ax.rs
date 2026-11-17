@@ -135,8 +135,6 @@ impl Element {
             error
         };
         let read = if error == 0 { ns::owned(values) } else { None };
-        // An attribute the element hasn't comes back as an error value, which is neither
-        // text, number, array nor point: readers of each kind take it for nothing.
         let mut read: Vec<Option<Obj>> = read
             .map(|values| ns::items(&values).into_iter().map(Some).collect())
             .unwrap_or_default();
@@ -377,8 +375,6 @@ impl Observer {
 
 impl Drop for Observer {
     fn drop(&mut self) {
-        // The run loop keeps the observer's source for itself: taken off it first, so no
-        // notice comes for a context that is freed. Made on the main run loop, dropped there.
         // SAFETY: the observer is live; its source is lent; the context was made by
         // `Box::into_raw` in `new` and is freed once, after nothing can call it.
         unsafe {

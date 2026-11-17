@@ -15,7 +15,6 @@ fn a_daemon_that_refuses_the_hello_is_stopped_by_its_pid() {
     let person = connect(&dir, ClientKind::App);
     let (kept, _) = person.open("kept", &cwd, &["/bin/sh", "-c", "sleep 30"], false);
 
-    // A later build's client, which this daemon refuses.
     let mut later = hello(ClientKind::App, None);
     later.protocol = PROTOCOL + 1;
     let (tx, _inbox) = inbox();
@@ -28,7 +27,6 @@ fn a_daemon_that_refuses_the_hello_is_stopped_by_its_pid() {
     stop_daemon(&dir, &later).unwrap();
     assert!(koyo_daemon::connect(&dir.socket()).is_err());
 
-    // The next daemon has the terminal, ended by the restart.
     let again = connect(&dir, ClientKind::App);
     let listed = (again.list().into_iter())
         .find(|summary| summary.record.handle == kept.handle)
@@ -43,6 +41,5 @@ fn a_daemon_that_takes_the_hello_is_asked_to_stop() {
     let _person = connect(&dir, ClientKind::App);
     stop_daemon(&dir, &hello(ClientKind::App, None)).unwrap();
     assert!(koyo_daemon::connect(&dir.socket()).is_err());
-    // With none running, there's nothing to stop.
     stop_daemon(&dir, &hello(ClientKind::App, None)).unwrap();
 }

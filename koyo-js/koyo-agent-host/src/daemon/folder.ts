@@ -1,7 +1,3 @@
-// The host's folder (docs/chat.md 4.1), `settings::data_dir()/agents/`, which the app names
-// with `--dir`: who may use the host is who may enter it (0700), as Bun can't ask a socket's
-// peer who it is; the socket is trusted only while the lock beside it is held.
-
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 

@@ -50,7 +50,6 @@ impl RenderOnce for SidebarFrame {
             .overflow_hidden()
             .map(|frame| match self.layout {
                 Layout::Orca => frame.p_2().border_r_1().border_color(p.hairline),
-                // Below it, the bottom rail's gutter, as below the islands beside it.
                 Layout::Arc => frame.pr(px(theme::GUTTER)),
             })
             .children(self.children)

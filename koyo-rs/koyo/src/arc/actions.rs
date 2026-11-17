@@ -143,7 +143,6 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
                 page.update(cx, BrowserView::reload_or_stop);
             }
         }))
-        // The new space comes in as a swipe would bring it.
         .on_action(cx.listener(|this, _: &NewSpace, _, cx| {
             let mut made = 0;
             settings::update(cx, |settings| made = settings.add_space());
@@ -195,7 +194,6 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
                 window,
                 cx,
                 |name, cx| {
-                    // A space keeps its name rather than go without one.
                     if name.is_empty() {
                         return;
                     }
@@ -259,8 +257,6 @@ impl Shell {
             .and_then(Space::shown_project);
         let index = target.and_then(|path| self.workspace.project_index(path));
         self.workspace.select_project(index);
-        // A pinned page shown stays shown, the keyboard where it was: only the sidebar's tiles
-        // and worktrees change (`docs/arc-sidebar.md` 11).
         self.follow_space_pages(cx);
         self.navigate(Route::Workspace, cx);
         cx.notify();
@@ -337,7 +333,6 @@ impl Shell {
         else {
             return;
         };
-        // The shell names its projects anew as the settings change.
         rename::open(
             "Rename Project",
             name,
@@ -375,7 +370,6 @@ impl Shell {
     ) {
         cx.stop_propagation();
         crate::picker::close(cx);
-        // Edit Theme Color opens the picker where the menu was.
         self.rails_menu_at = event.position;
         let last = settings::get(cx).spaces.len() <= 1;
         gpui_kit::component::native_menu::NativeMenu::new()

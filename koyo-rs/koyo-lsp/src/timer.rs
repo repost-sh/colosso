@@ -22,8 +22,6 @@ impl Timer {
     pub(crate) fn after(duration: Duration) -> Timer {
         let (fire, fired) = oneshot::channel();
         let (cancel, cancelled) = mpsc::channel::<()>();
-        // Should the thread not start, `fire` is dropped with it and the timer fires at once,
-        // which errs on the side of not waiting forever.
         let _ = thread::Builder::new()
             .name("lsp-timer".to_owned())
             .spawn(move || {

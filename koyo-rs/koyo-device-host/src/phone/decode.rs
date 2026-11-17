@@ -111,7 +111,6 @@ unsafe extern "C-unwind" fn decoded(
 impl Output {
     fn present(&mut self, image: &CVPixelBuffer) {
         let coded = (CVPixelBufferGetWidth(image), CVPixelBufferGetHeight(image));
-        // No more than the screen, where the device said its size: the rest is padding.
         let ring = &self.ring;
         let (width, height) = self.crop.of(image, coded, |said| ring.log_error(said));
         let fits = (self.source.as_ref()).is_some_and(|(surface, _)| surface.width() == width && surface.height() == height);
@@ -213,8 +212,6 @@ impl Decoder {
         if changed {
             self.make_session();
         }
-        // Unwanted, pictures are dropped undecoded; but the first is decoded all the same: the
-        // picture's size is how the device stands ready.
         let wanted = self.output.ring.wanted() || self.decoded == 0;
         if !wanted || (self.waiting_key && !key(&units)) {
             self.waiting_key = true;
@@ -375,7 +372,6 @@ mod tests {
 
     #[test]
     fn a_pictures_units_are_told_apart_and_its_slices_put_behind_their_lengths() {
-        // A VPS (32), an SPS (33), a PPS (34), an IDR slice (19), a delimiter (35).
         let mut bytes = Vec::new();
         for (kind, body) in [(32u8, &[1u8, 2][..]), (33, &[3, 4, 5]), (34, &[6]), (19, &[7, 8, 9, 10]), (35, &[0])] {
             bytes.extend_from_slice(&[0, 0, 0, 1, kind << 1]);
@@ -386,9 +382,7 @@ mod tests {
         assert_eq!(kinds, [32, 33, 34, 19, 35]);
         assert_eq!(&bytes[found[0].bytes.clone()], &[64u8, 1, 2]);
         assert!(key(&found));
-        // The slice behind its length: 5 bytes (its header and four).
         assert_eq!(slices(&bytes, &found), [0, 0, 0, 5, 38, 7, 8, 9, 10]);
-        // A slice of a picture that isn't whole: not a key.
         assert!(!key(&units(&[0, 0, 0, 1, 1 << 1, 9, 9])));
     }
 }

@@ -45,7 +45,6 @@ fn arc_shell(
     let refs: Vec<&Path> = roots.iter().map(std::path::PathBuf::as_path).collect();
     let (window, shell) = shell_with(&refs, cx);
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
-    // Spaces switch at once, rather than sliding over frames these tests don't step through.
     cx.update(|cx| cx.set_reduce_motion(true));
     shell.update(cx, Shell::save_projects);
     select(&shell, &roots[0], cx);
@@ -96,7 +95,6 @@ fn a_space_shows_the_project_it_showed_last_and_an_empty_one_hides_the_others(
     cx.run_until_parked();
     assert_eq!(shown(&shell, cx), (app, 0));
 
-    // A tab on the project, which the empty space hides along with it.
     shell.update(cx, |shell, _| {
         shell
             .workspace
@@ -123,8 +121,6 @@ fn a_space_shows_the_project_it_showed_last_and_an_empty_one_hides_the_others(
         "⌘W has no tab to close while no project is shown"
     );
 
-    // Selected some other way, as app control or the Orca layout select, the project's
-    // space is shown.
     shell.update(cx, |shell, cx| {
         let site = shell.workspace.project_index(&site).unwrap();
         shell.workspace.select_project(Some(site));
@@ -182,7 +178,6 @@ fn clear_asks_first_then_closes_every_tab_of_the_worktree(cx: &mut TestAppContex
     .unwrap();
     cx.run_until_parked();
     assert!(tabs(&shell, cx).is_empty());
-    // They can come back, as any tab closed can.
     let closed = shell.update(cx, |shell, _| shell.workspace.take_closed(|_| true).is_some());
     assert!(closed);
 }
@@ -255,7 +250,6 @@ fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(cx: &m
     let (window, shell, _) = arc_shell(&["arc-address-split"], cx);
     let said =
         |cx: &TestAppContext| cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string());
-    // A chat on the left, two pages right of it.
     shell.update(cx, |shell, cx| {
         shell.workspace.push_tab(chat("Plan the release"));
         cx.notify();
@@ -287,11 +281,9 @@ fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(cx: &m
     click(docs, cx);
     assert_eq!(said(cx), "example.com");
     assert_eq!(page(cx).as_deref(), Some("https://www.example.com/docs"));
-    // In the chat, the bar says the chat; back, forward and reload stay the tab's first page's.
     click(chat, cx);
     assert_eq!(said(cx), "Plan the release");
     assert_eq!(page(cx).as_deref(), Some("https://www.example.com/docs"));
-    // It's remembered while something outside the panes has the keyboard.
     click(app, cx);
     cx.update_window(window, |_, window, cx| {
         let root = shell.read(cx).focus.clone();
@@ -468,13 +460,10 @@ fn a_space_slides_out_the_next_slides_in_and_both_come_to_rest(cx: &mut TestAppC
     let mut seen = Vec::new();
     for _ in 0..240 {
         cx.executor().advance_clock(frame);
-        // The display asks for the next frame, as the settling space wants one.
         (cx.update_window(window, |_, window, cx| window.simulate_next_frame(cx))).unwrap();
         draw(window, cx);
         seen.push((offset(cx), shown(&shell, cx).1));
     }
-    // Going back a space, the space shown moves right, out; the one before comes in from the
-    // left, still moving right, and settles.
     assert!(
         seen.iter()
             .any(|&(offset, space)| space == 1 && offset > 1.)

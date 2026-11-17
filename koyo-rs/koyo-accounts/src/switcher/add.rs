@@ -65,7 +65,6 @@ impl Switcher {
         let mut notices = Vec::new();
 
         if self.account_exists(email, &identity.organization_uuid)? {
-            // Already managed: refresh its credential and config in place.
             let mut seq = self.sequence_data_or_empty()?;
             let Some(account_num) =
                 Switcher::find_account_slot(&seq, email, &identity.organization_uuid)
@@ -77,7 +76,6 @@ impl Switcher {
             let org_name = text(record(&seq, &account_num), "organizationName").to_owned();
             let creds = self.capture_verified(&identity, &mut notices)?;
             let config = read_config_text(&self.claude_config_path())?;
-            // After the read, as it licenses those bytes, and on the identity that was read.
             self.reject_identity_drift_since_verify(&identity)?;
             self.store
                 .write_account_credentials(&account_num, email, &creds)?;
@@ -97,12 +95,9 @@ impl Switcher {
         }
 
         let account_num = self.get_next_account_number()?.to_string();
-        // Every read before anything destructive.
         let creds = self.capture_verified(&identity, &mut notices)?;
         let config_path = self.claude_config_path();
         let config = read_config_text(&config_path)?;
-        // Strict: the ownership probe's round trip sits between the identity read and this
-        // one, and a config caught mid-rewrite must refuse, not blank the slot's fields.
         let config_data =
             parse_object(&config_path, config.as_bytes()).map_err(AccountsError::Config)?;
         let oauth_account = config_data.get("oauthAccount").and_then(Value::as_object);
@@ -243,8 +238,6 @@ impl Switcher {
         org_uuid: &str,
         account_uuid: &str,
     ) -> Result<Option<String>> {
-        // Fail-open, but never silently: registering with the question unanswered is the
-        // state the field incident was in.
         let unverified = |why: &str| {
             Ok(Some(format!(
                 "Could not verify that the stored credential belongs to {email} ({why}). \
@@ -267,8 +260,6 @@ impl Switcher {
         if let Some(data) = oauth_data.as_ref().filter(|data| !data.is_empty())
             && oauth::is_oauth_token_expired(data.get("expiresAt"), self.env.now())
         {
-            // Unresolvable, like an offline lookup; never a refresh, whose accepted rotation
-            // retires the predecessor that the active store still holds.
             return unverified("the access token is expired");
         }
         let Some(profile) = oauth::fetch_oauth_profile(&self.env, &token) else {
@@ -290,8 +281,6 @@ impl Switcher {
                 )));
             }
         } else if seen_uuid != account_uuid {
-            // A match falls through to the organisation below: a uuid under a disagreeing org
-            // is another account.
             return Err(AccountsError::Config(format!(
                 "The stored credential does not belong to {email}: the token resolves to account \
                  {seen_uuid}, not {account_uuid}. Nothing was changed. This happens when the \
@@ -300,7 +289,6 @@ impl Switcher {
                  {email} in THIS environment, then re-run."
             )));
         }
-        // No organisation block at all is unverifiable about the org only.
         let Some(resolved_org) = profile.organization_uuid.as_deref() else {
             return Ok(None);
         };

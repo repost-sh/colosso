@@ -165,9 +165,6 @@ pub fn open<V: Render>(
                 };
                 watching.push(cx.observe_window_activation(parent, left));
                 watching.push(cx.observe_window_activation(window, left));
-                // Moved or resized, the window under it would leave it hanging. GPUI says a
-                // window's bounds changed as it's activated or left too, as when this one takes
-                // the keyboard: that's not a move.
                 let opened_over = parent.bounds();
                 watching.push(cx.observe_window_bounds(parent, move |_, parent, cx| {
                     if parent.bounds() != opened_over {
@@ -233,8 +230,6 @@ pub fn close(kind: Kind, cx: &mut App) {
     let Some(up) = cx.default_global::<Popups>().up.remove(&kind) else {
         return;
     };
-    // Off the screen now: GPUI removes the window once this update has unwound, and a menu or
-    // a page's pop-up the close makes way for would open under it meanwhile.
     #[cfg(target_os = "macos")]
     if let Some(native) = &up.native {
         crate::native::window::dismiss(native);
@@ -327,7 +322,6 @@ fn settle(kind: Kind, popup: AnyWindowHandle, over: AnyWindowHandle, cx: &mut Ap
             .timer(Duration::from_millis(SETTLE))
             .await;
         cx.update(|cx| {
-            // `App::active_window` knows main windows only, and a floating one is a panel.
             let in_front = |window: AnyWindowHandle, cx: &mut App| {
                 (window.update(cx, |_, window, _| window.is_window_active())).unwrap_or(false)
             };

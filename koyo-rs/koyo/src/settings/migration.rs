@@ -12,32 +12,19 @@ const OLD_CHAT_SIZES: [f64; 7] = [13., 14., 15., 16., 18., 20., 22.];
 /// A key that changes what it means goes here under its old name; one that only changes
 /// its name goes in [`RENAMED`].
 const RETIRED: [(&[&str], &str); 8] = [
-    // The Files panel's tree's width, from before the panel showed a file beside its tree:
-    // too narrow for both, it gave way to `files_panel_width` and `files_tree_width`.
     (&[], "files_width"),
-    // The Files panel's width while it showed a file beside its tree; files open in the
-    // workspace's tabs now, and the panel's as wide as its tree, `files_tree_width`.
     (&[], "files_panel_width"),
-    // The changes panel's width while it showed the diffs beside its file list; the diffs
-    // open in a workspace tab now, and the panel's as wide as its list, `changes_files_width`.
     (&[], "changes_width"),
-    // A held arrow sped up the longer it was held, in steps a frame; it now has one speed,
-    // `per_second`, the same whatever the display's rate.
     (&["key_repeat"], "start_per_frame"),
     (&["key_repeat"], "accelerate_after_ms"),
     (&["key_repeat"], "full_speed_after_ms"),
     (&["key_repeat"], "most_per_frame"),
-    // Whether pages were Chromium's own views in Koyo's window or rendered off screen in a host
-    // of their own; they're Chromium's own views now, and nothing else.
     (&[], "native_pages"),
 ];
 
 /// Settings a file may hold under a name the app no longer uses for them, each where it is,
 /// with its old name and its new one. A key whose meaning stays goes here.
 const RENAMED: [(&[&str], &str, &str); 2] = [
-    // The TypeScript and Python servers were vtsls and basedpyright, npm packages run by
-    // Node, named for them; TypeScript's own native server and Pyrefly took over, and the
-    // switches are named for the language's server now, whichever engine runs it.
     (&["language_servers"], "vtsls", "typescript"),
     (&["language_servers"], "basedpyright", "pyrefly"),
 ];

@@ -158,8 +158,6 @@ impl Connection {
             .env(ENV_SOCKET_FD, inherit::HOST_FD.to_string())
             .env(ENV_TOKEN, &token)
             .env(ENV_PROFILE_ROOT, &launch.profiles);
-        // The host holds its end from here, and nothing else does; ours closing is how it
-        // learns we left.
         let mut child = inherit::spawn(command, host_end)?;
         let versions = match handshake(&mut stream, token, launch.passkeys) {
             Ok(versions) => versions,
@@ -269,16 +267,11 @@ impl Connection {
     /// still running after that is killed.
     pub fn shutdown(mut self, grace: Duration) {
         let _ = self.send(&AppRequest::Shutdown);
-        // A host in the app's process closes its pages and stops as it's run here, on the
-        // main thread.
         if let Some(finish) = self.finish.take() {
             finish(grace);
             return;
         }
-        // The host's end closes as it exits, which ends the reader thread.
         let _ = self.exited.recv_timeout(grace);
-        // Dropped here: a host still running is killed, and one that
-        // exited is reaped.
     }
 }
 

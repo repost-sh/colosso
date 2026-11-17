@@ -57,7 +57,6 @@ describe("a result", () => {
   });
 
   test("aborted while streaming or running tools interrupts the turn", () => {
-    // As recorded: a stop while the model streamed.
     const streaming = failed(["p1"], ["[ede_diagnostic] result_type=user"], "aborted_streaming");
     expect(classify(streaming, QUIET)).toEqual({ outcome: "interrupted", failure: null });
     expect(classify(failed(["p1"], [], "aborted_tools"), QUIET).outcome).toBe("interrupted");

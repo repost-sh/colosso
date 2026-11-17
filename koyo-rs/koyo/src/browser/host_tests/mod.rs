@@ -207,7 +207,6 @@ fn listen(respond: impl Fn(&str) -> String + Copy + Send + 'static) -> u16 {
 }
 
 fn answer(mut stream: TcpStream, respond: impl Fn(&str) -> String) {
-    // The whole head, so closing never resets the connection.
     let mut head = Vec::new();
     let mut chunk = [0u8; 4096];
     while !head.windows(4).any(|w| w == b"\r\n\r\n") {

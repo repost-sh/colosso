@@ -70,7 +70,6 @@ impl Kept {
                 .workspace
                 .select_project(selected.map(|(project, _)| project)),
         }
-        // Selecting a checkout leaves a pinned or a loose page: it's shown again, as it was.
         let (pinned, loose) = self.apart;
         if let Some(at) = loose.and_then(|key| shell.workspace.loose_at(key)) {
             shell.workspace.show_loose(at);

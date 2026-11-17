@@ -1,6 +1,3 @@
-// A thread's subagents and the turns its agent starts itself (docs/chat.md 4.5.10), as a session
-// reports them.
-
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { Item, RequestPayload, Response, Thread } from "../src/protocol/model";
@@ -351,9 +348,7 @@ describe("what a subagent asks", () => {
   test("isn't ended by the turn it asked in ending", async () => {
     const chats = harness();
     const { session } = await spawned(chats);
-    session.ask(APPROVAL, true).answer.catch(() => {
-      // Nobody answers.
-    });
+    session.ask(APPROVAL, true).answer.catch(() => {});
     await settle();
     session.finished();
     await settle();
@@ -448,9 +443,7 @@ describe("the host's threads", () => {
   test("open a subagent's thread as any other", async () => {
     const { threads, child } = await family();
     const snapshot = threads.actor(child.id).open({
-      send: () => {
-        // It's only read.
-      },
+      send: () => {},
     }, null);
     expect(snapshot.thread.parent?.threadId).toBeString();
     expect(snapshot.items.at(0)?.kind).toBe("user_message");

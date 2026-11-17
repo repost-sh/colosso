@@ -58,7 +58,6 @@ impl Shell {
             Some(at) if self.workspace.tab(at).is_some() => {
                 self.workspace.insert_tab_after(at, tab);
             }
-            // No tab there to come after, as on a checkout with none: it's the one shown.
             Some((project, branch, _)) => {
                 let unit = self.workspace.unit_mut(project, branch)?;
                 unit.tabs.push(tab);

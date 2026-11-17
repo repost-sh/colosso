@@ -156,7 +156,6 @@ impl Shell {
         if self.tab_wants_attention(tab, cx) {
             Activity::Attention
         } else if self.tab_chat_marks(tab, cx).next().is_some() {
-            // Every mark that isn't a chat at work is one that wants the person.
             Activity::Working
         } else {
             Activity::Quiet

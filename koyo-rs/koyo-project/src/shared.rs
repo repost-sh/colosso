@@ -220,9 +220,6 @@ impl Shared {
                 pending = (self.wake.wait(pending)).unwrap_or_else(PoisonError::into_inner);
                 continue;
             };
-            // Reading whole folders again costs as much as the first scan, and the platform
-            // loses track in the middle of a burst, again and again: they're read once it's
-            // over, rather than each time.
             let whole = pending.written == Written::Everything || !pending.rescans.is_empty();
             let left = if whole {
                 let quiet = (pending.heard).map_or(Duration::ZERO, |heard| {
@@ -244,7 +241,6 @@ impl Shared {
 
     pub(crate) fn subscribe(&self, feed: Feed) -> Arc<Inbox> {
         let mut subscribers = lock(&self.subscribers);
-        // Under the subscribers' lock, so no update published meanwhile is missed.
         let mut first = Update {
             unwatched: self.unwatched(),
             ..Update::default()

@@ -154,7 +154,6 @@ unsafe extern "C" {
     pub fn CVPixelBufferGetIOSurface(buffer: Ref) -> Ref;
 }
 
-// Loaded for their classes, reached by message.
 #[link(name = "ScreenCaptureKit", kind = "framework")]
 unsafe extern "C" {}
 #[link(name = "AppKit", kind = "framework")]

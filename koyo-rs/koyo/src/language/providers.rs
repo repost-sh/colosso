@@ -109,8 +109,6 @@ impl Attached {
         });
         self.server
             .update(cx, |server, cx| server.show(&self.path, editor, cx));
-        // The inlay hint and semantic token providers go in with the next `refresh`, as
-        // the settings say.
         self.applied = None;
         self.hooks = Some(hooks);
         self.followed = None;
@@ -188,7 +186,6 @@ impl Attached {
         }
         let hooks = self.hooks.clone();
         editor.update(cx, |editor, cx| {
-            // A file too big for the grammar's colours gets none from the server either.
             let coloured = tokens.0 && editor.text().len() <= MOST_COLOURED;
             let lsp = editor.lsp_mut();
             if hints_changed {
@@ -364,7 +361,6 @@ impl DefinitionProvider for Hooks {
             return Task::ready(Ok(Vec::new()));
         };
         let path = self.path.clone();
-        // Dropped by the editor once it asks again, which cancels the request.
         cx.background_spawn(async move {
             let params = GotoDefinitionParams {
                 text_document_position_params: asked.at(offset),

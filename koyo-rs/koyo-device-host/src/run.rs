@@ -316,7 +316,6 @@ fn end(host: &mut Host, args: &Args) {
         return;
     };
     if let Phase::Booting { done } = &host.phase {
-        // A boot under way is let finish, so it can be shut down rather than left booted.
         let _ = done.recv_timeout(Duration::from_secs(400));
     }
     if !host.gone {

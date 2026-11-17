@@ -93,7 +93,6 @@ impl Shell {
         };
         self.watch_terminals(cx);
         cx.spawn(async move |this, cx| {
-            // Only a name to pick needs the names taken.
             let listed = match &name {
                 Naming::Exactly(_) => None,
                 Naming::After(_) => Some(
@@ -127,7 +126,6 @@ impl Shell {
                 let name = match name {
                     Naming::Exactly(name) => name,
                     Naming::After(base) => {
-                        // Names the open tabs hold count too: their terminals may not be open yet.
                         let mut taken = taken;
                         taken.extend(
                             this.terminals
@@ -149,7 +147,6 @@ impl Shell {
                 let pane = this
                     .workspace
                     .add_terminal_tab(&worktree, id, name.into(), shown);
-                // Shown, it has the keyboard once its view is made.
                 if shown && pane.is_some() {
                     this.keys_to_shown_tab(cx);
                 }

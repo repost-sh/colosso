@@ -100,8 +100,6 @@ pub(super) async fn call(
     call_within(page, caller, method, params, CALL_LIMIT, cx).await
 }
 
-// Every command ends within the client's own wait, and a page out of sight stays on screen for
-// the engine through any one call (`AWAKE_FOR`): its longest command, and a wait for a load.
 const _: () = {
     assert!(CALL_LIMIT.as_millis() < PROMISE_LIMIT.as_millis());
     assert!(PROMISE_LIMIT.as_millis() < koyo_app_control::CALL_TIMEOUT.as_millis());
@@ -119,8 +117,6 @@ pub(super) async fn call_within(
     cx: &mut AsyncApp,
 ) -> Result<Value, ControlError> {
     let actor = caller.map(Caller::actor);
-    // Each command asks the gate again: on the person's page, one sent after their consent
-    // ended would take a lease nobody gave.
     let asked = cx.update(|cx| {
         page.still(cx)?;
         let view = page.view()?;
@@ -241,7 +237,6 @@ fn steer(
 /// Waits, up to `limit`, until the page has started and finished loading: whether it did.
 async fn settle(page: &Page, limit: Duration, cx: &mut AsyncApp) -> bool {
     let started = Instant::now();
-    // The host says the page is loading a moment after it's asked to load.
     cx.background_executor().timer(POLL).await;
     while started.elapsed() < limit {
         if !cx.update(|cx| (page.view()).is_ok_and(|view| view.read(cx).loading())) {
@@ -268,9 +263,6 @@ pub(crate) fn wait(
     Ok(later(page, cx, async move |page, cx| {
         let started = Instant::now();
         loop {
-            // What it waits for may need the page's frames, as an animated page's next step
-            // does: it's on screen for the engine while the agent waits on it. On the person's
-            // page, each look waits on their consent still holding.
             cx.update(|cx| {
                 page.still(cx)?;
                 page.view()?.update(cx, BrowserView::agent_uses);
@@ -321,8 +313,6 @@ async fn met(
     let Some(expression) = condition(until, value) else {
         return Ok(url.contains(value));
     };
-    // A page that can't take a command fails the wait at once; one the engine is starting
-    // for, it opens.
     match ready {
         Ok(()) => {}
         Err(AgentError::NotOpen(NotOpen::Starting)) => return Ok(false),
@@ -333,10 +323,7 @@ async fn met(
     }
     match script::evaluate(page, None, &expression, false, cx).await {
         Ok(found) => Ok(found == Value::Bool(true)),
-        // What fails for good, a selector the page can't read or a page that closed, fails
-        // the wait at once.
         Err(error) if !error.retryable => Err(error),
-        // A page between documents can't answer; it isn't there yet.
         Err(_) => Ok(false),
     }
 }

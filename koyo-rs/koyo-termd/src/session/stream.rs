@@ -31,7 +31,6 @@ impl Session {
             self.record.handle,
             client.id
         );
-        // Whatever an earlier attach left queued is for a screen the client no longer shows.
         lane.bump();
         self.clients.insert(
             client.id,
@@ -99,7 +98,6 @@ impl Session {
             None
         };
         let client = Arc::clone(&attached.client);
-        // A person's view reporting focus or a wheel turn writes without taking anything.
         let passive = client.actor.kind == ActorKind::Human && control::is_passive(bytes);
         let refused = refused.or_else(|| {
             if passive {
@@ -291,7 +289,6 @@ impl Session {
     pub(super) fn settle_size(&mut self, announce: bool) {
         let clients = self.clients_size();
         let size = match &self.record.pinned {
-            // The pin's cells, in the cells the clients draw.
             Some(pinned) => {
                 let cell = clients.unwrap_or(self.record.size);
                 Size {

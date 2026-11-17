@@ -18,7 +18,6 @@ impl Query {
             {
                 (text, digits.parse().ok())
             }
-            // A colon with nothing after it yet is the line about to be typed.
             Some((text, "")) => (text, None),
             _ => (typed, None),
         };

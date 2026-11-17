@@ -305,7 +305,6 @@ mod tests {
             }
         );
         assert_eq!(read(json!({ "fill": true })).unwrap().fill, Some(true));
-        // Only what opening takes: a zoom, a scale or a screenshot is browser_viewport's.
         for wrong in [
             json!({ "zoom": "fit" }),
             json!({ "scale": 2 }),
@@ -339,7 +338,6 @@ mod tests {
             data: Some("iVBORw0KGgo=".into()),
         };
         let value = serde_json::to_value(&output).unwrap();
-        // A relay makes an image block of the top-level `mimeType` and `data`.
         assert_eq!(value["mimeType"], "image/png");
         assert_eq!(value["data"], "iVBORw0KGgo=");
         assert_eq!(value["viewport"]["device"], "iphone-15");

@@ -93,7 +93,6 @@ fn cmd_t_opens_the_launcher_and_tab_goes_through_its_kinds(cx: &mut TestAppConte
     assert_eq!(kind(&launcher, cx), Kind::Browser, "round again");
     press(launcher_window, "shift-tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Worktree, "and back");
-    // ⌘T again closes it.
     press(launcher_window, "cmd-t", cx);
     cx.run_until_parked();
     assert!(dialog::<Launcher>(cx).is_none());
@@ -145,7 +144,6 @@ fn the_desktop_kind_opens_the_agent_desktops_one_tab(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), ["[Agent desktop]"]);
 
-    // There is one agent desktop: asked for again, its tab is shown, not a second made.
     let (launcher_window, _) = launch(window, cx);
     press(launcher_window, "enter", cx);
     cx.run_until_parked();
@@ -264,14 +262,12 @@ fn commands_run_before_are_offered_latest_first_and_filtered_as_typed(cx: &mut T
         ["[car]", "cargo test"],
         "running what's typed comes first"
     );
-    // ⇧⌫ forgets the row picked, when it's the history's.
     press(launcher_window, "down shift-backspace", cx);
     assert_eq!(rows_of(&launcher, cx), ["[car]"]);
     assert_eq!(
         cx.read(|cx| history::get(cx).of(history::Kind::Command).count()),
         1
     );
-    // → takes the row's text into the field.
     cx.update(|cx| history::used(history::Kind::Command, "cargo build", &place(&root), cx));
     cx.simulate_input(launcher_window, "g");
     press(launcher_window, "down right", cx);

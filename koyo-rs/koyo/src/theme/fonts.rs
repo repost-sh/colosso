@@ -85,7 +85,6 @@ pub fn families(cx: &App) -> &'static [String] {
 /// Loads the faces, puts the settings' families to use, and keeps to them as they change.
 pub(super) fn init(cx: &mut App) {
     if let Err(error) = cx.text_system().add_fonts(faces()) {
-        // Code is then in GPUI's fallback font, which is legible, if not monospaced.
         log::error!("couldn't load the bundled code font: {error}");
     }
     cx.on_action(|picked: &SetInterfaceFont, cx| {

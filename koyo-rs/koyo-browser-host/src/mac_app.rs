@@ -53,13 +53,11 @@ define_class!(
 /// before CEF starts.
 pub(crate) fn install() -> Result<(), String> {
     let mtm = MainThreadMarker::new().ok_or("the host must start on the main thread")?;
-    // `sharedApplication` on the subclass creates NSApp with that class.
     let app: Retained<NSApplication> =
         unsafe { msg_send![HostApplication::class(), sharedApplication] };
     if !app.isKindOfClass(HostApplication::class()) {
         return Err("NSApp already exists with another class".into());
     }
-    // No dock icon; its holders are windows all the same, which a prohibited app can't have.
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     let _ = mtm;
     Ok(())

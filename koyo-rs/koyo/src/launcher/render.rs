@@ -34,7 +34,6 @@ impl Render for Launcher {
             self.fitted = fits;
             crate::popup::fit_height(fits, window, cx);
         }
-        // Over a page, the glass stands off it, and what's on it is drawn in the glass's tone.
         let (p, tint) = glass::look(self.tone.dark(), cx);
         let rows: Vec<AnyElement> = (0..self.rows.len()).map(|at| self.row(at, p, cx)).collect();
         div()
@@ -54,7 +53,6 @@ impl Render for Launcher {
                 cx.listener(|this, _: &AcceptSuggestion, window, cx| this.accept(window, cx)),
             )
             .on_action(cx.listener(|this, _: &RemoveFromHistory, _, cx| this.remove_selected(cx)))
-            // ⌘T again closes it, as Zen's does.
             .on_action(|_: &NewTab, window, cx| modal::dismiss(window, cx))
             .on_action(cx.listener(|this, _: &OpenAddress, window, cx| this.select_all(window, cx)))
             .child(self.field(p, cx))
@@ -105,7 +103,6 @@ impl Launcher {
                     .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx))),
             )
             .child(input)
-            // Not where only a page opens: Tab goes to no other kind there.
             .when(!self.pages_only(), |field| field.child(
                 div()
                     .id("launcher-next-kind")

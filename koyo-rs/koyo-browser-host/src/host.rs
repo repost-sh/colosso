@@ -121,7 +121,6 @@ pub(crate) fn send(event: &HostEvent) {
     if let Some(writer) = WRITER.get()
         && let Ok(mut writer) = writer.lock()
     {
-        // A closed socket ends the reader too, which shuts the host down.
         let _ = ipc::write_frame(&mut *writer, event);
     }
 }
@@ -247,8 +246,6 @@ fn handle(request: AppRequest) {
             visible: shown,
         } => visible(pane, shown),
         AppRequest::View { pane, action } => view(pane, action),
-        // The engine's own, in the page's focused frame: the page's pointer, wheel and keys
-        // are `AppKit`'s to hand it (`native.rs`).
         AppRequest::Edit { pane, command } => {
             if let Some(frame) = browser_of(pane).and_then(|browser| browser.focused_frame()) {
                 match command {
@@ -312,14 +309,11 @@ fn shutdown() {
         host.panes.keys().copied().collect()
     })
     .unwrap_or_default();
-    // The `DevTools` pipe hangs up, and the windows Chromium made on its own (an
-    // extension's) close as the pages do.
     crate::extensions::stopping();
     crate::native::close_strays();
     for pane in open {
         close(pane);
     }
-    // Panes whose browser had not arrived yet are gone already.
     quit_when_closed();
 }
 

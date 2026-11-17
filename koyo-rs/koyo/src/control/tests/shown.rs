@@ -53,7 +53,6 @@ fn a_select_left_out_is_the_persons_setting_and_a_given_one_wins(cx: &mut TestAp
         !cx.read(|cx| policy::shows(None, cx)),
         "off until the person turns it on"
     );
-    // chat_create shows its tab exactly as this says; a chat needs a host to start, QA's.
     for on in [false, true] {
         show_what_agents_open(on, cx);
         let shows = |select| cx.read(|cx| policy::shows(select, cx));
@@ -107,8 +106,6 @@ fn a_tab_an_agent_opens_leaves_the_window_where_it_was_unless_shown(cx: &mut Tes
     for kind in [
         json!({ "kind": "chat" }),
         json!({ "kind": "editor", "file": "README.md" }),
-        // Filling its pane, so it opens at the size a pane assumes undrawn; an agent's page
-        // starts at 1440 × 900 otherwise (`viewport.rs`).
         json!({ "kind": "browser", "url": "https://example.com/", "viewport": { "fill": true } }),
         json!({ "kind": "changes" }),
     ] {
@@ -126,8 +123,6 @@ fn a_tab_an_agent_opens_leaves_the_window_where_it_was_unless_shown(cx: &mut Tes
         before,
         "on the person's checkout, their tab stays"
     );
-    // A page opened out of sight is sized to open in the engine, which only drawing does
-    // otherwise, so the browser tools reach it.
     let pages = call(&agent, "browser_list", json!({}), cx).unwrap();
     let page = &pages["pages"][0];
     assert_eq!(page["worktree"], json!(other));

@@ -40,7 +40,6 @@ fn the_host_shows_and_drives_a_simulator() {
         &format!("{:?} at {}x", screen.pixels, screen.scale),
         screen.pixels.width > 0,
     );
-    // An iPhone 17 Pro's is 62 points, an iPad Pro's 30: every model of Koyo's set has one.
     row(
         "QS10",
         "the screen's corner radius, as Xcode has it for the model",
@@ -48,7 +47,6 @@ fn the_host_shows_and_drives_a_simulator() {
         screen.corner > 0. && screen.corner < 100.,
     );
     host.tell(&ToHost::Visible { visible: true });
-    // Groups of rows to run, all by default: `KOYO_REAL_SIM_ROWS=picture,touches`.
     let only = std::env::var("KOYO_REAL_SIM_ROWS").unwrap_or_default();
     let runs = |group: &str| only.is_empty() || only.split(',').any(|g| g == group);
     if runs("picture") {
@@ -185,7 +183,6 @@ fn a_tap_right_after_a_first_boot_waits_for_input_and_lands() {
             }
         )
     });
-    // Settings, where a new iPhone 17 Pro's Home Screen has it.
     let started = std::time::Instant::now();
     let answer = host.ask(
         koyo_device_wire::Ask::Act(koyo_device_wire::Act::Tap {
@@ -231,7 +228,6 @@ fn a_tap_right_after_a_first_boot_waits_for_input_and_lands() {
 fn turned_after_a_first_boot(target: &support::Target, host: &mut Driver) -> bool {
     use koyo_device_wire::{Act, FromHost, Orientation, State};
     support::simctl(target, &["launch", &target.udid, "com.apple.mobilesafari"]);
-    // Safari's first start after a first boot takes seconds to draw.
     let _ = host.until(Duration::from_secs(3), |_| false);
     host.settle(2_000, 30_000);
     let answer = host.act(Act::Turn { to: Orientation::LandscapeLeft });
@@ -298,7 +294,6 @@ fn the_host_goes_when_koyo_does() {
         &format!("booted {} and recorded {}", booted(&target), record.is_file()),
         left,
     );
-    // What Koyo's next start does with the record (`devices::simulators::shut_down_leftovers`).
     let _ = support::simctl(&target, &["shutdown", &target.udid]);
     let _ = std::fs::remove_file(&record);
     assert!(went.is_some() && left);

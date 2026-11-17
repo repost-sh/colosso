@@ -82,7 +82,6 @@ pub(crate) fn branches(
                 current: matches!(branch, Ref::Local(name) if Some(name) == current.as_ref()),
             })
             .collect();
-        // Local branches first, newest first within each.
         listed.sort_by_key(|branch| branch.remote);
         output(&WorktreeBranchesOutput {
             branches: listed,

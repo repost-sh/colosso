@@ -64,8 +64,6 @@ fn ask(
                         .map(|shell| shell.read(cx).terminals_listed(&path))
                         .unwrap_or_default();
                     let dialog = DeleteWorktreeDialog {
-                        // Only a branch made with its worktree goes with it by default, and
-                        // never one holding commits that aren't anywhere else.
                         delete_branch: loss.made_here && loss.unmerged == 0,
                         shell,
                         project,
@@ -200,11 +198,9 @@ impl DeleteWorktreeDialog {
             let Err(error) = deleted else {
                 return;
             };
-            // Told over the window behind: the dialog's is gone, and the async context with it.
             parent
                 .update(cx, |_, window, cx| {
                     if still_there {
-                        // Asked again with what git says now, and why it stopped.
                         log::warn!("couldn't delete the worktree: {}", error.message);
                         ask(shell, project, path, Some(error.message.into()), parent, cx);
                     } else {
@@ -348,8 +344,6 @@ impl DeleteWorktreeDialog {
                     ),
             )
             .child(
-                // The settings' switch, macOS's own; the line over it says when it loses
-                // commits, in red.
                 Toggle::for_view(
                     "delete-worktree-branch",
                     self.delete_branch,
@@ -391,7 +385,6 @@ impl Render for DeleteWorktreeDialog {
             .flex_col()
             .child(modal::heading(self.title()))
             .child(
-                // Cut from the start, so the folder's own name stays in view.
                 div()
                     .h(px(SMALL_LINE))
                     .line_height(px(SMALL_LINE))

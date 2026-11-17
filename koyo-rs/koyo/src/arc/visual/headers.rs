@@ -111,8 +111,6 @@ pub fn headers(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
             for (address, title) in TABS {
                 shell.workspace.push_tab(web_page(address, title));
             }
-            // A tab on the payouts worktree, and one on the main checkout, which is shown, so no
-            // tab of the login worktree's is a pill, as none of the references' is.
             shell.workspace.select_worktree(project, &payouts);
             let chat = titled(PaneKind::Chat, "Payouts retry when the bank says 429");
             shell.workspace.push_tab(chat);
@@ -153,7 +151,6 @@ pub fn headers(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
             let saved = save_with(drawn, &format!("arc-header-{state}-{name}"), part)?;
             said.push(format!("{state}, {name}: {saved}"));
         }
-        // Open again, for the next appearance.
         (drawn.cx).simulate_click(drawn.window, on, Modifiers::default());
         rest_at(drawn, away())?;
     }
@@ -188,7 +185,6 @@ fn reorder(drawn: &mut Drawn, root: &Path, said: &mut Vec<String>) -> Result<()>
     rest_at(drawn, away())?;
     let main = header(place_of(drawn, "main")?)?;
     let last = header(listed(drawn).len() - 1)?;
-    // Past the middle of the last worktree: its tab's row.
     let to = last.center() + point(px(0.), px(38.));
     let part = Part::Worktree {
         top: main.top(),
@@ -200,7 +196,6 @@ fn reorder(drawn: &mut Drawn, root: &Path, said: &mut Vec<String>) -> Result<()>
     let saved = save_with(drawn, "arc-header-moved", part)?;
     said.push(format!("let go: {:?}, {saved}", listed(drawn)));
 
-    // Kept: once the settings are written, the window opens again on them.
     drawn.until(Duration::from_secs(5), |drawn| {
         drawn.cx.advance_clock(Duration::from_millis(600));
         Ok(kept(drawn, root).is_some_and(|kept| kept.contains("acme-long")))
@@ -233,7 +228,6 @@ fn reorder(drawn: &mut Drawn, root: &Path, said: &mut Vec<String>) -> Result<()>
     };
     let saved = save_with(drawn, "arc-header-reopened", part)?;
     said.push(format!("opened again: {:?}, {saved}", listed(drawn)));
-    // Orca lists them in the same order: it's the project's.
     drawn
         .cx
         .update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));

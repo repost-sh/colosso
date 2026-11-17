@@ -182,7 +182,6 @@ pub(crate) fn main_shell(cx: &App) -> Option<(AnyWindowHandle, Entity<Shell>)> {
             .read::<Root, _, _>(cx, |root, cx| root.read(cx).view().clone())
             .ok()
             .and_then(|view| view.downcast::<Shell>().ok())
-            // Tests show the shell as the window's root itself.
             .or_else(|| window.read::<Shell, _, _>(cx, |shell, _| shell).ok())?;
         Some((window, shell))
     })

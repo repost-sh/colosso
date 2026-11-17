@@ -98,12 +98,9 @@ impl Tree {
     /// Whether a write at `path` can change anything listed: not inside a folder that git
     /// ignores and nobody has asked to read. Asked for each write as the platform reports it.
     pub(crate) fn admits(&self, path: &str) -> bool {
-        // Nothing above it listed: the first scan hasn't got that far.
         let Some((_, dir, below)) = self.nearest(path) else {
             return true;
         };
-        // Directly in a listed folder, whose listing it may change; or inside `below`, a
-        // folder that isn't listed, read only if it isn't ignored.
         below == path
             || !dir.ignored
                 && match find(&dir.entries, name(below)) {

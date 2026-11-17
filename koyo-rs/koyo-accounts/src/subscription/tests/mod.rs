@@ -98,8 +98,6 @@ fn status(code: u16, headers: &[(&str, &str)]) -> Response {
     }
 }
 
-// TestFetchPlan
-
 #[test]
 fn keeps_the_four_plan_fields_in_camel_case() {
     let sandbox = Sandbox::new();
@@ -214,8 +212,6 @@ fn non_dict_organization_is_none() {
     );
 }
 
-// TestPlanLabel
-
 #[test]
 fn organization_wins_over_the_seat_tier() {
     for (plan, label) in [(team(), "Team"), (enterprise(), "Enterprise")] {
@@ -290,8 +286,6 @@ fn unknown_organization_type_falls_through_to_the_tier() {
 fn no_plan_no_label() {
     assert_eq!(plan_label(None), None);
 }
-
-// TestRecords
 
 fn record(plan: Map<String, Value>, fetched_at: Value) -> Value {
     Value::Object(Map::from_iter([
@@ -370,8 +364,6 @@ fn identity_key_separates_organizations() {
     assert_eq!(identity_key("a@x", None), "a@x\n");
 }
 
-// TestMatchesSlot
-
 #[test]
 fn every_recorded_uuid_must_match() {
     let fetched = PlanFetch {
@@ -401,8 +393,6 @@ fn a_recorded_uuid_the_response_lacks_does_not_match() {
     };
     assert!(!matches_slot(&fetched, "a", "o"));
 }
-
-// TestUsableAccessToken
 
 const NOW: f64 = 1_800_000_000.;
 

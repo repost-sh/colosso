@@ -84,10 +84,8 @@ pub fn row(account: &AccountSnapshot, now: f64) -> Row {
     let slot = &account.slot;
     let mut row = Row {
         number: slot.number.clone(),
-        // The accounts crate keeps Claude logins only.
         provider: Provider::Anthropic,
         email: slot.identity.email.clone().into(),
-        // A personal account's organisation is named for its email, which says nothing more.
         organisation: Some(slot.organization_name.clone())
             .filter(|name| !name.is_empty())
             .filter(|name| *name != format!("{}'s Organization", slot.identity.email))

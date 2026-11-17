@@ -15,8 +15,6 @@ use crate::settings;
 const CODE_BLOCK_TEXT: f32 = 13. / 16.;
 
 pub(super) fn init(cx: &mut App) {
-    // The kit puts its own style back as the theme changes, and the gradient theme the washes
-    // are tinted by is among the settings.
     cx.observe_global::<Theme>(follow_palette).detach();
     settings::observe_app(cx, follow_palette).detach();
     follow_palette(cx);
@@ -83,7 +81,6 @@ mod tests {
     fn code_and_tables_stay_on_the_palette_whichever_appearance_it_takes(cx: &mut TestAppContext) {
         dark(cx);
         let dark = drawn_on_palette(cx);
-        // The kit puts its own back as the theme changes.
         cx.update(|cx| set_preference(ThemePreference::Light, cx));
         let light = drawn_on_palette(cx);
         assert_ne!(dark.wash, light.wash);
@@ -103,7 +100,6 @@ mod tests {
             gray.wash.s.abs() < f32::EPSILON,
             "gray with no colour picked"
         );
-        // A dot on the disc's right, far out: a red.
         cx.update(|cx| gradient::update(cx, |theme| theme.move_primary(point(300., 180.))));
         let red = drawn_on_palette(cx);
         assert!(

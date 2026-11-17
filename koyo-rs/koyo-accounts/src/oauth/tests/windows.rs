@@ -13,8 +13,6 @@ fn headroom(usage: &Value) -> Option<f64> {
     account_headroom(Some(usage), &[])
 }
 
-// TestAccountHeadroom
-
 #[test]
 fn binding_window_is_the_higher_utilization() {
     let usage = json!({"five_hour": {"pct": 80.0}, "seven_day": {"pct": 20.0}});
@@ -39,7 +37,6 @@ fn at_limit_is_zero_headroom() {
 
 #[test]
 fn spend_is_ignored() {
-    // Pay-as-you-go credits must not drive rate-limit headroom.
     let usage = json!({"spend": {"pct": 99.0}, "five_hour": {"pct": 10.0}});
     assert_eq!(headroom(&usage), Some(90.));
 }
@@ -105,7 +102,6 @@ fn multiple_models_take_the_worst() {
             {"name": "Haiku", "pct": 50.0},
         ],
     });
-    // Opus binds (95%); Sonnet is absent and contributes nothing.
     assert_eq!(
         account_headroom(Some(&usage), &["Fable", "Opus", "Sonnet"]),
         Some(5.)
@@ -142,8 +138,6 @@ fn all_sentinel_matches_every_scoped_window() {
     assert_eq!(account_headroom(Some(&usage), &["ALL"]), Some(3.));
 }
 
-// TestRelevantWindows
-
 #[test]
 fn carries_labels_pcts_and_resets() {
     let usage = json!({
@@ -176,8 +170,6 @@ fn non_dict_usage_is_empty() {
     assert!(relevant_windows(Some(&json!("no credentials")), &[]).is_empty());
 }
 
-// TestFormatReset
-
 #[test]
 fn same_day_shows_time_only() {
     let (countdown, clock) =
@@ -206,7 +198,6 @@ fn minutes_only_when_under_one_hour() {
 fn reset_strings_read_what_cswap_reads() {
     let now = fixed_now();
     assert_eq!(format_reset("not a date", now), Err(ResetError::Value));
-    // A time without an offset can't be subtracted from an aware one in cswap.
     assert_eq!(
         format_reset("2026-03-23T13:00:00", now),
         Err(ResetError::Type)
@@ -216,7 +207,6 @@ fn reset_strings_read_what_cswap_reads() {
     assert_eq!(format_countdown(-5.), "0m");
     assert_eq!(format_countdown(5. * 86_400. + 12. * 3600. + 59.), "5d 12h");
     assert_eq!(format_countdown(3599.), "59m");
-    // Drawn from `resets_at` when it reads, else the strings stored at fetch time.
     let stored = json!({"resets_at": "garbage", "countdown": "1h 0m", "clock": "13:00"});
     assert_eq!(
         fresh_reset_strings(stored.as_object().unwrap(), now),
@@ -234,8 +224,6 @@ fn reset_strings_read_what_cswap_reads() {
         None
     );
 }
-
-// TestHeaderReadingDecisions
 
 #[test]
 fn endpoint_reading_is_unchanged() {

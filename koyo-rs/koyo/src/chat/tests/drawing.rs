@@ -189,8 +189,6 @@ fn a_new_text_size_fits_the_composer_to_its_draft_again(cx: &mut TestAppContext)
     cx.update(|cx| settings::update(cx, |settings| settings.fonts.chat_size = LARGEST_CHAT_SIZE));
     draw(window, cx);
     let largest = height(cx);
-    // Its line goes from 14 to 23, rounded, so the same rows would only reach 1.65 times the
-    // height.
     assert!(
         largest >= smallest * 1.8,
         "more rows too: {smallest} to {largest}"
@@ -313,7 +311,6 @@ fn an_edit_shows_its_diff_on_a_row_of_its_own_and_is_coloured_once_that_is_worke
     });
     assert!(coloured, "its colours are worked out");
 
-    // A drag over its two lines copies their code, without the numbers beside it.
     draw(window, cx);
     let code = |line: &str, cx: &mut TestAppContext| {
         let selector = format!("diff-e-0-{line}-code");
@@ -324,8 +321,6 @@ fn an_edit_shows_its_diff_on_a_row_of_its_own_and_is_coloured_once_that_is_worke
     let (first, second) = (code("0", cx), code("1", cx));
     let mut visual = VisualTestContext::from_window(window, cx);
     let none = Modifiers::default();
-    // From just in from the first line's code, which starts past its padding, to past the
-    // second's end.
     let from = first.origin + point(px(9.), first.size.height / 2.);
     let to = second.origin + point(second.size.width - px(2.), second.size.height / 2.);
     visual.simulate_mouse_down(from, MouseButton::Left, none);

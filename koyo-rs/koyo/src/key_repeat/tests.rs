@@ -117,13 +117,11 @@ fn a_tap_acts_once(cx: &mut TestAppContext) {
 fn a_held_arrow_repeats_once_the_delay_has_passed(cx: &mut TestAppContext) {
     let (window, list) = list(cx);
     press("down", window, cx);
-    // Nothing more until the delay's passed.
     frames(18, FRAME, window, cx);
     assert_eq!(steps(&list, cx), 1);
     frames(30, FRAME, window, cx);
     let held = steps(&list, cx);
     assert!(held > 1, "{held} steps");
-    // macOS's own repeats of it go no further.
     press("down", window, cx);
     press("down", window, cx);
     assert_eq!(steps(&list, cx), held);
@@ -162,7 +160,6 @@ fn letting_go_stops_it(cx: &mut TestAppContext) {
     release("down", window, cx);
     frames(30, FRAME, window, cx);
     assert_eq!(steps(&list, cx), held);
-    // And it's a fresh press next time.
     press("down", window, cx);
     assert_eq!(steps(&list, cx), held + 1);
 }
@@ -177,7 +174,6 @@ fn turned_off_the_arrows_repeat_as_macos_repeats_them(cx: &mut TestAppContext) {
     press("down", window, cx);
     frames(60, FRAME, window, cx);
     assert_eq!(steps(&list, cx), 1);
-    // macOS's repeats, with no release between, each act.
     press("down", window, cx);
     press("down", window, cx);
     assert_eq!(steps(&list, cx), 3);
@@ -210,7 +206,6 @@ fn a_changed_modifier_stops_it_until_it_comes_up(cx: &mut TestAppContext) {
 fn a_press_after_no_frames_for_a_while_is_a_press_anew(cx: &mut TestAppContext) {
     let (window, list) = list(cx);
     press("down", window, cx);
-    // Its release went elsewhere, and the window drew nothing meanwhile.
     cx.executor().advance_clock(Duration::from_millis(300));
     press("down", window, cx);
     assert_eq!(steps(&list, cx), 2);
@@ -219,13 +214,11 @@ fn a_press_after_no_frames_for_a_while_is_a_press_anew(cx: &mut TestAppContext) 
 #[gpui_kit::test]
 fn other_keys_repeat_as_macos_repeats_them(cx: &mut TestAppContext) {
     let (window, list) = list(cx);
-    // Backspace held: macOS's repeats, with no release between, each act.
     for _ in 0..3 {
         press("backspace", window, cx);
     }
     frames(60, FRAME, window, cx);
     assert_eq!(list.read_with(cx, |list, _| list.deletes), 3);
-    // Another key while an arrow's held stops the arrow.
     press("down", window, cx);
     press("backspace", window, cx);
     frames(60, FRAME, window, cx);

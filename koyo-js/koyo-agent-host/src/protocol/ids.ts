@@ -1,6 +1,3 @@
-// The ids of the host's records. Each kind is its own branded type, so a run's id can't be
-// passed where a thread's is wanted; a new one is a UUIDv7, which sorts by creation time.
-
 import type { UUID } from "node:crypto";
 
 import { randomUUIDv7 } from "bun";

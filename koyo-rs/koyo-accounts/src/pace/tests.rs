@@ -28,8 +28,6 @@ fn pace(pct: f64, resets_at_ts: f64) -> Option<PaceResult> {
     compute_pace(Some(&window(pct, Some(resets_at_ts))), Some(NOW))
 }
 
-// TestComputePaceElapsed
-
 #[test]
 fn one_day_into_the_week() {
     let result = pace(20., NOW + 6. * DAY).unwrap();
@@ -69,8 +67,6 @@ fn missing_fields_return_none() {
     );
 }
 
-// TestSuppressionWindow
-
 #[test]
 fn just_inside_suppression_window_is_none() {
     let elapsed = SUPPRESS_AFTER_RESET_S - 1.;
@@ -83,8 +79,6 @@ fn just_outside_suppression_window_is_not_none() {
     let result = pace(50., NOW + WEEK - elapsed).unwrap();
     assert_eq!(result.elapsed_s, elapsed);
 }
-
-// TestAheadThreshold
 
 #[test]
 fn meaningfully_ahead_flags_true() {

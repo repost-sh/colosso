@@ -1,10 +1,3 @@
-// A turn's frames as timeline items (docs/chat.md 4.7): each frame the turn is credited with
-// goes to what it's about, the text the model writes (`Texts`), the tools it calls (`Steps`)
-// or what it used (`Meter`); compaction becomes one item, from its status, boundary and result
-// frames; what the CLI says for the person becomes a notice; the turn's result says how it
-// ended and what it used. A frame outside the SDK's union, or a system frame of a subtype
-// this driver doesn't know, is logged and dropped.
-
 import type {
   SDKAssistantMessage,
   SDKCompactBoundaryMessage,
@@ -154,8 +147,6 @@ export class Frames {
         this.#notice("error", frame.error ?? "");
         return;
       }
-      // Results never come here (`Turns` takes them first, for `result`); the rest has
-      // nothing for the timeline.
       case "result":
       case "tool_progress":
       case "tool_use_summary":
@@ -198,7 +189,6 @@ export class Frames {
     this.#sign(frame.error);
     const { message } = frame;
     if (message.model === "<synthetic>") {
-      // The CLI's own words, such as an API error, come as a message of no model.
       const said = message.content.flatMap((block) => block.type === "text" ? [block.text] : []);
       this.#notice(frame.error === undefined ? "info" : "error", said.join("\n"));
       return;
@@ -212,7 +202,6 @@ export class Frames {
   }
 
   #user(frame: SDKUserMessage | SDKUserMessageReplay): void {
-    // A replay is the CLI's record of what was said, as a compaction's summary.
     if ("isReplay" in frame) {
       return;
     }
@@ -250,7 +239,6 @@ export class Frames {
         return;
       }
       case "informational": {
-        // Info and suggestion lines are the CLI's chatter (T3 adapter pitfall 42).
         if (frame.level === "warning" || frame.level === "notice") {
           this.#notice(frame.level === "warning" ? "warning" : "info", frame.content);
         }
@@ -264,8 +252,6 @@ export class Frames {
         this.#notice("error", UNSAVED);
         return;
       }
-      // A task's frames are `Subagents.hears`' before any comes here, and what runs in the
-      // background is `Background.hears`'.
       case "init":
       case "control_request_progress":
       case "hook_started":
@@ -291,8 +277,6 @@ export class Frames {
     }
     unknownSystem(frame);
   }
-
-  // Compaction (T3 adapter pitfalls 39, 40).
 
   #status(frame: SDKStatusMessage): void {
     if (frame.status === "compacting") {
@@ -354,11 +338,8 @@ export class Frames {
     }
   }
 
-  // Limits and errors (T3 adapter pitfall 41).
-
   #rateLimit(frame: SDKRateLimitEvent): void {
     const info = frame.rate_limit_info;
-    // Every response's, for the account's usage between readings (docs/claude-accounts.md 4).
     this.#emit({ type: "limits", limits: accountLimits(info) });
     const overage = info.overageStatus === "allowed" || info.overageStatus === "allowed_warning";
     if (info.status !== "rejected" || overage) {

@@ -219,7 +219,6 @@ impl Settings {
 
     /// "Space N", the lowest N no space is called.
     fn next_space_name(&self) -> String {
-        // As many numbers as spaces, and one more: one of them is free.
         (1..=self.spaces.len() + 1)
             .map(|n| format!("Space {n}"))
             .find(|name| self.spaces.iter().all(|space| &space.name != name))

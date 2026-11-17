@@ -55,7 +55,6 @@ impl FileEditor {
         if !editor.read(cx).focus_handle(cx).is_focused(window) {
             return;
         }
-        // Carried past what was typed while the server was asked.
         let Some(range) = editor
             .read(cx)
             .translate_range(prepared.range, prepared.version)
@@ -70,7 +69,6 @@ impl FileEditor {
         });
         let _events = cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
             InputEvent::PressEnter { .. } => this.commit_rename(window, cx),
-            // The keyboard went elsewhere: the rename's left, the keyboard where it went.
             InputEvent::Blur => this.cancel_rename(cx),
             InputEvent::Change | InputEvent::Focus => {}
         });

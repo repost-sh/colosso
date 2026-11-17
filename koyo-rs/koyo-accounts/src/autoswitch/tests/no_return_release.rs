@@ -9,9 +9,6 @@ use super::*;
 
 #[test]
 fn the_bar_only_holds_while_the_engine_is_where_it_landed() {
-    // A hand switch away from the landing undoes the move the bar guards. `lastSwitchTo` is
-    // written as a string and `lastSwitchFrom` as a number; an absent `lastSwitchTo` keeps the
-    // bar.
     for (landed, live, expect) in [
         (Some(json!("2")), 2, 3),
         (Some(json!("2")), 3, 1),
@@ -40,7 +37,7 @@ fn the_bar_only_holds_while_the_engine_is_where_it_landed() {
         );
         h.edit_state(|state| state.last_switch_to.clone_from(&landed));
         if live != 2 {
-            h.make_live(3); // the person switches by hand
+            h.make_live(3);
         }
         h.advance(301.);
         let second = [
@@ -59,7 +56,6 @@ fn the_bar_only_holds_while_the_engine_is_where_it_landed() {
 
 #[test]
 fn the_bar_actually_removes_the_account_from_the_ranking() {
-    // `_rank_candidates` called directly, as cswap's tests do.
     let usage = [("1", usage(40.)), ("2", usage(96.)), ("3", usage(99.))];
     let headroom = [("1", Some(60.)), ("2", Some(4.)), ("3", Some(1.))];
     let direct = Direct {
@@ -94,15 +90,14 @@ fn moved(third: f64) -> (Harness, DaysOut) {
 
 fn stalled_fleet(h: &Harness, days: &mut DaysOut, third: f64) -> [(&'static str, Value); 3] {
     [
-        ("1", usage_r(92.5, &days.at(h, 10.))), // barred, 7.5 points, recovered (10 h out)
-        ("2", usage_r(96., &days.at(h, 500.))), // active, 4 points
+        ("1", usage_r(92.5, &days.at(h, 10.))),
+        ("2", usage_r(96., &days.at(h, 500.))),
         ("3", usage_r(third, &days.at(h, 300.))),
     ]
 }
 
 #[test]
 fn the_bar_lifts_when_the_only_alternative_cannot_be_chosen() {
-    // A third account that exists but can't qualify (at its limit) offers the ranking nothing.
     let (mut h, mut days) = moved(100.);
     let mut outcomes = Vec::new();
     for _ in 0..30 {
@@ -119,7 +114,6 @@ fn the_bar_lifts_when_the_only_alternative_cannot_be_chosen() {
 
 #[test]
 fn the_bar_lifts_for_an_alternative_the_ranking_would_reject() {
-    // A third account holding one point passes `> 0` and no ranking gate.
     let (mut h, mut days) = moved(99.);
     let mut outcomes = Vec::new();
     for _ in 0..30 {
@@ -136,8 +130,7 @@ fn the_bar_lifts_for_an_alternative_the_ranking_would_reject() {
 
 #[test]
 fn an_unreadable_barred_account_does_not_crash_the_tick() {
-    // Unknown headroom isn't evidence the account left beats us: it still bars.
-    let headroom = [("2", Some(10.)), ("3", Some(40.))]; // slot 1 unreadable: absent
+    let headroom = [("2", Some(10.)), ("3", Some(40.))];
     let usage: Vec<(&str, Value)> = headroom
         .iter()
         .map(|(n, h)| (*n, usage(100. - h.unwrap())))
@@ -165,9 +158,6 @@ fn the_same_fleet_moves_with_the_bar_cleared() {
 
 #[test]
 fn the_bar_reaches_the_ranking_through_tick() {
-    // The bar's wiring: with the active above SPENT_HEADROOM_PCT the account left clears the
-    // capped margin without having recovered, which is where the bar bites; the engine lands
-    // elsewhere.
     let mut h = Harness::standard();
     let mut days = DaysOut::default();
     let first = [
@@ -183,9 +173,9 @@ fn the_bar_reaches_the_ranking_through_tick() {
         "premise: the move recorded what it left"
     );
     let second = [
-        ("1", usage_r(91., &days.at(&h, 500.))),  // left; 9 points
-        ("2", usage_r(96., &days.at(&h, 400.))),  // active, 4 points
-        ("3", usage_r(92.5, &days.at(&h, 300.))), // 7.5 points
+        ("1", usage_r(91., &days.at(&h, 500.))),
+        ("2", usage_r(96., &days.at(&h, 400.))),
+        ("3", usage_r(92.5, &days.at(&h, 300.))),
     ];
     assert_eq!(h.tick_with_usage(&second), TickOutcome::Switched);
     assert_eq!(h.active(), Some(3), "the bar never reached the ranking");
@@ -216,8 +206,6 @@ fn left_at_four() -> (Harness, DaysOut) {
 
 #[test]
 fn the_release_needs_the_barred_account_to_have_improved() {
-    // The account left is exactly as it was: the ranking flipped only because the active
-    // burned, walked past the bare ratio's old boundary (active 2.0 → 0.5).
     let (mut h, mut days) = left_at_four();
     let mut outcomes = Vec::new();
     for active in [98., 98.2, 98.4, 99., 99.5] {

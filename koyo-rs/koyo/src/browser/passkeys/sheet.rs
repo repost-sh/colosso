@@ -55,7 +55,6 @@ impl Sheet {
     /// No sheet: the page gets `answer` at once.
     pub(super) fn answered(answer: PasskeyAnswer) -> (Self, oneshot::Receiver<PasskeyAnswer>) {
         let (tell, told) = oneshot::channel();
-        // The receiver is right here.
         let _ = tell.send(answer);
         (Self::default(), told)
     }
@@ -116,7 +115,6 @@ impl Drop for Shown {
     /// The page stopped waiting before the sheet ended: it comes down, and with the delegate
     /// gone the controller tells nobody.
     fn drop(&mut self) {
-        // `cancel` came in macOS 13.0, before any sheet is shown.
         if self.delegate.stop() && available!(macos = 13.0) {
             // SAFETY: the controller performing the sheet's requests, on the main thread.
             unsafe { self.controller.cancel() };

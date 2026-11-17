@@ -42,10 +42,6 @@ impl AutoSwitchEngine {
             .usage_entries_by_account(&BTreeSet::new(), false)?;
         let mut plan: BTreeSet<String> = BTreeSet::new();
         let active_pre = pre.get(current);
-        // The active account is nominated when never fetched, poll-due per its plan, or (no
-        // plan yet) past the cadence floor. A candidate-style plan (slower than any active plan)
-        // left from a role change the switcher never saw, a manual login, is overridden past the
-        // active age cap; an exhausted account carries its own bounded plan.
         let stale_candidate_plan = active_pre.is_some_and(|entry| {
             entry.age_s.is_some_and(|age| age >= ACTIVE_MAX_INTERVAL_S)
                 && entry.poll_interval_s.unwrap_or(0.) > ACTIVE_MAX_INTERVAL_S
@@ -61,9 +57,6 @@ impl AutoSwitchEngine {
         {
             plan.insert(pick);
         }
-        // A candidate-style plan on the active slot is overridden after the age cap; every
-        // other nomination keeps a valid future plan under the store's lock. With nothing
-        // nominated that pass would fetch nothing: it would be the read above again.
         let entries = if plan.is_empty() {
             pre
         } else {
@@ -74,9 +67,6 @@ impl AutoSwitchEngine {
         let active = entries
             .get(current)
             .map(|entry| Reading::of(entry, threshold));
-        // Any window of the active near the line: a 5h window closing on it under a flat,
-        // higher weekly window is a switch that is near, whatever the binding max says. An
-        // active with no reading escalates, but not one whose token expired on an idle machine.
         let escalate = !candidates.is_empty()
             && active.as_ref().is_none_or(|active| match active.headroom {
                 Some(_) => active
@@ -90,8 +80,6 @@ impl AutoSwitchEngine {
         }
         let mut fetch: BTreeSet<String> = candidates.iter().cloned().collect();
         fetch.insert(current.to_owned());
-        // Escalation may beat ordinary candidate plans for a fresh decision, but a
-        // decision-trusted exhausted row can't be a target: its wider post-429 plan is kept.
         fetch.retain(|num| {
             entries
                 .get(num)

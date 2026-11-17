@@ -131,7 +131,6 @@ fn no_token_returns_no_credentials() {
 
 #[test]
 fn degraded_active_read_never_consumes() {
-    // A degraded read may be a superseded generation: it is never spent, and says why.
     let h = active_harness();
     let stale = creds("sk-stale", "rt-stale", Some(json!(1000)));
     h.set_backup("1", EMAIL, &stale);
@@ -144,8 +143,6 @@ fn degraded_active_read_never_consumes() {
 
 #[test]
 fn status_path_sets_the_degraded_flag_too() {
-    // cswap's status path read the active credential without recording the verdict; here
-    // every path builds the accounts info, whose active row carries it.
     let h = active_harness();
     let stale = creds("sk-stale", "rt-stale", Some(json!(1000)));
     std::fs::write(h.credentials_file(), &stale).unwrap();
@@ -178,7 +175,6 @@ fn degraded_plus_server_401_defers_with_the_401_record() {
 
 #[test]
 fn server_rejected_token_with_no_recovery_surfaces_the_401() {
-    // A locally valid token the server refused is a failure record, never "token expired".
     let h = active_harness();
     let revoked = fresh("sk-revoked", "rt-foreign");
     h.set_live(&revoked);

@@ -32,7 +32,6 @@ fn api_key_detected() {
     for value in [
         key("sk-ant-api03-", "a1b2c3d4e5", 4),
         key("sk-ant-usr-", "u1v2w3x4y5", 9),
-        // A family that doesn't exist yet is still a key: a denylist of OAuth prefixes.
         key("sk-ant-new99-", "k", 40),
         key("sk-ant-admin01-", "d", 40),
     ] {
@@ -87,7 +86,6 @@ fn live_shared_keys_win_over_stale_target_copies() {
 
 #[test]
 fn account_bound_and_unknown_siblings_stay_target_owned() {
-    // trustedDeviceToken is enrolled per account, and an unknown field could be too.
     let target = json!({
         "claudeAiOauth": {"accessToken": "target"},
         "trustedDeviceToken": "device-token-b",

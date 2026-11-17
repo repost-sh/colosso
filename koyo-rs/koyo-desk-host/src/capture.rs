@@ -130,9 +130,6 @@ impl Sink {
             (ns::kept(buffer), surface)
         };
         self.delivered.fetch_add(1, Ordering::Relaxed);
-        // A window on a desktop that isn't showing is delivered whole 60 times a second
-        // whether or not it changed: a frame equal to the last is dropped here, so a still
-        // desktop costs the app nothing.
         let step = (self.scale.round() as usize * 2).max(1);
         let change = (self.last.lock().unwrap_or_else(PoisonError::into_inner)).compare(
             surface,
@@ -144,7 +141,6 @@ impl Sink {
         }
         let mut sent = self.sent.lock().unwrap_or_else(PoisonError::into_inner);
         if !self.watched.load(Ordering::Relaxed) {
-            // Nobody draws it: it's kept for when somebody does.
             *sent = None;
             *self.unseen.lock().unwrap_or_else(PoisonError::into_inner) = buffer.map(Kept);
             return;
@@ -165,7 +161,6 @@ impl Sink {
             return;
         }
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed);
-        // The right moves to the app whether or not the send succeeds.
         if (self.sender)
             .send(u64::from(self.window), sequence, &[port])
             .is_ok()
@@ -335,8 +330,6 @@ impl Streams {
             if size != stream.wanted.0 {
                 stream.wanted = (size, Instant::now());
             }
-            // A window being resized keeps its stream, whose frames the app stretches to
-            // it, until its size has stood a moment: then one of that size takes over.
             size == stream.size || stream.wanted.1.elapsed() < RESIZED_FOR
         });
         let scale = self.scale;
@@ -372,9 +365,6 @@ impl Streams {
         let missing: Vec<u32> = (all().map(|window| window.id))
             .filter(|id| !self.running.contains_key(id))
             .collect();
-        // A listing that failed never answers, and one may lack a window that shares
-        // nothing: both are asked for again after a while. A window that is new is asked
-        // for at once.
         let again = (self.asked).is_none_or(|asked| asked.elapsed() > ASKS_AGAIN_AFTER);
         if again {
             self.wanted = None;
@@ -403,8 +393,6 @@ impl Streams {
 
     fn start(&self, window: &Window, backdrop: bool, watched: bool, shareable: &Obj) -> Stream {
         let size = (window.frame.width, window.frame.height);
-        // The desktop's own picture (its wallpaper) is as large as the display and seldom
-        // changes: a pixel a point, slowly, and few frames in hand, whoever looks.
         let (scale, watched, depth) = if backdrop {
             (1.0, false, BACKDROP_DEPTH)
         } else {

@@ -157,9 +157,6 @@ fn make(pane: PaneId, url: &str, mut context: Option<RequestContext>) {
     }
     let devtools = context.is_none();
     let mut client = crate::pane::client(pane, devtools);
-    // A page carries Chrome's toolbar, hidden, where extensions have their icons: a popup
-    // anchors to its extensions button, and there's no action to run without one
-    // (`docs/extensions.md` 2.3). The developer tools need none.
     let mut delegate = PageViewDelegate::new(pane, !devtools && crate::extensions::on());
     let settings = BrowserSettings {
         background_color: 0xFFFF_FFFF,
@@ -235,7 +232,6 @@ fn settle(pane: PaneId) {
     };
     if known.is_none() {
         page(pane, |entry| entry.views = Some((compositor.clone(), web.clone())));
-        // The layer knows a page by its views from here on (`koyo_seam::pages`).
         // SAFETY: both are live views, on the main thread.
         unsafe {
             koyo_seam::pages::register(
@@ -279,7 +275,6 @@ fn settle(pane: PaneId) {
         compositor.removeFromSuperview();
         web.removeFromSuperview();
     }
-    // Its holder holds no place while no pane shows the page.
     if shown_in.is_none() {
         park(&holder, size);
     }
@@ -304,7 +299,6 @@ pub fn place(pane: PaneId, container: &NSView, home: &NSView, screen: NSRect) {
             entry.home = Some(Retained::from(home));
         }
         entry.size = screen.size;
-        // Settled again until the page's views are there to move.
         let moved = !same || entry.views.is_none();
         (moved, entry.holder.as_ref().map(|(_, holder)| holder.clone()))
     }) else {
@@ -322,8 +316,6 @@ pub fn place(pane: PaneId, container: &NSView, home: &NSView, screen: NSRect) {
         screen.size.width,
         screen.size.height
     );
-    // Not a child of the app's window, which would move it along with it: Chromium turns
-    // down the pointer over a page while a child of the page's window lies over that place.
     if holder.frame() != screen {
         holder.setFrame_display(screen, false);
     }
@@ -391,7 +383,6 @@ fn tell_keyboard(pane: PaneId, views: Views) {
 /// A key `pane`'s page left unhandled, as the `NSEvent` it came as, is offered to the app's
 /// own view as a shortcut; whether there was a view to offer it.
 pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
-    // Only while a pane shows the page: its keys are the app's then.
     let home = page(pane, |entry| entry.shown_in.as_ref().and(entry.home.clone()));
     let Some(Some(home)) = home else {
         return false;
@@ -399,12 +390,6 @@ pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
     if event.is_null() {
         return false;
     }
-    // Handed back as what it is, where the app's view takes that (GPUI's does, with
-    // `koyoHandBackKey:`): the app runs its shortcuts on it and nothing else. Never as a key
-    // press: the page has had the key, as text where it's text, and a view handed a key press
-    // it has no use for passes it on to the text system, which types it into whatever has the
-    // keyboard, the page, a second time. A view that doesn't take a key handed back is asked
-    // as `AppKit` asks whether a key is a shortcut of its own.
     // SAFETY: `event` is the `NSEvent` CEF is handling, alive through this call.
     unsafe {
         let hand_back = objc2::sel!(koyoHandBackKey:);
@@ -420,7 +405,6 @@ pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
 
 /// `pane`'s browser has closed: its views and its holder go.
 pub(crate) fn closed(pane: PaneId) {
-    // Told while the page is still here, for the keyboard to find its views.
     if page(pane, |_| ()).is_some() {
         tell_keyboard(pane, Views::Leaving);
     }

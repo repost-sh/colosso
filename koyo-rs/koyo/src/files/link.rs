@@ -46,7 +46,6 @@ pub fn opens_links(
                 window.dispatch_action(OpenLinked { path, at }.boxed_clone(), cx);
             }
             Some(LinkTarget::Url(url)) => cx.open_url(&url),
-            // Another scheme's, an email's say, is the system's to open.
             None if link.contains("://") || link.starts_with("mailto:") => cx.open_url(link),
             None => log::info!("{link} names no file in {}", folders[0].display()),
         }
@@ -107,7 +106,6 @@ impl MarkdownPlugin for FileLinks {
         let p = theme::palette(cx);
         let size = f32::from(context.font_size());
         let named = linked.name.clone();
-        // In the tree's colours, not a link's, which the text around it would give it.
         let name = div()
             .text_color(p.text)
             .text_decoration_none()

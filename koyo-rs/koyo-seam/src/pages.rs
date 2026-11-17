@@ -62,7 +62,6 @@ pub fn all() -> Vec<u64> {
 pub unsafe fn page_of(view: *mut AnyObject) -> Option<u64> {
     let view = unsafe { view.as_ref() }?;
     PAGES.with(|pages| {
-        // Asked from inside a change of the pages too: then no page is anyone's.
         let pages = pages.try_borrow().ok()?;
         let within = |of: &AnyObject| -> bool {
             // SAFETY: both are live views.

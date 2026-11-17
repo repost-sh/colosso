@@ -73,7 +73,6 @@ impl Fields {
                 window,
                 move |this, field, event, window, cx| match event {
                     InputEvent::PressEnter { .. } => typed(this, window, cx),
-                    // Left without Enter, a field shows the content's size again, from its start.
                     InputEvent::Blur => {
                         shown_from_start(field, window, cx);
                         cx.notify();

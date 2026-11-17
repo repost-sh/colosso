@@ -51,7 +51,6 @@ fn baseline_fetches_active_plus_one_candidate() {
     let mut h = Harness::standard();
     let t0 = h.now();
     let (fifty, ten, twenty) = (usage(50.), usage(10.), usage(20.));
-    // t0: the active (never fetched) and the stalest candidate.
     let (_, fetches) = tick_on(
         &mut h,
         entries(vec![
@@ -61,7 +60,6 @@ fn baseline_fetches_active_plus_one_candidate() {
         ]),
     );
     assert_eq!(fetches[1], (set(&["1", "2"]), true));
-    // t60: the active planned MIN_INTERVAL_S out; the never-fetched candidate is the due one.
     h.advance(60.);
     let now = h.now();
     let (_, fetches) = tick_on(
@@ -87,7 +85,6 @@ fn baseline_fetches_active_plus_one_candidate() {
         ]),
     );
     assert_eq!(fetches[1].0, set(&["3"]));
-    // t120: nobody due, everyone served from the store.
     h.advance(60.);
     let now = h.now();
     let stored = |now: f64| {
@@ -123,9 +120,7 @@ fn baseline_fetches_active_plus_one_candidate() {
         ])
     };
     let (_, fetches) = tick_on(&mut h, stored(now));
-    // Nothing nominated: the read before the nomination is the only pass.
     assert_eq!(fetches, [(set(&[]), false)]);
-    // t180: the active account's plan comes due.
     h.advance(60.);
     let now = h.now();
     let (_, fetches) = tick_on(&mut h, stored(now));
@@ -135,7 +130,6 @@ fn baseline_fetches_active_plus_one_candidate() {
 
 #[test]
 fn near_threshold_escalates_to_full_refresh() {
-    // threshold 90, margin 15: the active at 80% is inside the escalation band.
     let mut h = Harness::standard();
     let (outcome, fetches) = tick_on(
         &mut h,
@@ -145,8 +139,8 @@ fn near_threshold_escalates_to_full_refresh() {
             ("3", entry_for(&usage(20.), START)),
         ]),
     );
-    assert_eq!(outcome, TickOutcome::NoAction); // still below the threshold
-    assert_eq!(fetches.last().unwrap(), &(set(&["1", "2", "3"]), false)); // everyone refreshed
+    assert_eq!(outcome, TickOutcome::NoAction);
+    assert_eq!(fetches.last().unwrap(), &(set(&["1", "2", "3"]), false));
 }
 
 #[test]
@@ -171,8 +165,6 @@ fn active_unknown_escalates_before_failover() {
             ("3", entry_for(&usage(50.), START)),
         ]),
     );
-    // The candidates were refreshed in the tick the failover ran on (the pass after it reads
-    // the new active row's plan for the wait).
     assert_eq!(fetches[2].0, set(&["1", "2", "3"]));
     assert_eq!(fetches[3], (set(&[]), false));
     assert_eq!(outcome, TickOutcome::Switched);
@@ -181,13 +173,11 @@ fn active_unknown_escalates_before_failover() {
 
 #[test]
 fn stale_candidate_plan_never_gates_the_active() {
-    // A role change outside a switch (a manual login): the active slot carries a plan written
-    // while it was an idle candidate, 600 s out. The ACTIVE_MAX_INTERVAL_S age cap overrides it.
     let mut h = Harness::fleet(2, defaults());
     let t0 = h.now();
     let fifty = usage(50.);
     let candidate = |now| row(&usage(20.), now, Some((now + 300., 300.)), now);
-    h.advance(240.); // inside the bogus plan, under the age cap
+    h.advance(240.);
     let now = h.now();
     let (_, fetches) = tick_on(
         &mut h,
@@ -196,9 +186,8 @@ fn stale_candidate_plan_never_gates_the_active() {
             ("2", candidate(now)),
         ]),
     );
-    // The active isn't nominated, nor anyone else: one pass, nothing fetched, the plan kept.
     assert_eq!(fetches, [(set(&[]), false)], "a valid plan is kept");
-    h.advance(120.); // age 360 >= ACTIVE_MAX_INTERVAL_S
+    h.advance(120.);
     let now = h.now();
     let (_, fetches) = tick_on(
         &mut h,
@@ -219,7 +208,6 @@ fn engine_repairs_legacy_reset_parked_active_plan() {
     let exhausted = usage_r(100., &iso(reset_ts));
     h.advance(400.);
     let now = h.now();
-    // A distant reset deadline kept with a much shorter learned interval.
     let (_, fetches) = tick_on(
         &mut h,
         entries(vec![(
@@ -232,8 +220,6 @@ fn engine_repairs_legacy_reset_parked_active_plan() {
 
 #[test]
 fn active_in_backoff_keeps_trusted_headroom() {
-    // The active's fetches are refused (429, long Retry-After): its reading ages past
-    // STALE_OK_S but stays trusted, so no unhealthy tick and no escalation while rate-limited.
     let mut h = Harness::standard();
     let now = h.now();
     let backed_off = UsageEntry {
@@ -263,7 +249,6 @@ fn all_exhausted_escalation_preserves_wider_plan() {
     let mut h = Harness::standard();
     let now = h.now();
     let exhausted = usage(100.);
-    // The wider plan learned after repeated 429s: escalation must not defeat it.
     let (outcome, fetches) = tick_on(
         &mut h,
         entries(vec![
@@ -289,7 +274,6 @@ fn idle_hold_skips_candidate_polling() {
     ]);
     assert_eq!(tick_on(&mut h, expired.clone()).0, TickOutcome::NoAction);
     h.advance(10.);
-    // The hold established: no candidate slot is spent.
     let (outcome, fetches) = tick_on(&mut h, expired);
     assert_eq!(outcome, TickOutcome::NoAction);
     assert!(!fetches[1].0.contains("2") && !fetches[1].0.contains("3"));
@@ -333,7 +317,6 @@ fn quarantined_candidate_never_consumes_the_poll_slot() {
         nominated.extend(fetches.into_iter().flat_map(|(fetch, _)| fetch));
         h.advance(60.);
     }
-    // The alternate slot always went to 3; 2 is dead weight.
     assert!(!nominated.contains("2"));
     assert!(nominated.contains("3"));
 }
@@ -342,7 +325,6 @@ fn quarantined_candidate_never_consumes_the_poll_slot() {
 fn disabled_account_polled_after_switchable_candidates_without_escalating() {
     let mut h = Harness::standard();
     h.host.lock().accounts.get_mut(&3).unwrap().disabled = true;
-    // t0: the switchable candidate 2 takes the alternate slot.
     let (_, fetches) = tick_on(
         &mut h,
         entries(vec![
@@ -352,7 +334,6 @@ fn disabled_account_polled_after_switchable_candidates_without_escalating() {
         ]),
     );
     assert_eq!(fetches[1].0, set(&["1", "2"]));
-    // t60: 2 isn't due, so the disabled 3 is polled for the panel.
     h.advance(60.);
     let now = h.now();
     let t0 = START;
@@ -366,7 +347,6 @@ fn disabled_account_polled_after_switchable_candidates_without_escalating() {
         ]),
     );
     assert_eq!(fetches[1].0, set(&["3"]));
-    // Escalation refreshes switchable candidates only, never disabled ones.
     h.advance(360.);
     let now = h.now();
     let (_, fetches) = tick_on(
@@ -385,8 +365,6 @@ fn disabled_account_polled_after_switchable_candidates_without_escalating() {
 
 #[test]
 fn expired_active_enters_idle_hold_even_during_backoff() {
-    // The owned and expired sentinel isn't hidden by the active row's failure backoff, or the
-    // engine would count unhealthy ticks toward a spurious failover.
     let mut h = Harness::standard();
     let now = h.now();
     let expired_in_backoff = UsageEntry {

@@ -42,20 +42,16 @@ fn draw() -> Result<Vec<String>> {
     drawn.cx.dispatch_action(drawn.window, ShowFiles);
     settle(&mut drawn, |panel| panel.scanned)?;
 
-    // The arrow keys pressed in the tree, a long file shown in a tab; then held, in the tree,
-    // which previews each file it lands on, and in the file.
     view(&mut drawn, HELD_BESIDE)?;
     drawn.pause()?;
     let mut timed = held(&mut drawn)?;
     timed.extend(repeated(&mut drawn)?);
 
-    // A file shown in a tab, the tree beside it: its folders are revealed, and it's picked.
     view(&mut drawn, "koyo-rs/koyo-project/src/lib.rs")?;
     toggle(&mut drawn, "script")?;
     drawn.pause()?;
     let tree = drawn.save("files-panel.png")?;
 
-    // An ignored folder opened: read once asked for, and shown dimmed.
     toggle(&mut drawn, "koyo-rs/koyo-project")?;
     toggle(&mut drawn, "koyo-rs/target")?;
     settle(&mut drawn, |panel| {
@@ -67,11 +63,8 @@ fn draw() -> Result<Vec<String>> {
     })?;
     let ignored = drawn.save("files-ignored.png")?;
 
-    // A markdown file, opened as it reads, its table wider than the column; then scrolled
-    // sideways by a swipe over it.
     let (table, scrolled) = wide_table(&mut drawn)?;
 
-    // The changes, opened from their own button in the top bar.
     drawn.cx.dispatch_action(drawn.window, ToggleChanges);
     drawn.pause()?;
     let changes = drawn.save("changes-switch.png")?;
@@ -105,7 +98,6 @@ fn held(drawn: &mut Drawn) -> Result<Vec<String>> {
         let keystroke = Keystroke::parse(key).map_err(|error| error.to_string())?;
         for _ in 0..steps {
             let started = Instant::now();
-            // Two turns, as the event loop takes the key and then draws the frame.
             (drawn.cx)
                 .update_window(window, |_, window, cx| {
                     window.dispatch_keystroke(keystroke.clone(), cx);
@@ -115,7 +107,6 @@ fn held(drawn: &mut Drawn) -> Result<Vec<String>> {
                 .update_window(window, |_, window, cx| window.draw(cx).clear(cx))
                 .map_err(|error| error.to_string())?;
             took.push(started.elapsed());
-            // Let go before the next, as a tap is.
             let up = KeyUpEvent {
                 keystroke: keystroke.clone(),
             };
@@ -259,13 +250,11 @@ fn wide_table(drawn: &mut Drawn) -> Result<(PathBuf, PathBuf)> {
     drawn.pause()?;
     let before = drawn.save("markdown-table.png")?;
     let swipe = ScrollEvent {
-        // Over the table's rows.
         position: point(px(700.), px(400.)),
         delta: ScrollDelta::Pixels(point(px(-600.), px(0.))),
         ..ScrollEvent::default()
     };
     drawn.cx.simulate_event(drawn.window, swipe);
-    // Saved mid-swipe, its scrollbar shown.
     let after = drawn.save("markdown-table-scrolled.png")?;
     Ok((before, after))
 }

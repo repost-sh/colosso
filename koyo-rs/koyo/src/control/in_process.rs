@@ -99,7 +99,6 @@ impl InProcess {
     ) -> Result<Value, ControlError> {
         check_request_id(request_id.as_deref())?;
         let caller = self.caller()?;
-        // A call the person may have to confirm, or be asked about, waits for them as well.
         let timeout = if command.confirmed() || command.info().asks {
             CALL_TIMEOUT + CONFIRM_TIMEOUT
         } else {

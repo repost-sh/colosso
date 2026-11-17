@@ -58,7 +58,6 @@ impl Files {
     pub(crate) fn update(&mut self, generation: u64, listings: Vec<(Arc<str>, Arc<[Entry]>)>) {
         let mut by_dir = HashMap::with_capacity(listings.len());
         for (dir, entries) in listings {
-            // A listing that hasn't changed is the very one the paths were made from.
             let paths = match self.by_dir.remove(&dir) {
                 Some((made_from, paths)) if Arc::ptr_eq(&made_from, &entries) => paths,
                 _ => paths(&dir, &entries),

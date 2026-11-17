@@ -34,7 +34,6 @@ impl NewWorktreeDialog {
                         .min_w_0()
                         .overflow_hidden()
                         .whitespace_nowrap()
-                        // Cut from the start, so the end of a long path stays in view.
                         .text_ellipsis_start()
                         .font_family(p.mono)
                         .child(text),
@@ -51,7 +50,6 @@ impl NewWorktreeDialog {
                     p.muted,
                 ),
             ),
-            // Until it has a name, the preview shows where the name goes.
             _ => {
                 let prefix = self
                     .project
@@ -206,7 +204,6 @@ impl Render for NewWorktreeDialog {
                         ),
                     )
                     .child(
-                        // The settings' switch, macOS's own.
                         Toggle::for_view(
                             "new-worktree-existing",
                             self.existing,

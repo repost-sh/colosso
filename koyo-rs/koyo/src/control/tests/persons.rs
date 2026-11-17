@@ -138,7 +138,6 @@ fn every_browser_tool_needs_the_persons_consent_for_their_page(cx: &mut TestAppC
                 cx.run_until_parked();
                 let declined = taken(&asking).expect("answered").unwrap_err();
                 assert_eq!(declined.code, ErrorCode::UserDeclined, "{name}");
-                // The next asks again, once the refusal's memory has passed.
                 cx.executor().advance_clock(DECLINED_FOR);
             }
         }
@@ -162,7 +161,6 @@ fn a_call_naming_no_pane_never_means_the_persons_page(cx: &mut TestAppContext) {
     let rig = controlled("control-persons-unnamed", &[&root], cx);
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
-    // The agent opened it, so it's the page it acted on last, until the person pinned it.
     let theirs = persons_page(&rig, &agent, "https://mail.example/", true, cx);
     rig.shell.update(cx, |shell, cx| {
         assert!(shell.show_tab_holding(theirs, cx));
@@ -174,14 +172,11 @@ fn a_call_naming_no_pane_never_means_the_persons_page(cx: &mut TestAppContext) {
     }
     assert!(!cx.has_pending_prompt());
 
-    // With the person's page the one it acted on last, and shown, an unnamed call means the
-    // worktree's page, the only one there is.
     let opened = json!({ "kind": "browser", "url": "https://example.com/" });
     let mine = call(&agent, "tab_open", opened, cx).unwrap()["pane"].clone();
     allowed(&agent, theirs, cx);
     let claimed = call(&agent, "browser_claim", json!({}), cx).unwrap();
     assert_eq!(claimed, json!({ "pane": mine, "held": true }));
-    // Used by name with consent, it's the page acted on last again; still not the one meant.
     assert_eq!(reading(&agent, theirs, cx).code, ErrorCode::BrowserUnavailable);
     let shown = read_shell(&rig, cx, |shell, _| shell.workspace.apart_shown_key());
     assert_eq!(shown, Some(theirs), "the person's page is the tab shown");
@@ -202,7 +197,6 @@ fn consent_is_one_clients_on_one_connection_for_one_page_while_its_lease_lasts(
     let loose = persons_page(&rig, &agent, "https://bank.example/", false, cx);
     allowed(&agent, pinned, cx);
 
-    // Past the gate, for this client and this page only.
     assert_eq!(reading(&agent, pinned, cx).code, ErrorCode::BrowserUnavailable);
     let mine = listed(&agent, pinned, cx);
     assert_eq!(
@@ -210,7 +204,6 @@ fn consent_is_one_clients_on_one_connection_for_one_page_while_its_lease_lasts(
         (json!("granted"), json!("you"))
     );
     assert_eq!(reading(&other, pinned, cx).code, ErrorCode::ConsentRequired);
-    // Another client is told an agent holds it, not which.
     let theirs = listed(&other, pinned, cx);
     assert_eq!(
         (theirs["consent"].clone(), theirs["controller"].clone()),
@@ -222,7 +215,6 @@ fn consent_is_one_clients_on_one_connection_for_one_page_while_its_lease_lasts(
         (loose_page["place"].clone(), loose_page["consent"].clone()),
         (json!("loose"), json!("none"))
     );
-    // What the page asks is told only to a client the person lets use it.
     let view = read_shell(&rig, cx, |shell, _| shell.workspace.pane(pinned)?.view().cloned());
     let alert = koyo_browser_ipc::Dialog::Alert {
         message: "Your session ends soon".into(),
@@ -231,8 +223,6 @@ fn consent_is_one_clients_on_one_connection_for_one_page_while_its_lease_lasts(
     cx.run_until_parked();
     assert_eq!(listed(&agent, pinned, cx)["dialog"]["kind"], json!("alert"));
     assert_eq!(listed(&other, pinned, cx)["dialog"], Value::Null);
-    // Saying hello under the same name on another connection gets nothing of it, and takes
-    // nothing from the connection that asked.
     let elsewhere = Caller {
         connection: Some(9),
         ..agent.clone()
@@ -240,11 +230,9 @@ fn consent_is_one_clients_on_one_connection_for_one_page_while_its_lease_lasts(
     assert_eq!(reading(&elsewhere, pinned, cx).code, ErrorCode::ConsentRequired);
     assert_eq!(listed(&elsewhere, pinned, cx)["consent"], json!("none"));
     assert_eq!(reading(&agent, pinned, cx).code, ErrorCode::BrowserUnavailable);
-    // Claimed again, it's renewed without asking.
     let again = call(&agent, "browser_claim", json!({ "pane": pinned }), cx).unwrap();
     assert_eq!(again, json!({ "pane": pinned, "held": true }));
     assert!(!cx.has_pending_prompt());
-    // The window tools leave it be, consent or not.
     for (name, input) in [
         ("tab_select", json!({ "pane": pinned })),
         ("pane_focus", json!({ "pane": pinned })),
@@ -261,7 +249,6 @@ fn consent_is_one_clients_on_one_connection_for_one_page_while_its_lease_lasts(
     }
     assert_eq!(read_shell(&rig, cx, |shell, _| shell.workspace.pinned().len()), 1);
 
-    // Let go, it's over.
     let released = call(&agent, "browser_release", json!({ "pane": pinned }), cx).unwrap();
     assert_eq!(released, json!({ "pane": pinned, "held": false }));
     assert_eq!(reading(&agent, pinned, cx).code, ErrorCode::ConsentRequired);
@@ -281,7 +268,6 @@ fn a_client_that_may_no_longer_drive_pages_loses_its_consent(cx: &mut TestAppCon
     let reads = vec![Scope::Read, Scope::Navigate];
     cx.update(|cx| crate::control::set_client_scopes("Claude Code", reads, cx));
     cx.run_until_parked();
-    // At once: its lease goes before it calls again.
     assert_eq!(listed(&client, page, cx)["controller"], Value::Null);
     assert_eq!(reading(&client, page, cx).code, ErrorCode::ScopeDenied);
     let everything = Scope::DEFAULT_GRANT.to_vec();
@@ -302,17 +288,14 @@ fn two_connections_of_one_name_dont_share_the_persons_consent(cx: &mut TestAppCo
         ..first.clone()
     };
     allowed(&first, page, cx);
-    // The other connection sees an agent hold it, and can't let it go for the first.
     assert_eq!(listed(&first, page, cx)["controller"], json!("you"));
     assert_eq!(listed(&second, page, cx)["controller"], json!("agent"));
     let released = call(&second, "browser_release", json!({ "pane": page }), cx).unwrap();
     assert_eq!(released["held"], json!(false));
     assert_eq!(reading(&first, page, cx).code, ErrorCode::BrowserUnavailable);
-    // Claiming it takes takeover.
     let refused = call(&second, "browser_claim", json!({ "pane": page }), cx).unwrap_err();
     assert_eq!((refused.code, refused.message.as_str()), (ErrorCode::ControlRequired, ANOTHER));
     assert!(!cx.has_pending_prompt());
-    // With takeover the person is asked; allowed, the first connection's consent ends.
     let claim = json!({ "pane": page, "takeover": true });
     let asking = send(&second, None, op("browser_claim", claim), cx);
     cx.run_until_parked();

@@ -45,7 +45,6 @@ impl Prompt {
         permissions: &[Permission],
         cx: &mut Context<Self>,
     ) -> Self {
-        // Put away without an answer: not now.
         cx.on_release(|prompt: &mut Self, cx| {
             if !prompt.answered {
                 let id = prompt.id;
@@ -146,7 +145,6 @@ impl MenuBody for Prompt {
 
     fn extent(&self, window: &Window, _: &App) -> Size<Pixels> {
         let style = gpui_kit::TextStyle::default();
-        // A point less than they're given, so a line that only just fits is counted as it wraps.
         let width = px(words_width() - 1.);
         let lines = crate::wrapped::wrapped_lines(&self.says, &style, px(WORDS), width, window);
         let words = lines.clamp(1, MOST_LINES) as f32 * LINE;

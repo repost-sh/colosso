@@ -26,7 +26,6 @@ fn agents_run_protocol_commands_on_the_page_beside_its_dev_tools() {
             profile: "smoke-agent".into(),
         })
         .expect("open");
-    // A command sent before the page exists waits for it.
     cdp(
         &mut session,
         1,
@@ -37,7 +36,6 @@ fn agents_run_protocol_commands_on_the_page_beside_its_dev_tools() {
     assert_eq!(error, None);
     assert_eq!(result.expect("a result")["result"]["value"], "Agent");
 
-    // DevTools open beside the agent; each keeps its own answers.
     session
         .host
         .send(&AppRequest::OpenDevTools {
@@ -76,7 +74,6 @@ fn agents_run_protocol_commands_on_the_page_beside_its_dev_tools() {
     );
     assert!(failed.expect("an error").contains("wasn't found"));
 
-    // The page closes with a command under way: it is answered all the same.
     cdp(
         &mut session,
         4,

@@ -169,11 +169,9 @@ fn a_turn_runs_end_to_end_and_a_killed_host_comes_back_with_what_it_kept() {
     follow(&mut inbox, &mut replica, settled);
     assert_eq!(answer(&replica).as_deref(), Some("You said: Is it on?"));
 
-    // Killed, its lock goes and its socket stays, which the next host takes over.
     signal_host(&dir, "-9");
     disconnected(&mut inbox);
 
-    // A request connects again, which starts a host, on the same chats.
     let listed = client.request::<ThreadsWatch>(&Empty {}).unwrap();
     assert!(listed.iter().any(|summary| summary.id == id));
     let reopen = OpenParams {
@@ -264,7 +262,6 @@ fn a_connection_tells_the_host_koyos_settings_before_what_made_it() {
         host.send(&json!({ "id": read["id"], "result": {} }));
     });
     let client = never_starting(&dir);
-    // Kept, with nothing connected: no host is told, or started.
     assert!(client.set_config(config).is_none());
     client.request::<ThreadsRead>(&read_params()).unwrap();
     host.join().unwrap();
@@ -310,7 +307,6 @@ fn a_host_of_another_build_that_is_busy_waits_for_the_person() {
         "{refused:?}"
     );
 
-    // The person chose to restart the chats: it's stopped, and nothing listens.
     client.replace_host().unwrap();
     host.join().unwrap();
     assert!(koyo_daemon::connect(&dir.socket()).is_err());
@@ -334,7 +330,6 @@ fn word_of_a_connection_ending_comes_before_anything_from_the_next() {
     );
     let client = never_starting(&dir);
     let mut inbox = client.subscribe();
-    // The first connection hangs up as soon as it has answered the hello.
     let first = client.request::<ThreadsRead>(&read_params());
     assert!(
         matches!(first, Err(ClientError::Closed | ClientError::Io(_))),

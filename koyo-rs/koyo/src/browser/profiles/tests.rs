@@ -39,7 +39,6 @@ fn a_project_is_on_default_until_put_on_another() {
     assert_eq!(profiles.of(app), work);
     assert_eq!(profiles.on(&work, &projects).collect::<Vec<_>>(), [app]);
     assert_eq!(profiles.on(DEFAULT, &projects).count(), 0);
-    // Back on Default, nothing's kept for it.
     profiles.set(app, DEFAULT);
     assert_eq!(profiles.of(app), DEFAULT);
     assert!(profiles.projects.is_empty());
@@ -90,7 +89,6 @@ fn a_profile_deleted_puts_its_projects_on_default() {
     assert!(!profiles.has(&work));
     assert_eq!(profiles.of(a), DEFAULT);
     assert_eq!(profiles.of(b), home);
-    // One the file names that's gone is Default.
     profiles.projects.insert(b.to_owned(), "gone-1".into());
     assert_eq!(profiles.of(b), DEFAULT);
 }
@@ -110,15 +108,12 @@ fn each_projects_own_profile_is_brought_over_with_its_sign_ins() {
     let kept = [colosso.clone(), named.clone(), DEFAULT.into()];
     let mut profiles = Profiles::default();
     profiles.bring_over(&projects, &looks, |id| kept.iter().any(|kept| kept == id));
-    // Each keeps the folder it had, so it's signed in as it was.
     assert_eq!(profiles.of(Path::new("/work/colosso")), colosso);
     assert_eq!(profiles.name(&colosso), "colosso");
     assert_eq!(profiles.of(Path::new("/work/named")), named);
     assert_eq!(profiles.name(&named), "Client site");
-    // A project whose pages kept nothing starts on Default, as a new one does.
     assert_eq!(profiles.of(Path::new("/work/agents")), DEFAULT);
     assert_eq!(profiles.made.len(), 2);
-    // A project on a profile already is left be.
     profiles.set(Path::new("/work/colosso"), DEFAULT);
     profiles
         .projects
@@ -133,16 +128,13 @@ fn agents_pages_are_the_projects_or_the_agents_profiles_as_the_person_has_them()
     let app = Path::new("/work/app");
     let work = profiles.make("Work");
     profiles.set(app, &work);
-    // Signed in as the person, as they are when nothing's said.
     assert_eq!(profiles.agents, AgentPages::Shared);
     assert_eq!(profiles.page(app, By::Agent), work);
     assert_eq!(profiles.page(app, By::Person), work);
-    // Kept apart, an agent's are of the Agents profile, wherever they're opened.
     profiles.agents = AgentPages::Separate;
     assert_eq!(profiles.page(app, By::Agent), AGENTS);
     assert_eq!(profiles.page(Path::new(NO_PROJECT), By::Agent), AGENTS);
     assert_eq!(profiles.page(app, By::Person), work);
-    // Built in: named, but no profile a project is put on, listed, renamed or deleted.
     assert_eq!(profiles.name(AGENTS), "Agents");
     assert!(!profiles.has(AGENTS));
     assert!(profiles.all().all(|(id, _)| id != AGENTS));
@@ -156,7 +148,6 @@ fn agents_pages_are_the_projects_or_the_agents_profiles_as_the_person_has_them()
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-')
     );
-    // Kept with the profiles, read back as written; a file that says nothing is shared.
     let json = serde_json::to_value(&profiles).unwrap();
     assert_eq!(json["agents"], "separate");
     let back: Profiles = serde_json::from_value(json).unwrap();
@@ -173,14 +164,11 @@ fn the_profiles_come_back_from_their_file_and_are_brought_over_once(cx: &mut Tes
         settings::update(cx, |settings| settings.projects = vec![colosso.clone()]);
     });
     let file = scratch("browser-profiles").join(FILE);
-    // No file yet, as the first time this build starts: the project's own folder is brought
-    // over, and kept at once.
     cx.update(|cx| open(Some(file.clone()), |_| true, cx));
     let brought = cx.read(|cx| get(cx).clone());
     assert_eq!(brought.of(&colosso), own(&colosso));
     assert_eq!(kept_file::read::<Profiles>(&file).as_ref(), Some(&brought));
 
-    // Put on Default, with a profile made: it comes back so, and isn't brought over again.
     cx.update(|cx| {
         update(cx, |profiles| {
             profiles.set(&colosso, DEFAULT);
@@ -223,7 +211,6 @@ fn an_open_page_moves_with_its_projects_profile(cx: &mut TestAppContext) {
         work
     });
 
-    // Open in Default, the project put on Work: it's to close and open again in Work.
     let open = page(cx);
     open.update(cx, BrowserView::pretend_opened);
     assert!(!moved(&open, cx));
@@ -232,12 +219,10 @@ fn an_open_page_moves_with_its_projects_profile(cx: &mut TestAppContext) {
     put_on(cx, DEFAULT);
     assert!(!moved(&open, cx));
 
-    // Not open, it opens in whichever the project's on then: nothing to move.
     let unopened = page(cx);
     put_on(cx, &work);
     assert!(!moved(&unopened, cx));
 
-    // An agent's page moves as agents' pages are kept apart, and back; the person's stays.
     let agents = |cx: &mut TestAppContext, pages: AgentPages| {
         cx.update(|cx| update(cx, |profiles| profiles.agents = pages));
     };

@@ -52,7 +52,6 @@ fn read_account_credentials_uses_security_service() {
 
 #[test]
 fn write_account_credentials_uses_security_service() {
-    // No backup yet: nothing to retain, so the write is one Keychain write.
     let world = World::new();
     world
         .store
@@ -146,7 +145,6 @@ fn a_write_fallback_does_not_certify_an_unread_backup() {
         (String::new(), true),
         "premise: a locked Keychain makes an empty backup read unprovable"
     );
-    // The active write that cswap falls back and pins on fails here.
     assert!(
         world
             .store
@@ -194,7 +192,6 @@ fn a_real_keychain_failure_still_reports_unreadable() {
 
 #[test]
 fn a_stale_failure_flag_does_not_condemn_a_working_read() {
-    // An earlier op failed; the Keychain answers now that slot 9 has no backup.
     let world = World::new();
     world.store.set_keychain_usable_cache(Some(false));
     let (_, unreadable) = world
@@ -205,7 +202,6 @@ fn a_stale_failure_flag_does_not_condemn_a_working_read() {
 
 #[test]
 fn a_recovered_keychain_is_not_condemned_by_the_previous_read() {
-    // About the per-read verdict, not the backoff: the deadline lapses at once.
     let world = World::new();
     world.store.set_keychain_cooldown(Duration::ZERO);
     world.security.lock();
@@ -215,7 +211,7 @@ fn a_recovered_keychain_is_not_condemned_by_the_previous_read() {
             .read_account_credentials_ex("9", "x@e.com", false),
         (String::new(), true)
     );
-    world.security.clear_rule(); // recovered
+    world.security.clear_rule();
     let (_, unreadable) = world
         .store
         .read_account_credentials_ex("9", "x@e.com", false);
@@ -224,7 +220,6 @@ fn a_recovered_keychain_is_not_condemned_by_the_previous_read() {
 
 #[test]
 fn an_idle_backup_read_does_not_erase_the_active_verdict() {
-    // A success on one item is no evidence about another.
     let world = World::new();
     world.store.set_keychain_usable_cache(Some(true));
     world.security.set_rule(|call| {
@@ -264,8 +259,6 @@ fn an_ungated_success_inside_the_cooldown_does_not_erase_the_active_verdict() {
 
 #[test]
 fn two_concurrent_backup_reads_keep_their_own_verdicts() {
-    // Slot 2 genuinely denied while a sibling loop reads an empty slot 9, each `security`
-    // taking 4 ms; without the cooldown the race runs on every read.
     let world = World::new();
     world.store.set_keychain_usable_cache(Some(true));
     world.store.set_keychain_cooldown(Duration::ZERO);

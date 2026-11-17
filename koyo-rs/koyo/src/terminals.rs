@@ -128,7 +128,6 @@ impl Terminals {
         };
         if client.keep_theme(theme) {
             let settled = cx.background_executor().timer(THEME_DELAY);
-            // A newer change drops this task, and with it the send it waited for.
             self.theme_send = Some(cx.background_executor().spawn(async move {
                 settled.await;
                 client.send_theme(theme);
@@ -210,7 +209,6 @@ fn free_name(base: &str, taken: &BTreeSet<String>) -> String {
     if !taken.contains(base) {
         return base.to_owned();
     }
-    // As many numbers as names taken: one of them is free.
     (2..=taken.len() + 1)
         .map(|n| format!("{base}-{n}"))
         .find(|name| !taken.contains(name))
@@ -259,7 +257,6 @@ impl Shell {
         }
         let source = self.terminals.sources.get(&id)?.clone();
         let client = self.terminals.client()?;
-        // A path a program prints relative to the checkout is found wherever its shell is.
         let roots = (self.workspace.terminal_tabs())
             .find(|(_, tab)| *tab == id)
             .map(|(worktree, _)| worktree.to_path_buf());
@@ -313,7 +310,6 @@ impl Shell {
             .size_full()
             .flex()
             .flex_col()
-            // ⌘⇧L in the terminal, heard on its way up.
             .on_action(cx.listener(move |this, _: &beside::ToggleActivity, _, cx| {
                 this.toggle_activity(id, cx);
             }))
@@ -368,7 +364,6 @@ impl Shell {
             TerminalEvent::Title(title) if !title.is_empty() => title.clone(),
             TerminalEvent::Opened(record) => {
                 self.terminals.states.upsert(record);
-                // Opened again, as ⌘⇧T does, the pane attaches to this very terminal.
                 let name = record.name.clone();
                 (self.terminals.sources).insert(
                     id,
@@ -385,14 +380,11 @@ impl Shell {
                 return;
             }
             TerminalEvent::DaemonReplaced => {
-                // The other tabs it turned away try again, with this build's daemon.
                 for made in self.terminals.views.values() {
                     made.view.update(cx, TerminalView::try_again);
                 }
                 return;
             }
-            // The terminal bar's toggle shows whether it's pinned; the rest is responsive
-            // mode's, which hears it too.
             TerminalEvent::Responsive => {
                 if let Some(made) = self.terminals.views.get_mut(&id) {
                     let pinned = made.view.read(cx).pinned().is_some();

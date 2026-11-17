@@ -45,7 +45,6 @@ impl Host {
     /// The window's own element, if a press at `at` in `target` takes hold of the window.
     fn grip(&mut self, target: Target, at: Point) -> Option<Element> {
         let down = at.y - target.frame.y;
-        // A panel another process draws is that process's to drag.
         if target.through.is_some() || !(0.0..BAR).contains(&down) {
             return None;
         }
@@ -63,7 +62,6 @@ impl Host {
         let Some(window) = self.grip(target, at) else {
             return false;
         };
-        // As a press on a bar does: the window comes in front and takes the keys.
         window.set("AXMain", &ns::yes());
         window.act("AXRaise");
         self.moving = Some(Moving {

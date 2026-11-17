@@ -1,9 +1,3 @@
-// Claude's frames for the driver's tests, typed by the SDK's own types. Each is built as the
-// sessions recorded against the real CLI (Claude Code 2.1.317, SDK 0.3.317) had it: the
-// fields the CLI sets, in the order it sends them, with the recordings' ids and paths
-// replaced. Recorded JSON can't be read back as these types without a cast, so the frames
-// are written out here instead.
-
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -90,8 +84,6 @@ export function message(id: string, content: readonly Block[], model: string = M
   };
 }
 
-// Blocks.
-
 export function textBlock(text: string): Extract<Block, { type: "text" }> {
   return { type: "text", text, citations: null };
 }
@@ -107,8 +99,6 @@ export function toolUse(id: string, name: string, input: unknown): Extract<
 > {
   return { type: "tool_use", id, name, input, caller: { type: "direct" } };
 }
-
-// The stream of one model message.
 
 export function messageStart(id: string, counts: Counts = {}): StreamEvent {
   return { type: "message_start", message: { ...message(id, []), usage: usage(counts) } };
@@ -162,8 +152,6 @@ export function messageDelta(
 export function messageStop(): StreamEvent {
   return { type: "message_stop" };
 }
-
-// Frames.
 
 export function stream(event: StreamEvent, stamp: Stamp = {}): SDKPartialAssistantMessage {
   return {
@@ -327,8 +315,6 @@ export function rateLimit(info: SDKRateLimitInfo): SDKRateLimitEvent {
     session_id: SESSION,
   };
 }
-
-// Results.
 
 function resultUsage(counts: Counts = {}): ResultUsage {
   return {

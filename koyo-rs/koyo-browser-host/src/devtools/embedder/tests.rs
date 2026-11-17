@@ -45,7 +45,6 @@ fn the_shim_goes_in_the_frontends_page_with_the_side_and_a_binding_to_tell_throu
     assert_eq!(commands[1].1["name"], BINDING);
     let call = commands[2].1["expression"].as_str().expect("the shim");
     assert!(call.starts_with("(// The DevTools frontend's embedder shim"));
-    // Each side goes in under the name the shim knows it by.
     for (side, name) in [
         (DevToolsDock::Bottom, "bottom"),
         (DevToolsDock::Left, "left"),

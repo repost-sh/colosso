@@ -19,7 +19,6 @@ define_class!(
     impl Target {
         #[unsafe(method(acted:))]
         fn acted(&self, _sender: &NSObject) {
-            // Unheard only once the page holding the control has gone.
             self.ivars().unbounded_send(()).ok();
         }
     }

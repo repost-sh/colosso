@@ -47,8 +47,6 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
     let Some(dir) = dir.or_else(TermDir::from_env) else {
         return fail("no data folder: set KOYO_DATA_DIR or pass --dir");
     };
-    // The engine writes its terminfo and shell integration files under the daemon's own
-    // folder, not the user's cache, unless told otherwise.
     if std::env::var_os("GHOSTTY_VT_CACHE_DIR").is_none() {
         // SAFETY: called before the daemon starts any thread, as documented above.
         unsafe { std::env::set_var("GHOSTTY_VT_CACHE_DIR", dir.root().join("cache")) };

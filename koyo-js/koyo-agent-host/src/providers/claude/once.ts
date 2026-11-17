@@ -1,6 +1,3 @@
-// A CLI run for one answer (docs/chat.md 4.2): in a process group of its own, told nothing unless
-// it's given a prompt, and gone once it's answered or the time is up.
-
 import type {
   Options,
   SDKUserMessage,

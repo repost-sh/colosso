@@ -84,7 +84,6 @@ pub fn main() -> ExitCode {
         }
         loader
     };
-    // The API version this build was compiled against, before any other call.
     let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
     let args = cef::args::Args::new();
 

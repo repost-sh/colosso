@@ -138,7 +138,6 @@ fn a_trackpad_pinch_spreads_two_fingers_by_what_it_magnified() {
         last.clone_from(&moved[0]);
     }
     let (ended, line) = span(&last);
-    // Ten steps of a tenth: 1.1 to the tenth.
     assert!(
         (ended / began - 1.1f32.powi(10)).abs() < 0.01,
         "{}",
@@ -161,9 +160,7 @@ fn a_trackpad_rotation_turns_the_fingers_the_way_the_hand_turned() {
         last = lines(&f.take(rotate(Phase::Moved, 5.), step)).remove(0);
     }
     let (ended, line) = span(&last);
-    // Counter-clockwise for AppKit is a line that falls to the left on a screen.
     assert!((line + 45.).abs() < 0.2, "{line}");
-    // Turning keeps the fingers as far apart, in pixels, whatever the screen's shape.
     assert!((ended - began).abs() < 1., "{began} {ended}");
     assert!(lines(&f.take(rotate(Phase::Ended, 0.), 20))[0].starts_with("u2 "));
 }
@@ -172,11 +169,9 @@ fn a_trackpad_rotation_turns_the_fingers_the_way_the_hand_turned() {
 fn a_pinch_and_a_rotation_at_once_share_the_fingers_and_lift_them_once() {
     let mut f = fingers();
     assert_eq!(f.take(pinch(Phase::Started, 0.), 0).len(), 1);
-    // The rotation joins: no second pair goes down.
     assert!(f.take(rotate(Phase::Started, 0.), 1).is_empty());
     assert!(lines(&f.take(pinch(Phase::Moved, 0.2), 2))[0].starts_with("d2"));
     assert!(lines(&f.take(rotate(Phase::Moved, 10.), 3))[0].starts_with("d2"));
-    // One ends, the fingers stay for the other.
     assert!(f.take(pinch(Phase::Ended, 0.), 4).is_empty());
     assert!(f.down());
     assert!(lines(&f.take(rotate(Phase::Ended, 0.), 5))[0].starts_with("u2"));
@@ -186,7 +181,6 @@ fn a_pinch_and_a_rotation_at_once_share_the_fingers_and_lift_them_once() {
 #[test]
 fn a_trackpad_scroll_is_a_finger_that_drags_and_its_glide_is_left_to_the_device() {
     let mut f = fingers();
-    // Fingers resting on the trackpad put none on the screen.
     assert!(f.take(scroll(Phase::Started, 0.), 0).is_empty());
     assert_eq!(
         lines(&f.take(scroll(Phase::Moved, -0.1), 10)),
@@ -196,7 +190,6 @@ fn a_trackpad_scroll_is_a_finger_that_drags_and_its_glide_is_left_to_the_device(
         lines(&f.take(scroll(Phase::Ended, 0.), 20)),
         ["u 0.5000 0.4000 0"]
     );
-    // The trackpad's own momentum comes after, with no beginning: nothing is touched.
     assert!(f.take(scroll(Phase::Moved, -0.05), 30).is_empty());
     assert!(!f.down());
 }
@@ -227,12 +220,10 @@ fn trackpad_fingers_that_just_stop_are_lifted_and_come_down_again_when_they_go_o
         lines(&f.tick(10 + TRACKPAD_RESTS_MS)),
         ["u 0.5000 0.4000 0"]
     );
-    // The same scroll goes on: a finger again, where the pointer is.
     assert_eq!(
         lines(&f.take(scroll(Phase::Moved, -0.1), 900)),
         ["d 0.5000 0.5000 0", "d 0.5000 0.4000 0"]
     );
-    // A pinch the system took back never says it ended.
     let mut f = fingers();
     f.take(pinch(Phase::Started, 0.), 0);
     f.take(pinch(Phase::Moved, 0.1), 10);
@@ -251,12 +242,10 @@ fn option_drag_is_two_fingers_across_the_middle_and_shift_moves_them_together() 
         lines(&f.take(option, 0)),
         ["d2 0.4000 0.4000 0.6000 0.6000"]
     );
-    // Towards the middle: a pinch in.
     assert_eq!(
         lines(&f.take(drag(0.45, 0.45), 10)),
         ["d2 0.4500 0.4500 0.5500 0.5500"]
     );
-    // With Shift both go the same way.
     let together = Mac::Drag {
         at: At::new(0.45, 0.35),
         shift: true,

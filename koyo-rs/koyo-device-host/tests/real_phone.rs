@@ -30,8 +30,6 @@ fn the_host_shows_and_drives_a_real_device() {
     let Some((mut host, screen)) = shown("QR1") else {
         return;
     };
-    // Groups of rows to run, all by default: `KOYO_REAL_PHONE_ROWS=still,clock` leaves the
-    // volume alone, on a phone of the person's own.
     let only = std::env::var("KOYO_REAL_PHONE_ROWS").unwrap_or_default();
     let runs = |group: &str| only.is_empty() || only.split(',').any(|named| named == group);
     if runs("still") {
@@ -70,7 +68,6 @@ fn shown(id: &str) -> Option<(Driver, Screen)> {
         screen.pixels.width > 0,
     );
     host.tell(&ToHost::Visible { visible: true });
-    // Shown again, the host asks for a whole picture and decodes from it (within a second, P13).
     let _ = host.until(Duration::from_secs(2), |_| false);
     let frames = host.count_frames(Duration::from_secs(5));
     row(id, "pictures a second while shown, a still screen", &format!("{:.1}", frames as f64 / 5.), frames >= 150);
@@ -156,7 +153,6 @@ fn clock(host: &mut Driver, screen: &Screen) {
         row("QR2", "the Clock app on the Home Screen", "not on this page: nothing tapped", false);
         return;
     };
-    // The icon's middle is about 45 points above its name on an iPad's Home Screen.
     let icon = Point { x: name.x, y: name.y - 45. };
     act("Clock opened by a tap on its icon");
     let tapped = tap(host, icon);
@@ -293,7 +289,6 @@ fn a_picture_that_fails_to_decode_comes_back_by_a_keyframe() {
     let mut host = Driver::start(&target, true);
     let _ = host.ready(Duration::from_secs(60));
     host.tell(&ToHost::Visible { visible: true });
-    // The longest time without a picture while the packets are dropped and after.
     let began = Instant::now();
     let (mut seen, mut at, mut longest) = (host.frames, Instant::now(), Duration::ZERO);
     while began.elapsed() < Duration::from_secs(15) {

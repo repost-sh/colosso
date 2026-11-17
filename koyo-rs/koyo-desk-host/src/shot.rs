@@ -243,7 +243,6 @@ fn compose(parts: &[(Rect, Slot, Option<Obj>)], area: Rect, scale: f64) -> Optio
         sys::CGContextFillRect(ns::raw(&context), whole);
         for (frame, _, image) in parts.iter().rev() {
             let Some(image) = image else { continue };
-            // Core Graphics counts from the bottom left.
             let rect = CGRect {
                 origin: CGPoint {
                     x: (frame.x - area.x) * scale,

@@ -89,8 +89,6 @@ impl Switcher {
                 (info.num().to_owned(), identity)
             })
             .collect();
-        // The scoped-window models, so the 429 trust bound honours a per-model reset as the
-        // poll planner's view does.
         let inputs = self.poll_policy_inputs();
         let models = inputs.model_names();
         let mut sentinels: BTreeMap<String, String> = infos
@@ -115,9 +113,6 @@ impl Switcher {
             })
             .collect();
         let claims = store.reserve(&requested, &identities, respect_plans, repair_overslept)?;
-        // An expired active credential the pass can't reach (backoff, another collector's
-        // lease, a plan) still says so, so the engine holds instead of counting the gap
-        // toward a failover. A hold for another machine's reading leaves the row trusted.
         for info in infos.iter().filter(|info| info.is_active()) {
             if sentinels.contains_key(info.num())
                 || claims.contains_key(info.num())

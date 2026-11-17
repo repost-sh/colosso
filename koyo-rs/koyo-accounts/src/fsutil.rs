@@ -36,7 +36,6 @@ pub fn publish_target(path: &Path) -> io::Result<PathBuf> {
         let meta = match fs::symlink_metadata(&target) {
             Ok(meta) => Some(meta),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            // A loop on the way (`loop/../victim.json`) is refused, not folded away.
             Err(error) => return Err(error),
         };
         match meta {
@@ -51,7 +50,6 @@ pub fn publish_target(path: &Path) -> io::Result<PathBuf> {
                 if target == path {
                     return Ok(target);
                 }
-                // As realpath: the folders on the way resolved too.
                 let parent = target.parent().map(Path::canonicalize).transpose()?;
                 return Ok(match (parent, target.file_name()) {
                     (Some(parent), Some(name)) => parent.join(name),

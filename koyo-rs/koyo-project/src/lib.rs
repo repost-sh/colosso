@@ -172,7 +172,6 @@ impl Project {
 
 impl Drop for Project {
     fn drop(&mut self) {
-        // The worker stops between folders, and the watcher with it; nothing waits for that.
         self.shared.stop();
     }
 }

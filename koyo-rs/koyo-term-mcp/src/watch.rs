@@ -99,7 +99,6 @@ impl Watch {
 
     fn say(&self, updates: BTreeSet<Update>) {
         for update in updates {
-            // No one listening yet is no failure.
             let _ = self.updates.send(update);
         }
     }

@@ -80,7 +80,6 @@ fn tabs_open_select_move_close_and_reopen(cx: &mut TestAppContext) {
     );
     let refused = call(&agent, "tab_reopen", json!({}), cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::NotFound, "nothing closed is left");
-    // Every worktree's tabs, with `all`.
     let all = call(&agent, "tab_list", json!({ "all": true }), cx).unwrap();
     assert_eq!(all["worktrees"].as_array().unwrap().len(), 1);
 }
@@ -112,7 +111,6 @@ fn a_tab_is_refused_what_its_kind_doesnt_take(cx: &mut TestAppContext) {
         cx,
     );
     assert_eq!(refused.unwrap_err().code, ErrorCode::TerminalNotFound);
-    // A name the terminal daemon wouldn't take is refused before a tab is made for it.
     let refused = call(
         &agent,
         "tab_open",
@@ -120,7 +118,6 @@ fn a_tab_is_refused_what_its_kind_doesnt_take(cx: &mut TestAppContext) {
         cx,
     );
     assert_eq!(refused.unwrap_err().code, ErrorCode::InvalidInput);
-    // Tests run no terminal daemon, so a new terminal can't be opened.
     let refused = call(
         &agent,
         "tab_open",
@@ -227,7 +224,6 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
     };
     let pane = rig.shell.update(cx, |shell, cx| {
         shell.workspace.new_tab(crate::model::PaneKind::Editor);
-        // After the tab shown, which stays shown, as the window brings its tabs back.
         let pane = crate::model::Pane::unloaded(unloaded, "Example".into());
         let id = pane.id;
         let unit = shell.workspace.branch_mut().unwrap();

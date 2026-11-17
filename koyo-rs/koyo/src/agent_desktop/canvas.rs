@@ -107,7 +107,6 @@ impl Element for Canvas {
     ) -> Placed {
         let desk = self.desk.read(cx).size().unwrap_or_default();
         let (shown, fit) = fitted(bounds, desk);
-        // An update counts as a change to the view, so it's made only when one happened.
         if self.view.read(cx).placed != Some((shown.origin, fit)) {
             self.view
                 .update(cx, |view, _| view.placed = Some((shown.origin, fit)));
@@ -138,8 +137,6 @@ impl Element for Canvas {
             let desk = self.desk.read(cx);
             let picture = desk.picture.read(cx);
             let mask = Some(ContentMask { bounds: shown });
-            // Back to front: the desktop's own picture, then the windows, which the host
-            // lists frontmost first.
             for listed in desk.backdrop.iter().chain(desk.windows.iter().rev()) {
                 let frame = listed.frame;
                 let at = shown.origin + point(px(frame.x as f32 * fit), px(frame.y as f32 * fit));
@@ -148,7 +145,6 @@ impl Element for Canvas {
                 window.with_content_mask(mask, |window| {
                     match picture.frame_of(listed.id) {
                         Some(pixels) => window.paint_surface(bounds, pixels.clone()),
-                        // A window whose first frame isn't in yet.
                         None => window.paint_quad(fill(bounds, p.card)),
                     }
                 });
@@ -193,7 +189,6 @@ impl Canvas {
             let Some(moved) = moved.upgrade() else {
                 return;
             };
-            // Moves elsewhere in the window are nothing to the desktop.
             if over || moved.read(cx).pressed.is_some() {
                 moved.update(cx, |view, cx| view.moved_to(event, over, cx));
             }
@@ -223,12 +218,10 @@ mod tests {
             width: 2000.,
             height: 1000.,
         };
-        // A pane wider than the desktop's shape: fitted by height, centred across.
         let (shown, fit) = fitted(area(1200., 400.), desk);
         assert!((fit - 0.4).abs() < 1e-6);
         assert_eq!(shown.size, size(px(800.), px(400.)));
         assert_eq!(shown.origin, point(px(210.), px(20.)));
-        // A pane larger than the desktop shows it at its true size, not blown up.
         let (shown, fit) = fitted(area(4000., 3000.), desk);
         assert!((fit - 1.).abs() < 1e-6);
         assert_eq!(shown.size, size(px(2000.), px(1000.)));

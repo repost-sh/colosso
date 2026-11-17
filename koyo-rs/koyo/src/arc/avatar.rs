@@ -134,8 +134,6 @@ impl Remote {
             ]
         };
         match host.as_str() {
-            // The avatars' own host first: it answers by name too, and stays up when github.com
-            // doesn't.
             "github.com" => vec![
                 Source::Image(format!(
                     "https://avatars.githubusercontent.com/{first}?size=128"
@@ -153,7 +151,6 @@ impl Remote {
                 ),
             ],
             host if host.contains("gitlab") => gitlab(host),
-            // Gitea and Forgejo, then GitLab on a host of its own.
             host => {
                 let mut sources = vec![
                     Source::Json(
@@ -217,7 +214,6 @@ fn fetch(project: &Path, folder: &Path) -> Option<PathBuf> {
             crate::atomic_file::write(&kept, &bytes);
             Some(kept)
         }
-        // Offline, an old picture beats none.
         None => kept.exists().then_some(kept),
     }
 }
@@ -225,7 +221,6 @@ fn fetch(project: &Path, folder: &Path) -> Option<PathBuf> {
 /// What `url` answers, following redirects, if it answers well.
 fn get(url: &str, accept: &str) -> Option<Vec<u8>> {
     let output = Command::new("curl")
-        // First, so no `.curlrc` changes what's asked.
         .arg("--disable")
         .args(["--fail", "--silent", "--location", "--compressed"])
         .args(["--proto", "=https", "--proto-redir", "=https"])

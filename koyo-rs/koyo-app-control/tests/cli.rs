@@ -3,8 +3,6 @@
 
 #![cfg(unix)]
 
-// Marked as test code, as everything here is, so the lints' leave for tests (to unwrap, to
-// panic) reaches the helpers too.
 #[cfg(test)]
 mod common;
 
@@ -86,7 +84,6 @@ fn a_call_takes_json_a_request_id_and_a_client_name() {
             CLIENT_NAME
         )
     );
-    // A requestId in the input moves to the call, where the socket takes it.
     assert_eq!(
         parse(&["tab_reopen", "--json", r#"{"requestId":"r-3"}"#]).unwrap(),
         call("tab_reopen", json!({}), Some("r-3"), CLIENT_NAME)

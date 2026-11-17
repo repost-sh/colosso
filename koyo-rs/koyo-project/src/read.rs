@@ -74,7 +74,6 @@ pub(crate) fn read(root: &Path, job: Job) -> Read {
         let kind = if file_type.is_dir() {
             Kind::Dir
         } else if file_type.is_symlink() {
-            // Only asked where it leads, never followed.
             let to_dir = fs::metadata(item.path()).is_ok_and(|target| target.is_dir());
             Kind::Symlink { to_dir }
         } else {
@@ -85,7 +84,6 @@ pub(crate) fn read(root: &Path, job: Job) -> Read {
     found.sort_by(|(a, a_kind), (b, b_kind)| {
         by_place((a_kind.is_folder(), a), (b_kind.is_folder(), b))
     });
-    // An ignored folder's own `.gitignore` can't bring anything in it back.
     let has_gitignore =
         (found.iter()).any(|(name, kind)| name == ".gitignore" && *kind == Kind::File);
     let before = job.before.as_ref();
@@ -101,8 +99,6 @@ pub(crate) fn read(root: &Path, job: Job) -> Read {
         .into_iter()
         .map(|(name, kind)| {
             let place = (kind.is_folder(), name.as_str());
-            // Both are in order, so the entry of the same name before, if there was one, is
-            // the first not sorted ahead of this one.
             while (old.get(at))
                 .is_some_and(|was| by_place((was.is_folder(), &was.name), place).is_lt())
             {
@@ -112,7 +108,6 @@ pub(crate) fn read(root: &Path, job: Job) -> Read {
                 Some(was) if *was.name == *name && was.is_folder() == place.0 => was.name.clone(),
                 _ => name.into(),
             };
-            // Git takes a link for a file, wherever it leads.
             let ignored = job.ignored
                 || rules.ignores(join_into(&mut path, &job.dir, &name), kind == Kind::Dir);
             Entry {

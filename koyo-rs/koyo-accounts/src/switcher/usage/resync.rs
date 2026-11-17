@@ -43,7 +43,6 @@ impl Switcher {
         let account_num = info.num();
         match self.try_resync(account_num, info.email(), info.org_uuid(), &info.creds) {
             Ok(()) => {}
-            // A holder is mid-operation; the next pass retries.
             Err(error) if error.is_lock() => {}
             Err(error) => log::warn!(
                 "Backup resync for account {account_num} failed; the next expiry may refuse to \
@@ -60,17 +59,17 @@ impl Switcher {
         creds: &str,
     ) -> Result<()> {
         if !full_pair(creds) {
-            return Ok(()); // never seed a backup with a partial pair
+            return Ok(());
         }
         let backup = self
             .store
             .read_account_credentials(account_num, email, false);
         if !backup.is_empty() && same_lineage(creds, &backup) {
-            return Ok(()); // same lineage: nothing drifted
+            return Ok(());
         }
         let verdict = self.lineage_verdict(account_num, email, creds)?;
         if verdict == Some(false) {
-            return Ok(()); // known foreign, already warned
+            return Ok(());
         }
         if verdict.is_none() {
             let token = extract_access_token(creds).unwrap_or_default();
@@ -88,8 +87,6 @@ impl Switcher {
                 );
                 return Ok(());
             };
-            // Keyed AFTER the match: an email-path affirmation just backfilled the slot's
-            // uuid, and the verdict must live under the identity later consults rebuild.
             self.record_lineage_verdict(account_num, email, creds, matched)?;
             if !matched {
                 if self.first_provenance_warning(account_num, email) {
@@ -105,17 +102,12 @@ impl Switcher {
         }
         let _lock = FileLock::hold(&self.env, &self.lock_file, self.lock_timeout)?;
         let _credentials_lock = claude_credentials_lock(&self.env, self.claude_lock_timeout)?;
-        // A switch or `/login` in the gap: the live store is no longer this account's.
         if !self.live_identity_matches(email, org_uuid) {
             return Ok(());
         }
-        // Slot mutations hold this lock, so rebuilding the key revalidates that the slot still
-        // IS the account the oracle affirmed.
         if self.lineage_verdict(account_num, email, creds)? != Some(true) {
             return Ok(());
         }
-        // The live bytes must still carry the probed lineage with a full pair; the fingerprint
-        // covers the refresh token, so the access token may have moved since the probe.
         let Some(live) = self
             .store
             .read_credentials()
@@ -172,8 +164,6 @@ impl Switcher {
         let r_email = resolved.email.as_deref().filter(|email| !email.is_empty());
         let r_org = resolved.organization_uuid.as_deref();
         if !r_uuid.is_empty() && !own.uuid.is_empty() {
-            // The uuid is globally unique; the organization only corroborates, so a missing
-            // one on either side is tolerated.
             return Ok(Some(
                 r_uuid == own.uuid
                     && (r_org.is_none_or(str::is_empty)
@@ -181,9 +171,6 @@ impl Switcher {
                         || r_org == Some(own.organization_uuid.as_str())),
             ));
         }
-        // A slot without a uuid: an email alone can't affirm (the same email exists across
-        // personal and organization accounts), so only an exact (email, organization) match
-        // with the organization present affirms, and records the uuid.
         if let Some(r_email) = r_email.filter(|email| *email == own.email) {
             let Some(r_org) = r_org else {
                 return Ok(None);

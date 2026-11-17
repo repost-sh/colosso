@@ -19,8 +19,6 @@ fn a_program_is_told_the_apps_theme() {
         .connection
         .request(RequestBody::Theme(light))
         .unwrap();
-    // Nobody attaches, so the daemon's engine answers the query itself: nine bytes,
-    // `ESC [ ? 9 9 7 ; 2 n` for light, printed without the escape.
     let script = [
         r#"echo "fgbg=$COLORFGBG""#,
         "stty -echo -icanon",

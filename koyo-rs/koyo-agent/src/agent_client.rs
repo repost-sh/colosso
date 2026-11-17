@@ -107,7 +107,6 @@ impl AgentClient {
     {
         let (tx, answer) = oneshot::channel();
         let client = Arc::clone(self);
-        // Only fails with the queue's thread gone, which drops `tx`, so the future says Closed.
         let _ = self.queue.send(Box::new(move || {
             let _ = tx.send(client.request::<M>(&params));
         }));
@@ -129,7 +128,6 @@ impl AgentClient {
     /// Stops a host of another build, once the person chose to: the next request starts this
     /// build's in its place. Its running turns stop (`docs/chat.md` C9). Blocks like `request`.
     pub fn replace_host(&self) -> Result<(), ClientError> {
-        // Held so that nothing connects between the stop and what the caller does next.
         let _live = self.live.lock();
         stop_host(&self.dir)
     }
@@ -152,7 +150,6 @@ impl AgentClient {
         if let Some(open) = live.as_ref().filter(|live| !live.client.is_closed()) {
             return Ok(Arc::clone(&open.client));
         }
-        // Its `Disconnected` goes out before anything from the next connection can.
         if let Some(ended) = live.take()
             && ended.pump.join().is_err()
         {
@@ -196,7 +193,6 @@ impl AgentClient {
         if connected.hello.version == HOST_VERSION {
             Ok(connected)
         } else {
-            // Another build got there first; the two don't take turns replacing each other.
             Err(ClientError::OtherBuild)
         }
     }

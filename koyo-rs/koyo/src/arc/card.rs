@@ -106,7 +106,6 @@ pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut Ap
         Card::Space { name, .. } => (label_width(name_width(name, parent)), LABEL_HEIGHT),
     };
     let within = parent.bounds();
-    // Under its tile; over it where there's no room under, as at the sidebar's foot.
     let under = anchor.bottom() + px(OFFSET);
     let fits = under + px(height) <= within.size.height;
     let beside = if fits {
@@ -308,7 +307,6 @@ fn project_card(project: &ProjectCard, p: Palette) -> Div {
         .flex()
         .flex_col()
         .gap(px(SECTION_GAP))
-        // Its folder cut from the start, so the folder's own name stays in view.
         .child(head(picture, says, Styled::text_ellipsis_start, p))
         .child(div().h(px(1.)).bg(p.hairline))
         .child(

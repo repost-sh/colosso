@@ -211,8 +211,6 @@ impl Fingers {
                 });
             }
             Mac::Rotate { at, phase, degrees } => {
-                // AppKit counts counter-clockwise; on a screen, where y grows downwards, an
-                // angle grows clockwise.
                 self.two_fingers(at, phase, false, now_ms, &mut steps, |_, turned| {
                     *turned -= degrees;
                 });
@@ -306,10 +304,6 @@ impl Fingers {
         }
         match self.state {
             State::Idle => {
-                // A trackpad's fingers resting on it say a scroll may begin: no finger goes down
-                // until they move. What comes with no beginning touches nothing: the glide after
-                // they lifted, which the device makes for itself, and a mouse's wheel, which a
-                // device has none of.
                 if (dx == 0. && dy == 0.) || !self.scrolling {
                     return;
                 }
@@ -322,7 +316,6 @@ impl Fingers {
                 };
             }
             State::Scrolling { .. } => {}
-            // The button, or two fingers, have the screen.
             _ => return,
         }
         let State::Scrolling { from, at: finger, .. } = self.state else {
@@ -333,8 +326,6 @@ impl Fingers {
             next = At::new(finger.x + dx, finger.y + dy);
             let inside = |v: f32| (MARGIN..=1. - MARGIN).contains(&v);
             if !(inside(next.x) && inside(next.y)) {
-                // The finger ran out of screen: lifted, and put down again where it began, to
-                // go on from there.
                 steps.push(self.one(finger.clamped(), None, false));
                 steps.push(self.one(from, None, true));
                 next = At::new(from.x + dx, from.y + dy).clamped();

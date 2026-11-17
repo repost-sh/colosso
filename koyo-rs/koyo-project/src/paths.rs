@@ -37,7 +37,6 @@ impl Written {
                 paths.insert(path);
             }
             Written::Everything => {}
-            // Past the cap, the folder it's in stands for it.
             Written::Paths(_) | Written::Folders(_) => self.insert_folder(parent_of(&path), most),
         }
     }

@@ -68,8 +68,6 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        // A connection wakes the accepting thread to see it should stop and let go of the
-        // listener, whose file goes with the last of it.
         if Connection::connect(&self.endpoint).is_ok()
             && let Some(accepting) = self.accepting.take()
         {

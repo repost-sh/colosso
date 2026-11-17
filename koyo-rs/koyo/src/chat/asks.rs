@@ -128,8 +128,6 @@ fn plan(
     let p = drawing.p;
     let text = drawing.thread.read(cx).drawn_text(item)?;
     let (title, body) = plan_parts(markdown);
-    // Past so many lines with something on them, each at least a line tall, there's always more
-    // to show. It's only ever cut where it says so.
     let long = body
         .lines()
         .filter(|line| !line.trim().is_empty())

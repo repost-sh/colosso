@@ -269,7 +269,6 @@ impl CredentialStore {
             state.usable = Some(false);
             state.disabled_until = Some(Instant::now() + state.cooldown);
         } else {
-            // A success is the newer observation: the Keychain answers. Routing stays.
             state.op_failed = false;
             if state.usable.is_none() {
                 state.usable = Some(true);

@@ -68,8 +68,6 @@ pub(crate) async fn follow_files<T: 'static>(
         if !listed {
             cx.background_executor().timer(WHILE_SCANNING).await;
         }
-        // A listing changed, or the scan's done. The subscription merges whatever came meanwhile
-        // into the one update, so there's never a backlog to drain.
         if updates.next().await.is_none() {
             return;
         }
@@ -116,10 +114,8 @@ impl GoToFile {
                 InputEvent::PressEnter { .. } => this.open(this.selected, window, cx),
                 _ => {}
             }),
-            // The checkout's project opens a moment after the checkout does.
             cx.observe(&checkout, |this, _, cx| this.follow(cx)),
         ];
-        // Told once, before the first search, and never waited on.
         finder.set_recent(recent);
         let mut palette = GoToFile {
             input,
@@ -218,7 +214,6 @@ impl GoToFile {
         let Some(found) = self.results.found.get(index) else {
             return;
         };
-        // Lines are counted from 1 as typed, from 0 as the editor's told.
         let at = (self.results.query.line).map(|line| At::Line(line.saturating_sub(1)));
         let place = Place {
             path: Path::new(&*found.path).to_owned(),

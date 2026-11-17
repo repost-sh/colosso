@@ -22,7 +22,6 @@ fn a_reset_that_crept_nearer_is_not_a_recovery() {
     h.advance(3612.);
     let mut outcomes = Vec::new();
     for _ in 0..10 {
-        // A minute nearer than at departure: jitter, not a recovery.
         let fleet = [
             ("1", usage_r(96., &at(&h, 500. * 3600. - 3612. - 60.))),
             ("2", usage_r(98., &days.at(&h, 400.))),
@@ -317,9 +316,9 @@ fn the_ratio_release_changes_where_the_engine_lands() {
     assert_eq!(h.active(), Some(2));
     h.advance(301.);
     let second = [
-        ("1", usage_r(20., &days.at(&h, 500.))), // barred, 80 points
-        ("2", usage_r(90., &days.at(&h, 400.))), // active, 10 points
-        ("3", usage_r(70., &days.at(&h, 300.))), // 30 points
+        ("1", usage_r(20., &days.at(&h, 500.))),
+        ("2", usage_r(90., &days.at(&h, 400.))),
+        ("3", usage_r(70., &days.at(&h, 300.))),
     ];
     assert_eq!(h.tick_with_usage(&second), TickOutcome::Switched);
     assert_eq!(
@@ -344,9 +343,6 @@ fn a_materially_better_peer_still_wins() {
 
 #[test]
 fn left_snapshot_uses_the_ranking_now_not_a_fresh_clock_read() {
-    // The account left resets 100 s after the ranking's instant; the clock then moves 200 s
-    // before the switch (here: while the target's credential is read). A second clock read
-    // would see the reset past and record null.
     let mut h = Harness::fleet(2, defaults());
     let ranking_now = h.now();
     let fleet = [

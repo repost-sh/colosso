@@ -179,7 +179,6 @@ fn rank(
     matcher: &mut Matcher,
     chars: &mut Vec<char>,
 ) -> Vec<CompletionItem> {
-    // Ties broken by the server's say: preselected first, then by its sort text.
     fn key(item: &CompletionItem) -> (bool, &str) {
         (
             !item.preselect.unwrap_or(false),
@@ -347,7 +346,6 @@ impl CompletionProvider for Hooks {
                 .is_some_and(|options| options.resolve_provider == Some(true))
         });
         let Some(asked) = resolves.then(|| self.as_shown(cx)).flatten() else {
-            // Nothing more will come for it: as filled in as it gets.
             self.completions.borrow_mut().mark_filled(&item);
             return Task::ready(Ok(item));
         };

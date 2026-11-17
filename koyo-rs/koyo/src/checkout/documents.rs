@@ -271,7 +271,6 @@ pub fn read_at_most(path: &Path, most: u64) -> Content {
         return Content::TooLarge(bytes);
     }
     let mut data = Vec::with_capacity(bytes as usize);
-    // Up to the cap and a byte more, in case it grew since it was measured.
     if let Err(error) = file.take(most + 1).read_to_end(&mut data) {
         return Content::Failed(error.to_string().into());
     }
@@ -292,7 +291,6 @@ fn line_edits(old: &str, new: &str) -> Edits {
     let diff = TextDiff::configure()
         .timeout(DIFF_TIMEOUT)
         .diff_lines(old, new);
-    // Where each of `old`'s lines starts, and past the last one where the text ends.
     let starts: Vec<usize> = std::iter::once(0)
         .chain(diff.old_slices().iter().scan(0, |at, line| {
             *at += line.len();

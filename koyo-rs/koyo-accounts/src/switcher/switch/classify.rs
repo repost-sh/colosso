@@ -126,8 +126,6 @@ impl Switcher {
             && !backup.is_empty()
             && extract_oauth_data(&backup).is_some_and(|oauth| !oauth.is_empty())
         {
-            // Only the asymmetry, nothing to preserve live and a refresh token to lose in the
-            // slot, is the destruction case.
             return Ok(OutgoingKind::OauthAbsent);
         }
         let provenance = outgoing.provenance;
@@ -156,9 +154,6 @@ impl Switcher {
         let r_email = resolved.email.as_deref().unwrap_or_default();
         let r_org = resolved.organization_uuid.as_deref().unwrap_or_default();
         let r_uuid = resolved.uuid.trim();
-        // The outgoing slot's uuid first: robust to a partial answer (a drifted schema may drop
-        // the email or the org) and to an email that changed. The org must agree only when both
-        // sides record one.
         let own = record(data, current_account);
         let own_uuid = text(own, "uuid").trim();
         let own_org = text(own, "organizationUuid");
@@ -178,15 +173,12 @@ impl Switcher {
         if let Some(found) = &slot
             && !r_uuid.is_empty()
         {
-            // Both sides carrying a uuid must agree: an email and org match under another uuid
-            // is a different account wearing a recycled email.
             let stored = stored_uuid(found);
             if !stored.is_empty() && stored != r_uuid {
                 slot = None;
             }
         }
         if slot.is_none() && !r_uuid.is_empty() {
-            // The account uuid (org-scoped), for a slot whose stored email is stale.
             slot = accounts(data)
                 .into_iter()
                 .flatten()
@@ -200,8 +192,6 @@ impl Switcher {
                 });
         }
         let Some(slot) = slot else {
-            // A positive alien needs an email and an organisation; anything partial is
-            // indistinguishable from schema drift and fails open.
             if !r_email.is_empty() && resolved.organization_uuid.is_some() {
                 return OutgoingKind::Alien;
             }
@@ -210,7 +200,6 @@ impl Switcher {
         if slot == current_account {
             return OutgoingKind::OwnRotated;
         }
-        // A cross-slot attribution must be uuid-positive to name that slot.
         if r_uuid.is_empty() || stored_uuid(&slot) != r_uuid {
             return OutgoingKind::Alien;
         }

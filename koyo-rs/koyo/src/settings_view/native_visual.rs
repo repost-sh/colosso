@@ -56,8 +56,6 @@ pub fn run() -> ExitCode {
                     point(px(80.), px(80.)),
                     size(px(1100.), px(620.)),
                 ))),
-                // In front: a window under others gets no frames, and would show none of what
-                // the check changes.
                 focus: true,
                 window_background: WindowBackgroundAppearance::Blurred,
                 app_owns_titlebar_drag: true,
@@ -79,7 +77,6 @@ pub fn run() -> ExitCode {
                 finish(Err("the window didn't open".into()));
                 return;
             };
-            // In front, app and all: a window under others gets no frames.
             cx.activate(true);
             cx.spawn(async move |cx| {
                 let found = check(window.into(), &shell, &out, cx).await;
@@ -126,7 +123,6 @@ async fn check(
     settle(cx).await;
     lines.push(shoot(&ns_window, out, "bottom-light.png", cx).await?);
 
-    // As AppKit does once the thumb is dragged to the eighth stop.
     let speed = slider(&ns_window, 10)?;
     speed.setDoubleValue(7.);
     act(&speed);
@@ -155,7 +151,6 @@ async fn check(
         lines.push(shoot(&ns_window, out, &format!("bottom-{name}.png"), cx).await?);
     }
 
-    // Up a little at a time, until the page's edge cuts the delay slider.
     let delay = slider(&ns_window, 8)?;
     for _ in 0..80 {
         scroll(window, -12., cx)?;
@@ -180,7 +175,6 @@ async fn check(
     lines.push(shoot(&ns_window, out, "resized-dark.png", cx).await?);
     lines.extend(text_size(shell, &ns_window, out, cx).await?);
 
-    // Closed, opened again and closed again, it leaves nothing behind.
     for (route, label) in [
         (Route::Workspace, "closed"),
         (Route::Settings(SettingsPage::General), "General again"),
@@ -244,7 +238,6 @@ fn scroll(window: AnyWindowHandle, down: f32, cx: &mut AsyncApp) -> Result<()> {
     cx.update(|cx| {
         window.update(cx, |_, window, cx| {
             let at = point(window.viewport_size().width * 0.6, px(90.));
-            // Scrolls go where the pointer was last seen, not where they say.
             window.dispatch_event(
                 PlatformInput::MouseMove(MouseMoveEvent {
                     position: at,

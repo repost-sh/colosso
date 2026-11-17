@@ -251,7 +251,6 @@ pub(crate) fn open_rows(
     window: &mut Window,
     cx: &mut App,
 ) {
-    // Shortcuts are looked up here, where the target's key bindings are in scope.
     let items: Vec<_> = items
         .into_iter()
         .map(|item| {
@@ -281,27 +280,22 @@ fn open_surface<B: MenuBody>(
 ) {
     let anchor = source.drawn.get();
     let mut extent = padded(body.read(cx).extent(window, cx));
-    // Right of the window's edge it'd lie over what isn't the app's, so it opens leftwards.
     let leftward = anchor.left() + extent.width > window.bounds().size.width;
     let mut left = if leftward {
         anchor.right() - extent.width
     } else {
         anchor.left()
     };
-    // Past its bottom edge, likewise, it opens upwards.
     let upward = anchor.bottom() + px(GAP) + extent.height > window.bounds().size.height;
     let mut top = if upward {
         anchor.top() - px(GAP) - extent.height
     } else {
         anchor.bottom() + px(GAP)
     };
-    // It keeps the corner nearest the trigger as it fits what it holds.
     let mut corner = popup::Corner {
         top: !upward,
         left: !leftward,
     };
-    // A callout hangs centred under its trigger, kept within the window, its arrow at the
-    // trigger's middle; with no room below it's a menu as any other.
     let tip = (body.read(cx).callout() && !upward).then(|| {
         let middle = anchor.left() + anchor.size.width / 2.;
         let furthest = (window.bounds().size.width - extent.width - px(GAP)).max(px(GAP));
@@ -324,10 +318,6 @@ fn open_surface<B: MenuBody>(
         source: Some(source),
     };
     popup::open(opening, window, cx, |menu, cx: &mut Context<Menu>| Menu {
-        // The window behind keeps focus while the menu is up, so it hears the keys: the menu's
-        // own; Escape and Enter, which only close it; and any other, which goes on to the window
-        // behind and then closes the menu, as a native one's does. Only then, so a shortcut that
-        // toggles the menu finds it up, and closes it.
         _keys: cx.intercept_keystrokes(move |event, _, cx| {
             let keystroke = &event.keystroke;
             let key = keystroke.key.as_str();
@@ -350,7 +340,6 @@ fn open_surface<B: MenuBody>(
                 });
             }
         }),
-        // A panel whose content changes fits it.
         _fits: cx.observe_in(&body, menu, move |_, body, window, cx| {
             let mut extent = padded(body.read(cx).extent(window, cx));
             if tip.is_some() {
@@ -390,7 +379,6 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
             .shape_line(label.clone(), font_size, &[run(label)], None);
         line.width + beside(row)
     });
-    // A pixel over, for a label to fit in what it measures rather than wrap at its very end.
     let width = longest.fold(px(0.), Pixels::max) + px(1.);
     let width = width.clamp(px(WIDTH - 2. * PADDING), px(MAX_WIDTH - 2. * PADDING));
     let rows = items.iter().enumerate().map(|(index, row)| {
@@ -452,7 +440,6 @@ mod tests {
     fn a_menu_closed_from_inside_its_own_window_goes(cx: &mut TestAppContext) {
         let (_, menu) = opened(cx);
 
-        // As when it's lost being the active window, after a press in it that leaves it up.
         menu.update(cx, |_, _, cx| close(cx)).unwrap();
         cx.run_until_parked();
 

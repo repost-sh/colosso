@@ -182,15 +182,12 @@ mod tests {
     fn the_project_s_own_binary_is_run_when_it_runs_and_else_one_is_installed() {
         let root = scratch("own-first");
         let data = root.join("data");
-        // Nothing of the project's own: the install is tried, and here has no download.
         let failed = OWN.binary(&root, &data, &Canned::new(b""));
         assert!(matches!(failed, Err(LspError::Install(why)) if why.contains("no download")));
-        // The project's own, but it doesn't run: the same.
         let own = root.join("own");
         fs::write(&own, "#!/bin/sh\nexit 1\n").unwrap();
         make_executable(&own).unwrap();
         assert!(OWN.binary(&root, &data, &Canned::new(b"")).is_err());
-        // The project's own, running: it, with the spec's arguments and settings.
         fs::write(&own, "#!/bin/sh\nexit 0\n").unwrap();
         assert_eq!(OWN.binary(&root, &data, &Canned::new(b"")).unwrap(), own);
         let launch = OWN.launch(own.clone(), &root);

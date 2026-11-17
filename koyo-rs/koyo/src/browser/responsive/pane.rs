@@ -218,8 +218,6 @@ impl BrowserView {
         };
         let kept = mode.kept_within(window);
         let mode = kept.as_ref().unwrap_or(mode);
-        // A grip in hand keeps the scale it was taken at, a pixel's size then, so the edge
-        // follows the pointer.
         let fit =
             (self.responsive.drag.as_ref()).map_or_else(|| mode.fit(area.size), |drag| drag.unit.0);
         let shown = place(area, mode.width, mode.height, fit);
@@ -256,16 +254,13 @@ impl BrowserView {
         self.origin = shown.origin;
         (self.responsive.fit, self.responsive.room) = (fit, room);
         self.responsive.window_scale = scale;
-        // The bar is there exactly while the mode is on.
         self.responsive.barred = self.responsive.mode.is_some();
-        // The size laid out at a new scale is the mode's from now on, and the bar's.
         if let Some(kept) = (self.responsive.mode.as_ref()).and_then(|mode| mode.kept_within(scale))
         {
             self.responsive.mode = Some(kept);
             cx.notify();
         }
         self.drawn_at(viewport, cx);
-        // The page's emulated size follows the size it shows at, while the mode is on or was.
         if self.responsive.mode.is_some() || self.responsive.emulated.shown.is_some() {
             self.emulate(cx);
         }
@@ -423,7 +418,6 @@ impl BrowserView {
     pub(in crate::browser) fn session_opened(&mut self, cx: &mut Context<Self>) {
         self.responsive.emulated = Emulation::default();
         self.emulate(cx);
-        // The page is asked how light it is from now on, for the glass over it.
         self.watch_tone(cx);
     }
 
@@ -437,8 +431,6 @@ impl BrowserView {
         let mut wanted = (self.responsive.mode.as_ref())
             .map(|mode| mode.emulation(&major))
             .unwrap_or_default();
-        // The page is drawn by the engine at its view's size: the mode's size and how much of
-        // it shows are the engine's to emulate.
         if self.responsive.mode.is_some() {
             wanted.shown = self.viewport.map(|viewport| super::Scaled {
                 width: viewport.width,
@@ -450,8 +442,6 @@ impl BrowserView {
         let sent = commands(&self.responsive.emulated, &wanted);
         let agent_changed = wanted.agent != self.responsive.emulated.agent;
         self.responsive.emulated = wanted;
-        // A site that reads the user agent on its server shows its other pages once the
-        // page loads again; the bar says so, the first time.
         if agent_changed && !self.page.url.is_empty() && !self.responsive.hinted {
             (self.responsive.reload_hint, self.responsive.hinted) = (true, true);
         }

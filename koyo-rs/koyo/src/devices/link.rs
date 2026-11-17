@@ -156,7 +156,6 @@ impl Link {
         if self.running_or_starting() {
             self.stop(cx);
         }
-        // Asked for: the restarts it made by itself don't count against this one.
         self.restarts.clear();
         self.tries = 0;
         self.launch_host(cx);
@@ -189,7 +188,6 @@ impl Link {
             if !matches!(running, Ok(true)) {
                 return;
             }
-            // What came while the main thread was busy is handled in one update.
             while let Some(first) = told.next().await {
                 let handled = this.update(cx, |this, cx| {
                     if this.starts != mine {
@@ -321,7 +319,6 @@ impl Link {
     }
 
     pub(super) fn receive(&mut self, incoming: Incoming, cx: &mut Context<Self>) {
-        // Told to go, the host has nothing more to say but that it has: the simulator is down.
         if self.stopping() {
             if matches!(incoming, Incoming::Closed) {
                 self.state = State::Off;
@@ -350,8 +347,6 @@ impl Link {
             return;
         }
         self.restarts.retain(|at| at.elapsed() < RESTARTS_WITHIN);
-        // A real device's host started again by itself counts as its other starts do: three at
-        // most until it stands ready, never a loop of new tunnels to the device.
         let again = !self.phone || self.tries < 3;
         if again && self.restarts.len() < RESTARTS {
             self.tries += u32::from(self.phone);
@@ -377,8 +372,6 @@ impl Link {
                 if matches!(state, Said::Gone { .. } | Said::Unavailable { .. }) {
                     self.ended_at = Some(Instant::now());
                 }
-                // A host that can't go on but still runs (its input never answered) is told to
-                // go: it shuts its simulator down rather than hold gigabytes until Start Again.
                 if matches!(state, Said::Unavailable { .. })
                     && let Some(running) = &self.running
                 {
@@ -414,8 +407,6 @@ impl Link {
                     let _ = answer.send(result);
                 }
             }
-            // The host's frame counts (`KOYO_DEVICE_STATS`; its line begins so in `run.rs`), with
-            // what the tab showed and painted.
             FromHost::Log { level: LogLevel::Info, text } if text.starts_with("frames:") => {
                 let picture = self.picture.read(cx);
                 log::info!("{}: {text}; the tab: {} shown, {} painted", self.name, picture.frames, picture.paints);

@@ -21,14 +21,12 @@ const GAP: f32 = 8.;
 
 /// Asks over `window` before discarding `list`, of what `checkout` shows.
 pub fn confirm(checkout: Entity<Checkout>, list: Vec<Change>, window: &mut Window, cx: &mut App) {
-    // Conflicts are resolved, not discarded.
     let list: Vec<Change> = (list.into_iter())
         .filter(|change| change.discarding() != Discarding::Kept)
         .collect();
     if list.is_empty() {
         return;
     }
-    // Some may be the unstaged half of a file partly staged, whose staged half stays.
     let staged: HashSet<&str> = (checkout.read(cx).files().iter())
         .map(|file| &file.diff.change)
         .filter(|change| change.staged)

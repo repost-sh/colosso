@@ -224,8 +224,6 @@ impl Persons {
         }
         let view = self.open().ok_or_else(|| self.closed())?;
         self.may_take(caller, &view, takeover, cx)?;
-        // Taken from a connection of the same name, the page is the caller's on a lease of its
-        // own: the other's consent ends, its lease with it.
         grants::end_elsewhere(caller, self.pane, cx);
         let actor = caller.actor();
         (view.update(cx, |view, cx| view.agent_claims(actor, takeover, reason, cx)))

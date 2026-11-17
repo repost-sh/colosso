@@ -176,8 +176,6 @@ impl RightPanel {
         let width = self.width(cx);
         let p = theme::palette(cx);
         let islands = theme::card::islands(cx);
-        // Before it, what's grabbed to resize it: the glass before its island in Arc, a hairline
-        // along the card in Orca.
         Some(
             div()
                 .h_full()
@@ -235,9 +233,7 @@ impl RightPanel {
     fn make_panels(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Shell>) {
         if !self.checkouts.contains_key(path) {
             let checkout = cx.new(|cx| Checkout::new(path.to_owned(), window, cx));
-            // The top rail counts its changes.
             let observing = cx.observe(&checkout, |_, _, cx| cx.notify());
-            // The sidebar and all that asks it say what the checkout's on, whoever moved it.
             let worktree = path.to_owned();
             let moved = cx.subscribe(&checkout, move |shell, _, _: &HeadMoved, cx| {
                 let project = shell.workspace.project_of(&worktree);
@@ -338,7 +334,6 @@ impl Shell {
             }
             kept
         });
-        // Their language servers go with them.
         for root in gone {
             language::forget(&root, cx);
         }
@@ -429,7 +424,6 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // The panel ends at the card's right edge, a gutter in from the window's.
         let right = window.viewport_size().width.as_f32() - theme::GUTTER;
         let width = (right - event.event.position.x.as_f32()).min(self.right_panel.widest);
         if self.right_panel.dragged != Some(width) {

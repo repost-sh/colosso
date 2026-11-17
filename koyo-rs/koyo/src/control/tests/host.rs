@@ -128,7 +128,6 @@ pub(super) fn stand_in(rig: &Rig, cx: &mut TestAppContext) -> Heard {
         chats.use_client(client, cx);
         chats.connect(cx);
     });
-    // Connected first, so the host's list of chats, none, comes before any a test gives.
     let deadline = Instant::now() + Duration::from_secs(20);
     while chats.read_with(cx, |chats, _| *chats.connection() != Connection::Connected) {
         assert!(

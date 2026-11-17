@@ -210,7 +210,6 @@ impl Scenario {
             .flat_map(|kind| FIXTURES.iter().map(move |fixture| Self { kind, fixture }))
             .filter(|scenario| applies(scenario.kind, scenario.fixture))
             .collect();
-        // Stable, so each group keeps its kind-by-fixture order.
         all.sort_by_key(|scenario| scenario.fixture.single_line);
         all
     }
@@ -242,12 +241,9 @@ impl Scenario {
             Kind::Scan => (3000., Stat::Max),
             Kind::ScanTouch => (100., Stat::P95),
             Kind::Type | Kind::TypeWrap | Kind::SearchQuery | Kind::SearchEdit => (4., Stat::P95),
-            // A frame at 120 Hz.
             Kind::Scroll | Kind::TermEcho => (8.3, Stat::P95),
             Kind::Resize => (5., Stat::Max),
-            // The open budget is written for a mebibyte; bigger files have none.
             Kind::Open if fixture_bytes <= 1 << 20 => (50., Stat::Max),
-            // Bursts are measured for what they cost, which nothing promises yet.
             Kind::Open | Kind::BurstIgnored | Kind::BurstTracked => return None,
         };
         Some(Budget { ms, stat })

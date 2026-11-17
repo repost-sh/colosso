@@ -123,7 +123,6 @@ mod tests {
             col: 1,
             row: 0,
         };
-        // 300 points at 2 pixels a point: 600 pixels, the second tile 88 of them.
         assert_eq!(key.pixels((300., 100.)), (TILE, 0, 600 - TILE, 200));
     }
 
@@ -132,7 +131,6 @@ mod tests {
         let pages = [(1000., 1000.)];
         let laid = layout(&pages, 1.);
         let page = laid.pages[0];
-        // A 300 by 200 window onto the page's middle, at 2 pixels a point.
         let sight = Rect {
             x: page.x + 400.,
             y: page.y + 400.,
@@ -141,10 +139,8 @@ mod tests {
         };
         let tiles = wanted(&pages, &laid, sight, 1., Level::of(2.));
         let mut cells: Vec<_> = tiles.iter().map(|key| (key.col, key.row)).collect();
-        // The sight's middle, pixel (1100, 1000), is in the third column's second row.
         assert_eq!(tiles.first().map(|key| (key.col, key.row)), Some((2, 1)));
         cells.sort_unstable();
-        // Pixels 800 to 1400 across and 800 to 1200 down.
         assert_eq!(cells, [(1, 1), (1, 2), (2, 1), (2, 2)]);
     }
 

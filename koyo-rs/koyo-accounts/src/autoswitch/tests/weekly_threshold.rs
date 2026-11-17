@@ -21,8 +21,6 @@ fn s2_control_the_same_fleet_parks_without_a_weekly_line() {
 
 #[test]
 fn s4_with_weekly_unset_the_trigger_flips_where_the_scalar_did() {
-    // With no weekly line every window's line is the threshold: on the boundary, on both
-    // windows, and on a non-default threshold.
     for base in [90., 95.] {
         for window in ["5h", "7d"] {
             for (offset, expected) in [(-0.1, TickOutcome::NoAction), (0., TickOutcome::Switched)] {

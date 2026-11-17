@@ -47,7 +47,6 @@ fn say_when_forked() {
 pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Connection> {
     #[cfg(debug_assertions)]
     say_when_forked();
-    // …/Koyo Browser Host.app/Contents/MacOS/Koyo Browser Host
     let engine = (launch.executable.ancestors().nth(3))
         .ok_or_else(|| io::Error::other("the browser engine isn't in an app of its own"))?
         .to_path_buf();
@@ -118,10 +117,6 @@ impl NativePage {
     pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) {
         let bounds = crate::native::surface::on_whole_points(bounds, clip);
         self.surface.place(bounds, clip, window);
-        // The card the page is in clips what GPUI draws to its rounded corners, as it did a
-        // page's picture when GPUI drew that; the page's own view takes the card's radius at
-        // each corner it shares with the card. In no card, as on the whole screen, its
-        // corners are square.
         let card = crate::theme::card::prepainted();
         let corners = card.map_or_else(gpui_kit::Corners::default, |card| {
             let near = |page: Pixels, card: Pixels| (page - card).abs() <= gpui_kit::px(1.);
@@ -138,7 +133,6 @@ impl NativePage {
         if self.size.replace(Some(bounds.size)).is_some_and(|was| was != bounds.size) {
             self.resized.set(Some(std::time::Instant::now()));
         }
-        // The view GPUI draws in is the page's home, which takes the keys the page leaves.
         let Some(home) = crate::native::window::gpui_view(window) else {
             return;
         };

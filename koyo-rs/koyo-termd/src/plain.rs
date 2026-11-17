@@ -9,7 +9,6 @@ pub fn plain(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes);
     let mut out = String::with_capacity(text.len());
     let mut line_start = 0;
-    // A carriage return overwrites its line only when something other than a newline follows.
     let mut returned = false;
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -82,7 +81,6 @@ pub fn complete_len(bytes: &[u8]) -> usize {
     if state != State::Ground {
         return start;
     }
-    // A UTF-8 character's lead byte near the end without all its continuation bytes.
     let tail = bytes.len().saturating_sub(3);
     for at in (tail..bytes.len()).rev() {
         let byte = bytes[at];

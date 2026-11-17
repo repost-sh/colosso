@@ -101,7 +101,6 @@ fn kind_of(browser: &Browser) -> Option<Kind> {
     let id = browser.identifier();
     let known = STRAYS
         .with(|strays| strays.borrow().iter().find(|(stray, ..)| *stray == id).map(|(.., kind)| *kind));
-    // None: not one of them (an engine without the patches closes each as it's made).
     let known = known?;
     if known.is_some() {
         return known;
@@ -116,7 +115,6 @@ fn kind_of(browser: &Browser) -> Option<Kind> {
         }
     );
     if found == Kind::Tabbed {
-        // Never seen: it closes as it says where it was going.
         set_alpha(&window, 0.);
         window.setIgnoresMouseEvents(true);
         window.orderOut(None);
@@ -162,7 +160,6 @@ wrap_life_span_handler! {
             STRAYS.with(|strays| {
                 strays.borrow_mut().push((browser.identifier(), browser.clone(), None));
             });
-            // It has no window yet, as a rule: what it is is read at its first page.
             kind_of(browser);
         }
 
@@ -170,7 +167,6 @@ wrap_life_span_handler! {
             if let Some(browser) = browser {
                 let id = browser.identifier();
                 STRAYS.with(|strays| strays.borrow_mut().retain(|(stray, ..)| *stray != id));
-                // The last of them to close may be all a quitting host waited for.
                 crate::host::quit_when_closed();
             }
         }
@@ -181,9 +177,6 @@ wrap_request_handler! {
     struct StrayRequests;
 
     impl RequestHandler {
-        // A tabbed window's first page: it opens as a tab of the app's instead, of the
-        // window's own profile, beside the page the person is on when that's of it, else
-        // beside another of that profile's; and the window goes.
         fn on_before_browse(
             &self,
             browser: Option<&mut Browser>,
@@ -206,7 +199,6 @@ wrap_request_handler! {
                         crate::host::pane_of_profile(&mut profile, crate::extensions::active_pane())
                     });
                 match beside {
-                    // Chrome would have shown its window: the tab is shown.
                     Some(pane) => crate::host::send(&HostEvent::OpenUrl { pane, url, front: true }),
                     None => log::warn!("a page Chrome opened has no pane of its profile to open beside: {url}"),
                 }
@@ -225,7 +217,6 @@ mod tests {
 
     #[test]
     fn a_window_whose_content_takes_all_of_it_is_tabbed() {
-        // As Chromium 156 makes them: a popup's window, and a tabbed one.
         let popup = NSWindowStyleMask::Titled
             | NSWindowStyleMask::Closable
             | NSWindowStyleMask::Miniaturizable

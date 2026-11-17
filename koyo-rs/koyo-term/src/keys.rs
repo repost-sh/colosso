@@ -50,7 +50,6 @@ pub fn types_text(keystroke: &Keystroke, option_as_alt: OptionAsAlt) -> bool {
         .key_char
         .as_deref()
         .is_some_and(|text| !text.is_empty() && !text.chars().any(char::is_control));
-    // Control, Command, and Option when it's Alt make a key to encode, not text.
     let chord = modifiers.control
         || modifiers.platform
         || (modifiers.alt && option_as_alt != OptionAsAlt::No);
@@ -72,13 +71,11 @@ pub fn encode(
     let (key, unshifted, shifted) = key_named(&keystroke.key)?;
     let mut consumed_mods = Mods::empty();
     if shifted {
-        // GPUI reports Shift-1 as `!` with Shift taken off; the encoder wants it back on.
         mods.insert(Mods::SHIFT);
         consumed_mods.insert(Mods::SHIFT);
     }
     let alt_is_meta = modifiers.alt && option_as_alt != OptionAsAlt::No;
     let text = if alt_is_meta {
-        // Option as Alt: the key's own character, not the one Option composes.
         unshifted.map(|c| {
             if modifiers.shift {
                 c.to_uppercase().collect()

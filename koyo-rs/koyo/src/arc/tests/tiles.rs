@@ -21,7 +21,6 @@ fn names(paths: &[PathBuf]) -> Vec<String> {
     (paths.iter())
         .map(|path| {
             let name = path.file_name().unwrap().to_string_lossy();
-            // Without the test's own prefix and the process's number.
             let name = name.trim_start_matches("arc-tiles-");
             name.split('-').next().unwrap().to_owned()
         })
@@ -44,11 +43,9 @@ fn a_tile_dragged_to_another_slot_moves_its_project_there(cx: &mut TestAppContex
     let projects = ["a", "x", "b", "c", "d", "e"].map(|name| format!("arc-tiles-{name}"));
     let projects: Vec<&str> = projects.iter().map(String::as_str).collect();
     let (window, shell, roots) = arc_shell(&projects, cx);
-    // `x` is another space's, in the middle of the sidebar's order.
     act(window, MoveProjectToNewSpace(roots[1].clone()), cx);
     shell.update(cx, |shell, cx| {
         shell.show_space(0, cx);
-        // `b` is the project shown.
         shell.select_project(2, cx);
     });
     draw(window, cx);
@@ -60,7 +57,6 @@ fn a_tile_dragged_to_another_slot_moves_its_project_there(cx: &mut TestAppContex
         })
     };
 
-    // Five tiles are three to a row: the first, dragged onto the last, crosses to the row below.
     drag(window, "arc-tile-0", "arc-tile-5", cx);
     assert_eq!(tiles(&shell, cx), ["b", "c", "d", "e", "a"]);
     assert_eq!(
@@ -77,12 +73,10 @@ fn a_tile_dragged_to_another_slot_moves_its_project_there(cx: &mut TestAppContex
     let listed = cx.read(|cx| names(&shell.read(cx).workspace.paths()));
     assert_eq!(listed, saved(cx), "as the Orca list shows them");
 
-    // And back up a row, into the middle: `e`, in the workspace's fifth place, onto `c`.
     drag(window, "arc-tile-4", "arc-tile-2", cx);
     assert_eq!(tiles(&shell, cx), ["b", "e", "c", "d", "a"]);
     assert_eq!(saved(cx), ["b", "x", "e", "c", "d", "a"]);
 
-    // A press and release without a move still selects.
     let mut vcx = VisualTestContext::from_window(window, cx);
     let at = vcx.debug_bounds("arc-tile-5").expect("a's tile").center();
     vcx.simulate_click(at, Modifiers::default());

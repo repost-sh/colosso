@@ -138,7 +138,6 @@ impl Driver {
             )
             .env(koyo_device_host::ENV_TOKEN, &token)
             .envs(more.iter().copied());
-        // What macOS caches for the host (Vision's compiled text model) stays in the checkout.
         if let Ok(home) = std::env::var("KOYO_REAL_SIM_HOME") {
             command.env("CFFIXED_USER_HOME", home);
         }
@@ -249,7 +248,6 @@ impl Driver {
                 self.frames += 1;
                 self.latest = Some((*generation, *slot));
                 if self.holds {
-                    // The newer is shown, then the one before let go: one held at a time.
                     let surface = self.surface(*generation, *slot);
                     if let Some(surface) = surface {
                         surface.increment_use_count();

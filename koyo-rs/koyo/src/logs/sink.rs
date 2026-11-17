@@ -32,7 +32,6 @@ impl Sink {
             Sink::File(file) => (file.lock().unwrap_or_else(PoisonError::into_inner)).write(&line),
         };
         if let Err(error) = written {
-            // The log can't say it can't be written to; the terminal is all that's left.
             let _ = writeln!(io::stderr(), "koyo: couldn't write the log: {error}");
         }
     }
@@ -73,7 +72,6 @@ impl LogFile {
     }
 
     fn write(&mut self, line: &str) -> io::Result<()> {
-        // Each line goes out whole as it's logged, so a crash right after still leaves it.
         self.file.write_all(line.as_bytes())?;
         self.size += line.len() as u64;
         if self.size >= self.limit {
@@ -85,7 +83,6 @@ impl LogFile {
     /// Moves what the log holds to the old log, replacing it, and starts an empty one.
     fn start_over(&mut self) -> io::Result<()> {
         let old = self.path.with_extension("log.old");
-        // If it can't be kept, it's dropped rather than left to grow.
         let kept = fs::rename(&self.path, &old);
         self.file = File::create(&self.path)?;
         self.size = 0;
@@ -183,7 +180,6 @@ mod tests {
             fs::read_to_string(dir.join("Koyo.log.old")).unwrap(),
             "from the last run\n"
         );
-        // A log with room is added to.
         drop(log);
         fs::write(&path, "short\n").unwrap();
         let log = LogFile::open(path, 1 << 20).unwrap();

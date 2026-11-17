@@ -50,8 +50,6 @@ impl ChangesPanel {
         let p = theme::palette(cx);
         self.glide(window);
         let body = self.state(p, cx).unwrap_or_else(|| {
-            // How the diff lines look this frame, shared by them all; the code's size is
-            // what `text_xs` gives.
             let look = Rc::new(look(self.wrap, p, window.rem_size() * 0.75));
             let rows = cx.processor(move |this, index, _, cx| this.row(index, &look, cx));
             (div().flex_1().min_w_0().min_h_0())
@@ -114,7 +112,6 @@ impl ChangesPanel {
         let p = theme::palette(cx);
         let row = self.rows[index];
         let file = &self.files[row.file()];
-        // Each row draws its stretch of the card's sides, so the list can lay them out apart.
         let card = || {
             div()
                 .mx_3()
@@ -177,7 +174,6 @@ impl ChangesPanel {
                     (Some(old), None) => (Side::Old, old, Some(p.removed)),
                     (None, Some(new)) => (Side::New, new, Some(p.added)),
                     (_, Some(new)) => (Side::New, new, None),
-                    // Every line is on one side at least.
                     (None, None) => return Empty.into_any_element(),
                 };
                 let half = half(file, side, line, tint, vec![old, new], &look.font, p);
@@ -258,7 +254,6 @@ impl ChangesPanel {
                         path.child(ellipsized(dir.to_owned()).text_xs().text_color(p.muted))
                     }),
             )
-            // A file partly staged has a card for each part.
             .when(diff.change.staged, |header| {
                 header.child(
                     div()
@@ -313,7 +308,6 @@ fn renamed_from(status: &Status) -> Option<&str> {
 fn stats_bar(added: u32, removed: u32, p: Palette) -> Div {
     const BLOCKS: u32 = 5;
     let total = added + removed;
-    // Rounded to the nearest block; a change with no lines fills none.
     let green = (added * BLOCKS + total / 2).checked_div(total);
     let red = green.map_or(0, |green| BLOCKS - green);
     let green = green.unwrap_or(0);

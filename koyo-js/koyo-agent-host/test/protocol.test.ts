@@ -1,8 +1,3 @@
-// The protocol's golden fixtures (docs/chat.md C8): a request and its result for every method,
-// a line for every event, and an error. Each parses, and encodes again to exactly what it
-// was, so neither side drops or reshapes a field; the app's serde types are held to the same
-// files.
-
 import { readdirSync } from "node:fs";
 
 import { describe, expect, test } from "bun:test";

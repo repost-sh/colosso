@@ -306,6 +306,5 @@ fn net() {
             &block,
         )
     };
-    // Kept for as long as the app runs.
     std::mem::forget(observer);
 }

@@ -28,7 +28,6 @@ fn get_password_returns_none_only_on_rc44() {
 
 #[test]
 fn get_password_raises_on_other_nonzero() {
-    // Locked, denied, unavailable: never masked as "not found".
     let security = FakeSecurity::default();
     security.set("svc", "acct", "the-secret");
     security.answer_next(Answer::Exit(51));
@@ -52,17 +51,14 @@ fn set_password_small_payload_uses_security_i_stdin() {
 #[test]
 fn set_password_large_payload_falls_back_to_argv() {
     let security = FakeSecurity::default();
-    // Hex doubles the length.
     let big = "x".repeat(SECURITY_STDIN_LINE_LIMIT);
     set_password(&security, "svc", "acct", &big).unwrap();
     let call = &security.calls()[0];
     assert_eq!(call.args[..2], ["add-generic-password", "-U"]);
     assert_eq!(call.stdin, None, "not through stdin");
-    // The hex value as one argument of its own: no shell, no quoting.
     assert!(call.args.contains(&hex(big.as_bytes())));
     assert!(call.args.iter().any(|arg| arg == "acct") && call.args.iter().any(|arg| arg == "svc"));
     assert_eq!(security.get("svc", "acct").as_deref(), Some(big.as_str()));
-    // The longest that fits still goes through stdin.
     let fits = "x".repeat((SECURITY_STDIN_LINE_LIMIT - 80) / 2);
     set_password(&security, "svc", "acct", &fits).unwrap();
     assert_eq!(security.calls()[1].args, ["-i"]);

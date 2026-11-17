@@ -80,7 +80,6 @@ fn nested_negated_excluded_and_global_rules_are_followed() {
     );
     let sub = project.listing("sub").unwrap();
     assert_eq!(ignored(&sub), ["b.log", "excluded.txt", "secret.txt"]);
-    // A file can't be brought back from inside a folder that's ignored, as in git.
     assert!(project.listing("build").is_none());
 }
 
@@ -157,7 +156,6 @@ fn the_file_list_holds_every_file_git_does_not_ignore() {
     let mut sorted: Vec<&str> = files.iter().map(|path| &**path).collect();
     sorted.sort_unstable();
     assert_eq!(sorted, [".gitignore", "src/lib/a.rs", "src/main.rs"]);
-    // Nothing changed, so the same list is handed out again.
     assert!(Arc::ptr_eq(&files, &project.files()));
     assert_eq!(
         project.scanned().map(|scanned| scanned.counts.files),
@@ -176,7 +174,6 @@ fn a_late_subscriber_hears_what_is_known_already() {
     listed.sort_unstable();
     assert_eq!(listed, ["", "src"]);
     assert!(first.scanned.is_some());
-    // Only what's written from here on, and never a listing.
     let written = project.subscribe(Feed::Written);
     assert!(
         written

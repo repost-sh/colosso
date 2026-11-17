@@ -74,8 +74,6 @@ fn invocation() -> String {
 
 /// The primary display's turn, from the reply.
 fn primary(reply: Read) -> Result<u8, String> {
-    // Not served: for minutes after a first boot it may answer only that the connection is
-    // invalid.
     let event = reply.event();
     if event != Event::Message {
         return Err(format!("the display's service didn't answer: {event:?}"));
@@ -115,7 +113,6 @@ pub fn connect(port: u32) -> Result<Connection, String> {
 
 /// Asks the simulator, on its service's connection, which way its interface faces.
 pub fn ask(connection: &Connection, udid: &str, version: &(String, Vec<u64>)) -> Result<u8, String> {
-    // The raw reply, only when asked for: it is read every two seconds while a tab shows.
     let said = std::env::var_os("KOYO_DEVICE_DISPLAY_INFO").is_some();
     let (read, described) = connection
         .ask_with(&request(udid, version), Duration::from_secs(2), move |reply| {

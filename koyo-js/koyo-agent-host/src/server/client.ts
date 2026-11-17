@@ -1,9 +1,3 @@
-// One connection to the host: what it says, cut into lines, and what the host sends it, queued
-// while the socket can't take more (`Outbox`). A client that lets more wait than it could ever
-// need is cut off: it reconnects and catches up from where it was (docs/chat.md 5.1). A
-// client says hello before anything else; one of another version may only shut the host
-// down (docs/chat.md C9).
-
 import type { Socket } from "bun";
 
 import { log } from "../log";

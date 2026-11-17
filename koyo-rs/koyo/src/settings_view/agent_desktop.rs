@@ -89,7 +89,6 @@ fn access(grants: Grants) -> SettingsSection {
 
 fn desktop(desk: &Desk) -> SettingsSection {
     let stands = match &desk.desktop {
-        // Its size is the display's, said so that it isn't taken for something Koyo set.
         Some(DesktopState::Ready { size, .. }) => {
             format!("Ready. Same size as your display ({:.0} × {:.0}).", size.width, size.height)
         }

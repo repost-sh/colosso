@@ -27,7 +27,6 @@ fn a_page_the_engine_cant_open_is_listed_so_and_refused_at_once(cx: &mut TestApp
         (json!(false), json!(false))
     );
 
-    // Waiting for it, or moving it, says why at once, rather than when the time runs out.
     let wait = json!({ "pane": pane, "for": "selector", "value": "#go" });
     let waited = call(&agent, "browser_wait", wait, cx).unwrap_err();
     assert_eq!(waited.code, ErrorCode::BrowserUnavailable);
@@ -44,7 +43,6 @@ fn a_page_the_engine_cant_open_is_listed_so_and_refused_at_once(cx: &mut TestApp
         (ErrorCode::BrowserUnavailable, false)
     );
 
-    // Nothing asked, there's nothing to answer.
     let answer = json!({ "pane": pane, "action": "accept" });
     let answered = call(&agent, "browser_dialog", answer, cx).unwrap_err();
     assert_eq!(answered.code, ErrorCode::NotFound, "{}", answered.message);
@@ -74,13 +72,10 @@ fn a_tab_the_person_asked_to_go_to_is_shown_and_a_link_opened_beside_is_not(cx: 
     };
     assert_eq!(shown(cx), json!(page));
 
-    // A link opened in a new tab, as from DevTools: beside its page, which stays shown.
     view.update(cx, |_, cx| cx.emit(BrowserEvent::OpenTab("https://b.example/".into())));
     cx.run_until_parked();
     assert_eq!(shown(cx), json!(page), "a link's tab opens behind");
 
-    // An extension's options, its page in chrome://extensions, the store: a place the person
-    // asked to go to, or a window Chrome would have shown. Its tab is shown.
     view.update(cx, |_, cx| cx.emit(BrowserEvent::GoToTab("chrome://extensions/".into())));
     cx.run_until_parked();
     let now = shown(cx);

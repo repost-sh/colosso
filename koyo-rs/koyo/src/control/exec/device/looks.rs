@@ -135,7 +135,6 @@ pub(crate) fn list(cx: &mut App) -> Result<Exec, ControlError> {
                 })
                 .collect();
             devices.extend(registry.read(cx).plugged().iter().map(|device| plugged_info(device, cx)));
-            // The launcher and the picker read the same list.
             registry.update(cx, |registry, cx| registry.listed_afresh(simulators, cx));
             output(&DeviceListOutput { devices })
         })

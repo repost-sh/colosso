@@ -8,13 +8,11 @@ use super::release::{Archive, Release};
 
 pub static RUST_ANALYZER: ServerSpec = ServerSpec {
     name: "rust-analyzer",
-    // rustup's, or whichever the user keeps current.
     on_path: true,
     project: |_| None,
     release: Release {
         version: "2026-10-26",
         url: "https://github.com/rust-lang/rust-analyzer/releases/download/{version}/rust-analyzer-{target}.gz",
-        // Digests computed from the downloads, and the same as GitHub lists for them.
         assets: &[
             (
                 ("aarch64", "macos"),
@@ -42,7 +40,6 @@ pub static RUST_ANALYZER: ServerSpec = ServerSpec {
     },
     args: &[],
     settings,
-    // It reads its settings from `initialize` first, and asks for them only later.
     initialization_options: Some(defaults),
 };
 
@@ -52,12 +49,8 @@ fn settings() -> Value {
 
 fn defaults() -> Value {
     json!({
-        // A target folder of its own (`target/rust-analyzer`): checking on save then never
-        // waits for, or holds up, the lock on `target` an agent's `cargo build` needs.
         "cargo": { "targetDir": true },
         "checkOnSave": true,
-        // With a server per worktree, each warming its caches on every core would starve
-        // the builds running beside it.
         "cachePriming": { "enable": true, "numThreads": 2 },
     })
 }

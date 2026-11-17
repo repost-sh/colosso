@@ -116,8 +116,6 @@ impl Host {
 
     /// Ready, or locked (a real device's lock screen), once there's a picture to show.
     pub fn tell_standing(&mut self) {
-        // Gone (a device unplugged) is the last word: a standing told after it would take its
-        // place, and the app would start the host again as if it had stopped on its own.
         if self.gone || !matches!(self.phase, Phase::Ready) {
             return;
         }
@@ -148,7 +146,6 @@ impl Host {
             ToHost::Input { input } => self.person(input),
             ToHost::Request { request, ask } => {
                 self.agent_until = Some(Instant::now() + AGENT_RESTS_AFTER);
-                // An agent's ask keeps the picture current from its arrival.
                 self.ring.want(true);
                 self.ask(request, ask);
             }
@@ -286,7 +283,6 @@ impl Host {
         }
         match ask {
             Ask::Act(act) => {
-                // An act before input is ready waits for it: never dropped.
                 self.acts.push_back((request, act));
             }
             Ask::Wait {

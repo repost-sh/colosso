@@ -281,8 +281,6 @@ impl UsageStore {
                 }
             } else if current.is_some_and(Value::is_object)
                 && stored_claim.is_some()
-                // Only a live lease defers an unfenced writer; a crashed claimer's leftover
-                // ticket must age out, not block forever.
                 && now < num_or_none(current.and_then(|row| row.get("claimUntil"))).unwrap_or(0.)
             {
                 continue;
@@ -336,8 +334,6 @@ impl UsageStore {
             };
             let stored = num_or_none(row.get("fetchedAt"));
             let mut held_until = (now + hold_s).min(stored.unwrap_or(now) + TRUST_MAX_AGE_S);
-            // Every scoped window, not only the models this machine watches: the store doesn't
-            // know them, and a hold lifted early costs one fetch at most.
             if let Some(reset) = earliest_reset(row.get("lastGood"), &["all"]) {
                 held_until = held_until.min(reset);
             }

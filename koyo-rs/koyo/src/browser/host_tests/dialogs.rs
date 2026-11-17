@@ -66,7 +66,6 @@ fn page_dialogs_wait_for_the_person_and_get_their_answers(cx: &mut TestAppContex
     asked(cx, &view, "the prompt", |d| {
         matches!(d, Dialog::Prompt { .. })
     });
-    // The field starts with the page's default; the person adds to it.
     in_dialog(cx, "end", " L", "enter");
     asked(cx, &view, "the alert", |d| {
         matches!(d, Dialog::Alert { .. })

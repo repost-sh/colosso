@@ -146,7 +146,6 @@ impl FilePane {
             preview: preview && !dirty,
             dirty,
         };
-        // Shown as it reads from the start, with what its editor has so far.
         pane.refresh(cx);
         pane
     }
@@ -273,7 +272,6 @@ impl FilePane {
             Shown::Preview(preview, editor) => {
                 let focus = preview.read(cx).focus_handle(cx);
                 window.focus(&focus, cx);
-                // Not taken back by the editor, its text shown later.
                 editor.update(cx, |editor, _| editor.focus_elsewhere());
             }
         }
@@ -411,7 +409,6 @@ impl Render for FilePane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let style = StyleRefinement::default().flex_1().min_w_0().min_h_0();
-        // What's shown is drawn again only when it changes, not each time the shell is.
         let cached = |view: AnyView| view.cached(style.clone()).into_any_element();
         let shown = match self.shown() {
             Shown::Text(editor) => cached(editor.clone().into()),
@@ -419,8 +416,6 @@ impl Render for FilePane {
             Shown::Preview(preview, editor) if editor.read(cx).shows_text() => {
                 cached(preview.clone().into())
             }
-            // Shown as it reads before it's read, the editor says so; the keyboard it was given
-            // stays with it.
             Shown::Preview(preview, editor) => div()
                 .flex_1()
                 .min_w_0()

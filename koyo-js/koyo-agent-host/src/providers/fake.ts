@@ -1,10 +1,3 @@
-// A provider that runs no agent (docs/chat.md C6), for tests: each session records what the
-// actor asked of it and reports what its test tells it to, through the same sink a real
-// driver reports to. Given `answer`, its sessions answer each turn by themselves instead, for
-// the host run end to end (`KOYO_AGENT_PROVIDER=fake`); a turn that starts `Show your work`
-// first does the work Claude would, for the chat's visual check to draw, and one that starts
-// `Keep working in the background` leaves a task running there, as a background shell would.
-
 import type { Catalog, ProviderStatus } from "../protocol/methods";
 import type { Mode, ProviderId, RequestPayload, Response } from "../protocol/model";
 import type {

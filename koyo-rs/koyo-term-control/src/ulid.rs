@@ -27,7 +27,6 @@ pub fn ulid_at(ms: u64, random: u128) -> String {
         let shift = (25 - i) * 5;
         *slot = ALPHABET[((value >> shift) & 0x1f) as usize];
     }
-    // The alphabet is ASCII, so this is always valid UTF-8.
     String::from_utf8_lossy(&out).into_owned()
 }
 
@@ -50,7 +49,6 @@ mod tests {
 
     #[test]
     fn encodes_the_known_vector() {
-        // The ULID spec's example time, 2016-07-30T23:54:10.259Z, with zero randomness.
         assert_eq!(ulid_at(1_469_922_850_259, 0), "01ARZ3NDEK0000000000000000");
         assert_eq!(ulid_at(0, u128::MAX), "0000000000ZZZZZZZZZZZZZZZZ");
     }

@@ -99,7 +99,6 @@ impl Host {
         bundle: Option<&str>,
         wish: &Wish,
     ) -> Result<(), Refusal> {
-        // The Finder holds the person's desktop itself.
         if bundle == Some(apps::FINDER) {
             let message = format!(
                 "{asked} is running as the person's and is never lent to agents: use another app"
@@ -111,7 +110,6 @@ impl Host {
             .map_err(|again| refusal(asked, wish.theirs, again))?
             .to_owned();
         let shown = desktop::shown(pid, self.space());
-        // An app assigns whole, and a full screen is a space of its own that doesn't.
         if shown.full_screen {
             let message = format!(
                 "{asked} has a window in full screen, which can't be brought over: ask the \
@@ -146,12 +144,8 @@ impl Host {
             let _ = self.return_focus();
         }
         let mut app = self.apps.remove(at);
-        // Theirs again before it's touched: the guard of the front takes it for the
-        // agent's until it's told otherwise.
         self.apps_changed();
         app.leave_as_found();
-        // Nothing an agent held of it reaches it from now on: an element of its windows,
-        // text on its way to it, a window held by its bar.
         self.refs.clear();
         self.moving = None;
         self.grab = self.grab.filter(|grab| grab.pid != pid);

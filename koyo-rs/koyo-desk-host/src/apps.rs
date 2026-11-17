@@ -111,7 +111,6 @@ pub fn find(app: &str) -> Option<Obj> {
     .iter()
     .map(|folder| format!("{folder}/{name}.app"))
     .find(|path| Path::new(path).exists());
-    // Anywhere else, Launch Services knows apps by name.
     let known = || {
         // SAFETY: the workspace's lookup by name; nil when it knows none.
         let path: Option<Obj> =

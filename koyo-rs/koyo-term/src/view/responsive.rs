@@ -78,8 +78,6 @@ impl TerminalView {
     pub(crate) fn sized(&mut self, size: Size, pinned: Option<Pinned>, cx: &mut Context<Self>) {
         self.size = Some(size);
         let cells = pinned.as_ref().map(|pinned| (pinned.cols, pinned.rows));
-        // A pin other than the one sent last (another's, or one gone with the connection)
-        // makes that one worth sending again.
         if self.pin.sent != Some(cells) {
             self.pin.sent = None;
         }

@@ -49,7 +49,6 @@ fn backup_write_failure_fails_and_keeps_the_keychain_copy() {
 
 #[test]
 fn backup_delete_removes_both_backends() {
-    // The Keychain half; Koyo keeps no `.enc`.
     let world = World::new();
     world
         .store
@@ -89,7 +88,6 @@ fn prev_generation_retained_on_overwrite() {
         .unwrap();
     assert_eq!(store.read_account_credentials("1", "a@b.c", false), "gen-2");
     assert_eq!(store.read_previous_backup("1", "a@b.c"), "gen-1");
-    // Rewriting the same value doesn't clobber the retained generation.
     store
         .write_account_credentials("1", "a@b.c", "gen-2")
         .unwrap();
@@ -112,8 +110,6 @@ fn prev_removed_with_account() {
 
 #[test]
 fn unreadable_current_backup_is_logged_distinguishably_at_info() {
-    // The current backup can't be read (a locked Keychain here, an unreadable `.enc` in
-    // cswap's): that's said at INFO, and the read failure itself once at WARNING.
     let world = World::new();
     world
         .store

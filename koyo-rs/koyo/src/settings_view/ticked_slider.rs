@@ -156,14 +156,12 @@ impl RenderOnce for TickedSlider {
         } = self;
         let last = stops.values.len().saturating_sub(1);
         let state = window.use_keyed_state(id, cx, |window, cx| {
-            // The track counts stops; the settings, what they stand for.
             cx.subscribe_self(move |_, event: &SliderEvent, cx| {
                 if let SliderEvent::Change(value) = event {
                     stops.pick(value.end().round() as usize, cx);
                 }
             })
             .detach();
-            // Set elsewhere, by hand in the file say, the thumb goes to it.
             settings::observe_in(window, cx, move |state: &mut SliderState, window, cx| {
                 let at = stops.at(cx);
                 if state.value().end().round() as usize != at {
@@ -177,7 +175,6 @@ impl RenderOnce for TickedSlider {
                 .step(1.)
                 .default_value(stops.at(cx) as f32)
         });
-        // Under the track, where the thumb's middle is at each stop.
         let ticks = (0..stops.values.len()).map(|index| {
             let along = if last == 0 {
                 0.
@@ -240,7 +237,6 @@ mod tests {
         for values in [&SPEEDS[..], &DELAYS[..], &CHAT_SIZES[..]] {
             for (index, &stop) in values.iter().enumerate() {
                 assert_eq!(nearest(values, stop), index);
-                // From the stop before, or from the first to the second.
                 let from = values[if index == 0 { 1 } else { index - 1 }];
                 assert_eq!(stops(values).picked(from, index), Some(stop));
             }
@@ -250,12 +246,9 @@ mod tests {
     #[test]
     fn a_value_set_by_hand_is_kept_until_the_thumb_moves_off_its_stop() {
         let (speeds, delays) = (stops(&SPEEDS), stops(&DELAYS));
-        // 100 rows a second lies between 96 and 120, nearer 96: left there, it stays.
         assert_eq!(speeds.picked(100., 5), None);
         assert_eq!(speeds.picked(100., 6), Some(120.));
-        // 300 ms, between 320 and 250, is nearer 320; the longest delay is at the left.
         assert_eq!(delays.picked(300., 0), Some(500.));
-        // Past the last stop, nothing.
         assert_eq!(speeds.picked(30., 10), None);
     }
 
@@ -263,11 +256,9 @@ mod tests {
     fn a_value_between_stops_is_shown_at_the_nearer_by_ratio() {
         let stops = [30., 60., 120., 240.];
         assert_eq!(nearest(&stops, 120.), 2);
-        // 85 is nearer 60 by difference, nearer 120 by ratio.
         assert_eq!(nearest(&stops, 85.), 2);
         assert_eq!(nearest(&stops, 1.), 0);
         assert_eq!(nearest(&stops, 9000.), 3);
-        // The longest first, as a delay's are.
         assert_eq!(nearest(&[500., 250., 125.], 300.), 1);
     }
 }

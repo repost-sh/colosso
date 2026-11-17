@@ -69,7 +69,6 @@ fn enable_clears_flag_and_restores_position() {
     assert!(outcome.changed);
     assert!(!is_disabled(&h, "2"));
     assert!(disabled(&h).is_empty());
-    // In its original place, not appended.
     assert_eq!(switchable(&h), ["1", "2", "3"]);
     assert!(h.accounts()["2"].get("disabled").is_none());
 }
@@ -91,7 +90,6 @@ fn repeated_disable_is_noop() {
     seed(&h, 1, "a@example.com");
     seed(&h, 2, "b@example.com");
     h.switcher.set_account_disabled("2", true).unwrap();
-    // cswap prints "already disabled".
     assert!(!h.switcher.set_account_disabled("2", true).unwrap().changed);
     assert!(is_disabled(&h, "2"));
 }
@@ -149,8 +147,6 @@ fn remove_then_readd_clears_disabled() {
 
 #[test]
 fn bare_add_keeps_account_parked() {
-    // cswap's `test_slot_refresh_keeps_account_parked` on the path Koyo has: re-adding the
-    // live account refreshes its slot in place, so the park survives.
     let h = Harness::new();
     seed(&h, 1, "a@example.com");
     seed(&h, 2, "b@example.com");
@@ -166,7 +162,7 @@ fn bare_add_keeps_account_parked() {
 #[test]
 fn disable_active_account_warns_but_sets_flag() {
     let h = Harness::new();
-    seed(&h, 1, "a@example.com"); // becomes active
+    seed(&h, 1, "a@example.com");
     seed(&h, 2, "b@example.com");
     let outcome = h.switcher.set_account_disabled("1", true).unwrap();
     assert!(outcome.was_active);
@@ -184,7 +180,6 @@ fn disable_last_rotation_account_warns() {
             .unwrap()
             .rotation_empty
     );
-    // Now nothing is left in rotation.
     assert!(
         h.switcher
             .set_account_disabled("2", true)
@@ -209,7 +204,6 @@ fn record_without_policy_keys_yields_the_default() {
 
 #[test]
 fn setting_then_unsetting_restores_the_record_exactly() {
-    // A disable and an enable pop the key rather than leave `false`.
     let h = fleet(2);
     let before = h.accounts()["1"].clone();
     h.switcher.set_account_disabled("1", true).unwrap();

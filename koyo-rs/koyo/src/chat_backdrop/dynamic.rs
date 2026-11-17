@@ -153,8 +153,6 @@ impl Dynamic {
         let through_the_day = || match &self.schedule {
             Schedule::Appearance => None,
             Schedule::Time(times) => {
-                // The last whose time has come, else the day's last, still showing from the
-                // evening before.
                 let past = times.iter().rev().find(|time| time.at <= now.day);
                 past.or(times.last()).map(|time| time.image)
             }

@@ -1,8 +1,3 @@
-// The host's log, as termd's (koyo-rs/koyo-termd/src/logfile.rs): one line a record, to a
-// file that starts over at a megabyte keeping the one before as `<file>.old`, or to stderr
-// until a file is set (in the foreground and the tests). Nothing else in the host writes to
-// stderr, and stdout has only the `ready` line (`main.ts`).
-
 import { closeSync, fstatSync, openSync, renameSync, writeSync } from "node:fs";
 
 export type Level = "error" | "warn" | "info" | "debug";

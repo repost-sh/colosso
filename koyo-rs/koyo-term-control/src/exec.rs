@@ -325,7 +325,6 @@ impl Executor {
             shape::holder(&control, &self.actor)
         );
         let mut record = record;
-        // Without the claim the size is only the one it starts at: a pin needs the hold.
         let pinned =
             (args.size.filter(|_| claiming)).map(|size| self.pin_opened(&mut record, size));
         let mut structured = json!({

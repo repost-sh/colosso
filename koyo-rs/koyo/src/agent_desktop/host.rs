@@ -80,7 +80,6 @@ impl Drop for Running {
 
 /// Where the host is, as the module says.
 pub fn loader() -> Result<Loader, String> {
-    // No test starts a process of the real loader: what a test needs of a host stands in.
     if cfg!(test) {
         return Err("the agent desktop's host isn't started under test".into());
     }
@@ -206,7 +205,6 @@ pub(super) fn standing_alone(loader: &Path, dir: &Path) -> io::Result<PathBuf> {
         let _ = std::fs::remove_dir_all(&copy);
         copy_tree(loader, &copy)?;
     }
-    // The library is new with every build: put in place whole, under the one that was.
     let (library, placed) = (beside.join(LIBRARY), home.join(LIBRARY));
     if !same_file(&library, &placed) {
         let fresh = home.join(format!("{LIBRARY}.new"));
@@ -348,7 +346,6 @@ pub fn start(
 ) -> io::Result<Running> {
     static SERVICES: AtomicU32 = AtomicU32::new(0);
     std::fs::create_dir_all(dir)?;
-    // The person's alone, before the socket is made in it.
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     let socket = dir.join("link.sock");
     if socket.as_os_str().len() > SOCKET_PATH {
@@ -359,7 +356,6 @@ pub fn start(
     }
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket)?;
-    // The person's alone.
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
     let service = format!(
         "codes.koyo.desk.{}.{}",
@@ -380,7 +376,6 @@ pub fn start(
         .arg(&socket)
         .arg("--state")
         .arg(dir)
-        // Measuring: the host then says how many frames it sends.
         .args(std::env::var_os("KOYO_DESK_STATS").map(|_| "--stats"))
         .status()?;
     if !launched.success() {
@@ -430,8 +425,6 @@ pub fn start(
         .name("desk-frames".into())
         .spawn(move || {
             while !stopped.load(Ordering::Relaxed) {
-                // Only the host that connected is heard: another process that guessed the
-                // service's name has its messages dropped.
                 if let Ok(Some(ring)) = surfaces.receive(sender, 200) {
                     sink(Incoming::Frame(ring));
                 }

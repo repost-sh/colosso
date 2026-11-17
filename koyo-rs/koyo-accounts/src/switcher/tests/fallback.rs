@@ -15,7 +15,6 @@ use crate::{AccountsError, oauth};
 
 #[test]
 fn partial_identity_uuid_only_matching_outgoing_slot_backs_up() {
-    // Partial data never turns a legitimate rotation into preserve-and-skip.
     let rotated = creds("sk-f", "rt-1-rotated", None);
     let h = guarded(&rotated);
     let op = run_switch(&h, Some(profile("uuid-1", None, None)));
@@ -54,7 +53,6 @@ fn partial_identity_uuid_match_with_slot_org_recorded() {
 
 #[test]
 fn partial_identity_matching_nothing_falls_open() {
-    // Indistinguishable from schema drift: the pre-fix backup, never preserve-and-skip.
     let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     let op = run_switch(&h, Some(profile("uuid-nobody", None, None)));
@@ -76,7 +74,6 @@ fn foreign_attribution_survives_missing_email() {
 
 #[test]
 fn unresolvable_mismatch_backs_up_pre_fix() {
-    // The fail-open core: the oracle silent, the switch behaves exactly pre-fix, quietly.
     let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     let op = run_switch(&h, None);
@@ -88,8 +85,6 @@ fn unresolvable_mismatch_backs_up_pre_fix() {
 
 #[test]
 fn cached_foreign_verdict_survives_a_failed_switch_time_probe() {
-    // A collect pass already condemned this lineage: a transient probe failure must not let
-    // the fail-open backup write it into the slot.
     let foreign = creds("sk-foreign", "rt-foreign", None);
     let h = guarded(&foreign);
     let key = h
@@ -100,7 +95,6 @@ fn cached_foreign_verdict_survives_a_failed_switch_time_probe() {
             &credential_fingerprint(&foreign).unwrap(),
         )
         .unwrap();
-    // A verdict as the collect pass's probe records it.
     locked(&h.switcher.probe_verdicts).insert(key, false);
     let op = run_switch(&h, None);
     assert_eq!(h.backup("1", "test@example.com").unwrap(), a1_backup());
@@ -113,7 +107,6 @@ fn cached_foreign_verdict_survives_a_failed_switch_time_probe() {
 
 #[test]
 fn profile_exception_falls_back_to_pre_fix_backup() {
-    // A failing lookup (here a 500) is indistinguishable from no answer.
     let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     h.sandbox
@@ -127,7 +120,6 @@ fn profile_exception_falls_back_to_pre_fix_backup() {
 
 #[test]
 fn safety_copy_failure_aborts_before_live_overwrite() {
-    // No safety copy, no switch.
     let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     let stash_dir = h.sandbox.store().join("credentials");
@@ -185,7 +177,6 @@ fn wiped_live_matching_wiped_backup_stays_quiet() {
 
 #[test]
 fn oauth_absent_live_never_overwrites_a_token_bearing_backup() {
-    // #383: a store left holding only `mcpOAuth`.
     let mcp_only = json!({"mcpOAuth": {"some-server|abc123": {"serverName": "some-server", "accessToken": ""}}})
         .to_string();
     let h = guarded(&mcp_only);
@@ -202,7 +193,6 @@ fn oauth_absent_live_never_overwrites_a_token_bearing_backup() {
 
 #[test]
 fn oauth_slot_holding_a_key_still_captures_its_own_login() {
-    // A slot's kind, not its bytes, decides what it stores.
     let h = guarded(&creds("sk-new-1", "rt-new-1", None));
     h.set_backup("1", "test@example.com", "sk-ant-api03-key");
     run_switch(
@@ -217,7 +207,6 @@ fn oauth_slot_holding_a_key_still_captures_its_own_login() {
 
 #[test]
 fn moved_bytes_between_prefetch_and_lock_fall_to_unresolved() {
-    // A pre-lock answer binds only to the bytes it resolved.
     let moved = creds("sk-m", "rt-m", None);
     let h = guarded(&moved);
     let provenance = Provenance {
@@ -236,7 +225,6 @@ fn moved_bytes_between_prefetch_and_lock_fall_to_unresolved() {
 
 #[test]
 fn email_match_with_conflicting_uuid_is_not_the_slot() {
-    // A recycled email under another uuid is never backed into the slot.
     let h = guarded(&creds("sk-x", "rt-x", None));
     h.set_backup("1", "test@example.com", &creds("sk-1", "rt-1", None));
     let op = run_switch(

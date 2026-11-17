@@ -69,7 +69,6 @@ pub async fn start(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake) ->
     let audio = adapter.bind_udp(0).await.map_err(|error| format!("no socket for the sound: {error}"))?;
     let video = adapter.bind_udp(0).await.map_err(|error| format!("no socket for the picture: {error}"))?;
     let (receiver, sender) = (adapter.host_ip().to_string(), adapter.peer_ip().to_string());
-    // This end, as a Device Hub offer the device accepted describes it.
     let call = CallInfoBlob {
         call_id: 0,
         client_version: 1,
@@ -85,7 +84,6 @@ pub async fn start(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake) ->
     let sound = build_start_audio_parameters(&receiver, audio.local_port(), &sender, 50000, offer, CLIENT_SUPPORTED_FEATURES, session);
     service.start_media_stream(sound).await.map_err(|error| format!("the device didn't start its sound: {error}"))?;
     let ours = u32::try_from(uuid::Uuid::new_v4().as_u128() & u128::from(u32::MAX)).unwrap_or(1);
-    // The sound started, a picture that won't start leaves a session the device keeps: stopped.
     let pictured = async {
         let offer = build_screen_video_offer(&call_id(), &call, ours).map_err(|error| format!("the picture's offer: {error}"))?;
         let picture = build_start_video_parameters(&receiver, video.local_port(), &sender, 50001, offer, CLIENT_SUPPORTED_FEATURES, 1, session);
@@ -133,7 +131,6 @@ pub async fn pump(media: Media, pictures: mpsc::Sender<Vec<u8>>, keyframe: Arc<N
     let began = Instant::now();
     let mut report = tokio::time::interval(REPORT_EVERY);
     let mut alive = tokio::time::interval(ALIVE_EVERY);
-    // A tick missed is skipped, not sent late in a burst.
     report.set_missed_tick_behavior(MissedTickBehavior::Skip);
     alive.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let (mut port, mut theirs, mut first, mut expected) = (None, 0u32, None, None);
@@ -142,8 +139,6 @@ pub async fn pump(media: Media, pictures: mpsc::Sender<Vec<u8>>, keyframe: Arc<N
     let dropping = dropped_window();
     let why = loop {
         tokio::select! {
-            // The sound is taken and dropped: the session is started with it. Read here, its
-            // socket goes with the pump.
             Ok(_) = audio.recv() => {}
             got = video.recv() => {
                 let Ok(datagram) = got else { break "the device's stream ended".to_owned() };
@@ -163,7 +158,6 @@ pub async fn pump(media: Media, pictures: mpsc::Sender<Vec<u8>>, keyframe: Arc<N
                 expected = Some(packet.sequence_number.wrapping_add(1));
                 highest = packet.sequence_number.wrapping_sub(base);
                 depacketizer.push(packet.sequence_number, packet.timestamp, packet.payload);
-                // A picture's last packet carries the marker: what is whole goes at once.
                 if packet.marker {
                     frames = frames.wrapping_add(1);
                     counts.pictures += 1;

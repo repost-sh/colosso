@@ -23,7 +23,6 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
     let feature = std::fs::canonicalize(&feature).unwrap();
     let readme = feature.join("README.md");
     let kept = Kept {
-        // The worktree, not the main checkout, was the one selected.
         projects: vec![KeptProject {
             project: root.clone(),
             checkout: feature.clone(),
@@ -51,7 +50,6 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
                     KeptTree::Pane(KeptPane::NewChat),
                     KeptTree::Pane(KeptPane::File { path: readme }),
                     KeptTree::Pane(KeptPane::Changes),
-                    // A file gone since doesn't come back.
                     KeptTree::Pane(KeptPane::File {
                         path: feature.join("gone.rs"),
                     }),
@@ -89,7 +87,6 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
         assert!(!made, "no page is made until its tab is shown");
     });
 
-    // The file shown opens as the window draws; the diffs once their tab is shown.
     draw(window, cx);
     let opened = |tab: usize, cx: &TestAppContext| {
         cx.read(|cx| {
@@ -112,7 +109,6 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
     draw(window, cx);
     assert_eq!(opened(2, cx), (false, true, false), "the checkout's diffs");
 
-    // What's kept of it is what came back: all but the file that's gone, the diffs shown.
     let mut expected = kept;
     expected.checkouts[1].tabs.pop();
     expected.checkouts[1].shown = 2;
@@ -147,7 +143,6 @@ fn a_file_or_the_diffs_brought_back_is_found_rather_than_opened_again(cx: &mut T
     let before = titles(&[&["New chat"], &["README.md"], &["Changes"]]);
     assert_eq!(tabs_of(&shell, &root, cx), (before.clone(), 0));
 
-    // The file opened again, as the tree or ⌘P opens it: its tab is shown, not another made.
     cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
             shell.view_file(crate::files::Place::file("README.md"), window, cx);
@@ -162,7 +157,6 @@ fn a_file_or_the_diffs_brought_back_is_found_rather_than_opened_again(cx: &mut T
     });
     assert!(opened, "the file it was brought back for");
 
-    // And the diffs, as a file picked in the Changes panel shows them.
     cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
             let panel = shell.changes_panel(window, cx).expect("the changes panel");
@@ -209,7 +203,6 @@ fn a_page_brought_back_opens_only_once_shown_and_reopens_at_its_address(cx: &mut
     };
     assert!(view(cx).is_none(), "not shown, no page");
 
-    // Closed unshown, ⌘⇧T opens it again at its address.
     let page_at = at(&shell, page_pane, cx);
     shell.update(cx, |shell, cx| shell.close_tab_now(page_at, cx));
     assert_eq!(written(&path, cx), main_with(&root, 0, &[chat]));
@@ -245,8 +238,6 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
     select(&shell, &root, cx);
     let example = open_page(window, &shell, Some("https://example.com/"), cx);
     shell.update(cx, |shell, cx| {
-        // An unsent chat right of the page, a quarter of the room the page's; then a tab
-        // after them, and the split shown again.
         shell.new_tab(crate::model::PaneKind::Chat, cx);
         let unit = shell.workspace.branch_mut().unwrap();
         assert!(unit.drop_tab(1, example, crate::model::Edge::Right));
@@ -265,7 +256,6 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
         (titles(&[&["example.com", "New chat"], &["example.org"]]), 0)
     );
 
-    // Closed before the write a moment after the change: it's written as the shell goes.
     assert!(!path.exists());
     drop(shell);
     cx.update_window(window, |_, window, _| window.remove_window())
@@ -342,7 +332,6 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
         "where they were, until the daemon says"
     );
 
-    // The daemon runs one of them still, and one the window didn't know of.
     shell.update(cx, |shell, cx| {
         let listed = vec![
             terminal_listed("term_a", "zsh", &root),
@@ -392,7 +381,6 @@ fn a_shell_a_daemon_restart_ended_runs_again_in_the_pane_it_had(cx: &mut TestApp
     let path = file("kept-window-restart-file", &main_with(&root, 0, &[beside]));
     let (_, shell) = shell_with(&[&root], cx);
     launch(&shell, &path, &[&root], cx);
-    // The daemon came back after a restart: the person's shell is listed as ended by it.
     shell.update(cx, |shell, cx| {
         let mut ended = terminal_listed("term_shell", "zsh", &root);
         ended.record.created_by = Actor {
@@ -416,7 +404,6 @@ fn a_shell_a_daemon_restart_ended_runs_again_in_the_pane_it_had(cx: &mut TestApp
     let runs_again = cx.read(|cx| {
         let shell = shell.read(cx);
         let pane = shell.workspace.branch().unwrap().tabs[0].first();
-        // A shell to open under its name has no handle until the daemon opens it.
         shell.terminals.kept(pane.terminal.unwrap()).is_none()
     });
     assert!(runs_again, "a shell run again, not the one that ended");
@@ -450,7 +437,6 @@ fn a_chat_deleted_leaves_its_pane_and_one_made_meanwhile_gets_a_tab(cx: &mut Tes
     );
 
     let summary = |id: &str, title: &str| crate::chat::tests::summary(id, &root, title, true);
-    // The host has the one still, renamed, and one made while the window was closed.
     let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
     chats.update(cx, |chats, cx| {
         chats.hear_list(

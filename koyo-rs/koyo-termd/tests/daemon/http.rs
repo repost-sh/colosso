@@ -157,7 +157,6 @@ fn pin_from(session: &mut Session, person: &Client, name: &str, cwd: &Path) -> H
         &json!({ "terminal": handle.0, "cols": 100, "rows": 30, "then": {} }),
     );
     assert_eq!(resized["pinned"]["by"]["kind"], "agent", "{resized}");
-    // Past the sizes the person's attaching made, to the pin's.
     person.event_until(&handle, |kind| {
         matches!(
             kind,
@@ -202,19 +201,16 @@ fn an_http_sessions_pin_goes_when_its_client_ends_it_or_the_server_stops() {
         session: None,
         client: None,
     };
-    // No app runs in this test: only the terminals' tools are called.
     let connect =
         koyo_term_mcp::socket_backend(Err(koyo_app_control::ControlError::app_not_running()));
     let server = HttpServer::start(0, config, connect).unwrap();
 
-    // The client ends its session, as MCP has it: `DELETE` with the session's id.
     let mut session = Session::start(server.port());
     let handle = pin_from(&mut session, &person, "ended", &cwd);
     let ended = session.send("DELETE", None);
     assert!((200..300).contains(&ended.status), "{}", ended.body);
     unpinned(&person, &handle);
 
-    // The person turns the server off with a session still open.
     let mut session = Session::start(server.port());
     let handle = pin_from(&mut session, &person, "stopped", &cwd);
     drop(server);

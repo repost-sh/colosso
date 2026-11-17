@@ -106,7 +106,6 @@ pub(super) fn refused(refusal: Refusal) -> ControlError {
         RefusalCode::AppIsThePersons | RefusalCode::NeedsConsent => {
             ControlError::new(ErrorCode::PersonHasControl, message)
         }
-        // Cut short by the person: theirs for now, as when they act before it starts.
         RefusalCode::PersonActing => {
             ControlError::new(ErrorCode::PersonHasControl, message).retryable(true)
         }
@@ -171,12 +170,7 @@ fn typing_limit(text: &str) -> Duration {
 }
 
 pub(crate) fn open(caller: &Caller, input: DesktopOpenInput, cx: &mut App) -> Exec {
-    // The desktop is this agent's from here on, if the person doesn't hold it: an app is
-    // opened either way, out of the person's sight.
     let _ = agent_desktop::agent_acts(cx, caller.actor());
-    // The desktop's tab, where the caller is and not where the person is (`beside::tab`),
-    // shown or not as the person set what agents open to be; the desktop works without it,
-    // and with the window closed there's none to open.
     let shows = crate::control::policy::shows(None, cx);
     let _ = update_shell(cx, |shell, window, cx| {
         beside::tab(shell, caller, shows, window, cx, Shell::desktop_pane_at)
@@ -416,7 +410,6 @@ mod tests {
             assert_eq!(error.code, expected, "{code:?}");
             assert_eq!(error.message, "As the host said it.", "{code:?}");
         }
-        // The person's app stays theirs; their use of the tab passes.
         let theirs = refused(Refusal::new(RefusalCode::AppIsThePersons, "Theirs."));
         assert!(!theirs.retryable);
         assert!(person_using().retryable);

@@ -48,7 +48,6 @@ impl Bridges {
 }
 
 thread_local! {
-    // The renderer's main thread, where every V8 callback and process message comes.
     static BRIDGES: RefCell<Bridges> = RefCell::new(Bridges::default());
     /// The bridge, a function of the native one it sends through: made once a renderer, as
     /// every context runs it.
@@ -157,7 +156,6 @@ pub(crate) fn answered(message: &ProcessMessage) -> bool {
     let Ok(Answer { id }) = serde_json::from_str(&answer) else {
         return true;
     };
-    // Taken out before calling into the page, whose scripts may send again meanwhile.
     let to = BRIDGES.with(|cell| {
         let mut bridges = cell.try_borrow_mut().ok()?;
         let asked = bridges
@@ -191,8 +189,6 @@ fn number_at(arguments: Option<&[Option<V8Value>]>, at: usize) -> u64 {
         .and_then(|args| args.get(at)?.as_ref())
         .filter(|value| value.is_double() == 1 || value.is_int() == 1 || value.is_uint() == 1)
         .map_or(0., ImplV8Value::double_value);
-    // The bridge passes back a number it was given; anything else saturates to one no request
-    // has.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -213,7 +209,6 @@ fn sent(key: u64, op: &str, options: &str, cancel: u64) -> u64 {
             _ => return None,
         };
         let sender = bridges.contexts.iter_mut().find(|b| b.key == key)?;
-        // A cancel goes only for a request still waiting.
         let goes = if op == "cancel" {
             sender.waiting.remove(&id)
         } else {

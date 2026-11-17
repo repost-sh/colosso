@@ -152,8 +152,6 @@ impl Switcher {
                 "Account-{target} does not exist"
             )));
         }
-        // A self-switch would back the live credential up into the target slot, then read it
-        // straight back: destroying a fresher backup with a possibly stale login (#79).
         let mut provenance = None;
         if let Some((email, org)) = self.get_current_account()
             && Switcher::find_account_slot(&data, &email, &org).as_deref() == Some(&target)
@@ -278,10 +276,8 @@ impl Switcher {
     /// access token.
     fn resolve_live_owner(&self, live: String, backup: &str) -> Provenance {
         if same_lineage(backup, &live) {
-            // Provenance already established locally.
             return Provenance::unresolved(live);
         }
-        // A raw API key or garbled JSON has no token to resolve.
         let resolved = extract_access_token(&live)
             .filter(|token| !token.is_empty())
             .and_then(|token| oauth::fetch_oauth_profile(&self.env, &token));

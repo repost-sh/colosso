@@ -27,18 +27,15 @@ fn a_chat_brought_back_has_the_keyboard_in_its_prompt_only_once_it_is_pressed(
     cx.simulate_input(window, "nowhere");
     assert_eq!(typed(&view, cx), "");
 
-    // A press in the prompt: what's typed goes in it.
     press_prompt(window, cx);
     assert!(keyboard_in(window, PROMPT, cx), "pressed in its text");
     cx.simulate_input(window, "hello");
     assert_eq!(typed(&view, cx), "hello");
-    // Pressed again where the keyboard is already, it stays.
     press_prompt(window, cx);
     assert!(keyboard_in(window, PROMPT, cx), "pressed in its text again");
     cx.simulate_input(window, " there");
     assert_eq!(typed(&view, cx), "hello there");
 
-    // A press on what was said takes the keyboard out, and it stays out.
     let press = |selector: &'static str, inset: f32, cx: &mut TestAppContext| {
         let mut vcx = VisualTestContext::from_window(window, cx);
         let bounds = vcx.debug_bounds(selector).expect(selector);
@@ -54,7 +51,6 @@ fn a_chat_brought_back_has_the_keyboard_in_its_prompt_only_once_it_is_pressed(
     cx.simulate_input(window, " lost");
     assert_eq!(typed(&view, cx), "hello there");
 
-    // The box's own edge is the prompt's: a press there puts the keyboard in it.
     press("chat-composer", 5., cx);
     assert!(keyboard_in(window, PROMPT, cx), "pressed the box's edge");
 }

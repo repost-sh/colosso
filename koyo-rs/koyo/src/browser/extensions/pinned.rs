@@ -25,7 +25,6 @@ pub fn icons(view: &Entity<BrowserView>, cx: &mut App) -> Vec<AnyElement> {
     let icons = shown.into_iter().enumerate().map(|(index, shown)| {
         let says = shown.title.clone();
         let (pressed, asked) = (shown.id.clone(), shown.clone());
-        // Where the icon is drawn, which its popup hangs from.
         let drawn = Rc::new(Cell::new(Bounds::default()));
         let measured = drawn.clone();
         let (acts, asks) = (view.clone(), view.clone());
@@ -41,9 +40,7 @@ pub fn icons(view: &Entity<BrowserView>, cx: &mut App) -> Vec<AnyElement> {
             .cursor_pointer()
             .hover(move |button| button.bg(p.hover))
             .tooltip(move |window, cx| Tooltip::new(says.clone()).build(window, cx))
-            // The face fills the button: where it's drawn is where the icon is.
             .child(icon::face(&shown, p.text, p.selected).on_prepaint(move |bounds, _, _| measured.set(bounds)))
-            // The bar it's in opens the launcher at a press: this one is the icon's alone.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();

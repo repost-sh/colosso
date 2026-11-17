@@ -47,7 +47,6 @@ pub(super) fn header(
 ) -> Stateful<Div> {
     let name = title(unit, shell.own_prefix(project, cx));
     let (shown, hover) = theme::hover::eased(("arc-header", key), HOVER_FADE, window, cx);
-    // In hand, it's lit as it is under the pointer, wherever the pointer is.
     let lit = if shell.worktree_hand.holding() == Some(key) {
         1.
     } else {
@@ -58,8 +57,6 @@ pub(super) fn header(
         .debug_selector(move || format!("arc-header-more-{branch}"))
         .child(icon(IconName::Ellipsis, ROW_GLYPH))
         .on_mouse_down(MouseButton::Left, opens_menu(at, cx));
-    // The launcher opens its tab on the selected worktree, so this one is selected, and opened,
-    // on the press that opens it.
     let new_tab = row_sized(tab_button(("arc-header-new-tab", branch), look.p))
         .debug_selector(move || format!("arc-header-new-tab-{branch}"))
         .child(icon(IconName::Plus, ROW_GLYPH))
@@ -83,7 +80,6 @@ pub(super) fn header(
     let header = arc_row(("arc-header", branch))
         .debug_selector(move || format!("arc-header-{branch}"))
         .pr(px(ROW_END))
-        // Its name smaller and lighter than the tabs' titles, a label over them.
         .text_xs()
         .font_weight(FontWeight::MEDIUM)
         .text_color(look.label)
@@ -97,7 +93,6 @@ pub(super) fn header(
         })
         .child(ellipsized(name).flex_1())
         .child(ends);
-    // The visual check points at a header where it's drawn.
     #[cfg(feature = "visual-check")]
     let header = {
         use gpui_kit::base::ElementExt as _;

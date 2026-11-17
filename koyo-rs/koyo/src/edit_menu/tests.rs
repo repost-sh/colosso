@@ -67,7 +67,6 @@ fn an_edit_item_picked_with_the_keyboard_in_a_page_does_what_its_key_does(cx: &m
         });
         assert!(!acted(cx), "nobody has the page yet");
         if by_menu {
-            // The menu bar is the app's in front, whose window in front the item acts in.
             (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
             cx.run_until_parked();
             assert!(!acted(cx), "coming to the front isn't an edit");

@@ -28,7 +28,6 @@ fn the_keys_take_the_page_back_and_forward(cx: &mut TestAppContext) {
     wait_for_title(cx, &view, "two");
     view.read_with(cx, |view, _| assert!(view.page.can_go_back));
 
-    // The keys are the page's while GPUI's focus is in it, as a press on it puts it there.
     cx.update(|window, cx| {
         let focus = view.read(cx).focus.clone();
         window.focus(&focus, cx);
@@ -72,7 +71,6 @@ fn a_page_full_screen_takes_the_screen_until_it_is_left(cx: &mut TestAppContext)
         document.title=document.fullscreenElement?'full':'small'</script>";
     let (view, cx, scratch) = open("fullscreen", page, cx);
     wait_for_title(cx, &view, "small");
-    // A gesture of the person's, which full screen asks for.
     let ask = json!({
         "expression": "document.body.requestFullscreen()",
         "userGesture": true,

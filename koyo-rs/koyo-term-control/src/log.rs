@@ -137,7 +137,6 @@ pub fn read_since(path: &Path, offset: u64, max_bytes: usize) -> io::Result<LogR
         Err(error) => return Err(error),
     };
     let len = file.metadata()?.len();
-    // A file shorter than where the reader was has been rotated under it.
     let (offset, rotated) = if offset > len {
         (0, true)
     } else {
@@ -176,7 +175,6 @@ pub fn tail_start(path: &Path, bytes: u64) -> io::Result<u64> {
     if len <= bytes {
         return Ok(0);
     }
-    // The byte before too, so a line starting right at the cut counts as whole.
     let before = len - bytes - 1;
     file.seek(SeekFrom::Start(before))?;
     let mut buf = Vec::new();

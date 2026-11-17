@@ -14,7 +14,6 @@ fn a_terminal_gets_its_keys_before_the_app(cx: &mut TestAppContext) {
         crate::init(cx);
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();
-        // As the window has it in the Arc layout: the terminal under the spaces' context.
         let stack: Vec<KeyContext> = ["Root", crate::arc::SPACES, koyo_term::CONTEXT]
             .iter()
             .map(|at| KeyContext::parse(at).unwrap())
@@ -23,7 +22,6 @@ fn a_terminal_gets_its_keys_before_the_app(cx: &mut TestAppContext) {
             let (bindings, _) = keymap.bindings_for_input(keys, &stack);
             bindings.first().map(|binding| binding.action().name())
         };
-        // The window's Tab is unbound here, so the view's key handler encodes it for the program.
         for keys in ["tab", "shift-tab"] {
             let action = fires(&[Keystroke::parse(keys).unwrap()]);
             assert_eq!(action, None, "{keys} isn't left to the terminal's program");

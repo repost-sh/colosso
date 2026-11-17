@@ -109,7 +109,6 @@ static NONE: Profiles = Profiles {
 /// The folder a project's pages kept before profiles had names: named after the project's
 /// folder and its path, so a project brought over keeps its sign-ins.
 pub fn own(project: &Path) -> String {
-    // FNV-1a of the path: the name must stay what it was, or a project would lose its logins.
     let hash = project
         .to_string_lossy()
         .bytes()
@@ -317,7 +316,6 @@ fn due(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
 
 /// Reads the profiles from the data folder; and picking one for a project needs no window.
 pub(super) fn init(cx: &mut App) {
-    // Tests read and write none of a person's.
     let path = settings::data_dir()
         .filter(|_| !cfg!(test))
         .map(|data| data.join(FILE));
@@ -325,7 +323,6 @@ pub(super) fn init(cx: &mut App) {
     let kept =
         |id: &str| (root.as_deref()).is_some_and(|root| koyo_browser_host::keeps_profile(root, id));
     open(path, kept, cx);
-    // A change still settling when the app quits is written on the way out.
     kept_file::write_on_quit(cx, due);
     actions::init(cx);
 }

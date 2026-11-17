@@ -51,7 +51,6 @@ fn draw() -> Result<Vec<String>> {
     })?;
     drawn.pause()?;
 
-    // ⌘P as typed, to the palette's first frame.
     let started = Instant::now();
     drawn.cx.simulate_keystrokes(drawn.window, "cmd-p");
     let palette = palette_window(&mut drawn)?;
@@ -84,7 +83,6 @@ fn draw() -> Result<Vec<String>> {
     )?);
     lines.push(save_over(&mut drawn, palette, "finder-line.png")?);
 
-    // Enter opens the file picked in a tab behind, at the line typed.
     drawn.cx.simulate_keystrokes(palette, "enter");
     drawn.pause()?;
     let viewed = drawn.cx.read(|cx| {
@@ -182,7 +180,6 @@ fn held(drawn: &mut Drawn, palette: AnyWindowHandle) -> Result<Vec<String>> {
     let found = |drawn: &Drawn| drawn.cx.read(|cx| shown.read(cx).results.found.as_ptr());
     let before = found(drawn);
     let behind = drawn.window;
-    // The window behind drawn with nothing pressed, for what drawing it builds anyway.
     on(drawn, behind, |window, _| window.reset_layout_stats())?;
     for _ in 0..2 * STEPS {
         on(drawn, behind, |window, cx| window.draw(cx).clear(cx))?;
@@ -196,7 +193,6 @@ fn held(drawn: &mut Drawn, palette: AnyWindowHandle) -> Result<Vec<String>> {
         let keystroke = Keystroke::parse(key).map_err(|error| error.to_string())?;
         for _ in 0..STEPS {
             let started = Instant::now();
-            // Two turns, as the event loop takes the key and then draws the frame.
             on(drawn, palette, |window, cx| {
                 window.dispatch_keystroke(keystroke.clone(), cx);
             })?;
@@ -276,8 +272,6 @@ fn save_over(drawn: &mut Drawn, palette: AnyWindowHandle, name: &str) -> Result<
     };
     let mut picture: RgbaImage = capture(drawn.window, drawn)?;
     let over: RgbaImage = capture(palette, drawn)?;
-    // Centred across the shell as the dialog opens: off screen, the windows' widths aren't
-    // reported as they're drawn, so only the drop from the top is taken from their bounds.
     let below = palette_bounds.origin.y - shell_bounds.origin.y;
     let x = picture.width().saturating_sub(over.width()) / 2;
     let y = (below.as_f32() * scale) as u32;

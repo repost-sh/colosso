@@ -49,15 +49,11 @@ impl Switcher {
             ));
         };
 
-        // The snapshot, for the composer and the rollback. `None` is a credentials file that
-        // exists but couldn't be read: no safety copy is possible, so nothing is overwritten.
         let Some(live_creds) = self.store.read_credentials() else {
             return Err(AccountsError::CredentialRead(
                 "Cannot snapshot live credentials before activation".into(),
             ));
         };
-        // On a fresh machine "" is "nothing to preserve" for the stash, the composer and the
-        // rollback.
         let rollback_creds = (!fresh_machine || !live_creds.is_empty()).then_some(live_creds);
         let rollback_config_text = if config_path.exists() {
             Some(std::fs::read_to_string(&config_path).map_err(|error| {
@@ -68,7 +64,6 @@ impl Switcher {
         } else {
             None
         };
-        // Parsed once, for the safety copy's evidence and the splice.
         let live_config = rollback_config_text
             .as_deref()
             .and_then(|text| parse_object(&config_path, text.as_bytes()).ok());
@@ -92,8 +87,6 @@ impl Switcher {
             })?;
         }
 
-        // A failure part way restores what was written: the config (by rename), then the
-        // credential.
         let restore_config = || {
             if let Some(text) = &rollback_config_text
                 && let Err(error) = fsutil::atomic_write(&self.env, &config_path, text.as_bytes())
@@ -114,8 +107,6 @@ impl Switcher {
                 &target_creds,
                 rollback_creds.as_deref(),
             ))?;
-        // Keep the live settings and projects, swapping in `oauthAccount`; a config that is
-        // absent or torn is replaced by the backup, the torn bytes kept beside it.
         let mut warnings = Vec::new();
         if let Err(error) = self.splice_live_config(
             &config_path,

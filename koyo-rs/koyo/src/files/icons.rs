@@ -28,8 +28,6 @@ pub fn file(name: &str) -> IconName {
         }
         _ => {}
     }
-    // Lowercased on the stack: this runs for every row drawn. None of the extensions known
-    // is longer than the buffer.
     let mut buffer = [0; 8];
     let extension = (name.rsplit_once('.'))
         .and_then(|(_, extension)| buffer.get_mut(..extension.len()).map(|to| (to, extension)))

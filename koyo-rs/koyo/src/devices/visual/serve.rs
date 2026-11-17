@@ -79,7 +79,6 @@ fn serve() -> Result<Vec<String>> {
         }
         Ok(out.join("stop").exists())
     });
-    // As the app quits: every host told to go, each shutting its simulator down.
     drawn.cx.update(|cx| super::super::devices(cx).update(cx, super::super::Devices::stop_all));
     let _ = drawn.until(Duration::from_secs(8), |_| Ok(false));
     lines.push(format!("stopped after {shots} pictures"));

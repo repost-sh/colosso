@@ -93,7 +93,6 @@ pub fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
         Part::Rows => ("rows", (80 * scale).min(height), 600 * scale, 3),
         Part::Foot => ("foot", height.saturating_sub(110 * scale), 110 * scale, 4),
         Part::Tiles => ("tiles", height.saturating_sub(200 * scale), 200 * scale, 3),
-        // Each row is 38 points apart.
         Part::Worktree { top, rows } => {
             let top = (top.as_f32() as u32).saturating_sub(8) * scale;
             ("part", top.min(height), (rows * 38 + 16) * scale, 3)
@@ -160,7 +159,6 @@ pub fn pills(drawn: &mut Drawn, site: &Path, said: &mut Vec<String>) -> Result<(
 pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     let root = checkout()?;
-    // The chat among the tabs, which isn't the one shown, so nothing marks it seen.
     let found = (drawn.cx).update(|cx| {
         shell.update(cx, |shell, cx| {
             let tabs = &mut shell.workspace.branch_mut()?.tabs;
@@ -237,7 +235,6 @@ pub fn drag(
     (drawn.cx).simulate_mouse_down(window, from, MouseButton::Left, none);
     (drawn.cx).simulate_mouse_move(window, from + point(px(4.), px(4.)), held, none);
     drawn.draw()?;
-    // Half way, then there: the tiles it passes step into the slot it left.
     let half = point((from.x + to.x) / 2., (from.y + to.y) / 2.);
     for (step, at) in [half, to].into_iter().enumerate() {
         (drawn.cx).simulate_mouse_move(window, at, held, none);
@@ -316,7 +313,6 @@ fn bar(drawn: &Drawn) -> (String, Option<String>) {
 /// and ⌘L opens the launcher on the page, where an address typed loads in it.
 pub fn address(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let (shell, window) = (drawn.shell.clone(), drawn.window);
-    // Without the panel beside them, the panes share the window right of the sidebar.
     (drawn.cx)
         .update_window(window, |_, window, cx| {
             window.dispatch_action(Box::new(ToggleRightPanel), cx);
@@ -350,7 +346,6 @@ pub fn address(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         ));
     }
 
-    // ⌘L from the chat: the launcher on the tab's page, its address filled in and selected.
     drawn.cx.simulate_keystrokes(window, "cmd-l");
     drawn.draw()?;
     let launcher = (drawn.cx.read(modal::window)).ok_or("⌘L opened no launcher")?;

@@ -54,9 +54,7 @@ pub fn control(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         ))
     });
     let (client, handle) = found.ok_or("the shown terminal isn't known yet")?;
-    // The agent's inbox lives as long as it does, or its connection's reader stops.
     let (agent, _inbox) = connect_agent(client.dir())?;
-    // Attached to write, as a relay is, with no size of its own to impose.
     let attach = RequestBody::Attach {
         handle: handle.clone(),
         size: None,
@@ -104,7 +102,6 @@ pub fn control(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         }
     }
 
-    // As the bar's "Give back" does.
     let release = RequestBody::Release {
         handle: handle.clone(),
     };
@@ -118,7 +115,6 @@ pub fn control(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     agent_opens(drawn, &agent, &handle, said)?;
     agent.close();
 
-    // A program asking for the person: the dot and the branch's count say so until they type.
     type_line(drawn, "printf '\\e]9;the check needs you\\a'")?;
     holds(drawn, "the terminal to need the person", |state| {
         state.status == Status::NeedsInput && state.reason.starts_with("notification")

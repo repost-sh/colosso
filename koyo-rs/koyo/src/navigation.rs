@@ -52,7 +52,6 @@ impl NavigationHistory {
     }
 
     pub fn current(&self) -> Route {
-        // Never empty: it starts on the workspace and Back keeps the first route.
         self.routes.current().copied().unwrap_or(Route::Workspace)
     }
 

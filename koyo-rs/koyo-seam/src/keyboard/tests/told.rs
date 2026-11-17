@@ -40,13 +40,10 @@ fn written(with: &str) -> usize {
 #[test]
 fn the_person_clicking_a_page_then_the_composer_has_the_keyboard_follow() {
     let (fake, turns) = in_composer();
-    // Heard before the press is handed on; `AppKit` makes the page's view the first
-    // responder as it hands it on, which is the person's doing.
     hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
     fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(holder(), Holder::Page(PAGE));
     assert_eq!(first(&fake), Responder::Page(PAGE));
-    // GPUI's focus moves to the composer as the press there is handled.
     hooks::pressed(WINDOW, Responder::Gpui, 0);
     assert_eq!(first(&fake), Responder::Page(PAGE), "a press alone leaves a page holding");
     set_in(WINDOW, COMPOSER, Cause::Focused);
@@ -90,8 +87,6 @@ fn a_page_asking_again_and_again_is_taken_back_twenty_times_a_second_at_most() {
         fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));
         fake.moved(WINDOW, Responder::Gpui);
     }
-    // Moved off a page back to GPUI's view by itself is no request: only the asks count.
-    // And one more turn, a second on, sums up the refusals the log was spared.
     assert_eq!(turns.next(), 21);
     assert_eq!(written("asked for the keyboard"), 20);
     assert_eq!(written("10 more refused or healed"), 1);
@@ -99,9 +94,6 @@ fn a_page_asking_again_and_again_is_taken_back_twenty_times_a_second_at_most() {
 
 #[test]
 fn a_key_finding_a_page_with_the_composer_holding_goes_to_the_composer() {
-    // An agent typing into its page out of the person's way: whatever Chromium does with the
-    // first responder meanwhile, the person's keys stay in the composer, and the agent's
-    // input goes to its page's renderer, past `AppKit`.
     let (fake, turns) = in_composer();
     fake.tells.set(false);
     fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));
@@ -138,12 +130,10 @@ fn the_side_buttons_give_no_page_the_keyboard() {
 #[test]
 fn a_press_on_a_page_that_gpui_keeps_for_itself_gives_the_page_nothing() {
     let (fake, turns) = in_composer();
-    // Never handed on, the press makes the page's view no first responder.
     hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
     assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
     hooks::at_key(WINDOW);
     assert_eq!(first(&fake), Responder::Gpui);
-    // A press on the composer after it, and the page asking, is refused.
     hooks::pressed(WINDOW, Responder::Gpui, 0);
     fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
@@ -165,7 +155,6 @@ fn a_menu_has_the_keys_while_it_tracks_them_and_gives_them_back() {
     let (fake, turns) = in_composer();
     hooks::menu(true);
     assert_eq!(holder(), Holder::Menu);
-    // Left alone while it tracks, but for a page asking.
     fake.moved(WINDOW, Responder::Window);
     assert_eq!(turns.next(), 0);
     hooks::menu(false);
@@ -190,15 +179,11 @@ fn another_app_in_front_and_back_gives_the_person_what_they_had() {
 fn a_floating_window_closing_with_the_keys_hands_them_back_to_the_window_it_was_over() {
     let (fake, turns) = in_composer();
     set_in(2, COMPOSER, Cause::Focused);
-    // A window of Koyo's the keyboard isn't kept for, a dialog's or the tab switcher's,
-    // takes the keys and closes with them; the window it belonged to is the second.
     crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().key(2, false));
     hooks::closed_over(Some(2), true);
     assert_eq!(held(2).unwrap().0, Holder::Gpui(Part::Pane(7)));
     assert_eq!(turns.next(), 1);
     assert_eq!(*fake.keyed.borrow(), vec![2], "that window, and no other");
-    // One that closes without the keys, or that nothing is known to belong to, changes nothing:
-    // `AppKit` picks the next key window itself.
     hooks::closed_over(Some(WINDOW), false);
     hooks::closed_over(None, true);
     assert_eq!(turns.next(), 0);
@@ -229,7 +214,6 @@ fn a_pages_views_leaving_take_the_first_responder_to_gpuis_view_and_back_as_they
     let (fake, turns) = in_composer();
     set_in(WINDOW, Surface::Page(PAGE), Cause::Focused);
     assert_eq!(first(&fake), Responder::Page(PAGE));
-    // Heard before they leave, while they're still in the window.
     hooks::page_leaving(PAGE);
     assert_eq!(first(&fake), Responder::Gpui);
     fake.page_in(PAGE, None);
@@ -239,11 +223,9 @@ fn a_pages_views_leaving_take_the_first_responder_to_gpuis_view_and_back_as_they
     fake.page_in(PAGE, Some(WINDOW));
     hooks::page_arrived(PAGE);
     assert_eq!(first(&fake), Responder::Page(PAGE), "the page has it once it's back");
-    // Another page's views coming and going leave the first responder alone.
     hooks::page_leaving(AGENTS_PAGE);
     hooks::page_arrived(AGENTS_PAGE);
     assert_eq!(first(&fake), Responder::Page(PAGE));
-    // The page closing: told while it's still there, as the host tells it, then gone.
     hooks::page_leaving(PAGE);
     assert_eq!(first(&fake), Responder::Gpui, "off the page before it's gone");
     fake.page_in(PAGE, None);
@@ -265,7 +247,6 @@ fn a_key_ping_ponging_with_a_page_is_healed_each_time_and_logged_twenty_times_a_
     assert_eq!(written(": healed"), 20);
     assert_eq!(turns.next(), 1, "the summing up, a second on");
     assert_eq!(written("10 more refused or healed"), 1);
-    // Never a character, a key or a code in any of it.
     let lines = crate::keyboard::lines::WRITTEN.with(|lines| lines.borrow().clone());
     assert!(lines.iter().all(|line| line.starts_with("keyboard: ")));
 }
@@ -276,7 +257,6 @@ fn a_late_request_of_a_page_pressed_before_the_person_moved_on_is_refused() {
     hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
     fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(holder(), Holder::Page(PAGE));
-    // ⌘L within the second, then Chromium asks again for the page, late.
     set_in(WINDOW, Surface::Gpui(Part::Bar(PAGE)), Cause::Intent(crate::keyboard::Intent::Address));
     fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(holder(), Holder::Gpui(Part::Bar(PAGE)));
@@ -335,8 +315,6 @@ fn a_press_on_a_window_that_isnt_key_leaves_what_has_the_keys_elsewhere_alone() 
 
 #[test]
 fn refusing_an_agents_page_touches_only_the_persons_first_responder() {
-    // An agent types into its page through the engine, past `AppKit`: refusing the page's ask
-    // asks `AppKit` for the person's first responder back, and for nothing of the page's.
     let (fake, turns) = in_composer();
     fake.asked.borrow_mut().clear();
     fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));

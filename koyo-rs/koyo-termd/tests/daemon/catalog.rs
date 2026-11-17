@@ -21,7 +21,6 @@ fn lines(read: &Value) -> Vec<&str> {
 fn an_agent_drives_a_shell_through_the_catalog() {
     let dir = test_dir("catalog");
     let _stop = StopOnDrop(dir.clone());
-    // The agent runs in this checkout, which `current` then means.
     let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let relay = connect_from(&dir, ClientKind::Relay, Some(checkout));
     let agent = Executor::new(
@@ -50,7 +49,6 @@ fn an_agent_drives_a_shell_through_the_catalog() {
     let waited = call("terminal_wait", json!({ "for": "prompt" })).unwrap();
     assert_eq!(waited.structured["met"], true, "{waited:?}");
 
-    // Act, wait and read in one call, the terminal the one last acted on.
     let sent = call(
         "terminal_send",
         json!({
@@ -97,7 +95,6 @@ fn an_agent_drives_a_shell_through_the_catalog() {
     let failed = failed.structured["entries"].as_array().unwrap();
     assert_eq!((failed.len(), &failed[0]["command"]), (1, &json!("false")));
 
-    // A request sent again is answered from its receipt, not sent twice.
     let once = json!({ "text": "echo once", "enter": true, "requestId": "send-once" });
     let first = call("terminal_send", once.clone()).unwrap();
     assert_eq!(call("terminal_send", once).unwrap(), first);
@@ -156,7 +153,6 @@ fn each_agent_sees_its_own_worktrees_terminals() {
     let dir = test_dir("scope");
     let _stop = StopOnDrop(dir.clone());
     let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
-    // Another checkout, as far as the daemon reads one: a `.git` with a HEAD.
     let other = dir.root().parent().unwrap().join("other");
     std::fs::create_dir_all(other.join(".git")).unwrap();
     std::fs::write(other.join(".git/HEAD"), "ref: refs/heads/elsewhere\n").unwrap();

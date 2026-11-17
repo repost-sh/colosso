@@ -147,8 +147,6 @@ impl Element for TerminalElement {
         cx: &mut App,
     ) -> Prepainted {
         let padding = self.look.padding;
-        // The person's metrics: unpinned, the glyphs are made for the person's look, which
-        // gives them; pinned, they're made for the pinned grid's, so they're measured aside.
         let person = if self.pinned.is_some() {
             (self.glyphs.borrow_mut()).metrics_at(&self.look, self.look.font_size, window)
         } else {
@@ -178,7 +176,6 @@ impl Element for TerminalElement {
         });
         if resized {
             let view = self.view.clone();
-            // Not while drawing: the view sends the daemon its new size.
             cx.defer(move |cx| view.update(cx, |view, cx| view.grid_changed(fill, cx)));
         }
         let (grid, look, pinned) = if let Some(cells) = self.pinned {
@@ -189,7 +186,6 @@ impl Element for TerminalElement {
             (fill, Rc::clone(&self.look), None)
         };
         self.grid.set(Some(grid));
-        // A pinned grid is pointed at where it's drawn; the pane clips what runs past it.
         let hitbox = window.insert_hitbox(pinned.unwrap_or(bounds), HitboxBehavior::Normal);
         Prepainted {
             grid,
@@ -233,14 +229,10 @@ impl Element for TerminalElement {
             .frame
             .as_ref()
             .map_or(self.look.background, |frame| frame.background);
-        // A pinned grid has its own background, on what the pane draws round it; its cells
-        // clip to it.
         let cells = if let Some(drawn) = prepainted.pinned {
             window.paint_quad(fill(drawn, hsla(background)));
             drawn
         } else {
-            // What's behind the terminal shows through its default background; a program's own
-            // background is painted solid.
             if self
                 .frame
                 .as_ref()

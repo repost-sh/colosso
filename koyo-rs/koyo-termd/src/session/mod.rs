@@ -351,7 +351,6 @@ impl Session {
     }
 
     pub(super) fn write_pty(&mut self, bytes: &[u8]) {
-        // Its echo, or the program's answer, wakes the thread even while output flows.
         if let Some(handoff) = &self.handoff {
             handoff.expect_output();
         }
@@ -366,7 +365,6 @@ impl Session {
     }
 
     fn exited(&mut self, exit: Exit) {
-        // What the program wrote last comes before its end.
         self.take_output();
         self.pty = None;
         self.record.pid = None;

@@ -76,7 +76,6 @@ fn frecency_weighs_typing_over_following_and_halves_every_thirty_days() {
     assert!((strength(&history, "https://followed.dev/") - 50.).abs() < 1e-6);
     let old = strength(&history, "https://old.dev/");
     assert!((old - 50.).abs() < 1e-6, "half of typed, thirty days on");
-    // Used three times, it counts three times as much.
     page(
         &mut history,
         "https://followed.dev/",
@@ -121,7 +120,6 @@ fn typed_words_find_pages_holding_every_one_best_first() {
             "https://github.com/zen-browser/desktop"
         ]
     );
-    // Every word has to be there, in the title or the address.
     let found = history.find(Kind::Page, "zen desk", &here(), 10, NOW);
     assert_eq!(texts(&found), ["https://github.com/zen-browser/desktop"]);
     assert_eq!(found[0].title, "Zen Browser");
@@ -137,7 +135,6 @@ fn typed_words_find_pages_holding_every_one_best_first() {
 
 #[test]
 fn a_word_starts_where_firefox_says_and_anywhere_counts_when_few_do() {
-    // Whether the words hold the token, and whether it starts a word in them.
     let holds = |words: &str, token: &str| {
         let mut history = History::default();
         use_(&mut history, Kind::Search, words, 0, How::Typed, &here());
@@ -154,7 +151,6 @@ fn a_word_starts_where_firefox_says_and_anywhere_counts_when_few_do() {
     );
     assert_eq!(holds("Grüße aus Köln", "öln"), Some(false));
     assert_eq!(holds("google", "bing"), None);
-    // With few found at words' starts, those found anywhere are found too.
     let mut history = History::default();
     page(&mut history, "https://google.com/", "Google", 0, How::Typed);
     assert_eq!(
@@ -185,7 +181,6 @@ fn what_was_picked_after_typing_comes_first_when_typed_again() {
         ["https://gitlab.com/", "https://github.com/"]
     );
     assert!(found[0].learned);
-    // Picked again it counts more, a tenth of it fading each pick, and it fades by the day.
     history.learn(Kind::Page, "gitl".into(), "https://gitlab.com/", NOW);
     let learned = &history.learned[0];
     assert!((learned.uses - 1.9).abs() < 1e-6);
@@ -211,7 +206,6 @@ fn with_nothing_typed_the_top_sites_show_one_page_a_host() {
         0,
         How::Followed,
     );
-    // A link followed once doesn't make a top site.
     page(&mut history, "https://once.dev/", "Once", 0, How::Followed);
     let found = history.find(Kind::Page, "", &here(), 8, NOW);
     assert_eq!(found.len(), 1, "{found:?}");
@@ -241,7 +235,6 @@ fn words_with_nothing_typed_are_the_latest_those_used_here_first() {
     );
     let found = history.find(Kind::Command, "", &here(), 10, NOW);
     assert_eq!(texts(&found), ["npm run dev", "cargo test", "ls"]);
-    // Typed, words that start with it rank above words that hold it.
     use_(
         &mut history,
         Kind::Command,
@@ -283,7 +276,6 @@ fn a_host_typed_before_completes_what_is_typed() {
     page(&mut history, "https://gogs.io/", "Gogs", 0, How::Followed);
     assert_eq!(history.autofill("goo", NOW).as_deref(), Some("google.com"));
     assert_eq!(history.autofill("GOO", NOW).as_deref(), Some("google.com"));
-    // Only hosts typed in lately complete, and nothing with a space or a path.
     assert_eq!(history.autofill("gog", NOW), None);
     assert_eq!(history.autofill("goo gle", NOW), None);
     assert_eq!(history.autofill("google.com/", NOW), None);

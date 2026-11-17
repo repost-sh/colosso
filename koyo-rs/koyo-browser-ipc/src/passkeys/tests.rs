@@ -27,7 +27,6 @@ fn bytes_travel_as_base64url_and_take_padding_too() {
 
 #[test]
 fn a_pages_creation_options_read_as_webauthns_json_form() {
-    // What the bridge sends for a page's `create`, as `toJSON` would write the options.
     let ask: PasskeyAsk = serde_json::from_value(serde_json::json!({
         "ceremony": "create",
         "rp": {"id": "example.com", "name": "Example"},

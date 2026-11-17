@@ -194,10 +194,10 @@ fn ends_path(c: char) -> bool {
 /// path or URL holds: Claude Code's `⏺` and `⎿`, a frame's `│`, a list's `•`.
 fn symbol(c: char) -> bool {
     matches!(c,
-        '\u{2190}'..='\u{21FF}' // Arrows
-        | '\u{2300}'..='\u{23FF}' // Miscellaneous technical: ⏺, ⎿
-        | '\u{2500}'..='\u{27BF}' // Box drawing, blocks, shapes, symbols, dingbats
-        | '\u{E000}'..='\u{F8FF}' // Private use: the icons of Nerd Fonts
+        '\u{2190}'..='\u{21FF}'
+        | '\u{2300}'..='\u{23FF}'
+        | '\u{2500}'..='\u{27BF}'
+        | '\u{E000}'..='\u{F8FF}'
         | '•' | '·' | '…' | '‹' | '›' | '«' | '»'
     )
 }

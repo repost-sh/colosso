@@ -57,7 +57,6 @@ impl Key {
             name,
             code,
             codes: key_codes(&known),
-            // A shortcut types nothing.
             text: text.filter(|_| modifiers & (CTRL | META) == 0),
             modifiers,
         })

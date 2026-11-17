@@ -51,7 +51,6 @@ wrap_request_handler! {
             host::renderer_gone(self.pane, format!("{status:?} ({error_code})"));
         }
 
-        // Called on the IO thread.
         fn auth_credentials(
             &self,
             _browser: Option<&mut Browser>,
@@ -159,7 +158,6 @@ wrap_jsdialog_handler! {
             let Some(callback) = callback else {
                 return 0;
             };
-            // Pages no longer choose the text; the origin is the main frame's.
             let origin = browser
                 .and_then(|b| b.main_frame())
                 .map(|f| CefString::from(&f.url()).to_string())
@@ -240,7 +238,6 @@ wrap_permission_handler! {
                 return 0;
             };
             let origin = text(requesting_origin);
-            // Decided for the site before, it's answered as it was (`host/site.rs`).
             match host::media_decided(self.pane, &origin, requested_permissions) {
                 Some(true) => callback.cont(requested_permissions),
                 Some(false) => callback.cancel(),

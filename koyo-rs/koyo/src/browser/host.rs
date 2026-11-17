@@ -254,8 +254,6 @@ impl Browsers {
         let Some(request) = self.send_now(request) else {
             return;
         };
-        // What opens and moves pages, and clears what they keep; the rest is for a page that is
-        // open, which none is yet.
         let kept = matches!(
             request,
             AppRequest::Open { .. }

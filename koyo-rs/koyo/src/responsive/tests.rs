@@ -44,7 +44,6 @@ fn grips_sit_outside_the_content_and_size_a_page_within_its_limits() {
         Grip::Corner.bounds(shown),
         bounds(point(px(304.), px(504.)), size(px(8.), px(8.)))
     );
-    // A page shown at half its size: a unit is half a window pixel.
     let limits = 50..=8192;
     let drag = Drag {
         grip: Grip::Right,
@@ -54,7 +53,6 @@ fn grips_sit_outside_the_content_and_size_a_page_within_its_limits() {
         height: 800,
         unit: (0.5, 0.5),
     };
-    // 10 px in the window is 20 at half, and the right edge moves by half the change.
     assert_eq!(drag.size_at(point(px(310.), px(350.)), &limits), (440, 800));
     let corner = Drag {
         grip: Grip::Corner,
@@ -79,7 +77,6 @@ fn grips_sit_outside_the_content_and_size_a_page_within_its_limits() {
 
 #[test]
 fn a_terminals_grips_size_it_in_whole_cells_within_its_limits() {
-    // Cells of 8 × 16 window pixels, from 80 × 24.
     let limits = 2..=1000;
     let corner = Drag {
         grip: Grip::Corner,
@@ -89,7 +86,6 @@ fn a_terminals_grips_size_it_in_whole_cells_within_its_limits() {
         height: 24,
         unit: (8., 16.),
     };
-    // Twice the pointer's way across: 20 px is 40 px, five columns; 32 px down, two rows.
     assert_eq!(corner.size_at(point(px(120.), px(132.)), &limits), (85, 26));
     assert_eq!(corner.size_at(point(px(97.), px(107.)), &limits), (79, 24));
     let bottom = Drag {
@@ -187,10 +183,8 @@ fn a_grip_is_taken_dragged_and_let_go_and_a_double_click_fits_its_side(cx: &mut 
     content.update(cx, |it, cx| it.take_grip(Grip::Corner, &press(10., 1), cx));
     let (_, drag) = read(cx);
     assert_eq!(drag.as_ref().map(|drag| drag.unit), Some((2., 2.)));
-    // 20 window pixels is 10 units: 20 across (the right edge moves half), 10 down.
     content.update(cx, |it, cx| it.drag_grip(&moved(30., true), cx));
     assert_eq!(read(cx).0, (120, 60));
-    // The button came up outside the window: the next move lets go, and sizes nothing.
     content.update(cx, |it, cx| it.drag_grip(&moved(90., false), cx));
     let (size, drag) = read(cx);
     assert_eq!((size, drag), ((120, 60), None));
@@ -200,12 +194,10 @@ fn a_grip_is_taken_dragged_and_let_go_and_a_double_click_fits_its_side(cx: &mut 
         [true, false],
         "told once each way"
     );
-    // A double click fits that side alone to the area.
     content.update(cx, |it, cx| it.take_grip(Grip::Right, &press(10., 2), cx));
     assert_eq!(read(cx), ((300, 60), None));
     content.update(cx, |it, cx| it.take_grip(Grip::Bottom, &press(10., 2), cx));
     assert_eq!(read(cx).0, (300, 200));
-    // A preset has no grips to take.
     content.update(cx, |it, cx| {
         it.fixed = true;
         it.take_grip(Grip::Corner, &press(10., 1), cx);

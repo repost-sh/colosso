@@ -119,7 +119,6 @@ impl AutoSwitchEngine {
                     fingerprint,
                 }),
                 Freshen::Transient => transient_failure = true,
-                // One cause is reported, so the one worth acting on: the most actionable.
                 Freshen::Systemic(kind) => {
                     systemic = Some(systemic.map_or(kind, |kept| kept.min(kind)));
                 }
@@ -164,16 +163,10 @@ impl AutoSwitchEngine {
         if !expires_within(expires_at, self.now() * 1000., FRESHEN_BUFFER_MS) {
             return Freshen::Ok;
         }
-        // The gate serializes every POST of a backup refresh token: it re-reads under the slot
-        // lock (this snapshot may be superseded) and persists by a fingerprint compare-and-swap,
-        // so a freshen racing the collector can't consume one grant twice.
         let outcome = self.host.consume_backup_grant(number, email, &credentials);
         if outcome.error.is_none()
             && let Some(fresh) = outcome.credentials.as_deref().filter(|c| !c.is_empty())
         {
-            // The gate persisted the successor already. A credential that authenticates as
-            // another account would put the person on the wrong account with every gauge
-            // normal: not a target, quarantined until a re-add replaces it.
             if self.note_token_identity(number, identity, outcome.token_account.as_ref()) {
                 return Freshen::Quarantine(
                     QuarantineReason::IdentityConflict,
@@ -183,16 +176,12 @@ impl AutoSwitchEngine {
             return Freshen::Ok;
         }
         match outcome.error.as_deref() {
-            // The gate may have adopted a stashed successor before the POST: the generation it
-            // sent is the one the store holds.
             Some(kind) if PERMANENT_AUTH_ERRORS.contains(&kind) => Freshen::Quarantine(
                 QuarantineReason::InvalidGrant,
                 outcome
                     .consumed_fp
                     .or_else(|| credential_fingerprint(&credentials)),
             ),
-            // Deterministic, not network trouble: reported apart so the error names the real
-            // cause instead of "(network?)".
             Some(kind) => Systemic::from_kind(kind).map_or(Freshen::Transient, Freshen::Systemic),
             None => Freshen::Transient,
         }
@@ -228,7 +217,6 @@ impl AutoSwitchEngine {
             return true;
         }
         if slot.uuid.is_empty() {
-            // Bookkeeping never breaks a freshen.
             if let Err(error) = self.host.backfill_account_uuid(number, slot, token_uuid) {
                 log::debug!("uuid backfill failed for account {number}: {error}");
             }
@@ -258,10 +246,6 @@ impl AutoSwitchEngine {
             if !result.switched {
                 return Ok(Performed::AlreadyActive(result.reason));
             }
-            // Where we came from, so the next tick can refuse to undo this, and what it looked
-            // like, so that refusal has a release burn can't fake (`release.rs`). An `inf`
-            // recovery isn't portable JSON: left out. The trigger is recorded so a reader never
-            // infers it from the snapshot.
             fresh.last_switch_at = Some(self.now());
             fresh.last_switch_to = Some(StoredSlot::Text(number.to_owned()));
             fresh.last_switch_from = result
@@ -289,7 +273,6 @@ impl AutoSwitchEngine {
         };
         self.unhealthy_ticks = 0;
         self.idle_hold_since = None;
-        // `switch_to` replanned the new active row: the wait reads that plan.
         self.active_plan = ActivePlan::Replanned;
         self.emit(AutoSwitchEvent::Switch(SwitchEvent {
             ts: self.now(),

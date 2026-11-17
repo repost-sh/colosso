@@ -44,12 +44,9 @@ pub const CONTEXT: &str = "Terminal";
 /// What macOS terminals make of a few Command and Option chords, as Ghostty and iTerm2 do:
 /// the line editing a shell reads (Emacs keys), since a program is never sent Command.
 pub const MAC_EDITING: [(&str, &str); 5] = [
-    // Deletes back to the line's start.
     ("cmd-backspace", "\x15"),
-    // To the line's start and end.
     ("cmd-left", "\x01"),
     ("cmd-right", "\x05"),
-    // A word back and forward.
     ("alt-left", "\x1bb"),
     ("alt-right", "\x1bf"),
 ];
@@ -68,7 +65,6 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-home", ScrollToTop, Some(CONTEXT)),
         KeyBinding::new("cmd-end", ScrollToBottom, Some(CONTEXT)),
         KeyBinding::new("cmd-alt-r", ToggleResponsive, Some(CONTEXT)),
-        // The program's, through `key_down`, not the window's, which moves focus on them.
         KeyBinding::new("tab", NoAction, Some(CONTEXT)),
         KeyBinding::new("shift-tab", NoAction, Some(CONTEXT)),
     ]);
@@ -354,7 +350,6 @@ impl Drop for TerminalView {
     fn drop(&mut self) {
         if let (Link::Attached { index, .. }, Some(handle)) = (&self.link, self.handle.clone()) {
             let (client, index) = (Arc::clone(&self.client), *index);
-            // The view is going; the terminal stays in the daemon.
             let detached = std::thread::Builder::new()
                 .name("term-detach".into())
                 .spawn(move || client.detach(&handle, index));
@@ -410,7 +405,6 @@ impl Render for TerminalView {
             .on_action(
                 cx.listener(|this, SendText(text): &SendText, _, cx| this.type_text(text, cx)),
             )
-            // ⌥⌘R goes on up, to the pane that shows the terminal responsive.
             .child(element)
             .children(notice.map(|message| div().absolute().top_2().left_2().child(message)))
             .children(other_build)
@@ -445,7 +439,6 @@ impl TerminalView {
             .items_center()
             .justify_center()
             .p_4()
-            // As wide as the tab allows, up to a comfortable line.
             .child(
                 div()
                     .flex()

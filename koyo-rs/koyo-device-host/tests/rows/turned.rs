@@ -36,10 +36,7 @@ fn turn(host: &mut Driver, to: Orientation) -> Option<Screen> {
     if answer.is_err() {
         eprintln!("turning {to:?}: {answer:?}");
     }
-    // The simulator's own turn has its animation.
     host.settle(800, 5_000);
-    // What the host said of the device, as the app keeps it: the way its interface faces now,
-    // which an app that doesn't turn that way leaves as it was.
     match &host.state {
         Some(State::Ready { screen }) => Some(*screen),
         other => {
@@ -69,9 +66,7 @@ pub fn turned(target: &Target, pages: &Pages, host: &mut Driver, upright: &Scree
         } else {
             screen.pixels == upright.pixels
         };
-        // Upright: the page's own words read across the picture.
         let reads = snapshot(host).contains("touch lab");
-        // Aimed: left of the middle is left on the page, above is above, as far apart as sent.
         let left = tapped(host, pages, &screen, 0.3, 0.5);
         let right = tapped(host, pages, &screen, 0.7, 0.5);
         let high = tapped(host, pages, &screen, 0.5, 0.35);

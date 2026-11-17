@@ -54,7 +54,6 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // A terminal the daemon has said nothing of yet may be running anything.
         let busy: Vec<(&str, String)> = (ids.iter())
             .filter_map(|id| match self.terminals.sources.get(id)? {
                 Source::Existing { handle, name } => match self.terminals.states.get(handle) {
@@ -91,8 +90,6 @@ impl Shell {
                     let shell = open_request(&worktree, name.clone());
                     (self.terminals.sources).insert(id, Source::Open(Box::new(shell)));
                 }
-                // Not attached yet, as a shell a daemon restart ended and that wasn't looked
-                // at: the daemon still lists it, under its name.
                 Some(Source::Open(request)) => handles.extend(
                     (self.terminals.states.of_worktree(&worktree).into_iter())
                         .find(|(_, state)| state.name == request.name)

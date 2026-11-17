@@ -124,7 +124,6 @@ impl Accounts {
                     service: service::Service::start(cx),
                     cadence: poll::Cadence::default(),
                     _looking: cx.spawn(async move |this, cx| {
-                        // At least once a minute, so an open panel's minute comes round.
                         while let Ok(Some(wait)) = this.update(cx, |accounts, cx| {
                             let open = accounts.trigger.is_open(cx);
                             (accounts.running.as_ref()).map(|running| {

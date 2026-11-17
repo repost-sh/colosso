@@ -53,15 +53,12 @@ async fn a_rust_file_starts_its_server_which_gets_its_text_and_shows_diagnostics
         ])
     });
     let shell = shell(&[&root], launcher, cx);
-    // A file no server knows starts nothing.
     open(&shell, &root, "README.md", cx);
     assert!(server(&root, cx).is_none());
-    // The first Rust file starts the checkout's server, which is sent the file's text.
     let lib = open(&shell, &root, "src/lib.rs", cx);
     let server = server(&root, cx).expect("a server for the checkout");
     assert_eq!(settled(&server, cx).await, State::Ready);
     assert_eq!(starts.load(Ordering::SeqCst), 1);
-    // Its diagnostics land on the bytes it meant, past characters UTF-16 counts twice.
     let shown = |cx: &App| {
         let editor = editor(&lib, cx)?;
         let diagnostics = editor.read(cx).diagnostics()?;
@@ -128,7 +125,6 @@ async fn a_typescript_file_starts_its_server_which_is_ready_once_initialized(
     open(&shell, &root, "src/app.ts", cx);
     let server = server(&root, cx).expect("a server for the checkout");
     assert_eq!(cx.read(|cx| server.read(cx).kind()), Kind::TypeScript);
-    // It never says it's done loading, as rust-analyzer does: initialized, it's ready.
     assert_eq!(settled(&server, cx).await, State::Ready);
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -163,7 +159,6 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
     assert_eq!(settled(&server, cx).await, State::Ready);
     let lib_editor = cx.read(|cx| editor(&lib, cx)).unwrap();
 
-    // Hover: the pointer rests on the name, and the server's text pops up over its range.
     rest_pointer(shell.0, &lib_editor, greet.start + 1, cx);
     let watched = vec![changes(&server, cx), changes(&lib_editor, cx)];
     until(cx, watched, |cx| {
@@ -180,7 +175,6 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
     assert!(contents.value.contains("pub fn greet() -> u32"));
     assert_eq!(range, greet);
 
-    // F12 on the call: the other file is shown, the definition selected.
     place_caret(shell.0, &lib_editor, call, cx);
     cx.simulate_keystrokes(shell.0, "f12");
     let other = root.join("src/other.rs");
@@ -193,7 +187,6 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
     let watched = vec![changes(&server, cx), changes(&shell.1, cx)];
     until(cx, watched, |cx| selected(cx).is_some()).await;
     assert_eq!(cx.read(selected), Some(target));
-    // It has the keyboard, so the selection shows, and keeps it as frames go by.
     for _ in 0..3 {
         draw(shell.0, cx);
         cx.executor().advance_clock(Duration::from_millis(500));
@@ -204,7 +197,6 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
         editor_focused(shell.0, &shown.unwrap(), cx),
         "the definition's editor has the keyboard"
     );
-    // And it was opened on the server, with its text.
     let watched = vec![changes(&server, cx)];
     until(cx, watched, |cx| server.read(cx).health().is_some()).await;
     let health = cx.read(|cx| server.read(cx).health().cloned());
@@ -235,14 +227,12 @@ fn rest_pointer(
         window.dispatch_event(PlatformInput::MouseMove(pointer), cx);
     }))
     .unwrap();
-    // The editor waits a moment before it asks.
     cx.executor().advance_clock(Duration::from_millis(200));
 }
 
 #[gpui_kit::test]
 async fn edits_reach_the_server_as_they_happen_and_a_save_is_told(cx: &mut TestAppContext) {
     let root = repo("language-edits", &[("src/lib.rs", LIB)]);
-    // After the crab: on line 3, past 21 UTF-16 units, where the crab counts two.
     let after_crab = LIB.find("🦀").unwrap() + "🦀".len();
     let (launcher, _) = launcher(move |root, _| {
         let mut script = started(root, "src/lib.rs");
@@ -272,7 +262,6 @@ async fn edits_reach_the_server_as_they_happen_and_a_save_is_told(cx: &mut TestA
     let health = |cx: &App| server.read(cx).health().cloned();
     let watched = vec![changes(&server, cx)];
     until(cx, watched, |cx| health(cx).as_deref() == Some("changed")).await;
-    // Saved, the server hears so once the file's written.
     lib.update(cx, |view, cx| view.save(cx).detach());
     let watched = vec![changes(&server, cx)];
     until(cx, watched, |cx| health(cx).as_deref() == Some("saved")).await;

@@ -121,7 +121,6 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
         window_bounds: Some(WindowBounds::centered(window, cx)),
         window_min_size: Some(size(px(820.), px(520.))),
         window_background: WindowBackgroundAppearance::Blurred,
-        // The rails are custom chrome, so the shell moves the window itself.
         app_owns_titlebar_drag: true,
         titlebar: Some(TitlebarOptions {
             title: Some("Koyo".into()),
@@ -136,7 +135,6 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
     let opened = cx.open_window(options, |window, cx| {
         theme::follow_window_appearance(window);
         let shell = cx.new(|cx| shell::Shell::new(window, cx));
-        // gpui-kit's root paints the theme background by default, covering the blur.
         cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
     })?;
     popup::refresh_edge(opened.into(), cx);
@@ -144,16 +142,10 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
 }
 
 fn main() -> ExitCode {
-    // `koyo termd`: the terminal daemon, which the app runs from its own executable so
-    // the two never come apart. It keeps its own log, and needs nothing of the app's.
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("termd") => return koyo_termd::main(args),
-        // `koyo app`: the app's operations from a shell, called on the running app's
-        // control socket (docs/app-control.md).
         Some("app") => return koyo_app_control::cli_main(args),
-        // `koyo mcp`: the terminals' MCP server an agent starts over stdio, which starts
-        // the daemon from this executable when none runs, in the folder Colosso's moves to.
         Some("mcp") => {
             former_name::move_data();
             return koyo_term_mcp::main(args, terminals::daemon_command());
@@ -228,10 +220,7 @@ fn main() -> ExitCode {
         return shell::check_switcher();
     }
     let app = gpui_kit::application()
-        // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
         .with_assets(gpui_kit::assets::AllAssets);
-    // The dock icon clicked once the window's closed opens it again. A minimised window
-    // isn't visible to macOS either, which restores it itself: hence the check.
     app.on_reopen(|cx| {
         if cx.windows().is_empty()
             && let Err(error) = open_main_window(cx)
@@ -242,16 +231,11 @@ fn main() -> ExitCode {
     app.run(|cx| {
         init(cx);
         quitting::set_menu(cx);
-        // Not in `init`, which tests and the visual check share: they run servers of
-        // their own, or none.
         language::init(cx);
-        // Not in `init` either: tests drive app control without its socket.
         control::start(cx);
         #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
         open_main_window(cx).expect("failed to open window");
-        // Ready before the first page asks for it.
         browser::warm_up(cx);
-        // A debug build's harness for driving pages and the window, armed by `KOYO_NATIVE_PROBE`.
         #[cfg(all(target_os = "macos", debug_assertions, not(test)))]
         browser::native::probe::start(cx);
     });

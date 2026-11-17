@@ -125,13 +125,11 @@ fn plane(image: &CVPixelBuffer, coded: (usize, usize)) -> Option<(Vec<u8>, usize
 /// What a picture says of the crop: `light` is its light, `stride` bytes a row. Black where it
 /// would be cut, beside a screen lit at that edge; lit there; or too dark at the edge to say.
 fn seen(light: &[u8], stride: usize, coded: (usize, usize), screen: (usize, usize)) -> Seen {
-    // The mean light of the rows `rows` between the columns `columns`.
     let mean = |columns: std::ops::Range<usize>, rows: std::ops::Range<usize>| {
         let count = columns.len() * rows.len();
         let sum: u64 = rows.map(|y| light[y * stride + columns.start..y * stride + columns.end].iter().map(|byte| u64::from(*byte)).sum::<u64>()).sum();
         (count > 0).then(|| sum as f64 / count as f64)
     };
-    // What is cut, to the right of the screen and under it; and the screen's own edge beside each.
     let cut = [mean(screen.0..coded.0, 0..screen.1), mean(0..coded.0, screen.1..coded.1)];
     let edge = [
         mean(screen.0.saturating_sub(EDGE)..screen.0, 0..screen.1).filter(|_| coded.0 > screen.0),
@@ -166,14 +164,12 @@ mod tests {
 
     #[test]
     fn a_screen_that_reaches_into_what_would_be_cut_is_shown_whole() {
-        // In the middle of the picture, as a device that pads on every side would code it.
         assert_eq!(seen(&picture(4..36, 5..55), 48, (40, 60), (32, 50)), Seen::Lit);
     }
 
     #[test]
     fn a_dark_picture_says_nothing_yet() {
         assert_eq!(seen(&picture(0..0, 0..0), 48, (40, 60), (32, 50)), Seen::NotYet);
-        // Lit, but dark at its foot: the foot's cut can't be told from the screen.
         assert_eq!(seen(&picture(0..32, 0..20), 48, (40, 60), (32, 50)), Seen::NotYet);
     }
 }

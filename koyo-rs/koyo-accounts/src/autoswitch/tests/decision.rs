@@ -40,9 +40,6 @@ fn no_active_account() {
 
 #[test]
 fn hysteresis_margin_blocks_marginal_candidates() {
-    // threshold 90, hysteresis 10: a candidate must beat the active by >= 10 points; 95 → 86
-    // is only 9. Failing the margin isn't exhaustion: no all-exhausted, no reset sleep, so the
-    // next tick keeps the normal cadence and the at-limit escape isn't missed.
     let mut h = Harness::standard();
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(86.)), ("3", usage(88.))]);
     assert_eq!(outcome, TickOutcome::Blocked);
@@ -55,7 +52,6 @@ fn hysteresis_margin_blocks_marginal_candidates() {
 
 #[test]
 fn issue_115_strictly_better_candidate_switches() {
-    // Active bound by 5h (99%), candidate by 7d (89%): 89 < 90 and 99 - 89 >= 10.
     let mut h = Harness::standard();
     let outcome = h.tick_with_usage(&[
         (
@@ -78,8 +74,6 @@ fn issue_115_strictly_better_candidate_switches() {
 
 #[test]
 fn proactive_never_lands_at_or_over_threshold() {
-    // threshold 80, hysteresis 15: 85% is five points better than the active 90% but over the
-    // line; the 79% peer keeps this out of the all-above escape and misses the margin itself.
     let settings = AutoSwitchSettings {
         hysteresis_pct: 15.,
         ..threshold(80.)
@@ -93,8 +87,6 @@ fn proactive_never_lands_at_or_over_threshold() {
 
 #[test]
 fn stable_landing_does_not_switch_back() {
-    // Cooldown off so only the gate prevents flapping: after 99 → 89 the old account (99%) can
-    // never beat the new active (89%).
     let settings = AutoSwitchSettings {
         cooldown_seconds: 0.,
         ..defaults()
@@ -205,7 +197,7 @@ fn at_limit_bypasses_cooldown() {
 fn cooldown_expires() {
     let mut h = Harness::standard();
     h.update_state(&json!({"lastSwitchAt": h.now()}));
-    h.advance(400.); // past the 300 s default
+    h.advance(400.);
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(10.)), ("3", usage(50.))]);
     assert_eq!(outcome, TickOutcome::Switched);
 }
@@ -277,7 +269,6 @@ fn count_built_on_one_account_is_not_saved_under_the_next() {
     h.tick_with_usage(&unknown);
     h.tick_with_usage(&unknown);
     assert_eq!(h.state()["unhealthyTicks"], 2);
-    // The same engine, the active account changed from 1 to 2 (by hand).
     h.make_live(2);
     assert_eq!(h.tick_with_usage(&unknown), TickOutcome::NoAction);
     let state = h.state();
@@ -327,7 +318,7 @@ fn known_active_usage_resets_unhealthy_counter() {
     let healthy = [("1", usage(50.)), ("2", usage(10.)), ("3", usage(10.))];
     h.tick_with_usage(&unknown);
     h.tick_with_usage(&unknown);
-    h.tick_with_usage(&healthy); // resets the counter
+    h.tick_with_usage(&healthy);
     assert_eq!(h.tick_with_usage(&unknown), TickOutcome::NoAction);
     assert_eq!(h.active(), Some(1));
 }
@@ -358,8 +349,6 @@ fn candidate_not_better_than_active_is_skipped() {
 
 #[test]
 fn at_limit_escapes_hysteresis_bar() {
-    // Active hard at 100%; the only room is a candidate at 85%, which the proactive margin
-    // would refuse. At-limit is an escape: any account with real headroom beats a blocked one.
     let mut h = Harness::standard();
     let outcome = h.tick_with_usage(&[("1", usage(100.)), ("2", usage(85.)), ("3", usage(97.))]);
     assert_eq!(outcome, TickOutcome::Switched);
@@ -391,7 +380,6 @@ fn unmanaged_live_login_is_never_touched() {
     let mut h = Harness::new(defaults());
     h.seed(1, "a@example.com");
     h.seed(2, "b@example.com");
-    // A login Koyo doesn't manage.
     h.host.lock().unmanaged_live = true;
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", usage(10.))]);
     assert_eq!(outcome, TickOutcome::NoAction);

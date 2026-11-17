@@ -65,7 +65,6 @@ fn an_absent_five_hour_window_is_a_limit_the_account_does_not_have() {
         (Some(json!({"utilization": 10.0})), true),
         (Some(Value::Null), false),
         (None, false),
-        // `{}` stays absent: the falsy check this replaces skipped it.
         (Some(json!({})), false),
     ] {
         let sandbox = Sandbox::new();
@@ -99,8 +98,6 @@ fn an_account_without_a_reading_has_no_usage() {
 
 #[test]
 fn an_unreadable_window_fails_the_whole_reading() {
-    // Every other falsy value is a malformed window, not a missing one. NaN, infinity and an
-    // overflowing integer are what `json.dumps` writes for them, which a JSON reader refuses.
     let broken = [
         "false",
         "0",
@@ -173,7 +170,6 @@ fn an_unreadable_window_keeps_the_last_good_reading() {
     assert_eq!(entry.last_error.as_deref(), Some("bad-response"));
     assert_eq!(entry.last_good, good.usage);
     assert_eq!(entry.fetched_at, Some(fetched_at));
-    // The last good reading survives; the unreadable 1% never becomes headroom.
     assert_eq!(
         entry.decision_value(),
         good.usage.as_ref().map(Decision::Usage)
@@ -205,7 +201,6 @@ fn a_window_without_a_utilization_figure_is_unknown_not_absent() {
                 resets_at.is_some()
             );
             assert_eq!(usage[other], json!({"pct": 10.0}));
-            // Decisions use only the window that carries a figure.
             assert_eq!(account_headroom(Some(&usage), &[]), Some(90.));
             let labels: Vec<String> = relevant_windows(Some(&usage), &[])
                 .into_iter()

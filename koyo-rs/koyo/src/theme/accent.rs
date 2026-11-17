@@ -143,20 +143,17 @@ mod tests {
 
     #[test]
     fn srgb_components_become_hsla() {
-        // macOS's blue accent, (0, 122, 255): 211.3°.
         let blue = from_srgb(0., 122. / 255., 1., 1.);
         assert!(close(blue.h, 211.3 / 360.), "{blue:?}");
         assert!(
             close(blue.s, 1.) && close(blue.l, 0.5) && close(blue.a, 1.),
             "{blue:?}"
         );
-        // Graphite has no hue.
         let graphite = from_srgb(0.6, 0.6, 0.6, 1.);
         assert!(
             close(graphite.s, 0.) && close(graphite.l, 0.6),
             "{graphite:?}"
         );
-        // A wider gamut's red is held to sRGB's.
         let wide = from_srgb(1.2, -0.1, 0., 1.);
         assert_eq!(bytes(wide), [255, 0, 0, 255]);
     }
@@ -170,7 +167,6 @@ mod tests {
         let heard = Rc::new(Cell::new(0));
         cx.update(|cx| {
             gpui_kit::init(cx);
-            // The palette tints the card by the theme the settings hold.
             crate::settings::init(cx);
             Theme::change(ThemeMode::Light, None, cx);
             let heard = heard.clone();
@@ -183,7 +179,6 @@ mod tests {
             let theme = cx.theme();
             assert_eq!(bytes(super::super::palette(cx).accent), bytes(accent));
             assert_eq!(bytes(theme.primary), bytes(accent));
-            // A switch that's on.
             assert_eq!(bytes(theme.tokens.primary.color), bytes(accent));
             assert_eq!(bytes(theme.slider_bar), bytes(accent));
             assert_eq!(bytes(theme.drag_border), bytes(accent));
@@ -196,10 +191,8 @@ mod tests {
             );
         };
         cx.read(|cx| follows(cx, pink.light));
-        // The dark appearance loads its own theme, with its own shade in it.
         cx.update(|cx| Theme::change(ThemeMode::Dark, None, cx));
         cx.read(|cx| follows(cx, pink.dark));
-        // The accent already in use changes nothing and repaints nothing.
         let before = heard.get();
         cx.update(|cx| set(pink, cx));
         assert_eq!(heard.get(), before);

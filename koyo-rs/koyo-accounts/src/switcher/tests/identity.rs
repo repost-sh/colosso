@@ -161,7 +161,6 @@ fn resolve_nonexistent() {
     let h = Harness::new();
     h.write_sequence(&sample_sequence_data());
     assert_eq!(resolve(&h, "nonexistent@example.com"), None);
-    // Numbers pass through.
     assert_eq!(resolve(&h, "999").as_deref(), Some("999"));
 }
 
@@ -217,7 +216,6 @@ fn identity_slots(h: &Harness, uuid_1: &str) {
 fn backfill_fills_only_an_empty_uuid_of_the_expected_identity() {
     let h = Harness::new();
     identity_slots(&h, "");
-    // Another identity in the gap: nothing stamped.
     h.switcher
         .backfill_account_uuid("1", "uuid-x", Some("other@example.com"), None)
         .unwrap();
@@ -229,7 +227,6 @@ fn backfill_fills_only_an_empty_uuid_of_the_expected_identity() {
         .backfill_account_uuid("1", "uuid-1", Some("a@example.com"), Some("org-1"))
         .unwrap();
     assert_eq!(h.accounts()["1"]["uuid"], "uuid-1");
-    // An existing uuid is identity: never rewritten.
     h.switcher
         .backfill_account_uuid("2", "uuid-x", None, None)
         .unwrap();
@@ -255,7 +252,6 @@ fn a_lineage_key_binds_the_slots_full_identity() {
         }
     );
     locked(&h.switcher.probe_verdicts).insert(key.clone(), false);
-    // The slot re-created for another account misses the verdict.
     identity_slots(&h, "uuid-other");
     let rebuilt = h.switcher.lineage_key("1", "a@example.com", "fp").unwrap();
     assert_eq!(h.switcher.probe_verdict(&key), Some(false));

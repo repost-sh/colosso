@@ -80,7 +80,6 @@ pub(crate) fn create(
                 Ok::<_, koyo_git::GitError>((worktree, read_worktrees(repo.path())))
             })
             .await?;
-        // The shell hears about the worktree even if whoever asked has gone meanwhile.
         shell
             .update(cx, |shell, cx| {
                 if select {

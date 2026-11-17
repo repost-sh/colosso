@@ -10,8 +10,6 @@ use crate::poll_policy::{
     plan_after_fetch,
 };
 
-// TestLast429Marker
-
 #[test]
 fn last_429_survives_recovery() {
     let h = Harness::new();
@@ -30,8 +28,6 @@ fn non_429_failures_leave_the_marker_alone() {
     h.record("1", err("timeout"));
     assert_eq!(h.entry("1").last_429_at, None);
 }
-
-// TestRecent429AcrossHonoredBlock
 
 #[test]
 fn recent_429_true_at_first_success_after_hour_block() {
@@ -77,8 +73,6 @@ fn unrelated_timeout_does_not_re_arm_recency() {
     h.set(before.backoff_until.unwrap());
     assert!(!before.recent_429(h.now()));
 }
-
-// TestHourScale429FloorEngagesThroughStore
 
 fn plan(h: &Harness, before: &UsageEntry, after: &UsageEntry, recent_429: bool) -> (f64, f64) {
     plan_after_fetch(&PlanInput {

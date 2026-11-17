@@ -134,10 +134,7 @@ mod appkit {
 
         #[test]
         fn a_flip_is_told_once_and_only_once_shown() {
-            // Not shown yet, a flip is a stray.
             assert!(!flipped(None, false));
-            // Flipped off from on, it's told; reported again before the view has caught up, as
-            // AppKit may, it's left alone.
             assert!(flipped(Some(true), false));
             assert!(!flipped(Some(false), false));
         }

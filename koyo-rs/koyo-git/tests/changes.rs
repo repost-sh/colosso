@@ -142,7 +142,6 @@ fn a_change_staged_then_undone_on_disk_shows_on_both_sides() {
     fixture.write("a.txt", "b\n");
     fixture.git(&["add", "a.txt"]);
     fixture.write("a.txt", "a\n");
-    // Staged as new, then deleted from disk.
     fixture.write("gone.txt", "x\n");
     fixture.git(&["add", "gone.txt"]);
     fixture.remove("gone.txt");
@@ -233,7 +232,6 @@ fn a_moved_file_is_a_rename_staged_or_not() {
             ),
         ]
     );
-    // Diffed against where it came from, so an unchanged move has no hunks.
     let moved = fixture.diff("src/new.rs");
     let (old, new, hunks) = text(&moved);
     assert_eq!(old, new);
@@ -369,9 +367,6 @@ fn unstaging_works_before_the_first_commit() {
     assert_eq!(fixture.changes(), [unstaged("a.txt", Status::Untracked)]);
 }
 
-// Discarding moves new files to the trash, outside the checkout, so these discard only what
-// git puts back.
-
 #[test]
 fn discarding_what_is_unstaged_keeps_what_is_staged() {
     let fixture = Fixture::new(&[("a.txt", "one\n"), ("gone.txt", "x\n")]);
@@ -411,7 +406,6 @@ fn only_new_files_go_to_the_trash() {
         Discarding::Trashed
     );
     assert_eq!(discarding(staged("a", Status::Added)), Discarding::Trashed);
-    // Modified on disk, but staged as new: what's staged is still there to go back to.
     assert_eq!(
         discarding(unstaged("a", Status::Modified)),
         Discarding::Reverted

@@ -58,14 +58,11 @@ pub(super) fn choose(ask: &PasskeyAsk, security_keys: bool) -> Result<Choice<'_>
 
 /// A new passkey: where the page's attachment and algorithms allow it.
 fn creating(creation: &Creation, security_keys: bool) -> Result<Choice<'_>, Refusal> {
-    // `platform` is this Mac's passkeys alone. `cross-platform`, none, or one WebAuthn
-    // doesn't know is a security key or a phone, which the platform request offers.
     let only_platform = creation
         .authenticator_selection
         .authenticator_attachment
         .as_deref()
         == Some("platform");
-    // The host has filled in `WebAuthn`'s default for a page that named none.
     let algorithms: Vec<i64> = creation
         .pub_key_cred_params
         .iter()

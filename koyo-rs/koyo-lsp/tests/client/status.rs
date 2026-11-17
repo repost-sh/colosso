@@ -31,7 +31,6 @@ fn ready_waits_until_the_server_says_it_is_quiescent() {
         {"reply": 1, "result": null},
     ]));
     let mut statuses = client.subscribe::<ServerStatus>();
-    // Each answer comes after the status sent before it, so it's been taken in by then.
     wait(5, client.request::<Echo>(&json!(null))).unwrap();
     assert_eq!(client.ready().now_or_never(), None);
     let waiting = client.ready();
@@ -50,8 +49,6 @@ fn a_request_overtaken_by_a_reload_is_asked_again_once_the_server_is_ready() {
         status(false),
         content_modified(0),
         {"reply": 1, "result": "meanwhile"},
-        // Sent once the second answer is in. Asked again at once, the first request would
-        // have come before it.
         {"recv": "fake/received"},
         status(true),
         {"recv": "fake/echo"},
@@ -91,7 +88,6 @@ fn a_request_is_asked_again_three_times_at_most() {
         ),
         "{answer:?}"
     );
-    // Had it asked a fifth time, this would have been answered as that.
     assert_eq!(
         wait(5, client.request::<Echo>(&json!(null))).unwrap(),
         json!("next")

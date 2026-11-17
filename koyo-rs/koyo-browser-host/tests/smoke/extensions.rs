@@ -44,8 +44,6 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
         })
         .expect("open");
 
-    // The page loads, the extension is listed for its profile, and the badge it set for
-    // every tab is told, in whichever order.
     let (mut loaded, mut ours, mut badge) = (false, None, false);
     session.wait("the page, the extension and its badge", |event| {
         match event {
@@ -64,9 +62,6 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
     assert!(ours.enabled && ours.removable && !ours.pinned, "{ours:?}");
     let id = ours.id;
 
-    // A press on its icon: Chrome runs the action on the page. The extension says what it
-    // was pressed on, that the page is the current tab, and that its window is a normal one;
-    // and the tab it opens is a pane the host gave a number, which loads.
     (session.host)
         .send(&AppRequest::Active { pane: 1 })
         .and_then(|()| {
@@ -105,8 +100,6 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
         matches!(event, HostEvent::Page { pane, state } if *pane == tab && state.url == url && !state.loading)
     });
 
-    // Pressed again, the extension closes the tab it opened: the app is told the tab went
-    // without its asking, and that the pane closed.
     (session.host)
         .send(&AppRequest::ExtensionAct {
             pane: 1,
@@ -125,7 +118,6 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
         went && closed
     });
 
-    // Pinned, it says so; turned off, it's listed as off; removed, it's gone.
     let change = |session: &mut Session, change| {
         (session.host)
             .send(&AppRequest::ChangeExtension {

@@ -131,8 +131,6 @@ fn spawn_this_app() -> Result<(), String> {
     let mut command = match bundle(&executable) {
         Some(bundle) => {
             let mut open = Command::new("open");
-            // Launch Services starts the app without this process's environment, so the
-            // data folder it serves is passed on.
             if let Some(dir) = std::env::var_os("KOYO_DATA_DIR") {
                 let mut pair = std::ffi::OsString::from("KOYO_DATA_DIR=");
                 pair.push(dir);
@@ -147,11 +145,9 @@ fn spawn_this_app() -> Result<(), String> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    // A group of its own, so a Ctrl+C meant for the agent never reaches the app.
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
     let mut child = command.spawn().map_err(|error| error.to_string())?;
-    // Reaped when it ends, which for the app itself is long after this relay is gone.
     let reaped = std::thread::Builder::new()
         .name("app-launch".into())
         .spawn(move || {

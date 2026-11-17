@@ -25,7 +25,6 @@ fn the_setup_comes_up_by_itself_once_while_something_is_missing(cx: &mut TestApp
     let root = repo("device-setup-due", &[("README.md", "hi\n")]);
     let (_window, _shell) = shell_with(&[&root], cx);
     let registry = cx.update(|cx| devices(cx));
-    // Unknown yet: nothing is offered.
     assert!(!cx.read(|cx| registry.read(cx).setup_due()));
     shows(found(Xcode::Older("26.4".into()), false, false), Vec::new(), cx);
     assert_eq!(cx.read(|cx| registry.read(cx).need()), Some(Need::Xcode));
@@ -85,7 +84,6 @@ fn the_setups_steps_follow_what_the_mac_has_and_the_device_it_made(cx: &mut Test
     assert_eq!(step(cx), Step::Needs(Need::System));
     shows(found(ready(), true, true), Vec::new(), cx);
     assert_eq!(step(cx), Step::Needs(Need::Device));
-    // The device made: its first start, then ready.
     let link = cx.update(|cx| devices(cx).update(cx, |registry, cx| registry.link("U-SETUP", "iPhone 18 Pro", false, cx)));
     let _told = link.update(cx, |link, cx| link.stand_in(screen(), cx));
     let starting = Said::Starting {
@@ -126,7 +124,6 @@ fn the_persons_start_past_the_limit_asks_first_and_under_it_doesnt(cx: &mut Test
     starts(cx);
     assert!(cx.read(modal::window).is_some(), "asked first");
     assert!(!cx.read(|cx| link.read(cx).running_or_starting()), "nothing started meanwhile");
-    // Three allowed: it starts at once (under test its host can't be found, so it fails to).
     cx.update(|cx| crate::settings::update(cx, |settings| settings.simulators_at_once = 3));
     starts(cx);
     let state = cx.read(|cx| link.read(cx).state.clone());

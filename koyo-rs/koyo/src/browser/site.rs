@@ -70,8 +70,6 @@ impl BrowserView {
     fn copy_link(&mut self, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(self.page.url.clone()));
         self.link_copied = Some(Instant::now());
-        // The field's buttons are drawn by whoever lays the field out: the sidebar in the Arc
-        // layout, not this view.
         cx.notify();
         cx.refresh_windows();
         cx.spawn(async move |this, cx| {
@@ -152,7 +150,6 @@ pub fn buttons(
             .when(copied, |button| button.bg(p.selected))
             .child(icon(if copied { IconName::Check } else { IconName::Link }, 14.).text_color(tint))
             .tooltip(|window, cx| Tooltip::new("Copy link").build(window, cx))
-            // The bar it's in opens the launcher at a press: this one is the button's alone.
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
@@ -169,7 +166,6 @@ pub fn buttons(
         let (view, opens) = (view.clone(), trigger.clone());
         trigger.wraps(controls, move |_, window, cx| {
             cx.stop_propagation();
-            // Asked for as it opens, not by the press that closes it.
             if !opens.is_open(cx) {
                 view.update(cx, BrowserView::ask_site);
             }
@@ -209,13 +205,11 @@ fn share(address: &str, at: gpui_kit::Bounds<Pixels>, window: &Window, cx: &mut 
         return;
     };
     let points = |pixels: Pixels| f64::from(f32::from(pixels));
-    // The view's own origin is at its bottom left.
     let from = NSRect::new(
         NSPoint::new(points(at.left()), view.frame().size.height - points(at.bottom())),
         NSSize::new(points(at.size.width), points(at.size.height)),
     );
     let address = NSString::from_str(address);
-    // Once the app is free of the press that asked for it: the sheet runs a loop of its own.
     cx.spawn(async move |_| {
         // SAFETY: Foundation's and AppKit's own, on the main thread: an address, a list of
         // it, and a picker shown from a view that's in a window.

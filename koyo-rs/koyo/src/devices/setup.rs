@@ -124,8 +124,6 @@ pub fn open(parent: &mut Window, cx: &mut App) {
             device: Device::Choosing,
             install: Install::NotAsked,
             seen: Step::Looking,
-            // The Mac looked at again while the person's to do is outside Koyo; the time so far
-            // of a first start moving on.
             _looking: cx.spawn(async move |this, cx| {
                 let waiting = |this: &Setup, cx: &App| this.step(cx).outside();
                 look_along(this, cx, waiting, |this, due, cx| {

@@ -206,7 +206,6 @@ mod tests {
     )]
     fn the_keyboard_section_sets_how_a_held_arrow_repeats(cx: &mut TestAppContext) {
         cx.update(crate::init);
-        // Set by hand between two stops, it's shown at the nearer and left as it is.
         cx.update(|cx| {
             settings::update(cx, |settings| {
                 settings.key_repeat = KeyRepeat {
@@ -215,7 +214,6 @@ mod tests {
                 };
             });
         });
-        // Tall enough for the whole page.
         let (window, _) = in_window(size(px(900.), px(1700.)), cx, |_, cx| cx.new(|_| General));
         let cx = &mut VisualTestContext::from_window(window, cx);
         cx.run_until_parked();
@@ -223,10 +221,8 @@ mod tests {
         assert_eq!(repeat(cx).per_second, 100.);
         pick("arrow-repeat-speed", 7, 10, cx);
         assert_eq!(repeat(cx).per_second, 150.);
-        // The longest delay is at the left, as macOS has it.
         pick("arrow-repeat-delay", 0, 8, cx);
         assert_eq!(repeat(cx).delay_ms, 500);
-        // Off, the arrows are macOS's, and the two can't be moved.
         let switch = cx.debug_bounds("arrow-repeat").unwrap();
         cx.simulate_click(switch.center(), Modifiers::none());
         assert!(!repeat(cx).enabled);

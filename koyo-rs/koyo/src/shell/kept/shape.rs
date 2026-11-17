@@ -129,9 +129,7 @@ impl Shell {
             }),
             PaneKind::Editor if pane.shows_changes() => Some(KeptPane::Changes),
             PaneKind::Editor => (pane.file_path(cx)).map(|path| KeptPane::File { path }),
-            // The agent desktop's tab isn't kept: it's opened anew when it's asked for.
             PaneKind::Desktop => None,
-            // A device's is, by its device; the picker's isn't.
             PaneKind::Device => {
                 let chosen = pane.device_view()?.read(cx).chosen()?.clone();
                 Some(KeptPane::Device {
@@ -205,7 +203,6 @@ impl Shell {
                 .exists()
                 .then(|| Pane::unopened(Unopened::File(path.clone()))),
             KeptPane::Changes => Some(Pane::unopened(Unopened::Changes)),
-            // Never started by itself: it says it isn't running, with Start.
             KeptPane::Device { udid, name, ipad, phone } => {
                 let chosen = crate::devices::Chosen {
                     udid: udid.clone(),

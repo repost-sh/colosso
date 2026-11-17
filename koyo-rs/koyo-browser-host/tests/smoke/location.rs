@@ -29,7 +29,6 @@ fn a_page_allowed_to_know_where_it_is_hears_back() {
     let mut session = Session::start(&launch);
     let page = serve(ASKS);
     open(&mut session, &page, "where");
-    // Asked once the evaluation has answered, so the prompt comes after.
     evaluate(&mut session, "setTimeout(ask, 200), true");
     let mut asked = None;
     session.wait("the page to ask for its position", |event| {
@@ -60,7 +59,6 @@ fn a_page_allowed_to_know_where_it_is_hears_back() {
         "the page was refused its position: {located}"
     );
 
-    // Allowed already: the page asks again without a prompt, and hears back.
     let again = format!("{page}?again");
     session
         .host

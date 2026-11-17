@@ -98,7 +98,6 @@ mod tests {
         assert!((cadence.next_look(START + 60., false) - (EVERY - 60.)).abs() < 1e-9);
         assert!(!cadence.due(START + EVERY - 1., true, read, false).active);
         assert!(cadence.due(START + EVERY, true, read, false).active);
-        // Behind another app, the quarter hour passes unread.
         assert!(!cadence.due(START + 2. * EVERY, false, read, false).active);
     }
 
@@ -107,12 +106,9 @@ mod tests {
         let mut cadence = Cadence::default();
         cadence.due(START, false, None, false);
         let read = Some(START);
-        // Four minutes on: fresh enough.
         assert!(!cadence.due(START + 240., true, read, false).active);
         cadence.due(START + 250., false, read, false);
-        // Five minutes on, coming back: read again.
         assert!(cadence.due(START + 300., true, read, false).active);
-        // Staying in front isn't coming to it.
         assert!(!cadence.due(START + 400., true, read, false).active);
     }
 

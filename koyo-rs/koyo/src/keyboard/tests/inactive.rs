@@ -39,10 +39,8 @@ fn a_press_that_brings_the_window_back_off_a_page_gives_gpui_the_keyboard(
     assert_eq!(held(key).map(|held| held.0), Some(Holder::Page(page_id)));
     assert_eq!(fake.first_responder(key), Responder::Page(page_id));
 
-    // The launcher's window, or another app, has the keys.
     VisualTestContext::from_window(window, cx).deactivate_window();
     draw(window, cx);
-    // The press on the composer moves GPUI's focus while the window isn't key yet.
     (cx.update_window(window, |_, window, cx| {
         let root = shell.read(cx).focus.clone();
         window.focus(&root, cx);

@@ -140,7 +140,6 @@ mod tests {
 
     #[test]
     fn a_koyo_not_run_from_its_bundle_says_pages_need_it() {
-        // A test runs as a bare binary, as `cargo run` and `script/dev` do.
         assert_eq!(launch().err().as_deref(), Some(UNBUNDLED));
     }
 

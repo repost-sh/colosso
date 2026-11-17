@@ -386,7 +386,6 @@ impl Chats {
                     (touched.entry(appended.thread_id.clone()).or_default())
                         .push(ThreadEvent::Appended(appended));
                 }
-                // The host says so again of a chat a person's just seen.
                 Event::ThreadSummary(summary)
                     if self.summaries.get(&summary.id) != Some(&summary) =>
                 {

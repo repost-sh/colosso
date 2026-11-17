@@ -116,7 +116,6 @@ fn own(tag: &str) -> String {
 fn add_refuses_a_foreign_credential_on_refresh_in_place() {
     for foreign_org in [Some(""), None] {
         let h = switcher("ax@example.com", "", &own("MINE"));
-        // One answer per lookup: the first add's, then the foreign one.
         let answers = [
             profile("u-ax", Some("ax@example.com"), Some("")),
             profile("u-other", Some("other@example.com"), foreign_org),
@@ -151,7 +150,6 @@ fn control_refresh_in_place_still_accepts_the_owning_token() {
 
 #[test]
 fn org_slot_registers_when_the_resolved_profile_has_no_org() {
-    // No organisation block is unverifiable about the org, never a refusal.
     let h = switcher("ax@example.com", "org-A", &creds_theirs());
     h.queue_profile(&profile("u-ax", Some("ax@example.com"), None));
     h.switcher.add_account().unwrap();
@@ -245,7 +243,6 @@ fn an_expired_foreign_credential_registers_and_that_is_deliberate() {
     }});
     let h = switcher("ax@example.com", "", &expired.to_string());
     h.switcher.add_account().unwrap();
-    // No grant moved.
     assert!(h.sandbox.http.requests_to(OAUTH_TOKEN_URL).is_empty());
     assert_eq!(h.profile_lookups(), 0);
     assert!(added(&h));
@@ -335,7 +332,6 @@ fn a_null_account_uuid_does_not_trip_the_commit_time_recheck() {
     let h = with_uuid("ax@example.com", &Value::Null);
     h.queue_profile(&profile("u-ax", Some("ax@example.com"), Some("")));
     h.switcher.add_account().unwrap();
-    // And the null never reaches the roster.
     assert_eq!(h.accounts()["1"]["uuid"], "");
 }
 

@@ -155,7 +155,6 @@ fn the_rows_have_the_keys_ahead_of_what_is_asked_and_give_them_back(cx: &mut Tes
 
 #[gpui_kit::test]
 fn an_at_finds_the_files_of_the_checkout_and_names_the_one_picked(cx: &mut TestAppContext) {
-    // The project lists the checkout on a thread of its own, from outside the test's scheduler.
     cx.executor().allow_parking();
     let chat = chat("chat-suggest-files", cx);
     let cwd = chat
@@ -171,7 +170,6 @@ fn an_at_finds_the_files_of_the_checkout_and_names_the_one_picked(cx: &mut TestA
     while !suggesting(&chat, cx) {
         assert!(Instant::now() < deadline, "README.md is in it");
         updates.next_within(Duration::from_millis(50));
-        // What follows it looks again on a timer while it's still listing.
         cx.executor().advance_clock(Duration::from_secs(1));
         draw(chat.window, cx);
     }
@@ -191,7 +189,6 @@ fn a_press_on_the_rows_leaves_the_keyboard_in_the_prompt(cx: &mut TestAppContext
     assert!(suggesting(&chat, cx));
     assert!(keyboard_in(chat.window, PROMPT, cx));
 
-    // The rows are over the box, a little above its top.
     let mut vcx = VisualTestContext::from_window(chat.window, cx);
     let glass = vcx.debug_bounds("chat-composer").expect("the prompt's box");
     let row = point(glass.left() + px(40.), glass.top() - px(30.));

@@ -1,6 +1,3 @@
-// Records as the host keeps them, for tests: whole and valid, with what a test cares about
-// given and the rest plain.
-
 import { ItemId, MessageId, newId, RequestId, RunId, ThreadId } from "../../src/protocol/ids";
 import type { Params } from "../../src/protocol/methods";
 import type {

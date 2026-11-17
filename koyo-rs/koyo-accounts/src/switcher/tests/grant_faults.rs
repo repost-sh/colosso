@@ -89,7 +89,6 @@ fn persist_and_stash_both_failing_still_never_raises() {
 
 #[test]
 fn a_failed_session_invalidation_does_not_discard_the_adoption_store_rejects() {
-    // The store never advanced: claiming an adoption would return what the slot doesn't hold.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     super::grant::stash_successor_of(&h, &new(), &old());
@@ -104,8 +103,6 @@ fn a_failed_session_invalidation_does_not_discard_the_adoption_store_rejects() {
 
 #[test]
 fn backup_unreadable_after_post_is_not_a_removed_slot() {
-    // The Keychain locked during the POST: unreadable is not removed, and the slot still holds
-    // the spent generation, so the outcome is no success.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     let security = h.sandbox.security.clone();

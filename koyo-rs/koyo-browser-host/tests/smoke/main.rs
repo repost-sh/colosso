@@ -40,12 +40,9 @@ fn a_page_opens_at_its_size_draws_while_on_screen_and_rests_out_of_sight() {
     let is = |width: u64, height: u64| {
         move |size: &serde_json::Value| *size == serde_json::json!([width, height])
     };
-    // The page is the size it was opened at, in a holder nothing shows.
     until(&mut session, size, "the page at its size", Duration::from_secs(10), is(400, 300));
-    // On screen for the engine, it's given frames to draw.
     let drawn = evaluate(&mut session, FRAMES).as_u64().expect("a count");
     assert!(drawn > 15, "{drawn} frames in half a second on screen");
-    // Out of sight it's given none, and back in sight it draws again.
     let visible = |session: &mut Session, visible| {
         (session.host.send(&AppRequest::Visible { pane: 1, visible })).expect("visible");
     };
@@ -67,7 +64,6 @@ fn a_page_opens_at_its_size_draws_while_on_screen_and_rests_out_of_sight() {
     );
     let drawn = evaluate(&mut session, FRAMES).as_u64().expect("a count");
     assert!(drawn > 15, "{drawn} frames in half a second back on screen");
-    // No pane draws it, so the size it's told is the size it takes: an agent's.
     let viewport = Viewport {
         width: 390,
         height: 844,
@@ -109,23 +105,18 @@ fn dev_tools_open_as_a_pane_of_their_own_and_close_with_their_page() {
     session.wait("the DevTools page", |event| {
         matches!(event, HostEvent::Page { pane: 2, state } if state.url.starts_with("devtools://"))
     });
-    // The frontend names the page it is attached to once the session is up.
     session.wait("the inspector to attach to the page", |event| {
         matches!(event, HostEvent::Page { pane: 2, state } if state.title.starts_with("DevTools - data:text/html"))
     });
-    // Opening again does not make a second inspector.
     tools(&mut session, 3, None);
     session.wait("the second inspector to be refused", |event| {
         matches!(event, HostEvent::Error { pane: Some(3), .. })
     });
-    // Closed and opened again at once, as a toggle does, the page takes the
-    // new inspector without waiting for the old one to be gone.
     (session.host.send(&AppRequest::Close { pane: 2 })).expect("close devtools");
     tools(&mut session, 4, None);
     session.wait("the new inspector to attach to the page", |event| {
         matches!(event, HostEvent::Page { pane: 4, state } if state.title.starts_with("DevTools - data:text/html"))
     });
-    // The page closes; its DevTools go with it, and both are reported.
     (session.host.send(&AppRequest::Close { pane: 1 })).expect("close");
     let mut closed = Vec::new();
     session.wait("the page and its inspector to close", |event| {
@@ -146,7 +137,6 @@ fn a_page_goes_full_screen_and_back_and_the_host_still_quits() {
         <script>document.onfullscreenchange=()=>\
         document.title=document.fullscreenElement?'full':'small'</script>";
     open(&mut session, page, "small");
-    // A gesture of the person's, which full screen asks for.
     agents::cdp(
         &mut session,
         900,
@@ -177,8 +167,6 @@ fn a_host_left_holding_the_profiles_gives_way_to_the_next() {
     let launch = launch("left");
     let first = Session::start(&launch);
     let stuck = first.host.pid();
-    // Stopped, it answers no one, as a host whose app died mid-shutdown may not: Chromium
-    // would make the next host wait 20 seconds for it, past the hello.
     let stopped = std::process::Command::new("kill")
         .args(["-STOP", &stuck.to_string()])
         .status()

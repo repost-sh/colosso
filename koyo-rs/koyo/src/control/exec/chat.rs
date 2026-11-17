@@ -254,7 +254,6 @@ pub(crate) fn send(input: ChatSendInput, cx: &mut App) -> Result<Exec, ControlEr
     });
     let chat_effort = settings::get(cx).chat_effort;
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
-        // Without an answer, the chat's effort is left as it is.
         let chosen = Settings::of_summary(&summary);
         let catalog = asking.await.ok();
         let settled =

@@ -348,17 +348,14 @@ fn a_change_replaces_only_the_rows_it_touched() {
     };
     let old = [at("a", 1), at("b", 1), at("c", 1)];
     assert_eq!(changed(&old, &old.clone()), None);
-    // A row added at the end.
     assert_eq!(
         changed(&old, &[at("a", 1), at("b", 1), at("c", 1), at("d", 1)]),
         Some((3..3, 1))
     );
-    // One changed in the middle.
     assert_eq!(
         changed(&old, &[at("a", 1), at("b", 2), at("c", 1)]),
         Some((1..2, 1))
     );
-    // A page of history, which moves everything in the replica and nothing in the list.
     let moved = Row {
         kind: RowKind::User { item: 9, run: 0 },
         ..at("a", 1)
@@ -367,9 +364,7 @@ fn a_change_replaces_only_the_rows_it_touched() {
         changed(&old, &[at("z", 1), moved, at("b", 1), at("c", 1)]),
         Some((0..0, 1))
     );
-    // Gone from the end.
     assert_eq!(changed(&old, &[at("a", 1)]), Some((1..3, 0)));
-    // An answer that stops being the last loses the line under it, with nothing else changed.
     let last = |last| Row {
         kind: RowKind::Answer {
             item: 0,

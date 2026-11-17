@@ -71,7 +71,6 @@ async fn a_stopped_app_is_started_and_waited_for() {
     assert!(texts(&result)[0].starts_with("Started Koyo"), "{result:?}");
     assert_eq!(start.starts.load(Ordering::SeqCst), 1);
 
-    // The started app answers the next call.
     let result = call(&session, "app_focus", json!({})).await;
     assert_eq!(result.is_error, Some(false), "{result:?}");
     let app = start.app.lock().take().unwrap();
@@ -115,7 +114,6 @@ async fn an_app_that_never_listens_times_out() {
     assert_eq!(failure(&result)["code"], "timeout");
     assert_eq!(start.starts.load(Ordering::SeqCst), 1);
 
-    // A start that fails says why.
     let failing: Spawner = Arc::new(|| Err("there's no such program".into()));
     let launcher = Launcher::new(Ok(endpoint.clone()), failing);
     let (session, _) = connect(

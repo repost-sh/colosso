@@ -78,7 +78,6 @@ fn a_file_picked_in_the_list_shows_the_one_changes_tab_which_comes_back_once_clo
         "nothing's picked yet: {before:?}"
     );
 
-    // Picked, a file opens the diffs right after the tab shown, and shows them.
     press_in_list(window, &panel, "j", cx);
     let opened = tabs(&shell, cx);
     let shown = before
@@ -90,10 +89,8 @@ fn a_file_picked_in_the_list_shows_the_one_changes_tab_which_comes_back_once_clo
         Some("[Changes]"),
         "{opened:?}"
     );
-    // Another file picked: the same tab, scrolled on.
     press_in_list(window, &panel, "k", cx);
     assert_eq!(tabs(&shell, cx), opened);
-    // From another tab, picking a file shows the diffs' tab where it is.
     with_shell(window, &shell, cx, |shell, _, cx| {
         let (project, branch, _) = shell.workspace.shown_tab().unwrap();
         shell.workspace.select_tab(project, branch, 0);
@@ -103,7 +100,6 @@ fn a_file_picked_in_the_list_shows_the_one_changes_tab_which_comes_back_once_clo
     press_in_list(window, &panel, "j", cx);
     assert_eq!(tabs(&shell, cx), opened, "shown again, not opened again");
 
-    // Closed, the diffs' tab comes back with ⌘⇧T, showing the diffs.
     with_shell(window, &shell, cx, |shell, window, cx| {
         let at = shell.workspace.shown_tab().unwrap();
         shell.close_tab_at(at, window, cx);

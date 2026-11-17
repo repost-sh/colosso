@@ -304,8 +304,6 @@ impl Display {
         frame: impl Fn() + Send + 'static,
         surface: impl Fn(CFRetained<IOSurfaceRef>) + Send + 'static,
     ) -> Result<(), String> {
-        // The screen forwards its callbacks to the simulator's service, which needs each block's
-        // type: "Block is missing signature field" otherwise.
         let frame = RcBlock::with_encoding::<_, _, _, FrameBlock>(frame);
         let surfaces = RcBlock::with_encoding::<_, _, _, SurfacesBlock>(
             move |framebuffer: *mut AnyObject, _masked: *mut AnyObject| {

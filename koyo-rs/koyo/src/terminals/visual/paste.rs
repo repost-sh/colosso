@@ -20,7 +20,6 @@ pub(super) fn paste(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         entries: vec![ClipboardEntry::Image(image)],
     };
     drawn.cx.update(|cx| cx.write_to_clipboard(clipboard));
-    // Held no longer than this: the check later waits for the tab's view to go.
     let view = terminal(drawn)?;
     let command = "printf 'pasted=[%s]\\n' ";
     (drawn.cx).update(|cx| view.update(cx, |view, _| view.paste_text(command.into())));

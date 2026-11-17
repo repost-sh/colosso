@@ -103,8 +103,6 @@ fn path(from: &[Point], to: &[Point], ms: u32, hold_ms: u32, edge: Option<Edge>)
         timed.push(fingers(step * STEP_MS, at, true, edge));
     }
     let mut end = steps * STEP_MS;
-    // Held where it ended, as a finger that stops before it lifts: the app switcher's gesture,
-    // and a scroll that shouldn't glide on.
     let mut held = 0;
     while held < hold_ms {
         held += 50;
@@ -270,7 +268,6 @@ pub fn plan(act: &Act, at: Point, to: Point, screen: Size) -> Result<Vec<Timed>,
             Press::Lock => button(Button::Lock, 1),
             Press::VolumeUp => button(Button::VolumeUp, 1),
             Press::VolumeDown => button(Button::VolumeDown, 1),
-            // Home twice, as the Simulator app's App Switcher.
             Press::AppSwitcher => button(Button::Home, 2),
             Press::NotificationCenter => {
                 swipe_shares(screen, (0.3, 0.003), (0.3, 0.6), 300, 0, Edge::Top)

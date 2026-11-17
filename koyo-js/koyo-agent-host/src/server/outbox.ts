@@ -1,7 +1,3 @@
-// What's to go out on a socket that can't take it all at once: queued in order, written as the
-// socket takes more, so a large snapshot or a burst of appends is never cut short. It counts
-// what waits, so a client that stops reading can be told apart from one that's slow.
-
 /** Where an outbox writes: as much of `bytes` as it takes, and how much that was. */
 export interface Writable {
   readonly write: (bytes: Uint8Array) => number;
@@ -31,7 +27,6 @@ export class Outbox {
   drain(socket: Writable): void {
     let bytes = this.#queued.at(this.#head);
     while (bytes !== undefined) {
-      // A closed socket takes nothing, and its close follows.
       const written = Math.max(socket.write(bytes), 0);
       this.#waiting -= Math.min(written, bytes.length);
       if (written < bytes.length) {

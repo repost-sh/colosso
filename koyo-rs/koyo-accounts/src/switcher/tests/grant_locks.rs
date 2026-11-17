@@ -52,7 +52,6 @@ fn lock_taken_during_post(h: &mut Harness) -> Arc<Mutex<Option<FileLock>>> {
     racing(h, "sk-new", "rt-new", move || {
         *keep.lock().unwrap() = Some(FileLock::hold(&env, &lock_file, Duration::ZERO).unwrap());
     });
-    // The rebuilt switcher starts from the default wait.
     h.switcher.lock_timeout = Duration::from_millis(100);
     held
 }
@@ -63,7 +62,6 @@ fn lock_failure_after_post_stashes_successor() {
     h.set_backup("1", EMAIL, &old());
     let _held = lock_taken_during_post(&mut h);
     let out = h.switcher.consume_backup_grant("1", EMAIL, &old());
-    // The successor survives: returned to the caller AND stashed.
     assert_eq!(
         tokens(&out.credentials.unwrap()),
         ("sk-new".into(), "rt-new".into())
@@ -73,7 +71,6 @@ fn lock_failure_after_post_stashes_successor() {
 
 #[test]
 fn a_stashed_successor_is_not_reported_as_freshened() {
-    // The stash leaves the spent grant in the store: activating it would log the account out.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     let _held = lock_taken_during_post(&mut h);
@@ -89,8 +86,6 @@ fn a_stashed_successor_is_not_reported_as_freshened() {
 
 #[test]
 fn no_store_read_happens_before_the_consume_lock() {
-    // With the consume lock held elsewhere, the gate asks the Keychain nothing: no read comes
-    // before the lock, so two gates can't select the same one-time-use grant.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     let _held = hold_consume_lock(&mut h);
@@ -115,7 +110,6 @@ fn contention_reports_its_own_kind_not_transient() {
 
 #[test]
 fn the_consume_lock_is_released_even_when_the_post_raises() {
-    // Koyo's POST can't raise; a transport failure is the closest, and must free the lock.
     let h = gate_harness();
     h.set_backup("1", EMAIL, &old());
     h.sandbox

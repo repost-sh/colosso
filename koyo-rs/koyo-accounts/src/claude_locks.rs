@@ -91,18 +91,15 @@ fn remove_if_still_stale(env: &Env, lock: &Path, staleness: Duration) -> bool {
     match fsutil::mkdir(env, &takeover) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            if age(&takeover, false).is_some_and(|age| age > TAKEOVER_STALENESS) {
-                // Its holder died mid-takeover; a file or a link isn't ours to keep.
-                if fsutil::rmdir(env, &takeover).is_err() {
-                    fsutil::remove_file(env, &takeover).ok();
-                }
+            if age(&takeover, false).is_some_and(|age| age > TAKEOVER_STALENESS)
+                && fsutil::rmdir(env, &takeover).is_err()
+            {
+                fsutil::remove_file(env, &takeover).ok();
             }
             return false;
         }
         Err(_) => return false,
     }
-    // Re-checked inside: the waiter before may already have removed the dead lock and taken
-    // a fresh one at the same path.
     let removed =
         age(lock, true).is_some_and(|age| age > staleness) && fsutil::rmdir(env, lock).is_ok();
     fsutil::rmdir(env, &takeover).ok();
@@ -152,13 +149,10 @@ pub fn proper_lockfile(
             )));
         }
         let Some(held) = age(dir, true) else {
-            // Back off here too: a dangling link at the lock's path answers "exists" to mkdir
-            // and "missing" to stat, so this arm can repeat for the whole budget.
             fsutil::nap_within(DECLINE_BACKOFF, start, timeout);
             continue;
         };
         if held > staleness {
-            // A dead holder: removed and retaken. Declining must neither spin nor oversleep.
             if !remove_if_still_stale(env, dir, staleness) {
                 fsutil::nap_within(DECLINE_BACKOFF, start, timeout);
             }
@@ -193,11 +187,8 @@ fn touch_while_held(env: &Env, dir: &Path, stopped: &mpsc::Receiver<()>, stalene
             Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
         }
         match fsutil::touch(env, dir) {
-            // The latch is per freeze, not per hold: a touch that lands ends the episode.
             Ok(()) => (last_ok, warned) = (Instant::now(), false),
-            // Gone: nothing left to keep alive.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
-            // Transient, so it stays armed; said once the freeze outlives the staleness.
             Err(error) => {
                 if !warned && last_ok.elapsed() > staleness {
                     warned = true;

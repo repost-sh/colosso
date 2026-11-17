@@ -136,8 +136,6 @@ impl CredentialStore {
         if let Some(Value::Object(entries)) = manifest.get("entries") {
             return (entries.clone(), ManifestVerdict::Ok);
         }
-        // Parseable but not a manifest: the rows are as unestablishable as under garbage, and
-        // "ok, no rows" would let orphan entries past the fail-closed check.
         log::warn!("Unclaimed manifest parses but has no valid 'entries' member");
         (Map::new(), ManifestVerdict::Corrupt)
     }
@@ -183,7 +181,6 @@ impl CredentialStore {
             let parses = std::fs::read_to_string(&path)
                 .is_ok_and(|text| serde_json::from_str::<Value>(&text).is_ok());
             if !parses {
-                // `int(time.time())`: whole seconds.
                 let aside =
                     path.with_file_name(format!("{MANIFEST}.corrupt-{}", self.env.now() as i64));
                 match fsutil::rename(&self.env, &path, &aside) {
@@ -247,9 +244,7 @@ impl CredentialStore {
         context: Map<String, Value>,
     ) -> Result<String> {
         let now = self.env.now();
-        // The sha256's first 12 hex digits.
         let digest = &sha256_hex(credentials)[..12];
-        // `strftime`: whole seconds, as the `createdAt` beside it.
         let stamp = utc_at(now.floor()).unwrap_or_default();
         let entry_id = format!(
             "{}-{digest}-{}",

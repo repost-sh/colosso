@@ -23,7 +23,6 @@ fn pixel(image: &RenderImage, frame: usize, x: usize, y: usize) -> [u8; 4] {
     let width = image.size(frame).width.0 as usize;
     let bytes = image.as_bytes(frame).unwrap();
     let at = (y * width + x) * 4;
-    // GPUI's frames are blue first.
     [bytes[at + 2], bytes[at + 1], bytes[at], bytes[at + 3]]
 }
 
@@ -81,7 +80,6 @@ fn a_png_is_read_at_its_size_with_its_see_through_pixels_as_they_were() {
     assert_eq!(size(&image, 0), (300, 200));
     assert!(near(pixel(&image, 0, 10, 10), [255, 0, 0, 255]));
     assert!(near(pixel(&image, 0, 290, 10), [0, 255, 0, 255]));
-    // Quartz multiplies the colour by its alpha; it's taken back out for GPUI.
     assert!(
         near(pixel(&image, 0, 290, 190), [0, 255, 0, 128]),
         "{:?}",
@@ -117,8 +115,6 @@ fn a_jpeg_is_decoded_no_larger_than_it_is_shown() {
 #[test]
 fn a_photo_saved_on_its_side_is_shown_upright() {
     let folder = scratch("viewer-orientation");
-    // Red on top, blue below, as the sensor saw it; its EXIF says to turn it a quarter
-    // clockwise to show it.
     let sensor = RgbaImage::from_fn(80, 40, |_, y| {
         if y < 20 {
             Rgba([255, 0, 0, 255])
@@ -138,7 +134,6 @@ fn a_photo_saved_on_its_side_is_shown_upright() {
     assert_eq!(probe.pixels, (40, 80));
     let image = picture::decode(&path, &probe, 80).unwrap();
     assert_eq!(size(&image, 0), (40, 80));
-    // Turned a quarter clockwise, the top (red) is on the right.
     assert!(
         near(pixel(&image, 0, 35, 40), [255, 0, 0, 255]),
         "{:?}",
@@ -154,9 +149,9 @@ fn a_photo_saved_on_its_side_is_shown_upright() {
 /// `jpeg` with an EXIF block saying the camera was held at `orientation`.
 fn with_orientation(jpeg: &[u8], orientation: u8) -> Vec<u8> {
     let mut tiff = b"MM\0\x2a\0\0\0\x08".to_vec();
-    tiff.extend([0, 1]); // one entry
+    tiff.extend([0, 1]);
     tiff.extend([0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation, 0, 0]);
-    tiff.extend([0, 0, 0, 0]); // no next directory
+    tiff.extend([0, 0, 0, 0]);
     let mut exif = b"Exif\0\0".to_vec();
     exif.extend(tiff);
     let length = u16::try_from(exif.len() + 2).unwrap();
@@ -193,7 +188,6 @@ fn a_moving_gif_keeps_every_frame_and_how_long_each_shows() {
     }
     let probe = picture::probe(&path).unwrap();
     assert_eq!(probe.pixels, (32, 16));
-    // A frame that says it shows for no time shows as long as a browser shows it.
     let ms: Vec<u128> = probe.delays.iter().map(Duration::as_millis).collect();
     assert_eq!(ms, [50, 200, 100]);
 
@@ -287,12 +281,10 @@ fn a_pdf_page_is_drawn_on_white_paper_and_a_turned_one_upright() {
     assert_eq!(size(&first, 0), (200, 100));
     let black = [0, 0, 0, 255];
     let white = [255, 255, 255, 255];
-    // The bottom left quarter is black, the rest is the paper.
     assert!(near(pixel(&first, 0, 50, 75), black));
     assert!(near(pixel(&first, 0, 50, 25), white));
     assert!(near(pixel(&first, 0, 150, 75), white));
 
-    // Turned a quarter clockwise, the bottom left quarter is the top left one.
     let turned = document.draw(tile(1, 1.)).unwrap();
     assert_eq!(size(&turned, 0), (100, 200));
     assert!(
@@ -303,7 +295,6 @@ fn a_pdf_page_is_drawn_on_white_paper_and_a_turned_one_upright() {
     assert!(near(pixel(&turned, 0, 75, 50), white));
     assert!(near(pixel(&turned, 0, 25, 150), white));
 
-    // Twice as many pixels a point, the page is drawn twice as large.
     let sharp = document.draw(tile(0, 2.)).unwrap();
     assert_eq!(size(&sharp, 0), (400, 200));
     assert!(near(pixel(&sharp, 0, 100, 150), black));
@@ -350,7 +341,6 @@ fn a_lane_reads_the_file_then_draws_what_its_asked_for() {
     let image: Arc<RenderImage> = image;
     assert_eq!(size(&image, 0), (32, 16));
     drop(lane);
-    // Its thread ends with it, and says nothing more.
     assert!(futures::executor::block_on(received.next()).is_none());
 }
 

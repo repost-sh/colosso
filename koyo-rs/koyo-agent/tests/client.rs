@@ -54,7 +54,6 @@ fn replies_go_to_their_requests_and_events_to_the_channel_until_the_host_hangs_u
     assert!(matches!(event, Event::HostNotice(notice) if notice.message.contains("signing in")));
 
     host.join().unwrap();
-    // The host hung up: the channel ends, and so does every request after.
     assert!(
         connected
             .events
@@ -76,14 +75,12 @@ fn replies_go_to_their_requests_and_events_to_the_channel_until_the_host_hangs_u
 fn a_host_of_another_version_is_asked_to_shut_down_and_stops_listening() {
     let dir = scratch();
     let host = stand_in(&dir, |mut host| {
-        // The app stops it, so says it is the app.
         host.greet("app", HOST_VERSION + 1);
         host.answer_shutdown();
     });
     client::stop_host(&dir).unwrap();
     host.join().unwrap();
     assert!(koyo_daemon::connect(&dir.socket()).is_err());
-    // Nothing listening is nothing to stop.
     client::stop_host(&dir).unwrap();
 }
 

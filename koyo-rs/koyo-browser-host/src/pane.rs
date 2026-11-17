@@ -77,8 +77,6 @@ wrap_client! {
             let (Some(browser), Some(frame), Some(message)) = (browser, frame, message) else {
                 return 0;
             };
-            // The engine itself says an extension asked for the page's tab in front
-            // (`chrome.tabs.update` with `active`; a patch of Koyo's, `docs/extensions.md` 10).
             if source_process == ProcessId::BROWSER {
                 let asked = CefString::from(&message.name()).to_string() == "Koyo.activate";
                 if asked {
@@ -192,7 +190,6 @@ wrap_display_handler! {
         }
 
         fn on_loading_progress_change(&self, _browser: Option<&mut Browser>, progress: f64) {
-            // Whole percents, so a load sends a hundred changes at most.
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
@@ -213,7 +210,6 @@ wrap_display_handler! {
             browser: Option<&mut Browser>,
             icon_urls: Option<&mut CefStringList>,
         ) {
-            // Best first. The icon the page showed already, it shows still.
             let urls = crate::dialogs::strings(icon_urls);
             let first = urls.first().cloned().unwrap_or_default();
             let named = host::page_changed(self.pane, |page| page.favicon = first);
@@ -234,7 +230,6 @@ wrap_display_handler! {
             _custom_cursor_info: Option<&CursorInfo>,
         ) -> c_int {
             host::cursor_changed(self.pane, cursor(type_));
-            // The pointer over a page is Chromium's to set; the app is told which it is.
             0
         }
     }
@@ -300,9 +295,6 @@ wrap_life_span_handler! {
             extra_info: Option<&mut Option<DictionaryValue>>,
             _no_javascript_access: Option<&mut c_int>,
         ) -> c_int {
-            // A tab an extension opens (`chrome.tabs.create`), which the engine offers as a
-            // popup of this page, marked as no page can mark one: it becomes a pane of its
-            // own, and the extension gets that page back as its tab (`docs/extensions.md` 3).
             let extension_tab = (extra_info.as_deref().and_then(Option::as_ref))
                 .is_some_and(|info| info.has_key(Some(&"koyo_extension_tab".into())) != 0);
             if extension_tab {
@@ -316,13 +308,8 @@ wrap_life_span_handler! {
                     *client = Some(tab);
                     return 0;
                 }
-                // Not taken: Chrome opens the tab its own way.
                 return 1;
             }
-            // No native popup windows: the page opens in its own pane, and
-            // a link from DevTools in a new tab of the app. DevTools' own pages
-            // go nowhere: undocked, the frontend opens a window for its device
-            // toolbar, which Koyo's responsive mode stands in for.
             match target_url {
                 Some(url) if self.devtools && url.to_string().starts_with("devtools://") => {}
                 Some(url) if self.devtools => host::send(&HostEvent::OpenUrl {

@@ -1,6 +1,3 @@
-// A turn's mapping on its own, without a session: the frames a test sends and the events they
-// come to.
-
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { Frames } from "../../src/providers/claude/frames";

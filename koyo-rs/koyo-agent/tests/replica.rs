@@ -69,7 +69,6 @@ fn a_change_adds_new_rows_in_their_order_and_replaces_the_ones_it_has_whole() {
     assert_eq!(text_of(&replica, "c"), "Because.");
     assert_eq!(replica.runs.len(), 1);
     assert_eq!(replica.runs[0].status, RunStatus::Completed);
-    // The thread is told only when the step changed it.
     assert_eq!(replica.thread.title, "At 3");
     let mut titled = changed(5, Vec::new(), Vec::new());
     titled.thread = Some(thread(5));
@@ -114,7 +113,6 @@ fn a_row_older_than_the_one_held_is_not_taken_though_one_of_the_same_change_is()
     replica.apply(changed(4, Vec::new(), vec![item("a", 0, answer("Old"), 4)]));
     assert_eq!(text_of(&replica, "a"), "New");
     assert_eq!(replica.seq(), 5);
-    // A streaming item's text grows without a change number, and a reopen sends it whole.
     let mut grown = snapshot(5, Vec::new(), vec![item("a", 0, answer("New and more"), 5)]);
     grown.thread.title = "Reopened".into();
     replica.catch_up(grown);
@@ -165,7 +163,6 @@ fn history_goes_before_what_is_held_and_leaves_the_change_number_alone() {
     assert_eq!(ordinals(&replica), [0, 3, 4]);
     let runs: Vec<_> = replica.runs.iter().map(|run| run.id.0.as_str()).collect();
     assert_eq!(runs, ["r1", "r2"]);
-    // A page entirely older than what's held goes before it, in its order.
     replica.prepend(Rows {
         runs: vec![run("r0", RunStatus::Completed, 1)],
         items: Vec::new(),

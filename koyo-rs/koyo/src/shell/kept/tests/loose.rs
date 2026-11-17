@@ -45,12 +45,10 @@ fn the_windows_file_keeps_each_spaces_loose_pages_and_one_from_before_them_still
     );
     assert_eq!(json["spaces"][0]["tabs"][1]["project"], "/src/app");
 
-    // With none, the file is as it was before there were any; and such a file reads with none.
     let none = serde_json::to_value(Kept::default()).unwrap();
     assert!(none.get("spaces").is_none(), "{none}");
     std::fs::write(&path, r#"{"projects":[],"checkouts":[]}"#).unwrap();
     assert_eq!(read_file(&path), Kept::default());
-    // A page's entry may leave out its title and its project.
     std::fs::write(
         &path,
         r#"{"spaces":[{"space":1,"tabs":[{"url":"https://a.example/"}]}]}"#,
@@ -66,7 +64,6 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
     let root = repo("kept-loose-back", &[("README.md", "hi\n")]);
     let window_file = scratch("kept-loose-back-file").join("window.json");
     let (window, shell) = shell_with(&[&root], cx);
-    // The Arc layout, where the loose pages are, with a second space, which has no project.
     let ids = cx.update(|cx| {
         settings::update(cx, |settings| {
             settings.layout = Layout::Arc;
@@ -80,7 +77,6 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
         shell.show_space(0, cx);
     });
     select(&shell, &root, cx);
-    // In the first space, beside its project: two loose pages, the first of them shown.
     let (first, second) = cx
         .update_window(window, |_, window, cx| {
             shell.update(cx, |shell, cx| {
@@ -96,7 +92,6 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
         })
         .unwrap();
     assert_ne!(first, second);
-    // In the second, which shows no project, a page opened is a loose one.
     shell.update(cx, |shell, cx| shell.show_space(1, cx));
     open_page(window, &shell, Some("https://c.example/"), cx);
     draw(window, cx);
@@ -120,8 +115,6 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
     ];
     assert_eq!(file.spaces, expected);
 
-    // The next launch, on the second space as the settings have it: its page, shown; and the
-    // first space's when it's shown again, the one it showed shown.
     let back = relaunched(&window_file, cx);
     let loose = |cx: &TestAppContext| {
         cx.read(|cx| {
@@ -141,7 +134,6 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
     let profile = cx.read(|cx| back.read(cx).workspace.loose()[0].project.clone());
     assert_eq!(profile, std::path::Path::new(NO_PROJECT));
 
-    // Those of a space the settings no longer have are the space shown's, rather than lost.
     let mut orphaned = file;
     orphaned.spaces[1].space = 99;
     std::fs::write(&window_file, crate::kept_file::encode(&orphaned).unwrap()).unwrap();

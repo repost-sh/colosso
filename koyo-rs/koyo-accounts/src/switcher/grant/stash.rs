@@ -32,7 +32,6 @@ impl Switcher {
         };
         self.store
             .write_account_credentials(account_num, email, &found.credentials)?;
-        // The slot is advanced: a failed retire only leaves a row to retry.
         self.store.retire_stash_entry(&found.entry_id, account_num);
         log::info!(
             "Adopted account {account_num}'s stashed successor ({}): the stored generation was \

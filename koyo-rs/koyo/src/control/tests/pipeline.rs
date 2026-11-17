@@ -33,7 +33,6 @@ fn a_call_needs_every_scope_it_uses(cx: &mut TestAppContext) {
         refused.unwrap_err().details,
         Some(json!({ "scope": "settings" }))
     );
-    // Discarding unsaved edits needs `destructive` too, which no agent in a terminal has.
     let refused = call(
         &agent,
         "tab_close",
@@ -47,7 +46,6 @@ fn a_call_needs_every_scope_it_uses(cx: &mut TestAppContext) {
     let refused = call(&agent, "worktree_delete", json!({ "worktree": "main" }), cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::ScopeDenied);
     assert!(!cx.has_pending_prompt(), "a refused call asks nobody");
-    // Refused changes are logged as well.
     let logged: Vec<_> = (activity(cx).into_iter())
         .filter_map(|entry| match entry.kind {
             ActivityKind::Call { operation, outcome } => Some((operation, outcome.is_ok())),
@@ -87,7 +85,6 @@ fn a_destructive_call_goes_ahead_once_the_person_confirms(cx: &mut TestAppContex
         "“Claude Code” wants to close the tab “New chat”, discarding unsaved edits"
     );
     assert!(taken(&closing).is_none());
-    // One prompt per client: a second destructive call waits its turn.
     let second = call(
         &client,
         "tab_close",
@@ -152,7 +149,6 @@ fn a_destructive_call_the_person_cancels_is_declined_and_keeps_no_receipt(cx: &m
             .len()),
         1
     );
-    // Asked again with the same requestId, the person is asked again; silence declines.
     let closing = send(&client, Some("close-1"), close, cx);
     cx.run_until_parked();
     assert!(cx.has_pending_prompt(), "a declined call kept no receipt");
@@ -208,7 +204,6 @@ fn a_repeat_with_the_same_request_id_answers_the_first_result(cx: &mut TestAppCo
         taken(&other).unwrap().unwrap_err().code,
         ErrorCode::RequestConflict
     );
-    // Reads keep no receipts and aren't logged; the repeat acted no more, so it isn't either.
     let read = send(&agent, Some("open-1"), op("tab_list", json!({})), cx);
     cx.run_until_parked();
     assert!(taken(&read).unwrap().is_ok());
@@ -259,7 +254,6 @@ fn followers_hear_of_a_change_once_it_settles(cx: &mut TestAppContext) {
         [Topic::Workspace],
         "two changes, one event"
     );
-    // A setting set to what it is changes nothing to hear of.
     call(&agent, "settings_set", json!({ "previewFiles": true }), cx).unwrap();
     cx.executor().advance_clock(BATCH);
     cx.run_until_parked();
@@ -268,7 +262,6 @@ fn followers_hear_of_a_change_once_it_settles(cx: &mut TestAppContext) {
     cx.executor().advance_clock(BATCH);
     cx.run_until_parked();
     assert_eq!(*heard.lock().unwrap(), [Topic::Workspace, Topic::Settings]);
-    // A connection gone hears nothing more.
     cx.update(|cx| handle(Request::Closed { connection: 7 }, cx));
     call(&agent, "tab_open", json!({ "kind": "chat" }), cx).unwrap();
     cx.executor().advance_clock(BATCH);

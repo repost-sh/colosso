@@ -197,8 +197,6 @@ impl Session {
             .as_ref()
             .and_then(|f| f.get("method"))
             .and_then(serde_json::Value::as_str);
-        // What Koyo does instead of the frontend (`DEVICE_METRICS`), in the frontend's own
-        // session, is answered here: done, with nothing to say.
         if own
             && method.is_some_and(|method| DEVICE_METRICS.contains(&method))
             && let Some(id) = fields.as_ref().and_then(|f| f.get("id"))
@@ -278,8 +276,6 @@ impl Session {
                 self.track_children(&fields);
                 match self.own_message(&fields, id) {
                     Own::Forward => {
-                        // The session's name goes last; cut it off rather
-                        // than write out a message that may be large.
                         let tail = format!(",\"sessionId\":\"{session}\"}}");
                         let message = if let Some(head) = text.strip_suffix(tail.as_str()) {
                             format!("{head}}}")

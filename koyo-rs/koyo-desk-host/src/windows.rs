@@ -79,7 +79,6 @@ pub fn holds_app_windows(space: SpaceId) -> bool {
 fn all_on(space: SpaceId) -> Vec<Window> {
     let ids = skylight::windows_on(space);
     let mut windows: Vec<Window> = described(&ids).iter().filter_map(window).collect();
-    // The description comes in no promised order: put it back in the window server's.
     windows.sort_by_key(|window| ids.iter().position(|id| *id == window.id));
     windows
 }
@@ -89,7 +88,6 @@ fn described(ids: &[u32]) -> Vec<ns::Obj> {
     if ids.is_empty() {
         return Vec::new();
     }
-    // The window list takes the numbers themselves, not number objects.
     let values: Vec<*const std::ffi::c_void> = ids
         .iter()
         .map(|id| std::ptr::without_provenance(*id as usize))
@@ -183,8 +181,6 @@ impl Helpers {
     /// The windows that processes working for the agent's apps (`pids`) keep exactly over
     /// one of that app's `listed` windows.
     pub fn hosted(&mut self, listed: &[Window], pids: &[i32]) -> Vec<Hosted> {
-        // No app of the agent's, no window drawn for one: every window in the session
-        // needn't be listed to find that out.
         if pids.is_empty() {
             return Vec::new();
         }
@@ -216,7 +212,6 @@ impl Helpers {
                 self.theirs.push((id, app));
             }
         }
-        // What isn't a helper's now is never looked at again.
         (self.others).extend(
             new.iter()
                 .filter(|id| !self.theirs.iter().any(|(known, ..)| known == *id)),
@@ -316,7 +311,6 @@ mod tests {
             window(4, -2_147_483_624, (1800., 1169.)),
         ];
         assert_eq!(backdrop_among(&all, display).map(|found| found.id), Some(4));
-        // A window as large as the display isn't the wallpaper for that: an app's can be.
         let apps = vec![window(2, 0, (1800., 1169.))];
         assert_eq!(backdrop_among(&apps, display), None);
     }
@@ -330,7 +324,6 @@ mod tests {
         }];
         assert_eq!(through(&hosted, 10), Some((900, 11)));
         assert_eq!(through(&hosted, 12), None);
-        // What accessibility names by the other process's window is the agent's window.
         assert_eq!(listed_for(&hosted, 11), 10);
         assert_eq!(listed_for(&hosted, 12), 12);
     }

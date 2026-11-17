@@ -1,7 +1,3 @@
-// What the host does for each method (docs/chat.md 4.3), over its threads and providers. A
-// method about a thread is a step of that thread's actor, answered at once; only what waits
-// on a provider's process answers later.
-
 import { type Handlers, HOST_VERSION } from "./protocol/wire";
 import type { Provider } from "./providers/provider";
 import type { Client } from "./server/client";
@@ -28,15 +24,12 @@ export function handlers(host: Host): Handlers<Client> {
         greeted.delete(client);
         threads.forget(client);
       });
-      // Another client here is another app in use, which two builds mustn't take turns stopping.
       return { version: HOST_VERSION, pid: process.pid, busy: threads.busy() || greeted.size > 1 };
     },
     "shutdown": () => {
       host.shutdown();
       return {};
     },
-    // What Koyo's settings say of the agents: kept for the sessions threads open, and handed to
-    // every provider to follow.
     "config.set": (config) => {
       threads.configure(config);
       for (const provider of host.providers) {
@@ -46,7 +39,6 @@ export function handlers(host: Host): Handlers<Client> {
     },
     "providers.status": async ({ refresh }) =>
       await Promise.all(host.providers.map(async (provider) => await provider.status(refresh))),
-    // A new chat starts in Koyo's default mode, when it names one, else the provider's (C12).
     "catalog": async ({ provider, cwd, commands }) => {
       const catalog = await threads.provider(provider).catalog(cwd, commands);
       return { ...catalog, defaultMode: threads.config.defaultMode ?? catalog.defaultMode };

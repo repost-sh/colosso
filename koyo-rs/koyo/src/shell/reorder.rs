@@ -191,7 +191,6 @@ impl Element for Reorder {
                 flex_direction: FlexDirection::Row,
                 align_items: Some(AlignItems::Center),
                 gap: size(gap, px(0.).into()),
-                // Narrowing its tabs before the strip overflows.
                 flex_shrink: 1.,
                 min_size: size(px(0.).into(), Length::Auto),
                 size: size(Length::Auto, relative(1.).into()),
@@ -229,8 +228,6 @@ impl Element for Reorder {
         };
         let pointer = window.mouse_position();
         let held = (self.hand).place(&list, &slots, pointer, cx.has_active_drag());
-        // Each tab's place is a transitioned value only while one's in hand or settling:
-        // the rest of the time there's no state, so a tab is where it's laid out at once.
         let moving = held.is_some() || self.hand.settling(self.list);
         let slide = Transition::new(MOTION);
         let at_once = Transition::new(Duration::ZERO);
@@ -241,10 +238,7 @@ impl Element for Reorder {
                 .map(|(at, slot)| {
                     let laid = slot.origin.along(axis) - start;
                     let (target, policy) = match held {
-                        // Under the pointer, or back to its slot once it's off the list.
                         Some(h) if h.at == at => (h.pos, if h.off { &slide } else { &at_once }),
-                        // Out of the way of the tab in hand, into the slot it left, once it's
-                        // passed this one.
                         Some(h) if h.at < at && at <= h.to => (laid - (h.len + gap), &slide),
                         Some(h) if h.to <= at && at < h.at => (laid + h.len + gap, &slide),
                         _ => (laid, &slide),
@@ -277,7 +271,6 @@ impl Element for Reorder {
             held: held.map(|held| held.at),
             join,
         };
-        // The tab in hand last, so the pointer is over it rather than the tabs it passes.
         for at in placement.order() {
             window.with_element_offset(at_along(axis, placement.offsets[at]), |window| {
                 self.tabs[at].1.prepaint(window, cx);
@@ -302,8 +295,6 @@ impl Element for Reorder {
         if let (Some((bounds, after)), Holds::Tabs { accent }) = (placement.join, self.holds) {
             paint_join(bounds, after, accent, window);
         }
-        // The list lets its own tab go, wherever over it the pointer is, before anything
-        // under the pointer hears the release: off the list, a pane's side takes it.
         if placement.held.is_some() {
             let (hand, list, on_drop) = (self.hand.clone(), self.list, self.on_drop.clone());
             window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {

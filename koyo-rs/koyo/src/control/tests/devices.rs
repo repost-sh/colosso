@@ -133,7 +133,6 @@ fn the_person_using_the_device_turns_an_agent_away_and_nothing_is_asked(cx: &mut
     assert_eq!(error.code, ErrorCode::PersonHasControl);
     assert!(error.retryable, "{}", error.message);
     assert!(told.try_recv().is_err(), "the host was asked while the person held it");
-    // Reads aren't acts: a screenshot is still asked.
     let _pending = send(&terminal("t1"), None, op("device_screenshot", json!({})), cx);
     cx.run_until_parked();
     assert_eq!(asked(&told).1, Ask::Screenshot { scale: 1 });
@@ -145,7 +144,6 @@ fn a_device_is_found_by_id_pane_or_the_last_acted_on_and_else_said_what_to_do(cx
     let (one, told_one) = device("U-A", &rig, cx);
     let (_two, told_two) = device("U-B", &rig, cx);
     let agent = terminal("t1");
-    // By id, though another tab shows.
     let pending = send(&agent, None, op("device_key", json!({ "device": "U-A", "combo": "escape" })), cx);
     cx.run_until_parked();
     let (request, _) = asked(&told_one);
@@ -157,12 +155,10 @@ fn a_device_is_found_by_id_pane_or_the_last_acted_on_and_else_said_what_to_do(cx
     };
     answer(&one, request, Ok(acted), cx);
     assert!(taken(&pending).expect("answered").is_ok());
-    // With neither: the one acted on last, not the shown tab's.
     let _pending = send(&agent, None, op("device_snapshot", json!({})), cx);
     cx.run_until_parked();
     assert_eq!(asked(&told_one).1, Ask::Snapshot { text: false });
     assert!(told_two.try_recv().is_err());
-    // Another agent has acted on none: the shown tab's.
     let _pending = send(&terminal("t2"), None, op("device_snapshot", json!({})), cx);
     cx.run_until_parked();
     assert_eq!(asked(&told_two).1, Ask::Snapshot { text: false });
@@ -239,17 +235,14 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
     let (agent, other) = (terminal("t1"), terminal("t2"));
     let code = |caller: &Caller, tool: &str, input: Value, cx: &mut TestAppContext| call(caller, tool, input, cx).map(|_| ()).unwrap_err().code;
     let snapshot = || json!({ "device": "U-REAL" });
-    // Its tab shown, a call naming no device goes to the simulator.
     let _pending = send(&agent, None, op("device_snapshot", json!({})), cx);
     cx.run_until_parked();
     assert_eq!(asked(&told_sim).1, Ask::Snapshot { text: false });
 
-    // What it refuses anyway is refused without asking the person.
     let launch = json!({ "device": "U-REAL", "bundle": "com.apple.mobiletimer" });
     assert_eq!(code(&agent, "device_launch", launch, cx), ErrorCode::Unsupported);
     assert!(!cx.has_pending_prompt());
 
-    // A read puts the sheet up and answers at once; while it's up, nobody's call asks again.
     let asking = call(&agent, "device_screenshot", snapshot(), cx).unwrap_err();
     assert_eq!(asking.code, ErrorCode::DeviceNeedsPerson, "{}", asking.message);
     assert!(asking.message.contains("Tell them why you need it"), "{}", asking.message);
@@ -263,7 +256,6 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
     assert!(!cx.has_pending_prompt(), "one sheet, answered");
     assert!(nothing_asked(&told_ipad), "nothing was asked of it before Allow");
 
-    // Lent: its calls go to the device, and the decision is in the activity log.
     let _pending = send(&agent, None, op("device_snapshot", snapshot()), cx);
     cx.run_until_parked();
     assert_eq!(asked(&told_ipad).1, Ask::Snapshot { text: false });
@@ -272,7 +264,6 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
     });
     assert!(lent);
 
-    // Another agent: Don't Allow holds for a while with no new sheet, then it may ask again.
     assert_eq!(code(&other, "device_snapshot", snapshot(), cx), ErrorCode::DeviceNeedsPerson);
     cx.simulate_prompt_answer("Don't Allow");
     cx.run_until_parked();
@@ -283,14 +274,12 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
     cx.simulate_prompt_answer("Don't Allow");
     cx.run_until_parked();
 
-    // Taken back: the agent's next call asks the person again.
     cx.update(|cx| crate::devices::devices(cx).update(cx, |devices, cx| devices.take_back("U-REAL", cx)));
     assert_eq!(code(&agent, "device_snapshot", snapshot(), cx), ErrorCode::DeviceNeedsPerson);
     assert!(cx.has_pending_prompt());
     cx.simulate_prompt_answer("Don't Allow");
     cx.run_until_parked();
 
-    // Lent ahead to every agent; closing its tab ends that.
     cx.update(|cx| crate::devices::devices(cx).update(cx, |devices, _| devices.lends.lend("U-REAL", None)));
     let closed = call(&agent, "device_close", snapshot(), cx);
     assert!(closed.is_ok(), "{closed:?}");

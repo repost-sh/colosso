@@ -241,8 +241,6 @@ pub fn fetch_oauth_profile(env: &Env, access_token: &str) -> Option<AccountIdent
     };
     if !(200..300).contains(&response.status) {
         if response.status == 401 {
-            // Evidence, not proof: this also fires benignly (the family rotated, then the
-            // access token expired on an idle machine). Log only; the caller goes on without.
             log::warn!("{PROFILE_401_WARNING}");
         } else {
             log::debug!("OAuth profile fetch failed: HTTP {}", response.status);

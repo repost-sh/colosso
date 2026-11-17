@@ -113,10 +113,6 @@ fn the_mark_heads_claudes_accounts_and_the_window_fits_as_they_change(cx: &mut T
     let ana = (drawn.debug_bounds("accounts-row-ana@example.com")).expect("ana is drawn");
     assert!(above.bottom() <= ana.top(), "{above:?} over {ana:?}");
     assert!(above.size.height > px(0.), "{above:?}");
-    // As far from the panel's edge over it as from ana's letters under it, which start 12 pt
-    // into her block (its 8 pt of padding, and 4 into the email's line); her block's tint under
-    // the pointer doesn't meet it. The edge is the menu's window's padding over the body, which
-    // is drawn here without it.
     let over = above.top() + px(crate::menu::PADDING);
     let (block, letters) = (
         ana.top() - above.bottom(),
@@ -127,7 +123,6 @@ fn the_mark_heads_claudes_accounts_and_the_window_fits_as_they_change(cx: &mut T
         "{over:?} over it, {letters:?} under it"
     );
     assert!(block >= px(4.), "{block:?} to ana's block");
-    // Another account, a note that wraps and what auto-switch did.
     let said = "Couldn't switch to bob@example.com: Claude Code's lock stayed held; try again.";
     let more = View {
         rows: vec![row("1", "ana@example.com"), row("2", "bob@example.com")],
@@ -139,7 +134,6 @@ fn the_mark_heads_claudes_accounts_and_the_window_fits_as_they_change(cx: &mut T
         ..View::default()
     };
     shown.fits(more, cx);
-    // Down to the Mac's login Koyo doesn't keep: still Claude's, under the mark.
     let unkept = View {
         unmanaged: Some("dee@example.com".into()),
         said: Some(said.to_owned()),
@@ -147,7 +141,6 @@ fn the_mark_heads_claudes_accounts_and_the_window_fits_as_they_change(cx: &mut T
     };
     let drawn = &mut shown.fits(unkept, cx);
     assert!(mark(drawn).is_some());
-    // Nothing to group: no mark.
     let drawn = &mut shown.fits(View::default(), cx);
     assert_eq!(mark(drawn), None);
 }

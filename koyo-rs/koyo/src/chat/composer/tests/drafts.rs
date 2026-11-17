@@ -121,7 +121,6 @@ impl Open {
         cx.update_window(self.window, |_, window, _| window.remove_window())
             .unwrap();
         drop(self.composer);
-        // What's dropped is released as the next update ends.
         cx.update(|_| {});
         cx.run_until_parked();
     }
@@ -192,7 +191,6 @@ fn a_message_that_does_not_go_is_a_draft_again(cx: &mut TestAppContext) {
     let open = Open::thread(&place, cx);
     open.write("hello", cx);
 
-    // These chats have no host, so it can't go.
     open.with(cx, ChatComposer::send);
 
     assert_eq!(open.typed(cx), "hello");
@@ -231,7 +229,6 @@ fn a_second_composer_on_a_chat_starts_empty_and_keeps_nothing(cx: &mut TestAppCo
     assert_eq!(kept_text(&place.thread(), cx).as_deref(), Some("mine"));
     second.close(cx);
 
-    // Its going leaves the first one's alone.
     first.write("still mine", cx);
     assert_eq!(
         kept_text(&place.thread(), cx).as_deref(),
@@ -300,7 +297,6 @@ fn a_deleted_thread_takes_its_draft_and_its_files_with_it(cx: &mut TestAppContex
 
     assert_eq!(kept_text(&place.thread(), cx), None);
     assert_eq!(kept_files(&place.files), 0);
-    // Its tab is on its way, and may hear something before it goes.
     open.write("hello again", cx);
     assert_eq!(kept_text(&place.thread(), cx), None);
 }

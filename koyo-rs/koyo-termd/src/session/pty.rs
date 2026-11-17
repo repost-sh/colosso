@@ -111,8 +111,6 @@ pub fn spawn(
         .openpty(pty_size(size))
         .map_err(io::Error::other)?;
     let mut builder = match command {
-        // portable-pty's default program is `$SHELL` as a login shell: run by its path, its
-        // name with a leading dash as `argv[0]`. A `SHELL` the caller gave wins.
         [] => CommandBuilder::new_default_prog(),
         [program, args @ ..] => {
             let mut builder = CommandBuilder::new(program);
@@ -127,8 +125,6 @@ pub fn spawn(
         }
     }
     builder.cwd(cwd);
-    // The program that runs, whose shell integration goes in: the login shell, or the
-    // command's own.
     let program = match command {
         [] => {
             let shell = extra_env.get("SHELL").cloned().unwrap_or_else(login_shell);
@@ -146,7 +142,6 @@ pub fn spawn(
         .map_err(io::Error::other)?;
     drop(pair.slave);
     let reader = reader_of(pair.master.as_ref())?;
-    // The flag is the open PTY's, so the writer's too.
     set_nonblocking(reader.as_raw_fd())?;
     let writer = pair.master.take_writer().map_err(io::Error::other)?;
     let pid = child.process_id().unwrap_or(0);
@@ -246,7 +241,6 @@ fn environment(
     env.push(("COLORTERM".into(), "truecolor".into()));
     env.push(("FORCE_HYPERLINK".into(), "1".into()));
     if let Some(dark) = dark {
-        // White on black, or black on white, in the 16 colours' numbers.
         let colors = if dark { "15;0" } else { "0;15" };
         env.push(("COLORFGBG".into(), colors.into()));
     }
@@ -265,7 +259,6 @@ fn environment(
     for (key, value) in extra {
         env.push((key.clone(), value.clone()));
     }
-    // Last, as it folds the terminal's own ZDOTDIR or XDG_DATA_DIRS into what it sets.
     if let Some(dir) = &resources {
         let get = |key: &str| extra.get(key).cloned();
         env.extend(super::integration::variables(program, dir, get));
@@ -341,7 +334,6 @@ mod tests {
         let mut spawned = spawn(&handle, None, &command, &cwd, &env, size, None).unwrap();
         let printed = printed(&mut spawned);
         let mut seen = Vec::new();
-        // The test's own environment is cargo's, CARGO_PKG_NAME among it.
         let done = read_until(&printed, &mut seen, |text| text.contains("KOYO_TERMINAL="));
         let _ = spawned.child.wait();
         let seen = String::from_utf8_lossy(&seen);
@@ -349,7 +341,6 @@ mod tests {
         assert!(seen.contains("ASKED_FOR=yes"), "{seen}");
         assert!(seen.contains("HOME="), "{seen}");
         assert!(!seen.contains("CARGO_PKG_NAME="), "{seen}");
-        // Told the terminal opens the links it makes of its text.
         assert!(seen.contains("FORCE_HYPERLINK=1"), "{seen}");
     }
 
@@ -361,8 +352,6 @@ mod tests {
         let mut spawned = spawn(&handle, None, &[], &cwd, &env, Size::cells(80, 24), None).unwrap();
         let printed = printed(&mut spawned);
         let mut seen = Vec::new();
-        // Typed once the shell shows its prompt, as a person would: a login shell may drop
-        // what came before it was ready.
         let ready = read_until(&printed, &mut seen, |text| text.trim_end().ends_with('$'));
         if ready {
             write_all(&mut spawned.pty, b"echo \"zero=$0\"; exit\n").unwrap();

@@ -24,8 +24,6 @@ fn fetched(ago: f64) -> UsageEntry {
     }
 }
 
-// TestDueCandidate
-
 #[test]
 fn missing_entry_is_most_due() {
     let table = entries(vec![("3", fetched(60.))]);
@@ -195,8 +193,6 @@ fn none_when_no_candidates() {
     assert_eq!(due_candidate(&none, &BTreeMap::new(), NOW), None);
 }
 
-// TestDeadTokenQuarantine
-
 #[test]
 fn invalid_grant_advances_strikes() {
     let h = Harness::new();
@@ -228,7 +224,6 @@ fn token_dead_at_threshold() {
     let h = Harness::new();
     assert!(!h.entry("1").token_dead(None));
     h.record("1", err("invalid_grant"));
-    // One server-confirmed invalid_grant is definitive.
     assert!(h.entry("1").token_dead(None));
 }
 
@@ -266,8 +261,6 @@ fn clear_dead_token_lifts_quarantine() {
     assert_eq!(entry.backoff_until, None);
 }
 
-// TestReserve
-
 fn stale(h: &Harness) {
     h.record("1", ok());
     h.advance(SERVE_TTL_S + CLAIM_TTL_S + 1.);
@@ -277,7 +270,6 @@ fn stale(h: &Harness) {
 fn reserve_wins_and_stamps() {
     let h = Harness::new();
     assert_eq!(won(&h.reserve(&["1"], true)), ["1"]);
-    // The stamp is the claim: an immediate second reservation loses.
     assert!(h.reserve(&["1"], true).is_empty());
     assert!(h.reserve(&["1"], false).is_empty());
 }
@@ -307,7 +299,6 @@ fn overslept_repair_rechecks_current_plan_under_lock() {
     h.plan("1", Some(h.now() + 86_400.), Some(300.));
     let claims = h.reserve_repair(&["1"], true);
     assert_eq!(won(&claims), ["1"]);
-    // A concurrent winner can replace the obsolete plan first; the locked check sees it.
     let plans = BTreeMap::from([("1".to_owned(), (Some(h.now() + 300.), Some(300.)))]);
     let outcomes = BTreeMap::from([("1".to_owned(), ok())]);
     let accepted = h
@@ -366,8 +357,6 @@ fn unknown_row_and_identity_mismatch_win() {
     assert_eq!(won(&claims), ["2"]);
 }
 
-// TestFingerprintBoundStrikes
-
 fn struck(fp: Option<&str>) -> UsageEntry {
     let h = Harness::new();
     let ident = one_identity("1", "a@example.com", "");
@@ -399,8 +388,6 @@ fn strike_unbinds_on_fingerprint_mismatch() {
 fn strike_without_fp_binds_unconditionally() {
     assert!(struck(None).token_dead(Some("fp-anything")));
 }
-
-// TestStruckFingerprintHygiene
 
 fn strike(h: &Harness, fp: Option<&str>) {
     let record = FetchRecord {

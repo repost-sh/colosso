@@ -53,8 +53,6 @@ describe("Claude's status", () => {
       account: { email: "dev@example.com", plan: "max" },
       message: null,
     });
-    // The probe starts the CLI and nothing more: no transcript, hooks or MCP servers, Koyo's
-    // tools included.
     expect(queries[0]?.options).toMatchObject({
       persistSession: false,
       settings: { disableAllHooks: true },
@@ -292,9 +290,7 @@ describe("a conversation's files", () => {
 
   test("can't be asked after without Claude Code", async () => {
     const { claude, queries } = provider({
-      find: () => {
-        // It isn't anywhere.
-      },
+      find: () => {},
     });
     expect(claude.filesAt("s", "/work", "p")).rejects.toThrow(HostError);
     expect(claude.restoreFiles("s", "/work", "p")).rejects.toThrow(HostError);
@@ -332,7 +328,6 @@ describe("a title", () => {
     const query = queries[0];
     const reply = "\"Flaky Test Investigation.\"\n";
     query?.send(success([], { text: reply }));
-    // As the model replied: the actor makes the title of it.
     expect(await titled).toBe(reply);
     expect(query?.options).toMatchObject({
       model: "haiku",

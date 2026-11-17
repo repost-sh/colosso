@@ -49,7 +49,6 @@ pub(crate) fn engine() -> Option<&'static Path> {
 /// run loop, and says so on the socket as a host process would. A start that fails says why
 /// there too.
 pub fn start(start: Start) {
-    // Read and written here, off the main thread, before CEF opens the profiles.
     crate::host::drop_cleared(&start.profiles);
     forget_sessions(&start.profiles);
     on_main(move || {
@@ -82,16 +81,11 @@ pub fn finish(grace: Duration) {
     }
     let began = Instant::now();
     let deadline = began + grace;
-    // The `DevTools` pipe hangs up, and the windows Chromium made on its own (an
-    // extension's) close as the pages do.
     crate::extensions::stopping();
     crate::native::close_strays();
-    // Every page's browser gone, and every window CEF made for one: it must outlive neither.
     let closed = || {
         crate::host::all_closed() && crate::native::windows() == 0 && crate::native::strays() == 0
     };
-    // The main thread has nothing else to do as the app quits: CEF's work runs from here, a
-    // millisecond's wait between turns (on a channel nothing sends on).
     let (_never, wait) = std::sync::mpsc::channel::<()>();
     while !closed() && Instant::now() < deadline {
         pump::work();
@@ -104,7 +98,6 @@ pub fn finish(grace: Duration) {
         ));
         return;
     }
-    // A few turns more, for what closing left to do.
     for _ in 0..5 {
         pump::work();
     }

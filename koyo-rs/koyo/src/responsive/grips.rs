@@ -147,7 +147,6 @@ pub trait Resizable: Sized + 'static {
             return;
         };
         if event.pressed_button.is_none() {
-            // The release happened outside the window.
             self.let_go_of_grip(cx);
             return;
         }
@@ -187,8 +186,6 @@ pub fn paint<V: Resizable>(
     p: Palette,
     window: &mut Window,
 ) {
-    // Whether a grip is in hand: as this frame was drawn, or taken by a press since, so the
-    // moves before the next frame drag it too.
     let holding = Rc::new(Cell::new(held.is_some()));
     for (grip, hitbox) in grips {
         let lit = held == Some(*grip) || hitbox.is_hovered(window);
@@ -206,9 +203,6 @@ pub fn paint<V: Resizable>(
             }
         });
     }
-    // Heard wherever the pointer is, so a grip let go where its release went unheard (a
-    // trackpad's tap) is let go at the next move; with none in hand, a move is nothing to
-    // the view.
     let moved = view.downgrade();
     window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx: &mut App| {
         if phase == DispatchPhase::Capture && holding.get() {

@@ -1,7 +1,3 @@
-// What the actor decides at the provider seam, so that every provider gets it right without
-// doing it itself (docs/chat.md 4.5, 4.6): how a run's end closes what it left open, the mode
-// a session opens in, which turn compacts, and what title a model's reply makes.
-
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { FakeSession } from "../src/providers/fake";
@@ -113,7 +109,6 @@ describe("a session's mode", () => {
     chats.actor.update({ permission: "ask" });
     chats.actor.update({ permission: null });
     expect(session.changes).toStrictEqual([{ permission: "ask" }, { permission: "auto" }]);
-    // Koyo's default changing leaves a live session in the mode it has.
     chats.config = { claudePath: null, defaultMode: "accept_edits", koyoTools: null };
     chats.actor.update({ model: "claude-opus-5-5" });
     expect(session.changes.at(-1)).toStrictEqual({ model: "claude-opus-5-5" });

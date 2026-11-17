@@ -60,7 +60,6 @@ pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
 /// What a pane shows: its chat, terminal, page, file or the checkout's diffs.
 pub fn pane(pane: &Pane, p: Palette) -> AnyElement {
     match pane.kind {
-        // Its view is drawn in its place, once the shell has made it.
         PaneKind::Chat => div().size_full().into_any_element(),
         PaneKind::Terminal => terminal(p),
         PaneKind::Browser => browser(pane),

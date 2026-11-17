@@ -39,7 +39,6 @@ pub(super) fn best(hits: &[Hit], recent: &[(u32, u32)], most: usize, pool: &Pool
     let mut ranked = pool
         .each(hits.chunks(share).collect(), |share| best_of(share, most))
         .concat();
-    // A recent file can climb into the best, from wherever it was among the hits.
     for (recency, spot) in recent.iter().enumerate() {
         let Ok(at) = hits.binary_search_by(|hit| hit.spot().cmp(spot)) else {
             continue;

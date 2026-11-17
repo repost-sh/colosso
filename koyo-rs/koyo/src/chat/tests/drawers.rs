@@ -157,7 +157,6 @@ fn an_answer_that_did_not_go_can_be_given_again(cx: &mut TestAppContext) {
     let pending = questions(vec![asked("Tabs?", false, &["Tabs", "Spaces"])]);
     let chat = Asking::new("chat-question-again", vec![pending], cx);
 
-    // No host hears it here, so it doesn't go, and the drawer shows it again.
     chat.keys("1", cx);
     a_moment_passes(&chat, cx);
     chat.keys("2", cx);

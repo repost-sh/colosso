@@ -44,7 +44,6 @@ pub(super) fn read_requests(reader: UnixStream) {
     loop {
         let request = match ipc::read_frame::<AppRequest>(&mut reader) {
             Ok(Some(request)) => request,
-            // The app went away or spoke nonsense: shut down cleanly.
             Ok(None) | Err(_) => AppRequest::Shutdown,
         };
         let last = request == AppRequest::Shutdown;
@@ -92,7 +91,6 @@ pub(crate) fn context_initialized() {
 }
 
 fn drain() {
-    // Cleared first: a request queued from here on posts a drain of its own.
     DRAIN_POSTED.store(false, Ordering::Release);
     if with(|host| host.ready) != Some(true) {
         return;

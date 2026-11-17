@@ -70,7 +70,6 @@ impl Replica {
     pub fn working(&self) -> bool {
         let turn = self.live().is_some() && self.asking().is_none();
         turn || self.thread.background_tasks > 0
-            // The latest first, as a subagent still going most likely is.
             || (self.items.iter().rev())
                 .any(|item| matches!(item.body, ItemBody::Subagent(_)) && item.status.is_open())
     }
@@ -123,7 +122,6 @@ impl Replica {
     /// Grows the streaming item it's for; false when this doesn't hold one, as the change that
     /// made it comes first.
     pub fn append(&mut self, appended: &Appended) -> bool {
-        // What streams is at the end of the timeline, or close to it.
         let item = (self.items.iter_mut().rev()).find(|item| item.id == appended.item_id);
         match item.and_then(|item| item.body.text_mut()) {
             Some(text) => {
@@ -140,8 +138,6 @@ impl Replica {
     }
 
     fn merge(&mut self, runs: Vec<Run>, items: Vec<Item>, requests: Vec<Request>) {
-        // A removed run is gone with what it held: what a person went back past. What takes its
-        // place in the timeline comes with this.
         let (gone, runs): (Vec<Run>, Vec<Run>) = runs
             .into_iter()
             .partition(|run| run.status == RunStatus::Removed);
@@ -177,7 +173,6 @@ fn merge_rows<T>(
     order: impl Fn(&T, &T) -> Ordering,
     seq: impl Fn(&T) -> u64,
 ) {
-    // A page of history goes before everything held, in one move rather than one per row.
     let sorted = new.is_sorted_by(|a, b| order(a, b).is_lt());
     if sorted
         && let (Some(last), Some(first)) = (new.last(), rows.first())

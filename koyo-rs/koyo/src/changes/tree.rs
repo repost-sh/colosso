@@ -116,7 +116,6 @@ mod tests {
                 folder("crates/app/src", "crates/app/src", 0),
                 file(2, 1),
                 file(1, 1),
-                // As a person sorts names, capitals with the rest.
                 file(0, 0),
                 file(3, 0),
             ]

@@ -69,7 +69,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state }, cx)));
         lines.push(format!("{}", drawn.save(picture)?.display()));
     }
-    // Lent to an agent: the pill at the pane's foot says so, with Take it back.
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state: Said::Ready { screen: screen() } }, cx)));
     let claude = crate::browser::control::Actor {
         id: "chat:1".into(),
@@ -87,7 +86,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
     });
     drawn.cx.update(|cx| link.update(cx, crate::devices::Link::stop));
 
-    // Its setup, a step at a time, as the list moves on.
     plugged(drawn, Vec::new());
     let window = drawn.window;
     let udid = Some("V-PAD".to_owned());
@@ -109,7 +107,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         lines.push(format!("{}", drawn.save_dialog(picture)?.display()));
     }
     super::dismiss(drawn);
-    // Settings → Devices, drawn next, lists both.
     plugged(drawn, both());
     Ok(())
 }

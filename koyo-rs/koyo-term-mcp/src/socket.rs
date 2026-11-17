@@ -60,7 +60,6 @@ impl Socket {
             state.identity = named.cloned();
         }
         let Some(identity) = state.identity.clone() else {
-            // Nothing has named the session yet, so nothing was followed to follow again.
             return Err(ControlError::app_not_running());
         };
         let endpoint = self.endpoint.clone()?;

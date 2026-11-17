@@ -77,7 +77,6 @@ fn absent_email_is_no_match() {
 
 #[test]
 fn empty_org_matches_missing_or_empty_org_field() {
-    // Slot 1 has "", slot 3 omits the field: both are personal.
     assert_eq!(
         Switcher::find_account_slot(&slot_data(), "user@example.com", "").as_deref(),
         Some("1")
@@ -123,7 +122,6 @@ fn read_invalid_json() {
     let path = h.sandbox.store().join("invalid.json");
     std::fs::write(&path, "not valid json {{{").unwrap();
     assert_eq!(h.switcher.read_json(&path, false).unwrap(), None);
-    // Strict, a torn file is refused rather than read as absent.
     assert!(matches!(
         h.switcher.read_json(&path, true),
         Err(AccountsError::Config(_))
@@ -183,7 +181,6 @@ fn with_existing_accounts() {
 
 #[test]
 fn salvage_copy_is_private_from_creation() {
-    // The aside copy can hold `primaryApiKey`: 0600 from creation, the mode call skipped.
     let h = Harness::new();
     let config_path = h.config_path();
     std::fs::write(&config_path, r#"{"primaryApiKey": "sk-test", "torn":"#).unwrap();
@@ -290,14 +287,11 @@ fn account_is_switchable_helper() {
     assert!(h.switcher.account_is_switchable(&data, "1").unwrap());
     assert!(!h.switcher.account_is_switchable(&data, "2").unwrap());
     assert!(!h.switcher.account_is_switchable(&data, "3").unwrap());
-    // A stale sequence reference to a missing record.
     assert!(!h.switcher.account_is_switchable(&data, "99").unwrap());
 }
 
 #[test]
 fn a_torn_roster_is_refused_not_read_as_empty() {
-    // `_get_sequence_data` is strict: a torn roster read as "no accounts" let `add_account`
-    // reassign slot 1 over a live backup.
     let h = Harness::new();
     h.switcher.setup_directories().unwrap();
     std::fs::write(

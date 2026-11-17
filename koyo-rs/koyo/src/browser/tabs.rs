@@ -41,7 +41,6 @@ impl Shell {
         if missing.is_empty() {
             return;
         }
-        // A pinned or a loose page is of the profile it keeps, whichever project is selected.
         let apart = workspace.shown_apart_project().map(Path::to_owned);
         let selected = || Some(workspace.project()?.path.clone());
         let Some(project) = apart.or_else(selected) else {

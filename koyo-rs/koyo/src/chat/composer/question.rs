@@ -114,7 +114,6 @@ impl QuestionDrawer {
         };
         let answer = self.answers.entry(question.id.clone()).or_default();
         if let Some(other) = other {
-            // One choice and something typed are two answers to what takes one: the words win.
             if !question.multi_select {
                 answer.clear();
             }
@@ -170,7 +169,6 @@ impl QuestionDrawer {
             .iter()
             .any(|option| option.preview.is_some());
         let previewed = self.previewed();
-        // All are drawn, one showing: a text view that isn't drawn forgets what it parsed.
         let previews = has_previews.then(|| {
             scroll_box("chat-question-preview", p)
                 .flex_1()

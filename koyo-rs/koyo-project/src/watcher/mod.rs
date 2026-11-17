@@ -143,8 +143,6 @@ impl Drop for Watching {
         targets.retain(|target| !Arc::ptr_eq(target, &self.target));
         let none = targets.is_empty();
         drop(targets);
-        // Folders no longer wanted are left watched until the platform starts again for
-        // another checkout: reports about them reach nobody meanwhile.
         if none {
             let mut platform = lock(&HUB.platform);
             if read(&HUB.targets).is_empty() {
@@ -182,7 +180,6 @@ impl Hub {
             let targets = read(&self.targets);
             let watched = platform.as_ref().map_or(&[][..], Platform::folders);
             let within = |folder: &PathBuf| watched.iter().any(|outer| folder.starts_with(outer));
-            // From the earliest moment a checkout not watched yet was registered.
             let since = (targets.iter())
                 .filter(|target| !target.places.folders().all(|folder| within(&folder)))
                 .map(|target| target.since)
@@ -255,7 +252,6 @@ impl Target {
         let counters = &self.shared.counters;
         Counters::add(&counters.events, heard);
         Counters::add(&counters.dropped, dropped);
-        // Counted before it's taken up, so whoever is told of it can see why.
         Counters::add(&counters.lost, lost_track);
         self.shared.heard(seen);
     }

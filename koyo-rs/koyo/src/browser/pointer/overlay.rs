@@ -168,7 +168,6 @@ pub(crate) fn tint(cx: &App) -> Hsla {
     let Some(color) = gradient::current(cx).primary() else {
         return gpui_kit::hsla(0., 0., 0.45, 1.);
     };
-    // A muted colour keeps its hue, with enough colour in it to show; a grey stays grey.
     let s = if color.s > 0.04 {
         color.s.max(0.6)
     } else {
@@ -236,7 +235,6 @@ fn paint_arrow(tip: Point<Pixels>, heading: f32, scale: f32, opacity: f32, windo
         let (along, side) = (along * scale, side * scale);
         tip + point(px(along * cos - side * sin), px(along * sin + side * cos))
     };
-    // A shadow of its own outline, so the notch stays open: two faint copies, a little lower.
     for (drop, alpha) in [(1., 0.16), (2.2, 0.08)] {
         let lower = |corner| at(corner) + point(px(0.), px(drop));
         let shadow = rounded(lower, PathBuilder::stroke(px(5.)));

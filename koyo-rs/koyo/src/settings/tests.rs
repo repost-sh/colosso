@@ -36,16 +36,12 @@ fn missing_fields_fall_back_to_defaults() {
     assert_eq!(settings.changes_files_width, theme::CHANGES_FILES_WIDTH);
     assert_eq!(settings.dark_theme, GradientTheme::default());
     assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
-    // As Zed and VS Code have them: previews on, no limit to the language servers, and none
-    // stopped for being idle.
     assert!(settings.preview_files);
     assert!(settings.inlay_hints);
     assert_eq!(settings.most_language_servers, None);
     assert!(!settings.stop_idle_language_servers);
     assert!(settings.runs_server("rust-analyzer", None));
-    // The composer's edge shows a chat working with a subtle line.
     assert_eq!(settings.chat_activity, ChatActivity::Subtle);
-    // A markdown file opens as it reads, as GitHub shows it.
     assert_eq!(
         settings.markdown_opens_as,
         crate::files::MarkdownMode::Preview
@@ -76,11 +72,9 @@ fn edits_to_the_file_are_taken_up_while_the_app_runs(cx: &mut gpui_kit::TestAppC
     edit(r#"{ "key_repeat": { "delay_ms": 90 } }"#);
     cx.update(reload);
     assert_eq!(delay(cx), 90);
-    // Half written, it's left until the next edit.
     edit(r#"{ "key_repeat": { "delay_ms": 4"#);
     cx.update(reload);
     assert_eq!(delay(cx), 90);
-    // A change made in the app and not written yet wins over the file.
     cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
     edit(r#"{ "key_repeat": { "delay_ms": 60 } }"#);
     cx.update(reload);
@@ -119,8 +113,6 @@ fn a_file_with_retired_keys_reads_without_them() {
         ..KeyRepeat::default()
     };
     assert_eq!(settings.key_repeat, repeat);
-    // The TypeScript switch keeps what was set under vtsls's name; the servers that came
-    // since are listed, on.
     let servers: Vec<_> = settings
         .language_servers
         .keys()
@@ -246,7 +238,6 @@ fn worktrees_go_in_a_folder_per_project() {
 fn a_language_server_is_turned_off_and_on_everywhere_or_in_a_project() {
     let (app, other) = (Path::new("/src/app"), Path::new("/src/other"));
     let mut settings = Settings::default();
-    // Listed in the file for whoever edits it, and on.
     assert!(
         serde_json::to_string(&settings)
             .unwrap()
@@ -257,21 +248,18 @@ fn a_language_server_is_turned_off_and_on_everywhere_or_in_a_project() {
     settings.set_server("rust-analyzer", &Scope::Project(app.into()), false);
     assert!(!settings.runs_server("rust-analyzer", Some(app)));
     assert!(settings.runs_server("rust-analyzer", Some(other)));
-    // Off in a project twice, it's listed once.
     settings.set_server("rust-analyzer", &Scope::Project(app.into()), false);
     assert_eq!(settings.language_servers["rust-analyzer"].off_in.len(), 1);
 
     settings.set_server("rust-analyzer", &Scope::Everywhere, false);
     assert!(!settings.runs_server("rust-analyzer", Some(other)));
     assert!(!settings.runs_server("rust-analyzer", None));
-    // Turned on in a project while off everywhere, it's on everywhere it wasn't turned off.
     settings.set_server("rust-analyzer", &Scope::Project(other.into()), true);
     assert!(settings.runs_server("rust-analyzer", Some(other)));
     assert!(!settings.runs_server("rust-analyzer", Some(app)));
     settings.set_server("rust-analyzer", &Scope::Project(app.into()), true);
     assert!(settings.runs_server("rust-analyzer", Some(app)));
 
-    // A server the file doesn't name runs.
     let named: Settings = serde_json::from_str(r#"{ "language_servers": {} }"#).unwrap();
     assert!(named.runs_server("rust-analyzer", Some(app)));
 }

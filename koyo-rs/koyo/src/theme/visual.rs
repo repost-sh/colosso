@@ -39,7 +39,6 @@ fn draw() -> Result<Vec<String>> {
         None => "no system accent read; the app's own is in use".into(),
     })];
     drawn.cx.update(|cx| {
-        // A switch that's on, whatever the check's own settings file says.
         settings::update(cx, |settings| settings.sidebar_open_on_launch = true);
         shell.update(cx, |shell, cx| {
             shell.navigate(Route::Settings(SettingsPage::General), cx);

@@ -144,10 +144,6 @@ fn glass(
             .ok()
     });
     pane.read(cx).0.as_ref()?;
-    // Placed as it's painted, not prepainted: GPUI stacks a native surface on the side of
-    // its overlays its element is prepainted on (gpui-fast's `begin_base` ends the prepaint
-    // that tells), so placed from a deferred element's prepaint the glass would cover what's
-    // drawn on it. It starts below the overlays and stays there.
     let glass = canvas(
         |_, _, _| (),
         move |bounds, (), window, cx| {
@@ -301,7 +297,6 @@ impl Native {
                 view.setStyle(NSGlassEffectViewStyle::Clear);
             }
         }
-        // Again as the theme's colour changes, which leaves the appearance as it was.
         if was != Some(look) {
             (self.view.borrow()).setTintColor(look.shade.map(ns_colour).as_deref());
         }

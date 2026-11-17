@@ -71,7 +71,6 @@ pub(crate) struct Bridge {
 impl Drop for Bridge {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        // Wakes the serving thread from its accept, so it sees the stop.
         let _ = TcpStream::connect(("127.0.0.1", self.port));
     }
 }
@@ -118,7 +117,6 @@ fn serve(
         if stop.load(Ordering::Relaxed) {
             return;
         }
-        // Messages for a frontend that was not there went nowhere.
         while outgoing.try_recv().is_ok() {}
         if let Some(socket) = handshake(stream, path) {
             connection(pane, socket, outgoing, stop);
@@ -211,7 +209,6 @@ wrap_dev_tools_message_observer! {
             if let Some(text) = message.and_then(|m| std::str::from_utf8(m).ok()) {
                 host::from_page(self.page, text);
             }
-            // Handled: the split callbacks are not wanted as well.
             1
         }
     }

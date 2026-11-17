@@ -25,7 +25,6 @@ pub fn open(
     let cwd = open.cwd.as_deref().or(client.cwd.as_deref());
     let worktree = match worktree::resolve(open.worktree.as_ref(), cwd, &known) {
         Ok(worktree) => Some(worktree),
-        // A terminal outside any checkout is allowed when the caller said where to start it.
         Err(error) if error.code == ErrorCode::WorktreeRequired && open.cwd.is_some() => None,
         Err(error) => return Err(error),
     };
@@ -136,7 +135,6 @@ fn reopen(
             existed: true,
         }));
     }
-    // Remembered from before the daemon restarted: no process until asked for one.
     if !respawn {
         return Ok(Some(ResponseBody::Opened {
             terminal: Box::new(existing),

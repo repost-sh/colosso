@@ -82,7 +82,6 @@ pub(super) fn lay_out(recipe: &Recipe) -> Result<Laid, String> {
     if probe.see_through || !placed.covers(recipe.screen) {
         canvas.fill(canvas.bounds(), recipe.wallpaper.fill.map(CGFloat::from));
     }
-    // Quartz counts from the bottom left, the layout from the top left.
     let height = CGFloat::from(canvas.height);
     let rect = CGRect::new(
         CGPoint::new(

@@ -140,7 +140,6 @@ impl BrowserView {
                 PasskeyAnswer::refused(PasskeyError::NotAllowed, "The request was cancelled.")
             });
             let _ = view.update(cx, |view, cx| {
-                // Withdrawn meanwhile: the page isn't waiting any more.
                 if view
                     .passkey
                     .asked
@@ -180,7 +179,6 @@ fn open(
         if let Some(answer) = answer(origin, ask) {
             return sheet::Sheet::answered(answer);
         }
-        // Never answered, as a sheet left open.
         let (tell, told) = oneshot::channel();
         std::mem::forget(tell);
         return (sheet::Sheet::default(), told);

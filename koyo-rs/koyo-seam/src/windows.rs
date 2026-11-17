@@ -140,7 +140,6 @@ mod tests {
         assert_eq!(adoption(holder, main), Adoption::TakenFrom(holder));
         assert_eq!(adoption(0, main), Adoption::Taken);
         assert_eq!(adoption(main, main), Adoption::Kept, "asked again, nothing is done");
-        // Chromium ties it to the holder again: taken back.
         assert_eq!(adoption(holder, main), Adoption::TakenFrom(holder));
     }
 
@@ -157,7 +156,6 @@ mod tests {
 
     #[test]
     fn a_panel_stays_where_a_pop_up_panel_is_among_other_apps_windows() {
-        // Above the Dock (20), the menu bar (24) and status items (25), as before.
         assert!(panel_level() > 25);
     }
 }

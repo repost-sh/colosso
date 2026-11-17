@@ -43,7 +43,6 @@ extern "C-unwind" fn set_handling_send_event(_: &AnyObject, _: Sel, handling: Bo
 
 extern "C-unwind" fn send_event(this: &AnyObject, _: Sel, event: *mut AnyObject) {
     let previous = HANDLING_SEND_EVENT.swap(true, Ordering::Relaxed);
-    // Whose the input is, noted before any window hears it (`koyo-seam`).
     // SAFETY: the event the application is dispatching, on the main thread.
     unsafe { koyo_seam::appkit::app_sends(event) };
     // SAFETY: `NSApplication`'s own implementation, which the app's class didn't have one over.
@@ -120,7 +119,6 @@ pub(crate) fn install() -> Result<(), String> {
             ffi::class_addMethod(target, selector, imp, types.as_ptr());
         }
     }
-    // `CefAppProtocol` isn't registered in the framework, and nothing has needed it.
     for name in [c"CrAppProtocol", c"CrAppControlProtocol"] {
         match AnyProtocol::get(name) {
             // SAFETY: both the class and the protocol are registered.

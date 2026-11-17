@@ -71,7 +71,6 @@ impl Picture {
         let Some(pixels) = surfaces::pixel_buffer(surface) else {
             return;
         };
-        // The newer is held before the one before it is let go.
         self.shown = Some(Shown { pixels });
         self.frames += 1;
         cx.notify();

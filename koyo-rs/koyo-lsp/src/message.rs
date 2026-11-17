@@ -52,7 +52,6 @@ pub(crate) struct Incoming<'a> {
     pub method: Option<Cow<'a, str>>,
     #[serde(borrow, default)]
     pub params: Option<&'a RawValue>,
-    // A `null` result reads as `None`; a response without an error is a success either way.
     #[serde(borrow, default)]
     pub result: Option<&'a RawValue>,
     #[serde(default)]

@@ -64,8 +64,6 @@ impl Daemon {
 
     pub fn remove_client(&self, client: &Arc<Client>) {
         self.clients.lock().remove(&client.id);
-        // A client may hold leases or pins on terminals it never attached to, which end
-        // with it too.
         let sessions: Vec<Arc<SessionHandle>> = self.sessions.lock().values().cloned().collect();
         for session in sessions {
             let _ = session.tx.send(Cmd::ClientGone {
@@ -155,7 +153,6 @@ impl Daemon {
                 client.respond(req, done());
                 self.stop();
             }
-            // `route` sent the rest to their terminals.
             _ => {}
         }
     }
@@ -208,7 +205,6 @@ impl Daemon {
                 }
                 ProtocolError::new(ErrorCode::Internal, "the terminal's thread is gone")
             }
-            // A terminal remembered from before a restart reads as its kept screen.
             Err(error) if matches!(cmd, Cmd::ReadScreen { .. }) => {
                 let record = self.registry.lock().get(handle).cloned();
                 let dir = self.dir.terminal(handle);

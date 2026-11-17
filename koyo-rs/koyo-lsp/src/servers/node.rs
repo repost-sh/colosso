@@ -47,8 +47,6 @@ impl Npm for NpmCli {
         let folders = (self.node.parent().map(Path::to_path_buf).into_iter())
             .chain(std::env::split_paths(&path));
         let folders: Vec<_> = folders.collect();
-        // By its path where it's found: a program named with a `PATH` of its own is started
-        // by forking the app, which holds the browser engine (`docs/native-pages.md` 11).
         let found = super::found(folders.iter().cloned(), "npm").next();
         let path = std::env::join_paths(folders).map_err(|error| error.to_string())?;
         let cache = prefix.join(".npm-cache");
@@ -99,7 +97,6 @@ impl NodeServer {
                 }
             })
             .and_then(|()| place(&staging, &version, &script));
-        // Gone already after the rename; what a failure left behind otherwise.
         let _ = fs::remove_dir_all(&staging);
         installed?;
         Ok(version.join(script))
@@ -189,10 +186,8 @@ mod tests {
         let expected = "servers/vtsls/0.3.0/node_modules/@vtsls/language-server/bin/vtsls.js";
         assert_eq!(script, data.join(expected));
         assert!(script.is_file());
-        // Nothing of the install is left beside it.
         let left: Vec<_> = fs::read_dir(data.join("servers/vtsls")).unwrap().collect();
         assert_eq!(left.len(), 1);
-        // There already: not installed again.
         assert_eq!(VTSLS.script(&data, &npm).unwrap(), script);
         assert_eq!(npm.installs.get(), 1);
         let _ = fs::remove_dir_all(&data);

@@ -93,7 +93,6 @@ pub(super) fn button(
     enabled: bool,
     cx: &mut Context<BrowserView>,
 ) -> Div {
-    // Heard on the way down, before the button's own click at the release.
     div()
         .child(button)
         .capture_any_mouse_down(
@@ -170,7 +169,6 @@ impl BrowserView {
         let answer = self.browsers.update(cx, |browsers, _| {
             browsers.call(pane, "Page.getNavigationHistory", serde_json::json!({}))
         });
-        // Just under the button, as a browser's list drops from it.
         let at = point(at.x - px(8.), at.y + px(14.));
         cx.spawn_in(window, async move |_, cx| {
             let Ok(Ok(history)) = answer.await else {
@@ -186,7 +184,6 @@ impl BrowserView {
                 };
                 menu.menu(label(entry), Box::new(pick))
             });
-            // The visual check runs unattended, where the menu's tracking would wait.
             if menu.is_empty() || cfg!(feature = "visual-check") {
                 return;
             }
@@ -200,7 +197,6 @@ impl BrowserView {
         self.person_acts(Mode::Implicit, cx);
         self.goes_through_history();
         let pane = self.pane;
-        // A page that's gone has nothing to answer; its own events tell the rest.
         drop(self.browsers.update(cx, |browsers, _| {
             browsers.call(
                 pane,

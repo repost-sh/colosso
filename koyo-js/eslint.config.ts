@@ -1,10 +1,3 @@
-// The lint policy of every koyo-js package: typescript-eslint's strictest type-checked sets,
-// every rule an error, and the rules below on top. As in the Rust crates, a rule is never
-// turned off to make an error go away; a line that truly needs an exception carries an
-// `eslint-disable-next-line <rule> -- <reason>` comment, which `reportUnusedDisableDirectives`
-// retires once the line stops tripping it. Options are written only where they differ from
-// the rule's default.
-
 import js from "@eslint/js";
 import stylistic from "@stylistic/eslint-plugin";
 import { defineConfig } from "eslint/config";
@@ -40,13 +33,10 @@ export default defineConfig(
       unicorn,
     },
     rules: {
-      // Types are proven, never asserted: no `as`, no `<T>x` (the presets already forbid `!`
-      // and `any`). Untrusted input is parsed (zod), and a value whose type can't be proven
-      // is narrowed by a check.
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "@typescript-eslint/ban-ts-comment": ["error", { "ts-expect-error": true }],
+      "@typescript-eslint/no-empty-function": ["error", { allow: ["arrowFunctions", "functions"] }],
 
-      // Every branch of a union is handled, and a condition is a boolean, not a truthy value.
       "@typescript-eslint/switch-exhaustiveness-check": ["error", {
         allowDefaultCaseForExhaustiveSwitch: false,
         requireDefaultForNonUnion: true,
@@ -56,16 +46,13 @@ export default defineConfig(
         allowNumber: false,
       }],
 
-      // Promises are awaited, returned or handed to something that handles them.
       "@typescript-eslint/no-floating-promises": ["error", { checkThenables: true }],
       "@typescript-eslint/promise-function-async": "error",
       "@typescript-eslint/return-await": ["error", "always"],
       "@typescript-eslint/require-array-sort-compare": "error",
 
-      // What a function returns is written down, so a change to it is a change to its type.
       "@typescript-eslint/explicit-function-return-type": ["error", { allowExpressions: true }],
       "@typescript-eslint/explicit-module-boundary-types": "error",
-      // Function-typed properties are checked contravariantly; methods aren't.
       "@typescript-eslint/method-signature-style": "error",
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/consistent-type-imports": "error",
@@ -79,13 +66,10 @@ export default defineConfig(
       }],
       "@typescript-eslint/no-useless-empty-export": "error",
 
-      // Plain JavaScript hygiene.
       "eqeqeq": "error",
       "curly": "error",
       "no-console": "error",
       "no-labels": "error",
-      // Bun hands a connection's state to its socket handlers as `socket.data`, which the
-      // `open` handler sets; that's the one parameter whose properties are written.
       "no-param-reassign": ["error", { props: true, ignorePropertyModificationsFor: ["socket"] }],
       "no-nested-ternary": "error",
       "no-implicit-coercion": "error",
@@ -110,7 +94,6 @@ export default defineConfig(
       "default-case-last": "error",
       "radix": "error",
       "yoda": "error",
-      // One file, one job: the same 500-line limit script/hygiene holds the Rust files to.
       "max-lines": ["error", 500],
       "max-depth": ["error", 4],
       "max-params": ["error", 4],
@@ -135,7 +118,6 @@ export default defineConfig(
 
       "@stylistic/max-len": ["error", { code: 100, ignoreUrls: true, ignoreRegExpLiterals: true }],
       "@stylistic/quotes": ["error", "double", { avoidEscape: true }],
-      // An operator starts the line it continues, except `=`, which ends the line it opens.
       "@stylistic/operator-linebreak": ["error", "before", { overrides: { "=": "after" } }],
     },
   },

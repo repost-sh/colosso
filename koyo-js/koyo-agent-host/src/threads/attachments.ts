@@ -1,9 +1,3 @@
-// The files messages attach (docs/chat.md 4.3.4): the app writes them into the host's
-// attachments folder and names them by file, so a name is checked to be one of that folder's
-// own files before an agent is given its path, and goes with its chat. One neither a message nor
-// the app's drafts ended up naming, the app having stopped before it could remove it, is swept up
-// as the host starts.
-
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 

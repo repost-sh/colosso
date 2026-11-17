@@ -96,7 +96,6 @@ fn orphaned_entry_file_still_listed() {
 
 #[test]
 fn identical_bytes_same_second_get_distinct_ids() {
-    // The sandbox's clock stands still: both land in one second.
     let world = World::new();
     let store = &world.store;
     let id_a = store
@@ -122,7 +121,6 @@ fn corrupt_manifest_is_preserved_not_clobbered() {
     let new_id = store
         .write_unclaimed_credential("bytes-2", context(json!({"reason": "y"})))
         .unwrap();
-    // Set aside, not destroyed...
     let corrupt: Vec<_> = fs::read_dir(store.credentials_dir())
         .unwrap()
         .flatten()
@@ -139,7 +137,6 @@ fn corrupt_manifest_is_preserved_not_clobbered() {
             .unwrap()
             .contains("not json")
     );
-    // ...the new manifest is valid, and the older entry's bytes are still listed.
     let entries = store.list_unclaimed_credentials();
     assert_eq!(entries[&new_id]["reason"], "y");
     assert!(entries.contains_key(&entry_id));
@@ -262,7 +259,7 @@ fn an_unlistable_dir_counts_as_entries_at_risk() {
         .unwrap();
     assert!(store.stash_entry_files_exist(), "premise");
     let dir = store.credentials_dir();
-    chmod(&dir, 0o311); // searchable, files reachable, but unlistable
+    chmod(&dir, 0o311);
     let at_risk = store.stash_entry_files_exist();
     chmod(&dir, 0o700);
     assert!(at_risk);
@@ -385,7 +382,6 @@ fn row_d_absent_entry_bytes_terminate_instead_of_deferring() {
             .list_unclaimed_credentials()
             .contains_key(&entry_id)
     );
-    // A second retire of the same id is housekeeping, not a failure.
     world.store.remove_unclaimed_credential(&entry_id).unwrap();
 }
 

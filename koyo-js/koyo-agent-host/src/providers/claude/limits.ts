@@ -1,10 +1,3 @@
-// What a `rate_limit_event` says of the account's subscription limits (docs/claude-accounts.md
-// 4), for the app to keep the active account's usage current between its readings of the usage
-// endpoint. Claude Code 2.1.322 reads them from each response's `anthropic-ratelimit-unified-*`
-// headers: the window the response was measured against, and, in `unifiedWindows`, every window
-// the headers carried. That field is marked internal and isn't in the SDK's types, so it's read
-// as it comes and dropped when it's not what it was.
-
 import type { SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 

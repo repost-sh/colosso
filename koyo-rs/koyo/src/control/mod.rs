@@ -47,7 +47,6 @@ pub(crate) use in_process::InProcess;
 pub(crate) use policy::ApprovedClient;
 #[cfg(test)]
 pub(crate) use policy::{activity, set_enabled};
-// What the Settings page reads and changes.
 pub use policy::{
     DEFAULT_PORT, PageSize, Policy, allow_denied, denied, pages_open_at, policy, revoke,
     set_client_scopes, set_pages_open_at, set_port,
@@ -193,7 +192,6 @@ pub fn start(cx: &mut App) {
         Ok((_, Err(error))) => log::error!("{error}"),
         Err(error) => log::error!("couldn't find the control socket: {error}"),
     }
-    // The MCP server over HTTP follows the policy, which lives in the settings.
     http::apply(cx);
     let following = settings::observe_app(cx, http::apply);
     Control::get_mut(cx)._subscriptions.push(following);
@@ -204,7 +202,6 @@ pub fn start(cx: &mut App) {
         }
     })
     .detach();
-    // The socket goes with the app, so the next one binds it without a stale file.
     cx.on_app_quit(|cx| {
         let control = Control::get_mut(cx);
         control.server.take();
@@ -226,7 +223,6 @@ pub(crate) fn start_for_test(cx: &mut App) -> UnboundedReceiver<Request> {
 fn install(cx: &mut App) -> UnboundedReceiver<Request> {
     let (requests, received) = unbounded();
     let shells = cx.observe_new::<Shell>(|_, _, cx| {
-        // A person's page closed or moved takes the consents for it along.
         let observer = cx.observe_self(|shell, cx| {
             topics::mark(&[Topic::App, Topic::Workspace], cx);
             exec::consents_follow(shell, cx);
@@ -314,6 +310,5 @@ fn policy_changed(cx: &mut App) {
         auth::refuse_all(&ControlError::control_disabled(), cx);
     }
     topics::drop_refused(cx);
-    // A client that may no longer drive pages loses the person's consent for theirs at once.
     exec::consents_rescope(cx);
 }

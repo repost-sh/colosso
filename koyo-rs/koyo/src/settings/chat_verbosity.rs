@@ -134,7 +134,6 @@ impl Verbosity {
     /// How much of a kind of step shows, of what it can.
     pub fn shows(mut self, step: Step) -> Shows {
         let shows = *self.slot(step);
-        // A file that says a few lines of a kind with none to pick shows all of it.
         if shows == Shows::Preview && !step.choices().contains(&Shows::Preview) {
             Shows::All
         } else {
@@ -158,7 +157,6 @@ impl Verbosity {
         if self.preset().is_some() {
             return presets;
         }
-        // Checked and greyed out, it only says the steps were chosen one by one.
         presets
             .separator()
             .menu_with_disabled("Custom", true, Box::new(NoAction))

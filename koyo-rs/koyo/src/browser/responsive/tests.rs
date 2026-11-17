@@ -27,7 +27,6 @@ fn iphone() -> &'static Device {
 #[test]
 fn a_page_fits_its_room_at_most_at_its_true_size() {
     let mode = Responsive::free(400, 800, Zoom::Fit, SetBy::Person);
-    // 432 × 432 leaves 400 × 400 inside the gutters: the height halves it.
     assert!((mode.fit(size(px(432.), px(432.))) - 0.5).abs() < 1e-6);
     assert!(
         (mode.fit(size(px(2000.), px(2000.))) - 1.).abs() < 1e-6,
@@ -77,7 +76,6 @@ fn pointer_positions_map_through_the_scale_both_ways() {
 #[test]
 fn a_preset_emulates_a_phone_and_leaving_it_clears_all_of_it() {
     let mut phone = Responsive::preset(iphone(), false, Zoom::Fit, SetBy::Person).emulation("146");
-    // Shown at half its size, as a pane shorter than the phone has it.
     phone.shown = Some(Scaled {
         width: 393,
         height: 852,
@@ -289,7 +287,6 @@ fn a_page_has_settled_once_it_reports_the_size() {
         laid_out(400, 800, 200, false, (200., 400.)),
         "zoomed, CSS pixels are larger"
     );
-    // A phone page with no <meta viewport> lays out at 980 wide, the phone's shape.
     assert!(laid_out(375, 667, 100, true, (980., 1743.)));
     assert!(
         !laid_out(375, 667, 100, false, (980., 1743.)),
@@ -347,7 +344,6 @@ fn the_page_is_told_a_preset_on_setting_clearing_and_reopening(cx: &mut TestAppC
     ];
     assert_eq!(methods(&set[..4]), told, "{set:?}");
     assert_eq!(set[0].1["mobile"], true);
-    // Drawn, it's told the size again as it shows at it, scaled down into the pane.
     assert!(
         methods(&set[4..])
             .iter()
@@ -360,7 +356,6 @@ fn the_page_is_told_a_preset_on_setting_clearing_and_reopening(cx: &mut TestAppC
     let scale = sized["scale"].as_f64().unwrap_or_default();
     assert!((scale - f64::from(fit)).abs() < 1e-6, "at {fit}, not {scale}");
     assert!(fit < 1., "the phone is taller than the pane");
-    // The page is laid out at the phone's size and scale.
     view.read_with(cx, |view, _| {
         let viewport = view.viewport.unwrap();
         assert_eq!((viewport.width, viewport.height), (393, 852));

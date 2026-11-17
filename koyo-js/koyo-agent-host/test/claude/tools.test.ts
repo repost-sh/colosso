@@ -129,7 +129,6 @@ describe("a recorded turn's tools", () => {
         input: { file_path: NOTES, content: "one\n" },
         output: `File created successfully at: ${NOTES}`,
         exitCode: null,
-        // The CLI gives no patch of a file it created: its lines are the change.
         patch: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ["+one"] }],
         files: [NOTES],
         server: null,

@@ -132,7 +132,6 @@ impl<T: DeserializeOwned> Future for Response<T> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let method = self.method;
         self.receiver.poll_unpin(cx).map(|answer| {
-            // The sender is dropped unanswered only with the whole client.
             answer.unwrap_or(Err(LspError::Exited)).and_then(|payload| {
                 payload
                     .parse()
@@ -147,7 +146,6 @@ impl<T> Drop for Response<T> {
         let Some(shared) = self.shared.upgrade() else {
             return;
         };
-        // Already answered, it's no longer waited for, and there's nothing to cancel.
         if shared.forget(self.id) {
             let params = CancelParams {
                 id: NumberOrString::Number(self.id),

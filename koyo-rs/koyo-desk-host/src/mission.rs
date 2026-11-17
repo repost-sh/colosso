@@ -101,7 +101,6 @@ fn show_strips() -> Result<Vec<Strip>, String> {
     let displays = desktop::displays().len().max(1);
     ns::pump_until(SHOWS_WITHIN, || {
         found = strips();
-        // Every display's strip, not the first that shows.
         found.len() >= displays
     });
     if found.is_empty() {
@@ -123,8 +122,6 @@ fn put_away() {
 fn with_strips<T>(act: impl FnOnce(&[Strip]) -> Result<T, String>) -> Result<T, String> {
     let found = show_strips()?;
     let done = act(&found);
-    // Unasked, whatever the strips look like now: one that a desktop was just added to or
-    // removed from is being rebuilt, and reads as gone for a moment.
     put_away();
     done
 }
@@ -209,7 +206,6 @@ pub fn go_to(space: SpaceId) -> Result<(), String> {
     });
     let there =
         pressed.is_ok() && ns::pump_until(TAKES_WITHIN, || skylight::active() == Some(space));
-    // A press on a desktop puts Mission Control away by itself; left up, it's put away.
     if !ns::pump_until(TAKES_WITHIN, || strips().is_empty()) {
         put_away();
     }

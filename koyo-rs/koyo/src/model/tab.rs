@@ -76,7 +76,6 @@ impl Tab {
     /// Two tabs side by side, every column of either sharing the room evenly.
     pub fn beside(first: Tab, second: Tab) -> Tab {
         let (columns, last) = Tab::split(SplitAxis::Row, first, second).into_columns();
-        // From the right: each column takes its share of the room it and those after it have.
         (columns.into_iter().rev().enumerate()).fold(last, |row, (after, column)| {
             Tab::Split(Box::new(Split {
                 axis: SplitAxis::Row,
@@ -115,7 +114,6 @@ impl Tab {
     /// the first until they've been in any. The address bar, the page's keys and the keyboard
     /// coming back to the tab go by it.
     pub fn current(&self) -> &Pane {
-        // The first of those entered as late: `max_by_key` alone would answer the last.
         let panes = self.panes().into_iter().rev();
         (panes.max_by_key(|pane| pane.entered_at)).unwrap_or_else(|| self.first())
     }
@@ -273,7 +271,6 @@ mod tests {
         let Tab::Split(split) = &row else {
             panic!("a split");
         };
-        // The row gives up its two columns; the column split is one.
         assert!((split.ratio - 1. / 3.).abs() < f32::EPSILON);
         let Tab::Split(rest) = &split.second else {
             panic!("a split");

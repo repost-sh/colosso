@@ -91,11 +91,9 @@ mod tests {
         });
         cx.update(|cx| take_move(SPEED, shown, 7, cx));
         assert_eq!(speed(cx), 150.);
-        // Let go where it was, the value set by hand stays.
         set_by_hand(cx);
         cx.update(|cx| take_move(SPEED, shown, 5, cx));
         assert_eq!(speed(cx), 100.);
-        // Disabled, or not shown yet, a move writes nothing.
         let disabled = Some(Shown {
             at: 5,
             enabled: false,

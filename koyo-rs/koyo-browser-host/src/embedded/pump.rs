@@ -138,7 +138,6 @@ pub fn install() {
         let timer = CFRunLoopTimerCreate(
             std::ptr::null(),
             CFAbsoluteTimeGetCurrent() + AT_MOST,
-            // Repeating, so firing never invalidates it; each firing sets the next.
             1.0e9,
             0,
             0,
@@ -182,7 +181,6 @@ extern "C" fn fire(timer: *mut c_void, _: *mut c_void) {
     // SAFETY: a CF call with no arguments.
     let now = unsafe { CFAbsoluteTimeGetCurrent() };
     if WORKING.load(Ordering::Acquire) {
-        // Inside CEF's own work, in a loop it spins: once it's done.
         // SAFETY: the timer is ours and alive.
         unsafe { CFRunLoopTimerSetNextFireDate(timer, now + AT_MOST / 2.) };
         return;
@@ -195,8 +193,6 @@ extern "C" fn fire(timer: *mut c_void, _: *mut c_void) {
         then();
     }
     work();
-    // What was asked for meanwhile, and while CEF runs never later than `AT_MOST`; with CEF
-    // not running the timer rests until something is asked of it.
     let asked = f64::from_bits(ASKED.load(Ordering::Acquire));
     // SAFETY: as above.
     let now = unsafe { CFAbsoluteTimeGetCurrent() };

@@ -451,7 +451,6 @@ fn line(element: &Element, depth: usize, first: u32, cap: usize, out: &mut Lines
         lines.push_str(" remote");
     }
     if width > 0. && height > 0. {
-        // Where a touch activates it, inside it; else its middle.
         let inside = |[px, py]: [f64; 2]| px >= x && px <= x + width && py >= y && py <= y + height;
         let [mx, my] = (element.activation)
             .filter(|point| inside(*point))

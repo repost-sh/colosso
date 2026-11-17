@@ -143,7 +143,6 @@ pub(super) fn expect(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner
         })
     });
     match was {
-        // The one before is let go as it is; the watch goes on for this one.
         Some(was) => reveal(&was.hidden),
         None => crate::embedded::pump::every(EVERY, look),
     }
@@ -201,7 +200,6 @@ fn look() -> bool {
     let Some(mtm) = MainThreadMarker::new() else {
         return false;
     };
-    // Taken out while `AppKit` is called, which may call back into the host.
     let Some(mut expected) = EXPECTED.with(|expected| expected.borrow_mut().take()) else {
         return false;
     };
@@ -212,7 +210,6 @@ fn look() -> bool {
     }
     EXPECTED.with(|slot| {
         let mut slot = slot.borrow_mut();
-        // An action run meanwhile has its own expectation, which wins.
         if slot.is_none() {
             *slot = Some(expected);
         } else {
@@ -227,7 +224,6 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     if let Some((popup, _)) = expected.popup.clone()
         && expected.placed
     {
-        // Shown and placed: kept there until it closes, or loses the keyboard it had.
         let has = popup.isKeyWindow() || keys_in_a_child_of(&popup, mtm);
         let lost = lost_keys(expected.had_keys, has);
         expected.had_keys |= has;
@@ -251,7 +247,6 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
                 continue;
             }
             if !window.isVisible() {
-                // It may become the popup: clear until it's known and placed.
                 if crate::native::alpha(&window) >= 1. {
                     crate::native::set_alpha(&window, 0.);
                     expected.hidden.push(window);
@@ -268,15 +263,12 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     let Some((popup, since)) = &expected.popup else {
         return now < expected.until;
     };
-    // A hidden bubble waits a moment for its page's size rather than show a stub that grows.
     if popup.frame().size.width <= UNSIZED && now.duration_since(*since) < SIZING {
         return true;
     }
     put(popup, expected.at, expected.corner, mtm);
     crate::native::set_alpha(popup, 1.);
     over_its_page(popup, expected.pane);
-    // With the keyboard, as a popup has it in Chrome: it closes when it loses it, which it
-    // only does once it had it.
     popup.makeKeyWindow();
     expected.hidden.retain(|window| !std::ptr::eq(&raw const **window, &raw const **popup));
     reveal(&expected.hidden);
@@ -351,7 +343,6 @@ fn place(width: f64, height: f64, at: NSPoint, corner: Corner, screen: Option<NS
     if let Some(screen) = screen {
         let (left, bottom) = (screen.origin.x, screen.origin.y);
         let (right, top) = (left + screen.size.width, bottom + screen.size.height);
-        // The page inside the margin is what has to show.
         x = x.min(right + MARGIN - width).max(left - MARGIN);
         y = y.min(top + MARGIN - height).max(bottom - MARGIN);
     }
@@ -373,7 +364,6 @@ mod tests {
 
     #[test]
     fn a_popup_hangs_by_its_top_right_corner() {
-        // 300 by 400 of page in a bubble 314 by 414: the page's corner is at the point.
         let origin = place(314., 414., NSPoint::new(1000., 800.), Corner::Right, Some(screen()));
         assert!(near(origin.x, 693.) && near(origin.y, 393.));
         assert!(near(origin.x + 314. - MARGIN, 1000.));
@@ -382,20 +372,16 @@ mod tests {
 
     #[test]
     fn a_popup_closes_once_it_had_the_keyboard_and_lost_it() {
-        // Opened while the app wasn't in front, it never had the keys: it stays.
         assert!(!lost_keys(false, false));
         assert!(!lost_keys(false, true));
         assert!(!lost_keys(true, true));
-        // A press elsewhere, or another app in front, took them.
         assert!(lost_keys(true, false));
     }
 
     #[test]
     fn a_popup_hangs_by_its_top_left_corner_when_asked() {
-        // The page's left edge at the point, the popup opening to its right.
         let origin = place(314., 414., NSPoint::new(200., 800.), Corner::Left, Some(screen()));
         assert!(near(origin.x + MARGIN, 200.) && near(origin.y + 414. - MARGIN, 800.));
-        // Too near the screen's right edge for that, it's moved in.
         let origin = place(314., 414., NSPoint::new(1300., 800.), Corner::Left, Some(screen()));
         assert!(near(origin.x + 314. - MARGIN, 1440.));
     }
@@ -406,21 +392,16 @@ mod tests {
         let page = rect(100., 100., 800., 600.);
         assert!(overlap(rect(700., 500., 300., 400.), page));
         assert!(overlap(rect(200., 200., 10., 10.), page));
-        // Beside it, or only touching its edge, isn't over it.
         assert!(!overlap(rect(900., 100., 50., 50.), page));
         assert!(!overlap(rect(0., 0., 100., 100.), page));
     }
 
     #[test]
     fn a_popup_stays_on_its_screen() {
-        // Wider than what's left of the screen to the icon's left: its left edge at the
-        // screen's.
         let origin = place(414., 314., NSPoint::new(200., 800.), Corner::Right, Some(screen()));
         assert!(near(origin.x, -MARGIN));
-        // Taller than what's under the icon: its foot at the screen's.
         let origin = place(314., 614., NSPoint::new(1000., 300.), Corner::Right, Some(screen()));
         assert!(near(origin.y, -MARGIN));
-        // With no screen known it's where it was asked.
         let origin = place(414., 314., NSPoint::new(200., 800.), Corner::Right, None);
         assert!(near(origin.x, 200. + MARGIN - 414.));
     }

@@ -1,14 +1,3 @@
-// Going back in a chat (docs/chat.md C11). What a person said then comes back to them, and that
-// message and everything after it leave the chat and the conversation, which goes on from what
-// came before in a session opened anew. A removed run stays as a row, for a client that held it
-// to hear it's gone. A prompt goes to the session by its run's id, which is how its entry is
-// found.
-//
-// The files stay as they are unless the person asks for them back, which is offered only while
-// what the chat wrote is still what's there. Putting them back writes over whatever's there and
-// its dry run can't tell, so the host looks: a file written since the chat last worked is someone
-// else's work, and another chat at work in the checkout may be about to do the same.
-
 import { statSync } from "node:fs";
 import { basename, relative, resolve } from "node:path";
 
@@ -117,7 +106,6 @@ function changedSince(cwd: string, files: readonly string[], since: string | nul
   const settled = since === null ? 0 : Date.parse(since);
   const [first, ...more] = files.filter((file) => {
     const written = statSync(resolve(cwd, file), { throwIfNoEntry: false })?.mtimeMs ?? 0;
-    // To the millisecond, as `since` is: a write in the moment before it isn't later than it.
     return Math.trunc(written) > settled;
   });
   if (first === undefined) {

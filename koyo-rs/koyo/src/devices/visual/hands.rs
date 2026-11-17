@@ -109,7 +109,6 @@ fn turns(drawn: &mut Drawn, link: &Entity<Link>, first: Screen, lines: &mut Vec<
         if until(drawn, link, STEP, new).is_none() {
             return say(lines, "QR4", "four ways", &format!("only {seen:?} in {} s", STEP.as_secs()), false);
         }
-        // The way it's held is read first; its picture follows within a read of the turn.
         let settled = until(drawn, link, SETTLES, |link| link.screen().is_some_and(|screen| upright(&screen)));
         let Some(screen) = drawn.cx.read(|cx| link.read(cx).screen()) else {
             continue;
@@ -206,7 +205,6 @@ pub(super) fn run(drawn: &mut Drawn, view: Entity<DeviceView>, link: &Entity<Lin
     turns(drawn, link, first, lines);
     lock(drawn, &view, link, lines);
     plug(drawn, &view, link, lines);
-    // U14: his look at its camera and sound, with the tab shown.
     note("U14: open the Camera app, look, then go back Home");
     let _ = drawn.until(Duration::from_secs(90), |_| Ok(false));
     awake(drawn, view, link, udid, lines)

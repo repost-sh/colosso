@@ -201,8 +201,6 @@ fn a_page_opened_out_of_sight_is_visible_once_shown(cx: &mut TestAppContext) {
         document.addEventListener('visibilitychange',say)</script>";
     let (tab, view, cx, scratch) = unseen("unseen-paints", url, cx);
     view.update(cx, BrowserView::open_out_of_sight);
-    // No agent uses it, so the engine has it out of sight, likely before its browser is
-    // made, and Chromium is told so all the same.
     cx.executor().advance_clock(AWAKE_FOR);
     wait_for_title(cx, &view, "hidden");
     show(&tab, true, cx);
@@ -224,7 +222,6 @@ fn an_agent_drives_a_page_opened_out_of_sight_as_if_shown(cx: &mut TestAppContex
     wait_for_title(cx, &view, "submitted");
     assert!(screenshot(cx, &view), "a screenshot answers");
 
-    // Unused for a while, it's out of sight for the engine too, until the next command.
     cx.executor().advance_clock(AWAKE_FOR);
     wait_for_title(cx, &view, "hidden");
     assert!(frames_run(cx, &view), "the next command wakes it");
@@ -247,7 +244,6 @@ fn an_agent_drives_a_page_whose_tab_was_left(cx: &mut TestAppContext) {
 #[ignore = "needs the engine script/browser-engine packages"]
 fn a_command_the_page_never_answers_is_answered_within_its_limit(cx: &mut TestAppContext) {
     let (view, cx, scratch) = left("command-limit", cx);
-    // A promise nothing settles: the engine waits on it for good.
     let limit = Duration::from_secs(5);
     let browsers = cx.update(|_, cx| Browsers::global(cx));
     let pane = view.read_with(cx, |view, _| view.pane);
@@ -320,13 +316,11 @@ fn a_sign_in_outlives_the_engine_quitting_and_starting_again(cx: &mut TestAppCon
     let (view, cx, scratch) = open("signed-in", &format!("http://127.0.0.1:{port}/account"), cx);
     wait_for_title(cx, &view, "signed out");
 
-    // Koyo quits: the engine is asked to, and goes.
     let browsers = cx.update(|_, cx| Browsers::global(cx));
     let connection = browsers.update(cx, |browsers, _| browsers.stop());
     connection
         .expect("the engine, running")
         .shutdown(Duration::from_secs(5));
-    // And starts again on the same profiles: the page opens anew, and its site knows it.
     browsers.update(cx, Browsers::start_if_idle);
     wait_for_title(cx, &view, "session+cookie+storage");
     finish(cx, scratch);

@@ -31,7 +31,6 @@ fn an_arc_runs_from_where_the_pointer_is_to_where_it_clicks_on_one_ellipse() {
         let p = arc.at(step as f32 / 20.);
         assert!(off_ellipse(&arc, p) < 1e-3, "on the arc at {step}: {p:?}");
     }
-    // It leaves its chord at the same angle it comes back to it.
     let chord = (to - from).y.atan2((to - from).x);
     let (leaves, arrives) = (turn(chord, arc.heading(0.)), turn(chord, arc.heading(1.)));
     assert!(
@@ -45,7 +44,6 @@ fn an_arc_runs_from_where_the_pointer_is_to_where_it_clicks_on_one_ellipse() {
 fn with_no_heading_an_arc_bows_up_and_stays_in_the_page() {
     let arc = Arc::new(point(100., 400.), point(900., 400.), None, PAGE).unwrap();
     assert!(arc.at(0.5).y < 400., "up");
-    // Along the top edge, bowing up would leave the page.
     let arc = Arc::new(point(100., 10.), point(900., 10.), None, PAGE).unwrap();
     assert!(arc.at(0.5).y > 10., "down, inside");
     assert!(
@@ -81,7 +79,6 @@ fn the_pointer_eases_in_and_out_along_its_arc_and_points_where_it_goes() {
         first < middle / 10. && last < middle / 10.,
         "{first} {middle} {last}"
     );
-    // Mid-way it heads along the arc, its tip on it.
     let glide = pointer.glide.clone().unwrap();
     let now = at(begun, millis / 2);
     let along = glide.along(now);
@@ -105,7 +102,6 @@ fn a_pointer_never_shown_comes_in_from_below_left_and_fades_in() {
     );
     assert!(pointer.opacity(start).abs() < 1e-6);
     assert!(pointer.opacity(at(start, 200)) > 0.99);
-    // At the left edge, it comes from the right.
     let mut edge = Pointer::default();
     edge.glide_to(point(20., 300.), PAGE, false, start);
     assert!(edge.tip(start).x > 20.);
@@ -128,7 +124,6 @@ fn it_fades_away_six_seconds_after_its_click_and_a_new_click_brings_it_back() {
     assert_eq!(pointer.next(at(clicked, 6_450)), Next::Frame);
     assert_eq!(pointer.shot(at(clicked, 7_000)), None);
     assert_eq!(pointer.next(at(clicked, 7_000)), Next::Never);
-    // Back where it was, and on its way from there.
     let back = at(clicked, 20_000);
     pointer.glide_to(point(100., 100.), PAGE, false, back);
     assert_eq!(pointer.tip(back), point(600., 300.));

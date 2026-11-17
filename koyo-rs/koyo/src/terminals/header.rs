@@ -128,7 +128,6 @@ impl Shell {
                 .text_color(p.muted)
                 .border_b_1()
                 .border_color(p.hairline)
-                // A narrow pane shortens what the bar says, never its buttons.
                 .overflow_hidden()
                 .child(dot(state.status, p))
                 .child(
@@ -141,7 +140,6 @@ impl Shell {
                     bar.child(ellipsized(state.reason.clone()))
                 })
                 .child(div().flex_1())
-                // The chip's own button gives it back.
                 .when_some(takeover, |bar, from| {
                     bar.child(
                         ellipsized(format!("You took over from {from}")).text_color(p.modified),

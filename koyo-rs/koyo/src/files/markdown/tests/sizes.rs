@@ -33,8 +33,6 @@ fn laid_out(
 #[gpui_kit::test]
 fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAppContext) {
     let root = checkout("markdown-size");
-    // Tall and narrow, as a flowchart top to bottom is, below some of everything a page has;
-    // and one wider than the column.
     let wide: String = std::iter::once("flowchart LR".to_owned())
         .chain((0..12).map(|at| format!("    S{at}[A step along] --> S{}[A step along]", at + 1)))
         .collect::<Vec<_>>()
@@ -45,7 +43,6 @@ fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAp
     }
     let (window, shell, _) = shell_showing(&root, cx);
     let look = cx.update(|cx| look(cx));
-    // The diagram's size, and its card's, shown in a window this wide.
     let shown = |name: &str, cx: &mut TestAppContext| {
         let mut visual = laid_out(window, &shell, &format!("docs/{name}.md"), 1000., cx);
         let mut size = |at| {
@@ -58,7 +55,6 @@ fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAp
         (size("mermaid-diagram"), size("mermaid-card"))
     };
     let near = |a: f32, b: f32| (a - b).abs() < 1.;
-    // The card's as tall as the diagram and the room around it, its border too.
     let around = 2. * PADDING + 2.;
     let drawn = diagram::draw(TALL, &look).unwrap();
     let ((width, height), (_, card)) = shown("tall", cx);
@@ -71,7 +67,6 @@ fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAp
         "{said}"
     );
     assert!(near(card, height + around), "{said}");
-    // Narrowed to the column, and as much shorter.
     let drawn = diagram::draw(&wide, &look).unwrap();
     let ((width, height), (_, card)) = shown("wide", cx);
     let said = format!(
@@ -87,8 +82,6 @@ fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAp
 #[gpui_kit::test]
 fn a_table_wider_than_the_column_scrolls_sideways_rather_than_squeezing(cx: &mut TestAppContext) {
     let root = checkout("markdown-table");
-    // Ten columns, three rows: of a dozen words a cell, as a spreadsheet pasted in has, far
-    // wider than the column; and of a word, which fits it.
     let table = |cell: &str| {
         let row = |cell: &str| format!("|{}\n", format!(" {cell} |").repeat(10));
         row("Column") + &row("---") + &row(cell).repeat(3)
@@ -97,14 +90,11 @@ fn a_table_wider_than_the_column_scrolls_sideways_rather_than_squeezing(cx: &mut
     write(&root, "docs/wide.md", table(words).as_bytes());
     write(&root, "docs/narrow.md", table("Word").as_bytes());
     let (window, shell, _) = shell_showing(&root, cx);
-    // How tall the file at `path` is, shown as it reads in a window too short for either.
     let tall = |path: &str, cx: &mut TestAppContext| {
         laid_out(window, &shell, path, 300., cx);
         preview(&shell, cx, |preview, _| preview.content_height())
     };
     let (wide, narrow) = (tall("docs/wide.md", cx), tall("docs/narrow.md", cx));
-    // Its columns kept wide enough to read, a row of a dozen words is a line or two taller than
-    // one of a word; squeezed into the column, a word or two a line, it was four times as tall.
     assert!(
         wide < 2. * narrow,
         "{wide} for the wide table, {narrow} for the narrow one"

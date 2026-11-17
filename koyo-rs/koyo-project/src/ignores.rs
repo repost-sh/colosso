@@ -126,7 +126,6 @@ fn read(file: &Path) -> Option<String> {
     match std::fs::read_to_string(file) {
         Ok(text) => Some(text),
         Err(error) => {
-            // A file that isn't there is the usual case; anything else is worth a line.
             if error.kind() != ErrorKind::NotFound {
                 log::debug!("reading the ignore rules in {}: {error}", file.display());
             }

@@ -90,9 +90,7 @@ fn a_new_passkey_is_asked_of_the_authenticators_its_attachment_and_algorithms_al
         choose(&ask, keys).map(|choice| kinds(&choice))
     };
     let both = [-7, -257];
-    // This Mac's passkeys alone, with no phone.
     assert_eq!(made(Some("platform"), &both, true), Ok((Some(false), None)));
-    // A security key, or a phone through the platform request.
     let keys = Some(vec![-7, -257]);
     assert_eq!(
         made(Some("cross-platform"), &both, true),
@@ -100,7 +98,6 @@ fn a_new_passkey_is_asked_of_the_authenticators_its_attachment_and_algorithms_al
     );
     assert_eq!(made(None, &both, true), Ok((Some(true), keys.clone())));
     assert_eq!(made(Some("elsewhere"), &both, true), Ok((Some(true), keys)));
-    // Platform passkeys are ES256 only; keys are asked for what they make, in the page's order.
     assert_eq!(
         made(None, &[-257, -8], true),
         Ok((None, Some(vec![-257, -8])))
@@ -109,7 +106,6 @@ fn a_new_passkey_is_asked_of_the_authenticators_its_attachment_and_algorithms_al
         made(None, &[-36, -7], true),
         Ok((Some(true), Some(vec![-7])))
     );
-    // A system without the browser's security-key requests offers the platform's alone.
     assert_eq!(made(None, &both, false), Ok((Some(true), None)));
 }
 
@@ -158,7 +154,6 @@ fn a_sign_in_offers_each_authenticator_the_passkeys_it_could_reach() {
     let ask = PasskeyAsk::Get(assertion(vec![
         descriptor(1, &["internal"]),
         descriptor(2, &["usb", "nfc"]),
-        // No transports, both kinds, and one Koyo doesn't know: any of them may reach it.
         descriptor(3, &[]),
         descriptor(4, &["hybrid", "ble"]),
         descriptor(5, &["smart-card"]),
@@ -181,13 +176,11 @@ fn a_sign_in_leaves_out_an_authenticator_with_none_of_the_sites_passkeys() {
     let kinds_for = |allowed: Vec<CredentialDescriptor>, keys| {
         choose(&PasskeyAsk::Get(assertion(allowed)), keys).map(|choice| kinds(&choice))
     };
-    // Any of the site's passkeys, on either.
     assert_eq!(
         kinds_for(Vec::new(), true),
         Ok((Some(true), Some(Vec::new())))
     );
     assert_eq!(kinds_for(Vec::new(), false), Ok((Some(true), None)));
-    // Passkeys on this Mac only, then on keys only.
     assert_eq!(
         kinds_for(vec![descriptor(1, &["internal"])], true),
         Ok((Some(true), None))
@@ -196,7 +189,6 @@ fn a_sign_in_leaves_out_an_authenticator_with_none_of_the_sites_passkeys() {
         kinds_for(vec![descriptor(2, &["usb"])], true),
         Ok((None, Some(Vec::new())))
     );
-    // Keys only, where the system doesn't take a browser's security-key requests.
     let ask = PasskeyAsk::Get(assertion(vec![descriptor(2, &["usb"])]));
     let refused = choose(&ask, false);
     assert_eq!(
@@ -212,7 +204,6 @@ fn the_sheets_errors_read_as_the_domexceptions_sites_expect() {
         assert_eq!(error(true, code), PasskeyError::NotAllowed, "{code}");
     }
     assert_eq!(error(true, 1006), PasskeyError::InvalidState);
-    // Another domain's 1006 is no excluded passkey.
     assert_eq!(error(false, 1006), PasskeyError::NotAllowed);
     assert_eq!(
         answer::refusal(true, 1001).message,
@@ -261,7 +252,6 @@ fn a_new_passkey_says_its_discoverable_only_when_asked_and_known() {
         discoverable(Authenticator::SecurityKey, asked(true, false)),
         None
     );
-    // No attestation object: the page can't be given the key.
     let answer = answer::created(
         registration(None),
         Authenticator::Platform,
@@ -323,7 +313,6 @@ fn the_requests_carry_the_pages_ask_to_the_system() {
         assert_eq!(algorithms, [-7, -257]);
         let required = ASAuthorizationPublicKeyCredentialResidentKeyPreferenceRequired.unwrap();
         assert_eq!(&*key.residentKeyPreference(), required);
-        // Excluded on this Mac, so over any of a key's transports.
         let excluded = key.excludedCredentials();
         assert_eq!(excluded.len(), 1);
         assert!(!excluded.objectAtIndex(0).transports().is_empty());

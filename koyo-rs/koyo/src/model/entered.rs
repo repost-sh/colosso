@@ -64,7 +64,6 @@ mod tests {
         let unit = workspace.branch_mut().expect("a checkout");
         unit.close_pane(ids[2]);
         assert_eq!(current(&workspace), ids[1], "the one they were in before");
-        // Taken into a tab of its own, the pane they were in leaves the first to the tab.
         let unit = workspace.branch_mut().expect("a checkout");
         assert!(unit.pane_to_tab(ids[1], 1));
         assert_eq!(unit.tabs[0].current().id, ids[0]);

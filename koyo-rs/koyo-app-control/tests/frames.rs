@@ -9,8 +9,6 @@ use koyo_app_control::frame::{
 use koyo_app_control::{ControlError, ErrorCode, Scope, Topic};
 use serde_json::json;
 
-// Marked as test code, as everything here is, so the lints' leave for tests (to unwrap, to
-// panic) reaches the helpers too.
 #[cfg(test)]
 fn client(frame: &ClientFrame, golden: &str) {
     assert_eq!(serde_json::to_string(frame).unwrap(), golden);
@@ -42,7 +40,6 @@ fn hello() {
         &ClientFrame::Hello(hello.clone()),
         r#"{"type":"hello","protocol":1,"client":{"name":"Claude Code","version":"2.1.0"},"terminal":"term_01JD","worktree":"/w/feat","cwd":"/w/feat/src","pid":4242}"#,
     );
-    // Koyo's MCP server in a chat's session names the chat.
     let chat = Hello {
         terminal: None,
         chat: Some("019a5c1e-7d42-7b3a-9c4e-1f2a3b4c5d6e".into()),

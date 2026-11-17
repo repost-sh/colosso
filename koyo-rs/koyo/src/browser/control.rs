@@ -83,7 +83,6 @@ impl Control {
         }) = &self.holder
             && *holder == actor
         {
-            // Its own lease, renewed.
             self.holder = Some(Holder::Agent {
                 actor,
                 since: *since,
@@ -123,7 +122,6 @@ impl Control {
     pub fn person_takes(&mut self, mode: Mode) -> Option<Actor> {
         let displaced = match self.holder.take() {
             Some(Holder::Human { since, mode: held }) => {
-                // Already theirs. Asked for, a page they were only using is theirs to keep.
                 let mode = if mode == Mode::Explicit { mode } else { held };
                 self.holder = Some(Holder::Human { since, mode });
                 return None;

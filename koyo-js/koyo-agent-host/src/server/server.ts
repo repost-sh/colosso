@@ -1,8 +1,3 @@
-// The host's socket (docs/chat.md 4.3): each client's lines read as requests and answered,
-// in the order their handlers finish, with a result or an error; a handler that has its
-// answer at once is answered at once. A line too long ends the connection, since nothing
-// after it can be told apart.
-
 import { chmodSync } from "node:fs";
 
 import { log } from "../log";

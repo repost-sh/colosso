@@ -87,7 +87,6 @@ impl Git {
 
     pub fn new(dir: &Path) -> Self {
         static GIT: OnceLock<PathBuf> = OnceLock::new();
-        // Not installed, it's asked for by name, and the failure to start it says so.
         let git = GIT.get_or_init(|| installed("git").unwrap_or_else(|| "git".into()));
         let mut command = Command::new(git);
         command
@@ -95,11 +94,8 @@ impl Git {
             .arg(dir)
             .stdin(Stdio::null())
             .env("PATH", search_path())
-            // Messages in English whatever the user's locale, the same on every machine.
             .env("LC_ALL", "C")
-            // Reads must not take the index lock a terminal in the same checkout may want.
             .env("GIT_OPTIONAL_LOCKS", "0")
-            // There is no terminal to ask for credentials on; fail instead of hanging.
             .env("GIT_TERMINAL_PROMPT", "0");
         Git {
             command,
@@ -130,7 +126,6 @@ impl Git {
             return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
         }
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // Hints tell a terminal user what to type next; the app offers its own way on.
         let message = stderr
             .lines()
             .filter(|line| !line.starts_with("hint: "))
@@ -212,7 +207,6 @@ mod tests {
         unsafe { libc::pthread_atfork(Some(forking), None, None) };
         let here = std::env::current_dir().unwrap();
         Git::new(&here).arg("--version").read().unwrap();
-        // Where it's installed: started as git is.
         if let Ok(gh) = Git::github_cli(&here) {
             gh.arg("--version").read().unwrap();
         }

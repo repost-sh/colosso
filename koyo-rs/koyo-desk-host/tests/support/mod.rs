@@ -140,13 +140,11 @@ impl Driver {
     /// Starts the host and says hello. `None` when no loader is named.
     pub fn start() -> Option<Driver> {
         let (app, before) = loader()?;
-        // Short: a socket's path has a limit of 103 bytes.
         let dir = Path::new(env!("KOYO_TARGET_DIR")).join(format!("dt/{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let socket = dir.join("l.sock");
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).unwrap();
-        // A name of its own for every start: a test may start a second host after a first.
         let start = STARTS.fetch_add(1, Ordering::Relaxed);
         let service = format!("codes.koyo.desk.test.{}.{start}", std::process::id());
         let receiver = mach::Receiver::check_in(&service).unwrap();
@@ -161,8 +159,6 @@ impl Driver {
             .arg("--link")
             .arg(&socket)
             .arg("--state")
-            // One folder for every run, as the app has one: a run that crashed is cleaned up
-            // by the next.
             .arg(Path::new(env!("KOYO_TARGET_DIR")).join("dt/state"))
             .status()
             .unwrap();

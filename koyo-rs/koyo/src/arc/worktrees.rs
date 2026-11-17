@@ -99,8 +99,6 @@ pub fn space(
     cx: &mut Context<Shell>,
 ) -> impl IntoElement {
     let p = look.p;
-    // The project's name, after its space's dot; neither while no project is shown, as a space
-    // with no project has none to name.
     let project =
         (shell.workspace.active_project()).map(|index| (index, &shell.workspace.projects[index]));
     let colour = space_colour(settings::get(cx).space, cx);
@@ -130,7 +128,6 @@ pub fn space(
             if let Some(error) = project.error.clone() {
                 body.push(project_error(error, p).into_any_element());
             }
-            // A pinned or a loose page shown, no tab of a worktree's is: none is the pill.
             let shown = shell.workspace.shown_checkout_tab();
             let worktrees = (project.branches.iter().enumerate())
                 .map(|(branch_index, unit)| {
@@ -140,7 +137,6 @@ pub fn space(
                     worktree(shell, at, unit, active_tab, look, window, cx)
                 })
                 .collect();
-            // A worktree let go among them goes there, in both layouts' lists.
             let on_drop = cx.listener(move |this, drop: &Drop, _, cx| {
                 if let Drop::Move { from, to } = *drop {
                     this.move_worktree(project_index, from, to, cx);
@@ -180,7 +176,6 @@ fn worktree(
     let project = &shell.workspace.projects[project_index].path;
     let path = &unit.worktree.path;
     let key = key_of(path);
-    // As far open as it's come, as a tab slides into place.
     let target = if settings::get(cx).is_collapsed(project, path) {
         0.
     } else {
@@ -190,7 +185,6 @@ fn worktree(
     let open = transition(id, target, Transition::new(MOTION), window, cx);
     let at = (project_index, branch_index, key);
     let header = header(shell, at, unit, look, window, cx);
-    // Collapsed and still, or with no tabs, it has no rows: none is drawn, or picked.
     if open == 0. || unit.tabs.is_empty() {
         return (key, header.into_any_element());
     }
@@ -202,9 +196,6 @@ fn worktree(
         .collect();
     let list = ((project_index, branch_index), Axis::Vertical);
     let tabs = tab_list(&shell.tab_hand, list, rows, px(GAP), p, cx);
-    // As they slide, they're clipped to the share of their height `open` has them at; still,
-    // they take their own. Each row is `ROW` high, a gap before it, so their height is known
-    // before they're drawn.
     let height = unit.tabs.len() as f32 * (ROW + GAP);
     let sliding = div()
         .flex_shrink_0()
@@ -266,14 +257,12 @@ fn tab_row_of(
     let p = look.p;
     let (project_index, branch_index, tab_index) = at;
     let (activity, first) = (shell.tab_activity(tab, cx), tab.first().id);
-    // The tab shown shows its chat beside the sidebar, so what was said is said there.
     let said = shell.tab_said(tab, cx).filter(|_| !active);
     let row = arc_row(("arc-tab", branch_index * 100 + tab_index)).group("arc-tab");
     let row = pill_row(row, (first, active), shell, look, cx)
         .pr(px(ROW_END))
         .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
             this.pick_tab(project_index, branch_index, tab_index, cx);
-            // A second click keeps a previewed file open.
             if event.click_count() > 1 {
                 this.keep_tab(at, cx);
             }
@@ -282,14 +271,10 @@ fn tab_row_of(
             MouseButton::Middle,
             cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
         )
-        // A split's row is its panes, each with a × of its own, and no end to say it at: what
-        // the tab says goes before them.
         .when(matches!(tab, Tab::Split(_)), |row| {
             row.children(sign(activity, first, look, cx))
         });
-    // A pinned page's tile let go on it is unpinned where it is.
     let row = takes_pins(row, (project_index, branch_index), tab_index, look, cx);
-    // The visual check takes a tab up where its row is drawn.
     #[cfg(feature = "visual-check")]
     let row = {
         use gpui_kit::base::ElementExt as _;
@@ -300,10 +285,7 @@ fn tab_row_of(
     tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
         let close = ("arc-tab-close", branch_index * 100 + tab_index);
         let mark = sign(activity, first, look, cx).map(at_end);
-        // Shown on the tab shown, and on the others while hovered; a dot for unsaved edits
-        // always. What the row says of its tab has the ×'s place until the pointer's on it.
         let hidden = !face.dirty && (!active || mark.is_some());
-        // Something's at its end, or only once the pointer's on the row.
         let shown = !hidden || mark.is_some();
         let close = tab_close_button(close, at, (face.dirty, ROW_GLYPH), p, cx);
         let close = row_sized(close).when(hidden, |close| {
@@ -313,8 +295,6 @@ fn tab_row_of(
         });
         let icon = tab_icon(face, p);
         let end = div().relative().children(mark).child(close);
-        // With what was said, two lines in a row's height, as Arc's are; it's fainter than the
-        // labels, saying less than the title it's under.
         let said = said.map(|said| {
             ellipsized(said)
                 .debug_selector(move || format!("arc-tab-said-{first}"))
@@ -359,8 +339,6 @@ fn at_end(sign: Div) -> Div {
         .flex()
         .items_center()
         .justify_center()
-        // Not drawn at all while the row's hovered, rather than faded: the spinner is a view,
-        // which a fade round it wouldn't reach.
         .group_hover("arc-tab", gpui_kit::Styled::invisible)
         .child(sign)
 }

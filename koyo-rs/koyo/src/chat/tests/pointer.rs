@@ -40,7 +40,6 @@ fn a_steps_words_and_output_can_be_selected_and_a_click_still_opens_it(cx: &mut 
     let row = VisualTestContext::from_window(window, cx)
         .debug_bounds("chat-row-2")
         .unwrap();
-    // The words start past the row's side and the step's icon, half way down its first line.
     let (left, middle) = (row.left() + px(48.), row.top() + px(10.));
     let mut visual = VisualTestContext::from_window(window, cx);
     let none = Modifiers::default();
@@ -64,7 +63,6 @@ fn a_steps_words_and_output_can_be_selected_and_a_click_still_opens_it(cx: &mut 
     assert_eq!(selected(cx), "");
     assert_eq!(shows(cx), Shows::All, "the click opened all of it");
 
-    // What it printed, from its first line into its second.
     let output = row.top() + px(44.);
     let mut visual = VisualTestContext::from_window(window, cx);
     visual.simulate_mouse_down(point(row.left() + px(40.), output), MouseButton::Left, none);

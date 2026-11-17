@@ -1,7 +1,3 @@
-// One host per folder: an exclusive `flock` on its lock file, held while the descriptor stays
-// open, with the holder's pid written in it, as termd's (`koyo-rs/koyo-termd/src/claim.rs`).
-// Bun has no `flock`, so libc's is called through bun:ffi.
-
 import { closeSync, ftruncateSync, openSync, readFileSync, writeSync } from "node:fs";
 
 import { type ConvertFns, dlopen, FFIType, read, type Symbols } from "bun:ffi";
@@ -13,7 +9,6 @@ const EWOULDBLOCK = 35;
 
 const LIBC = {
   flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
-  // Where this thread's errno lives.
   __error: { args: [], returns: FFIType.ptr },
 } satisfies Symbols;
 
@@ -29,7 +24,6 @@ export type Lock = { readonly kind: "held"; readonly fd: number }
 /** Takes the lock at `path` without waiting, writing this process's pid in it. */
 export function takeLock(path: string): Lock {
   libc ??= dlopen("/usr/lib/libSystem.B.dylib", LIBC).symbols;
-  // Appending never truncates, so the holder's pid survives a look by a process that fails.
   const fd = openSync(path, "a+", 0o600);
   if (libc.flock(fd, LOCK_EX_NOW) !== 0) {
     const errno = lastErrno(libc);

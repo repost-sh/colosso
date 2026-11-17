@@ -117,7 +117,6 @@ impl TerminalElement {
 
     fn tell_fitted(&self, cx: &mut App) {
         let view = self.view.clone();
-        // Not while drawing: the view tells whoever shows its percent.
         cx.defer(move |cx| view.update(cx, TerminalView::fitted));
     }
 }

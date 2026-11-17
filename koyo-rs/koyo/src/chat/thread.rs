@@ -81,7 +81,6 @@ impl ChatThread {
                 self.failed = None;
                 self.take_in(early, cx);
             }
-            // The connection went: it opens again when the connection's back.
             Err(ClientError::Closed | ClientError::Io(_)) => {}
             Err(ClientError::Host(error)) if error.code == ErrorCode::ThreadNotFound => {
                 self.failed = Some("This chat is gone.".into());
@@ -101,7 +100,6 @@ impl ChatThread {
             self.early.extend(events);
             return;
         }
-        // An open that failed left nothing for these to go on; the next one brings them.
         let Some(replica) = &mut self.replica else {
             return;
         };

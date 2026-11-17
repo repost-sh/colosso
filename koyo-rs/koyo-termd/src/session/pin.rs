@@ -30,7 +30,6 @@ impl Session {
             by: actor,
         });
         let news = pinned != self.record.pinned;
-        // A pin set or cleared is worth the log; a pin moved, as a grip drags it, isn't.
         let level = if pinned.is_some() == self.record.pinned.is_some() {
             log::Level::Debug
         } else {

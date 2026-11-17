@@ -1,7 +1,3 @@
-// Claude as the host's first provider (docs/chat.md C6, C7, 4.6): sessions on the person's own
-// `claude`, through the official Agent SDK, in their login environment; its status, catalog
-// and chat titles. Of Koyo's settings (`setConfig`), it follows where `claude` is.
-
 import {
   getSessionMessages,
   type GetSessionMessagesOptions,
@@ -112,7 +108,6 @@ export class ClaudeProvider implements Provider {
 
   constructor(deps: Partial<ClaudeDeps> = {}) {
     this.#deps = { ...DEFAULTS, ...deps };
-    // Read once, at start (4.2).
     this.#env = this.#deps.environment();
   }
 

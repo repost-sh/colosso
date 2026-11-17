@@ -163,7 +163,6 @@ impl Timeline {
         let changed = text != edit.said && !text.is_empty();
         let (window, composer) = (edit.window, self.composer.clone());
         self.queued_edit = None;
-        // It's told in the window, which a thread changing isn't in.
         cx.defer(move |cx| {
             window
                 .update(cx, |_, window, cx| {

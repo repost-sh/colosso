@@ -263,7 +263,6 @@ impl Checkout {
                         }
                         (_, Some(Summary::Removed)) => Status::Deleted,
                         (_, Some(Summary::Added | Summary::Copied)) => Status::Untracked,
-                        // Added with `git add -N`: in the index, but none of its lines yet.
                         (_, Some(Summary::IntentToAdd)) => Status::Added,
                         (_, Some(Summary::Conflict)) => Status::Conflicted,
                         (_, Some(_)) => Status::Modified,
@@ -274,7 +273,6 @@ impl Checkout {
             staged_or_not.push((path, status));
         }
 
-        // A conflict is one thing to resolve, not a change in the index as well.
         let conflicted: HashSet<String> = (unstaged.iter())
             .filter(|(_, status)| *status == Status::Conflicted)
             .map(|(path, _)| path.clone())
@@ -330,7 +328,6 @@ impl Checkout {
                 &mut from_index
             };
             match &change.status {
-                // Renamed: the new file goes and the old one comes back.
                 Status::Renamed { from } => {
                     trash.push(change.path.as_str());
                     restore.push(from.as_str());
@@ -349,7 +346,6 @@ impl Checkout {
     fn trash(&self, paths: &[&str]) -> Result<()> {
         let files: Vec<PathBuf> = (paths.iter())
             .map(|path| self.root.join(path))
-            // Already gone, as a file staged as new and then deleted is.
             .filter(|path| path.symlink_metadata().is_ok())
             .collect();
         if files.is_empty() {
@@ -382,8 +378,6 @@ impl Checkout {
             .map_or(1, NonZeroUsize::get)
             .min(changes.len())
             .max(1);
-        // Each thread takes the next file when it's done with one, so a big file doesn't hold
-        // up the files behind it.
         let next = AtomicUsize::new(0);
         let mut diffs: Vec<(usize, FileDiff)> = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..threads)
@@ -391,7 +385,6 @@ impl Checkout {
                 .collect();
             workers
                 .into_iter()
-                // A worker that panicked would lose its files without a word, so its panic goes on.
                 .flat_map(|worker| {
                     worker
                         .join()
@@ -452,7 +445,6 @@ impl<'repo> Sides<'repo> {
         let cache = |new_root: Option<PathBuf>| {
             let mut cache = repo
                 .diff_resource_cache(
-                    // As git stores them, so a smudge filter like LFS's never runs to fetch one.
                     Mode::ToGit,
                     WorktreeRoots {
                         old_root: None,
@@ -506,7 +498,6 @@ fn diff_file(
     let missing = (null, EntryKind::Blob);
     let old = match (change.staged, &change.status) {
         (_, Status::Added | Status::Untracked) => None,
-        // The index holds the conflict's sides, not one to diff against.
         (true, _) | (false, Status::Conflicted) => sides.in_head(old_path)?,
         (false, _) => sides.in_index(old_path),
     };
@@ -580,7 +571,6 @@ fn diff_file(
             })
             .collect()
     };
-    // Changed and changed back, staged or not: nothing to show unless its mode changed.
     if hunks.is_empty() && change.status == Status::Modified && old_kind == new_kind {
         return Ok(None);
     }
@@ -623,7 +613,6 @@ pub fn changed_words(old: &str, new: &str) -> Option<ChangedWords> {
     let mut diff = Diff::compute(gix::diff::blob::Algorithm::Myers, &input);
     diff.postprocess_no_heuristic(&input);
 
-    // The changed words' ranges, a run with only spaces between them made one.
     let ranges = |text: &str, words: &[&str], changed: &dyn Fn(u32) -> bool| {
         let mut ranges: Vec<Range<usize>> = Vec::new();
         let mut start = 0;
@@ -658,7 +647,6 @@ pub fn changed_words(old: &str, new: &str) -> Option<ChangedWords> {
 fn trash_context() -> trash::TrashContext {
     use trash::macos::{DeleteMethod, TrashContextExtMacos as _};
     let mut trash = trash::TrashContext::default();
-    // Not Finder's way, the default, which asks for permission to control Finder.
     trash.set_delete_method(DeleteMethod::NsFileManager);
     trash
 }

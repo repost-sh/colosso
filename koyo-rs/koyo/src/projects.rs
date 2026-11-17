@@ -187,7 +187,6 @@ pub struct WorktreeRead {
 /// thread.
 pub fn read_worktrees(path: &Path) -> WorktreeRead {
     static STARTED: AtomicU64 = AtomicU64::new(0);
-    // Numbered before git looks, so a listing that started earlier never wins over a later one.
     let number = STARTED.fetch_add(1, Ordering::Relaxed) + 1;
     let repo = Repo::open(path);
     WorktreeRead {
@@ -275,8 +274,6 @@ impl Shell {
                     })
                     .collect();
                 crate::history::know_checkouts(checkouts, cx);
-                // The window's tabs first, where they were; then what the daemon and the
-                // host keep that no pane of them shows.
                 self.restore_window(cx);
                 self.restore_terminals(cx);
                 self.follow_chats(cx);

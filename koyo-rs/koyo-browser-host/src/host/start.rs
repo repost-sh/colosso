@@ -40,7 +40,6 @@ fn connect(mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
 fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
     let mut app = crate::app::HostApp::new();
     std::fs::create_dir_all(profiles).map_err(|e| format!("{}: {e}", profiles.display()))?;
-    // CEF ignores relative cache paths and falls back to memory.
     let profiles = profiles
         .canonicalize()
         .map_err(|e| format!("{}: {e}", profiles.display()))?;
@@ -57,13 +56,9 @@ fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
         persist_session_cookies: 1,
         log_file: path(profiles.join("host.log")),
         log_severity: cef::LogSeverity::WARNING,
-        // Opaque white until a page paints, as in a browser tab.
         background_color: 0xFFFF_FFFF,
         keychain_service_name: "Koyo Browser Engine".into(),
-        // CEF takes the outermost app bundle for its own, which inside Koyo.app is Koyo's,
-        // and looks for its framework and helpers there.
         main_bundle_path: crate::own_bundle().unwrap_or_default().as_str().into(),
-        // In the app's process the app runs the loop, and CEF isn't beside the executable.
         external_message_pump: i32::from(engine.is_some()),
         framework_dir_path: engine
             .map(|engine| path(crate::embedded::framework(engine)))
@@ -150,10 +145,8 @@ pub(crate) fn run_embedded(start: crate::embedded::Start) -> Result<(), String> 
     let reader = connect(stream, &token)?;
     let started = (|| {
         crate::embedded::load(&engine)?;
-        // The API version this build was compiled against, before any other call.
         let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
         crate::embedded::adopt_app()?;
-        // CEF reads the process's arguments as Chromium's switches; the app's are none.
         let args: &'static Args = Box::leak(Box::new(Args::new()));
         initialize(args, &profiles)?;
         crate::embedded::pump::started();

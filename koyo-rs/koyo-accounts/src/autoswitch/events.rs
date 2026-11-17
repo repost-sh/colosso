@@ -315,8 +315,6 @@ impl PollEvent {
         };
         let num = active.number.map(|number| number.to_string());
         let num = num.as_deref().unwrap_or_default();
-        // The binding window and its line, the engine's own comparison: the bare pct hid which
-        // window bound (#115).
         let (used, line) = if let Some(binding) = &self.binding {
             (
                 format!("{} {:.0}% used", binding.label, binding.pct),
@@ -360,7 +358,6 @@ impl PollEvent {
 /// comparison formats both sides with it: mixing formatters can render an impossible
 /// "85.5556% < 85.555555%".
 pub fn pct_label(value: f64) -> String {
-    // The exponent after rounding to ten significant digits, then the decimals that leaves.
     let exponent: i32 = format!("{value:.9e}")
         .split_once('e')
         .and_then(|(_, exponent)| exponent.parse().ok())

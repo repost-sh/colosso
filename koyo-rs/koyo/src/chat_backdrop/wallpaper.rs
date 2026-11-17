@@ -60,7 +60,6 @@ pub fn read(display: u32, main: MainThreadMarker) -> Option<Wallpaper> {
     let number = |value: Option<Retained<objc2::runtime::AnyObject>>| {
         value.and_then(|value| value.downcast::<NSNumber>().ok())
     };
-    // Unsaid, a picture fills its screen, as System Settings sets one.
     let scaling = number(scaling).map_or(3, |scaling| scaling.unsignedIntegerValue());
     let clipping = number(clipping).is_none_or(|clipping| clipping.boolValue());
     let fill = fill

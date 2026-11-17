@@ -172,11 +172,8 @@ impl FilesPanel {
             .pl(px(4. + shown.depth as f32 * INDENT))
             .gap_1p5()
             .rounded(px(5.))
-            // The file the shown tab shows stands out among the rest.
             .when(active && !selected, |row| row.bg(p.hover))
             .when(shown.entry.ignored, |row| row.opacity(0.55))
-            // A click previews a file, a double click keeps it open; a folder opens or closes
-            // on the first click only.
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus, cx);
                 this.select(index, cx);

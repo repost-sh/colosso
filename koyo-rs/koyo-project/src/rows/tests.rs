@@ -132,7 +132,6 @@ fn a_folder_closed_and_opened_again_shows_the_folders_open_inside_it() {
     assert!(rows.expanded.contains("src/bin") && !rows.expanded.contains("src"));
     rows.expand("src", &fake);
     assert_eq!(shown(&rows)[2..5], ["  bin/-", "    deep/", "    tool.rs"]);
-    // A file and a folder not shown can't be opened.
     assert!(!rows.expand("A.md", &fake));
     assert!(!rows.expand("src/bin/deep/er", &fake));
 }
@@ -183,13 +182,10 @@ fn a_new_listing_changes_only_the_rows_of_its_folder() {
             "!target/"
         ]
     );
-    // The folder open inside kept its rows.
     assert!(Arc::ptr_eq(&rows.rows()[2].path, &before[2].path));
-    // The same listing again, and one for a folder that's closed, change nothing.
     assert!(!rows.apply(&changed, &fake));
     let closed = fake.put("src/util", &["mod.rs", "more.rs"]);
     assert!(!rows.apply(&update("src/util", closed), &fake));
-    // A folder gone takes its rows with it, and a new one at the top is put in its place.
     fake.dirs.remove("src/bin");
     let top = fake.put("", &["file10", "src/", "file2", "!target/", "A.md", "zz/"]);
     let changed = HashMap::from([(Arc::from("src/bin"), None), (Arc::from(""), Some(top))]);
@@ -221,7 +217,6 @@ fn revealing_a_path_opens_the_folders_above_it_at_once() {
     for dir in ["src", "src/bin", "src/bin/deep", "src/bin/deep/er"] {
         assert!(rows.rows()[rows.position(dir).unwrap()].expanded, "{dir}");
     }
-    // Revealing what's shown changes nothing.
     let before = rows.rows().to_vec();
     assert_eq!(
         rows.reveal("src/lib.rs", &fake),
@@ -241,7 +236,6 @@ fn a_path_not_there_is_missing_rather_than_waited_for() {
         rows.reveal("src/bin/deep/er/gone.rs", &fake),
         Reveal::Missing
     );
-    // The folders that are there are open all the same.
     assert!(rows.rows()[rows.position("src/bin/deep/er").unwrap()].expanded);
 }
 
@@ -252,7 +246,6 @@ fn an_ignored_folder_is_asked_for_and_shown_once_read() {
     assert!(rows.expand("target", &fake));
     assert_eq!(fake.loads(), ["target"]);
     assert_eq!(rows.position("target").map(|at| rows.len() - at), Some(4));
-    // Revealing a file inside it opens the folders on the way, asking for each as it comes.
     assert_eq!(rows.reveal("target/debug/app", &fake), Reveal::Pending);
     let listing = fake.put("target", &["!debug/", "!CACHEDIR.TAG"]);
     assert!(rows.apply(&update("target", listing), &fake));
@@ -266,7 +259,6 @@ fn an_ignored_folder_is_asked_for_and_shown_once_read() {
         shown(&rows)[at - 2..=at],
         ["!target/-", "  !debug/-", "    !app"]
     );
-    // A link to a folder isn't opened: nothing is read through one.
     fake.put("", &["link@", "src/"]);
     let mut rows = rows_of(&fake);
     assert!(!rows.expand("link", &fake));

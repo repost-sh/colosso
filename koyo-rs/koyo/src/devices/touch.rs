@@ -21,7 +21,6 @@ pub fn phase(phase: TouchPhase) -> Phase {
     match phase {
         TouchPhase::Started => Phase::Started,
         TouchPhase::Moved => Phase::Moved,
-        // Cancelled too: the system took the gesture, and nothing more comes of it.
         TouchPhase::Ended | TouchPhase::Cancelled => Phase::Ended,
     }
 }
@@ -145,8 +144,6 @@ impl DeviceView {
         let ScrollDelta::Pixels(by) = event.delta else {
             return;
         };
-        // Where the pointer is, and where the scroll would take it: how far it goes, in the
-        // picture's shares.
         let (Some((at, on)), Some((to, _))) = (self.share(event.position, cx), self.share(event.position + by, cx)) else {
             return;
         };

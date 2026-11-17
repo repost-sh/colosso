@@ -51,7 +51,6 @@ pub fn init(cx: &mut App) {
     ];
     screens::tick(cx);
     cx.spawn(async move |cx| {
-        // Kept for as long as the app listens.
         let _observers = observers;
         loop {
             let timer = cx.background_executor().timer(EVERY);
@@ -68,7 +67,6 @@ fn space_changes(
     tell: mpsc::UnboundedSender<()>,
 ) -> Retained<ProtocolObject<dyn NSObjectProtocol>> {
     let changed = RcBlock::new(move |_: NonNull<NSNotification>| {
-        // Unheard only once the app has stopped listening, on its way out.
         tell.unbounded_send(()).ok();
     });
     let center = NSWorkspace::sharedWorkspace().notificationCenter();

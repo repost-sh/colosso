@@ -2,7 +2,6 @@
 //! Nothing here knows about the UI, and every call blocks until git is done, so the app makes
 //! them off its main thread.
 
-// The workspace leaves casts to UI maths; here one can cut a line number or a count short.
 #![warn(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
@@ -50,7 +49,6 @@ impl Repo {
     /// The repository `path` belongs to, from its main checkout, a linked worktree, or any
     /// folder inside one.
     pub fn open(path: &Path) -> Result<Repo> {
-        // Git lists the main checkout first, or the repository itself when it is bare.
         let list = Git::new(path)
             .args(["worktree", "list", "--porcelain", "-z"])
             .read()

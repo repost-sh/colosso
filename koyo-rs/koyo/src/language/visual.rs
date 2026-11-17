@@ -49,8 +49,6 @@ fn draw() -> Result<Vec<String>> {
     let fixture = fixture(&root.join(OUT))?;
     let mut drawn = Drawn::open_on_checkout(OUT, &[&fixture])?;
     drawn.cx.update(|cx| {
-        // The managed rust-analyzer, not whatever PATH has, so the check draws the same
-        // everywhere.
         let launcher: Launcher = Arc::new(|_, root| {
             let data = settings::data_dir()
                 .ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
@@ -286,7 +284,6 @@ fn hover(drawn: &mut Drawn, editor: &Entity<EditorState>, at: usize) -> Result<(
     let window = drawn.window;
     let pointer = bounds.center();
     (drawn.cx).simulate_mouse_move(window, pointer, None::<MouseButton>, Modifiers::default());
-    // The editor waits a moment before it asks.
     drawn.cx.advance_clock(Duration::from_millis(200));
     drawn.draw()
 }

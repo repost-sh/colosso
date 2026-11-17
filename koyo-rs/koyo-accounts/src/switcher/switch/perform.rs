@@ -63,7 +63,6 @@ impl Switcher {
         target: &str,
         provenance: Option<Provenance>,
     ) -> Result<SwitchOp> {
-        // Before the locks: it may hit the network.
         let provenance = match provenance {
             Some(provenance) => provenance,
             None => self.prefetch_live_identity()?,
@@ -91,7 +90,6 @@ impl Switcher {
         let target_email = text(Some(target_record), "email").to_owned();
         let to = AccountRef::new(Some(slot_int(target)?), &target_email);
         let current_identity = self.get_current_account();
-        // The slot the live identity names; with no live identity, the recorded active slot.
         let current_account = match &current_identity {
             Some((email, org)) => Switcher::find_account_slot(&data, email, org),
             None => data
@@ -111,8 +109,6 @@ impl Switcher {
                 (Some(from), warnings)
             }
             (identity, current_account) => {
-                // No live login yet, or one Koyo doesn't manage: there is nothing to back up
-                // into, so the backup step is skipped and the displaced credential stashed.
                 let from = identity.map(|(email, _)| AccountRef::new(None, &email));
                 let warnings = self.activate_directly(
                     target,
@@ -144,8 +140,6 @@ impl Switcher {
             ));
         };
         if credentials.is_empty() {
-            // An empty read (a `security` timeout answers "" rather than failing) must never
-            // be written over the departing account's backup.
             return Err(AccountsError::CredentialRead(
                 "Current account credential is empty (Keychain unreadable?); refusing to \
                  overwrite its backup"
@@ -207,10 +201,8 @@ impl Switcher {
         completed: &mut Vec<Step>,
     ) -> Result<Vec<String>> {
         let mut warnings = Vec::new();
-        // The snapshot's config, for the safety copy's evidence and the splice.
         let live_config = parse_object(&originals.config_path, originals.config.as_bytes()).ok();
 
-        // Step 1: back up the current account, as its verdict allows.
         let kind = self.classify_outgoing_credential(outgoing, &originals.credentials, data)?;
         self.back_up_outgoing(
             &kind,
@@ -221,7 +213,6 @@ impl Switcher {
             &mut warnings,
         )?;
 
-        // Step 2: the target, read after the rescue (which may have advanced it).
         let target_creds = self.read_target_credentials(target, target_email)?;
         let target_config = self.read_account_config(target, target_email)?;
         if target_config.is_empty() {
@@ -231,7 +222,6 @@ impl Switcher {
             )));
         }
 
-        // Step 3: the target's credential.
         self.store
             .write_credentials(&Switcher::prepare_credentials_for_activation(
                 &target_creds,
@@ -240,7 +230,6 @@ impl Switcher {
         completed.push(Step::CredentialsWritten);
         log::info!("Wrote target credentials");
 
-        // Step 4: its identity spliced into the live config.
         let target_config_data: Value = serde_json::from_str(&target_config)
             .map_err(|error| AccountsError::Config(format!("Invalid backup config: {error}")))?;
         let Some(oauth_section) = backup_oauth(&target_config_data).cloned() else {
@@ -258,7 +247,6 @@ impl Switcher {
         completed.push(Step::ConfigWritten);
         log::info!("Updated config file");
 
-        // Step 5: the roster.
         set_active(data, target)?;
         self.save_sequence(data)?;
         completed.push(Step::SequenceUpdated);
@@ -277,7 +265,6 @@ impl Switcher {
         target_config_data: &Value,
         warnings: &mut Vec<String>,
     ) -> Result<()> {
-        // `is not None`, not truthiness: a valid `{}` loses nothing by being spliced.
         if let Some(mut current) = live_config {
             current.insert("oauthAccount".into(), oauth_section);
             return self.write_json(config_path, &current);
@@ -300,8 +287,6 @@ impl Switcher {
     ) -> Result<()> {
         let (c, email) = (outgoing.account, outgoing.email);
         let (creds, config) = (originals.credentials.as_str(), originals.config.as_str());
-        // Positively not this slot's bytes: never into it, never destroyed. The copy (which
-        // fails the switch when it can't be made) licenses going on.
         let stash = || {
             self.stash_live_credential(
                 creds,
@@ -353,8 +338,6 @@ impl Switcher {
                  Account-{f}'s stored backup, so nothing was written into Account-{c}."
             )),
             OutgoingKind::Wiped | OutgoingKind::OauthAbsent => {
-                // Nothing to preserve live, and writing it would replace the slot's only
-                // refresh token: the config alone, the slot's backup is the recovery path.
                 self.write_account_config(c, email, config)?;
                 let cause = if *kind == OutgoingKind::Wiped {
                     "The live credential's tokens were wiped (Claude Code clears them when a \
@@ -370,9 +353,6 @@ impl Switcher {
                 ));
             }
             OutgoingKind::Unresolved => {
-                // Fail open: the exact pre-fix backup. Most such divergences are the account's
-                // own rotation, and the `.prev` kept by the write cushions a wrong call. Logged
-                // only: a warning would cry wolf over a legitimate rotation.
                 self.store.write_account_credentials(c, email, creds)?;
                 self.write_account_config(c, email, config)?;
                 log::info!(
@@ -388,8 +368,6 @@ impl Switcher {
                 self.store.write_account_credentials(c, email, creds)?;
                 self.write_account_config(c, email, config)?;
                 if *kind == OutgoingKind::OwnRotated {
-                    // The profile proved the identity: a missing slot uuid is filled while the
-                    // roster is being rewritten anyway.
                     backfill_resolved_uuid(data, c, outgoing.provenance);
                 }
                 log::info!("Backed up account {c}");

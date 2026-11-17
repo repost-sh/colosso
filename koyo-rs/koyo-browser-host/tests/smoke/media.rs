@@ -62,8 +62,6 @@ fn a_page_plays_h264_with_aac() {
     );
     assert_eq!(clip["width"], 96, "no H.264 picture: {clip}");
     assert!(clip["sound"].as_u64() > Some(0), "no AAC sound: {clip}");
-    // The picture is the clip's: drawn to a canvas, white a quarter of the way along its
-    // middle row and black three quarters.
     let picture = until(
         &mut session,
         PICTURE,

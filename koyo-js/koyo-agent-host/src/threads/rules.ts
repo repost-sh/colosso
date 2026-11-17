@@ -1,7 +1,3 @@
-// What a run may become and what a thread shows (docs/chat.md 4.4, 4.5): the one function
-// every status change goes through, and the status, needs and unread mark derived from the
-// rows, never stored, so they can't drift from them.
-
 import type {
   Item,
   Request,
@@ -15,12 +11,9 @@ import type { State } from "../store/store";
 
 const MOVES: Readonly<Record<RunStatus, readonly RunStatus[]>> = {
   queued: ["starting", "removed"],
-  // A turn may end before it's seen to start: a quick failure, a stop as it starts.
   starting: ["running", "stopping", "completed", "interrupted", "failed"],
   running: ["stopping", "completed", "interrupted", "failed"],
-  // The barrier: once a stop is asked for, the run only ends.
   stopping: ["completed", "interrupted", "failed"],
-  // Only going back past a run moves it once it's ended (C11).
   completed: ["removed"],
   interrupted: ["removed"],
   failed: ["removed"],

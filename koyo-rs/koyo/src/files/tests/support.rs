@@ -40,8 +40,6 @@ pub(crate) fn checkout(name: &str) -> std::path::PathBuf {
 
 /// The panel for the checkout at `root`, in a window of its own.
 pub(crate) fn open(root: &Path, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<FilesPanel>) {
-    // The project lists and watches the checkout on a thread of its own, which wakes the
-    // panel's task from outside the test's scheduler.
     cx.executor().allow_parking();
     let root = root.to_owned();
     cx.update(gpui_kit::init);
@@ -62,15 +60,11 @@ pub(crate) fn settle(
     cx: &mut TestAppContext,
     done: impl Fn(&FilesPanel) -> bool,
 ) {
-    // The checkout opens git, and with it the project the panel lists.
     cx.run_until_parked();
     let project = cx.read(|cx| panel.read(cx).checkout.read(cx).project().cloned());
-    // Subscribed before looking, so whatever's published after the look wakes the wait.
     let updates = project
         .expect("the checkout opened")
         .subscribe(Feed::Everything);
-    // The checkouts of the tests running at once each restart the process's one file
-    // watcher, which takes the platform a while each time.
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         cx.run_until_parked();
