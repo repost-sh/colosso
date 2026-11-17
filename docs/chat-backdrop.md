@@ -497,7 +497,8 @@ is 489 lines, so its new field and default may need something moved out of it fi
    grid of fine lines and a band of finer checks), and the window stands on a screen of the
    check's own, 2560 × 1440 points, at (480, 220), as a window off screen lies on no screen.
    It saves the backdrop light and dark, at each Quality stop with a crop of each where the
-   picture is sharp, off in both appearances, and Appearance › Chat background. Its windows
+   picture is sharp, off in both appearances, and Appearance › Wallpaper background (Chat
+   background before it showed behind more). Its windows
    open in the person's session, so it's run only while they're away (an idle time of 5
    minutes); this step's screenshots are taken in a test Koyo on the agent desktop instead.
 
@@ -507,6 +508,13 @@ is 489 lines, so its new field and default may need something moved out of it fi
      KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
      --visual-check-chat-backdrop
    ```
+
+   **Run** on 2026-11-17 at 00:00, on `fa5a15b26` (the surfaces and dynamic wallpapers, on
+   browser-profiles' `d464078f2`), the owner idle for 765 s by `HIDIdleTime` read before the
+   run: 11 pictures in 22 s, exit 0. The dither shows and fades down the chat in both
+   appearances as on the agent desktop, off is the card alone, and Appearance › Wallpaper
+   background lists its six surface rows. The page's switches and sliders are native views,
+   which a window off screen doesn't capture, so the rows show without their controls.
 10. The first look tried on screen. Done on 2026-11-16 (step 3's shots); the owner found it
     nothing like the reference.
 11. The reference's look: Monodrive's dither and fade, drawn by the renderer's shader as the
