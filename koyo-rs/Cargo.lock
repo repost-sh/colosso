@@ -5593,6 +5593,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "koyo-hygiene"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+]
+
+[[package]]
 name = "koyo-lsp"
 version = "0.1.0"
 dependencies = [
