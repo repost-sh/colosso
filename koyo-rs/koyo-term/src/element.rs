@@ -11,7 +11,7 @@ use std::sync::Arc;
 use gpui_kit::{
     App, BorderStyle, Bounds, ContentMask, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior,
-    InspectorElementId, IntoElement, LayoutId, ModifiersChangedEvent, MouseDownEvent,
+    InspectorElementId, LayoutId, ModifiersChangedEvent, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollEvent, SharedString, Style, Window, fill,
     outline, point, px, relative, size,
 };
@@ -93,14 +93,6 @@ pub struct TerminalElement {
     pub marked: Option<SharedString>,
     /// The link under the pointer while ⌘ is held, underlined.
     pub link: Option<Rc<Found>>,
-}
-
-impl IntoElement for TerminalElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 pub struct Prepainted {

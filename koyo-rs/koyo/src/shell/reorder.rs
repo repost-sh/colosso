@@ -11,8 +11,7 @@ use std::time::Duration;
 use gpui_kit::base::motion::{MotionStatus, Transition, transition_with_status};
 use gpui_kit::{
     AlignItems, Along as _, AnyElement, App, Axis, BorderStyle, Bounds, Corners, DispatchPhase,
-    Display, Element, ElementId, FlexDirection, GlobalElementId, Hsla, InspectorElementId,
-    IntoElement, LayoutId, Length, MouseUpEvent, Pixels, Point, Style, Window, fill, outline,
+    Display, Element, ElementId, FlexDirection, GlobalElementId, Hsla, InspectorElementId, LayoutId, Length, MouseUpEvent, Pixels, Point, Style, Window, fill, outline,
     point, px, relative, size,
 };
 
@@ -146,14 +145,6 @@ impl Reorder {
             gap,
             on_drop,
         }
-    }
-}
-
-impl IntoElement for Reorder {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }
 

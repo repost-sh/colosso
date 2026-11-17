@@ -37,7 +37,7 @@ does better. Claude is the only provider, behind a seam another one (Codex) can 
   vendored forks in `koyo-rs/vendor/`; `koyo-js/` is the Bun workspace, each package a
   `koyo-js/koyo-*` folder sharing the root's lint policy and compiler setup. Scripts and docs
   stay at the checkout's root, and so do the pinned tools (`.tools/`).
-- GPUI through `gpui-kit 0.8.1` (`gpui-fast`), vendored `gpui-base` and `gpui-component`
+- GPUI through `gpui-kit 0.10.0` (`gpui-fast`), vendored `gpui-base` and `gpui-component`
   (`koyo-rs/vendor/README.md`). Clippy pedantic with `unwrap`/`expect`/`panic` denied, a
   500-line limit per file (`script/hygiene`), `script/lint` in the pre-commit hook.
 - Tabs and panes: `koyo-rs/koyo/src/model.rs`, `model/tab.rs`. `PaneKind::Chat` exists as a

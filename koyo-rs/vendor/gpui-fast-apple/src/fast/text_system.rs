@@ -35,6 +35,22 @@ impl SizedFonts {
     }
 }
 
+/// A glyph drawn at dilation 0 is smoothed only when the user allows smoothing.
+///
+/// `glyph_dilation_for_color` gives 0 both for dark text and when
+/// `AppleFontSmoothing` is 0, but CoreGraphics' own smoothing flag defaults to
+/// on and CoreGraphics reads only the persistent value of the preference: an
+/// app that turns smoothing off for itself (a launch argument, the argument
+/// domain) still got every dark glyph dilated, 10–22 % more ink than the same
+/// glyph with smoothing off. With smoothing allowed this keeps CoreGraphics'
+/// default, so the usual look does not change.
+#[cfg(target_os = "macos")]
+pub(crate) fn smooth_undilated(cx: &core_graphics::context::CGContext, allowed: bool) {
+    if !allowed {
+        cx.set_should_smooth_fonts(false);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::AppleTextSystem;
@@ -68,5 +84,32 @@ mod tests {
         assert_ne!(larger.0, first.0, "another size has to be another font");
         assert_eq!(shape(16.), first, "a size laid out again after another");
         assert_eq!(shape(24.), larger);
+    }
+
+    /// A font is loaded whether or not it has an `m`: most fonts for scripts
+    /// other than Latin have none, among them the system's own Arial Hebrew
+    /// and Geeza Pro, and upstream refused to load them at all.
+    #[test]
+    fn fonts_without_an_m_load_and_lay_out_their_script() {
+        let fonts = AppleTextSystem::new();
+        for (family, text) in [("Arial Hebrew", "שלום"), ("Geeza Pro", "سلام")] {
+            let font_id = fonts
+                .font_id(&font(family))
+                .unwrap_or_else(|error| panic!("{family} did not load: {error}"));
+            assert!(
+                fonts.glyph_for_char(font_id, 'm').is_none(),
+                "{family} has an m"
+            );
+            let runs = [FontRun {
+                font_id,
+                len: text.len(),
+            }];
+            let layout = fonts.layout_line(text, px(16.), &runs);
+            assert!(
+                layout.runs.iter().all(|run| run.font_id == font_id),
+                "{family} was not used for its own script"
+            );
+            assert!(layout.width > px(0.));
+        }
     }
 }

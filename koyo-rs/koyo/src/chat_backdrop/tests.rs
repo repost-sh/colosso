@@ -221,7 +221,7 @@ fn drawn(
         image_buffer: placeholder.clone(),
     });
     scene.finish();
-    let mut renderer = MetalRenderer::new_headless(Context::default());
+    let mut renderer = MetalRenderer::new_headless(Context::default()).unwrap();
     let size = size(DevicePixels(width as i32), DevicePixels(height as i32));
     renderer.render_scene_to_image(&scene, size).unwrap()
 }

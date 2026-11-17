@@ -120,7 +120,7 @@ plist = "1"
 similar = { version = "2", default-features = false, features = ["text"] }
 serde_json = "1"
 # Only named to turn on GPUI's hot-reload feature; it must match the version gpui-kit pins.
-gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
+gpui-pre = { version = "=0.3.12", default-features = false, optional = true }
 
 [dev-dependencies]
 # Headless windows for measuring and testing views.
@@ -136,10 +136,10 @@ koyo-browser-host = { path = "../koyo-browser-host" }
 # GPUI's Metal renderer: the native surfaces pages, glass and controls are placed in
 # (`set_surface_pane`), and the tab switcher's pictures of the window (`set_surface_capture`)
 # (`vendor/README.md`).
-gpui-fast-apple = "0.1.12"
+gpui-fast-apple = "0.1.17"
 # GPUI's macOS windows: what they tell the keyboard of their first responders, presses and
 # keys, and how it has its say (`keyboard/appkit.rs`, `vendor/README.md`).
-gpui-fast-macos = { version = "0.1.12", default-features = false }
+gpui-fast-macos = { version = "0.1.17", default-features = false }
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
 # The system's accent colour, under each appearance, and word when System Settings changes

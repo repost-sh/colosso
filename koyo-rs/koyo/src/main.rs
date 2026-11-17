@@ -120,7 +120,7 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
         (screen.height * 0.9).min(px(1200.)),
     );
     let options = WindowOptions {
-        window_bounds: Some(WindowBounds::centered(window, cx)),
+        window_bounds: Some(WindowBounds::centered(None, window, cx)),
         window_min_size: Some(size(px(820.), px(520.))),
         window_background: WindowBackgroundAppearance::Blurred,
         app_owns_titlebar_drag: true,

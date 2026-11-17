@@ -37,10 +37,10 @@ terminal core (libghostty-vt).
   (`koyo-rs/rust-toolchain.toml`), resolver 3, license Apache-2.0 (`LICENSE`). Crates:
   `koyo-rs/koyo` (the app), `koyo-rs/koyo-project`, `koyo-rs/koyo-git`, `koyo-rs/koyo-lsp`,
   `koyo-rs/koyo-bench`. Vendored forks: `koyo-rs/vendor/gpui-base`,
-  `koyo-rs/vendor/gpui-component` (gpui-kit 0.8.1 at commit `99576db5`), see
+  `koyo-rs/vendor/gpui-component` (gpui-kit 0.10.0 at commit `f697c313`), see
   `koyo-rs/vendor/README.md`.
-- UI: GPUI through `gpui-kit = "0.8.1"` with feature `gpui-fast` (retained views). The GPUI
-  crate underneath is `gpui-pre 0.3.10` (see `koyo-rs/Cargo.lock`, and the `hot-reload`
+- UI: GPUI through `gpui-kit = "0.10.0"` with feature `gpui-fast` (retained views). The GPUI
+  crate underneath is `gpui-pre 0.3.12` (see `koyo-rs/Cargo.lock`, and the `hot-reload`
   feature in `koyo-rs/koyo/Cargo.toml`).
 - macOS first. `koyo-rs/koyo/src/native/` hosts AppKit `NSView`s inside GPUI's window
   composition (`native/surface.rs`: `WindowCompositionSurface`, stacked over the page and

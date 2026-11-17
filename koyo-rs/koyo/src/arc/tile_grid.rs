@@ -12,7 +12,7 @@ use std::time::Duration;
 use gpui_kit::base::motion::{MotionStatus, Transition, transition_with_status};
 use gpui_kit::{
     AnyElement, App, Bounds, DispatchPhase, Display, Element, ElementId, GlobalElementId,
-    GridTemplate, GridTemplateMinSize, InspectorElementId, IntoElement, LayoutId, Length,
+    GridTemplate, GridTemplateMinSize, InspectorElementId, LayoutId, Length,
     MouseUpEvent, Pixels, Point, Style, Window, point, px, relative, size,
 };
 
@@ -230,14 +230,6 @@ impl TileGrid {
             hand,
             on_drop,
         }
-    }
-}
-
-impl IntoElement for TileGrid {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }
 

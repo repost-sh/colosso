@@ -45,6 +45,8 @@ pub use token_presentation::{
     InlineTokenClickEvent, InlineTokenClickListener, InlineTokenContext, InlineTokenHoverEvent,
     InlineTokenHoverListener, InlineTokenRenderer,
 };
+#[path = "base/a11y_text.rs"]
+mod a11y_text;
 #[path = "base/kind.rs"]
 mod kind;
 #[path = "editor/language.rs"]
@@ -87,10 +89,12 @@ pub(crate) fn init(cx: &mut App) {
 
 pub use crate::number_input::{NumberInputEvent, NumberStep};
 pub use base::{InputBase, InputContextMenuCapabilities, InputStyles};
+pub use blink_cursor::CursorBlink;
 pub use cursor::Selection;
 pub use decorations::{
-    RangeDecoration, RangeDecorationCollection, RangeDecorationStyle, TextDecoration,
-    TextDecorationCollection,
+    GutterDecoration, GutterDecorationCollection, OverviewRulerDecoration,
+    OverviewRulerDecorationCollection, OverviewRulerLane, RangeDecoration,
+    RangeDecorationCollection, RangeDecorationStyle, TextDecoration, TextDecorationCollection,
 };
 pub use diagnostics::{
     Diagnostic, DiagnosticEntry, DiagnosticRelatedInformation, DiagnosticSet, DiagnosticSeverity,
@@ -100,8 +104,9 @@ pub use display_map::{BufferPoint, DisplayMap, DisplayPoint, FoldRange, Wrapping
 pub use editor::{Editor, EditorState};
 pub use edits::Edit;
 pub use highlighting::{
-    DiagnosticColors, FoldIconRenderer, HighlightStyleResolver, InputEditorStyle, InputHighlighter,
-    InputHighlighterFactory, SharedHighlightStyleResolver, SyntaxContext, SyntaxContextProvider,
+    DiagnosticColors, FoldIconRenderer, FoldPlaceholderRenderer, HighlightStyleResolver,
+    InputEditorStyle, InputHighlighter, InputHighlighterFactory, SharedHighlightStyleResolver,
+    SyntaxContext, SyntaxContextProvider,
 };
 pub use indent::TabSize;
 pub use input::{Input, InputState};

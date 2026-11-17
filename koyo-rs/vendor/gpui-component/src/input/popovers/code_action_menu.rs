@@ -317,6 +317,7 @@ impl Render for CodeActionMenu {
                 }
             }),
         )
+        .with_priority(gpui_base::POPUP_PRIORITY)
         .into_any_element()
     }
 }

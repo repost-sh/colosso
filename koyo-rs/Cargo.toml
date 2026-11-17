@@ -82,10 +82,10 @@ used_underscore_binding = "allow"
 [workspace.dependencies]
 # gpui-fast: GPUI with retained views, list rows kept across frames and scroll layers, so a
 # notified view is drawn without rebuilding everything around it.
-gpui-kit = { version = "0.8.1", features = ["gpui-fast"] }
+gpui-kit = { version = "0.10.0", features = ["gpui-fast"] }
 
 # gpui-kit's editor, forked to be made fast: gpui-base and gpui-component as published at
-# 0.8.1, kept in vendor/ (see vendor/README.md). The gpui-kit facade stays the registry's;
+# 0.10.0, kept in vendor/ (see vendor/README.md). The gpui-kit facade stays the registry's;
 # patching both crates it re-exports leaves one copy of each in the build.
 [patch.crates-io]
 gpui-base = { path = "vendor/gpui-base" }

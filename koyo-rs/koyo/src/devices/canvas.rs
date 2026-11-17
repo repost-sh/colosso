@@ -6,7 +6,7 @@
 
 use gpui_kit::{
     App, Bounds, ContentMask, Context, Corners, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, Overflow, Pixels, ScrollEvent, Style, WeakEntity, Window, point, px, relative, size,
 };
 use koyo_device_wire::Size;
@@ -59,13 +59,6 @@ pub fn fitted(area: Bounds<Pixels>, screen: Size, most: f32) -> (Bounds<Pixels>,
             (area.size.height - shown.height) / 2.,
         );
     (Bounds::new(origin, shown), fit)
-}
-
-impl IntoElement for Canvas {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 impl Element for Canvas {

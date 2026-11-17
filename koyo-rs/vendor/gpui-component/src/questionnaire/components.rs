@@ -854,7 +854,7 @@ impl RenderOnce for QuestionnaireChoice {
         let colors = cx.theme().semantic_tokens().colors;
         let radius = cx.theme().semantic_tokens().radius;
         let indicator_background = cx.theme().input_background();
-        let mono_font = cx.theme().semantic_tokens().typography.mono.clone();
+        let mono_font = cx.theme().semantic_tokens().typography.mono;
         let size = resolve_size(self.size, &self.state, cx);
         let metrics = QuestionnaireMetrics::new(size, cx);
         let indicator_offset = center_on_answer_line(metrics.indicator_size, size, cx);
@@ -863,6 +863,7 @@ impl RenderOnce for QuestionnaireChoice {
             .as_ref()
             .is_some_and(|focus_handle| focus_handle.is_focused(window));
         let has_children = !self.children.is_empty();
+        let check_path = crate::resolve_icon_path(IconName::Check.path(), cx);
 
         let default_indicator = || {
             div()
@@ -890,7 +891,7 @@ impl RenderOnce for QuestionnaireChoice {
                     this.child(
                         svg()
                             .size(metrics.indicator_check_size)
-                            .path(IconName::Check.path())
+                            .path(check_path.clone())
                             .text_color(colors.primary_foreground),
                     )
                 })
