@@ -236,6 +236,12 @@ logs and counts. `[proposed]`
   decided, and a menu opened for the main window while a popover was still up came up behind
   it), and closing one orders it out before GPUI's own removal of the window, which waits
   for the update that asked for it to unwind.
+  A window of Chromium's own (an extension's pop-up) is made a child of the Koyo window its
+  page is drawn in (`windows::adopt`), asked by the browser host as it shows one and again
+  if Chromium ties it back to the page's holder: tied to the holder, a level under Koyo's
+  windows, it opened behind Koyo's window, unseen, with the keyboard, and never closed (a
+  window record of the owner's Koyo, 2026-11-17). A Koyo panel at 100 is still above such a
+  window, which is accepted: the person opened the panel.
 
 **Geometry**
 
