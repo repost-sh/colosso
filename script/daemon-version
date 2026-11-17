@@ -56,8 +56,9 @@ set_version() {
 # content. Tests are left out: `tests/` folders and `tests.rs` files only tests compile.
 # Paths are relative to the workspace, so every checkout of the same sources agrees.
 termd_fingerprint() {
-  crates=$(../script/cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
-    LC_ALL=C sort -u)
+  # Apart from the sort, so a cargo that fails stops the check rather than hash nothing.
+  tree=$(../script/cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none)
+  crates=$(printf '%s\n' "$tree" | LC_ALL=C sort -u)
   # A crate met again in the tree is marked `(*)` after its folder.
   folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\([^)]*\)).*|\1|p" | LC_ALL=C sort -u)
   {
@@ -85,7 +86,8 @@ host_fingerprint() {
 
 # The daemon's line as its sources are now, and as the record has it.
 expected() {
-  echo "$1 $(version "$1") $("$1"_fingerprint)"
+  fingerprint=$("$1"_fingerprint)
+  echo "$1 $(version "$1") $fingerprint"
 }
 recorded() {
   grep "^$1 " "$RECORD" 2>/dev/null || true
@@ -94,7 +96,9 @@ recorded() {
 # The daemons whose sources changed since their version was set.
 drifted() {
   for name in $DAEMONS; do
-    if [ "$(recorded "$name")" != "$(expected "$name")" ]; then
+    # Outside the `if`, where a failure would count as a difference.
+    now=$(expected "$name")
+    if [ "$(recorded "$name")" != "$now" ]; then
       echo "$name"
     fi
   done
@@ -148,6 +152,10 @@ case $command in
     ;;
   bump | keep)
     names=${*:-$(drifted)}
+    # Each fingerprint first, so a cargo that fails stops this before a version changes.
+    for name in $names; do
+      "$name"_fingerprint >/dev/null
+    done
     for name in $names; do
       if [ "$command" = bump ]; then
         set_version "$name" $(($(version "$name") + 1))

@@ -8,10 +8,13 @@
 #   script/bun run lint
 #   script/bun test
 #
-# Bun's caches stay in the checkout too: the packages it installs, and the transpiler's cache,
-# which it would otherwise keep in ~/.bun.
+# Bun's caches stay in the checkout too: the packages it installs and the transpiler's cache,
+# which it would otherwise keep in ~/.bun, and the compile cache tsc and ESLint ask for, which
+# would go to $TMPDIR.
 set -eu
 cd "$(dirname "$0")/.."
+# Nothing builds until git runs this checkout's hooks (see script/hooks-path).
+script/hooks-path
 
 BUN_VERSION=1.4.4
 case "$(uname -m)" in
@@ -36,10 +39,15 @@ if [ ! -x "$BUN" ]; then
   unzip -q -j "$BUN_DIR/bun.zip" "bun-$BUN_TARGET/bun" -d "$BUN_DIR"
   rm "$BUN_DIR/bun.zip"
 fi
+# The pinned Bun answers to `node` too, so a tool's `#!/usr/bin/env node` runs on it, and Bun
+# needn't link a `node` of its own into /private/tmp, as it does when the machine has none.
+ln -s bun "$BUN_DIR/node" 2>/dev/null || [ -L "$BUN_DIR/node" ]
 
 export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$PWD/.tools/bun-cache}"
 export BUN_RUNTIME_TRANSPILER_CACHE_PATH="${BUN_RUNTIME_TRANSPILER_CACHE_PATH:-$BUN_INSTALL_CACHE_DIR/transpiler}"
-# The package scripts run `bun` by name, so the pinned one is the one they find.
+export NODE_COMPILE_CACHE="${NODE_COMPILE_CACHE:-$BUN_INSTALL_CACHE_DIR/compile}"
+# Package scripts get this Bun for `bun` and `node` both. They run tools plainly, as `tsc`:
+# `bun --bun tsc` would link a `node` into /private/tmp all the same.
 export PATH="$PWD/$BUN_DIR:$PATH"
 cd koyo-js
 exec "../$BUN" "$@"

@@ -11,6 +11,14 @@
 # runs, are the caller's.
 set -eu
 cd "$(dirname "$0")/.."
+# Nothing builds until git runs this checkout's hooks (see script/hooks-path).
+script/hooks-path
 export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
+# Apple's /usr/bin/git sets SDKROOT to Xcode's SDK when it's unset, and adds /usr/local/include
+# to CPATH, for what it runs: the pre-commit hook, `git rebase -x`. C build scripts rerun
+# when either changes, so a build under git would rebuild dozens of crates in the shared build
+# directory, and the next build outside git rebuild them back. Builds take neither from whoever
+# runs them, a developer included: cc finds the SDK Xcode selects, as in a plain shell.
+unset SDKROOT CPATH
 cd koyo-rs
 exec cargo "$@"

@@ -1,7 +1,8 @@
 #!/bin/sh
 # The lint half of script/check, which the pre-commit hook runs on its own: for koyo-rs, Clippy
-# under the workspace lint policy with every warning an error and the file-size limit; for
-# koyo-js, tsc and the ESLint policy; and the daemons' versions against their sources.
+# under the workspace lint policy with every warning an error, on the default build and on
+# koyo's visual-check build, and the file-size limit; for koyo-js, tsc and the ESLint policy;
+# and the daemons' versions against their sources.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -21,4 +22,7 @@ trap 'kill "$js_checks" 2>/dev/null || true' EXIT
 script/hygiene
 script/daemon-version
 script/cargo clippy --workspace --all-targets -- -D warnings
+# The code under `#[cfg(feature = "visual-check")]` builds only with the feature on, and the
+# code under `not(...)` only with it off, so each build is linted.
+script/cargo clippy -p koyo --all-targets --features visual-check -- -D warnings
 wait "$js_checks"

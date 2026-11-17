@@ -1,0 +1,4 @@
+#!/bin/sh
+# A merge commit is linted as any other: two branches that each lint can merge into a tree
+# that doesn't.
+exec "$(dirname "$0")/pre-commit"
