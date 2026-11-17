@@ -5,7 +5,7 @@
 
 use gpui_kit::{AnyWindowHandle, App, AsyncApp, Pixels, Size, Window};
 use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow, NSWindowCollectionBehavior};
+use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::popup::Corner;
@@ -212,17 +212,21 @@ pub fn show(window: &Window) {
     }
 }
 
-/// Keeps a floating `window` to the Space it opens on, and unseen while Koyo isn't the app in
-/// front, coming back with it. GPUI has a pop-up panel join every Space (and full-screen ones), so
-/// a menu left open went with the person to another desktop, and a dialog floated over the app
-/// they went to. It may still show over a full-screen window of Koyo's.
+/// Makes `window` one of Koyo's floating windows, as the native layer has them
+/// (`koyo_seam::windows::float`): a level under the menus', kept to the Space it opens on, and
+/// unseen while Koyo isn't the app in front.
 pub fn float_on_its_space(window: &Window) {
     if let Some(ns_window) = ns_window(window) {
-        ns_window.setCollectionBehavior(
-            NSWindowCollectionBehavior::Managed | NSWindowCollectionBehavior::FullScreenAuxiliary,
-        );
-        ns_window.setHidesOnDeactivate(true);
+        // SAFETY: a live window, on the main thread, where GPUI's windows are.
+        unsafe { koyo_seam::windows::float(Retained::as_ptr(&ns_window).cast_mut().cast()) };
     }
+}
+
+/// Takes `window`, a floating window of Koyo's that's closing, off the screen now
+/// (`koyo_seam::windows::dismiss`).
+pub fn dismiss(window: &NSWindow) {
+    // SAFETY: a live window, on the main thread.
+    unsafe { koyo_seam::windows::dismiss(std::ptr::from_ref(window).cast_mut().cast()) };
 }
 
 /// The `NSWindow` GPUI draws `window` in; none for a test's window.
