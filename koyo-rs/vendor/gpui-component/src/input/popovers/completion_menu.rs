@@ -485,6 +485,7 @@ impl Render for CompletionMenu {
                 }
             }),
         )
+        .with_priority(gpui_base::POPUP_PRIORITY)
         .into_any_element()
     }
 }

@@ -8,7 +8,7 @@
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Bounds, Context, DispatchPhase, Div, Element, ElementId, Entity, GlobalElementId,
-    Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId,
+    Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _, LayoutId,
     MouseDownEvent, ParentElement as _, Pixels, Stateful, Style, Styled as _, Window, div, fill,
     relative, white,
 };
@@ -47,13 +47,6 @@ pub struct Placed {
     /// The page's native view, placed there, while the page is open with no notice over it.
     #[cfg(all(target_os = "macos", not(test)))]
     native: Option<Entity<crate::native::surface::Kept<super::native::NativePage>>>,
-}
-
-impl IntoElement for PageSurface {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 impl Element for PageSurface {

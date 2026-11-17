@@ -2,8 +2,7 @@
 //! terminal last laid it out, and its grips while it's a free size, as round a page.
 
 use gpui_kit::{
-    App, Bounds, Element, ElementId, Entity, GlobalElementId, Hitbox, InspectorElementId,
-    IntoElement, LayoutId, Pixels, Position, Style, Window, px, relative,
+    App, Bounds, Element, ElementId, Entity, GlobalElementId, Hitbox, InspectorElementId, LayoutId, Pixels, Position, Style, Window, px, relative,
 };
 
 use super::ResponsiveTerminal;
@@ -15,14 +14,6 @@ pub struct Frame {
     pub host: Entity<ResponsiveTerminal>,
     /// Whether the grips show: a free size, not a preset.
     pub free: bool,
-}
-
-impl IntoElement for Frame {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 impl Element for Frame {

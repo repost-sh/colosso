@@ -9,9 +9,16 @@
 //! call to it. The logic itself — data structures, algorithms, bookkeeping,
 //! tests — is written here, one file per topic.
 
+#[cfg(feature = "font-kit")]
+pub(crate) mod color_bitmap_fonts;
 pub(crate) mod composition;
+pub(crate) mod dynamic_textures;
+#[cfg(feature = "font-kit")]
+pub(crate) mod font_fallbacks;
 pub(crate) mod layers;
 pub(crate) mod paths;
 pub(crate) mod rounded_clip;
 #[cfg(feature = "font-kit")]
 pub(crate) mod text_system;
+#[cfg(all(test, feature = "font-kit"))]
+mod truncation_tests;

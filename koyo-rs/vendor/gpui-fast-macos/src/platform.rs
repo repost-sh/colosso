@@ -1,7 +1,8 @@
+// Modified by Longbridge for gpui-fast.
 use crate::{
     AppleActivity, AppleDispatcher, BoolExt, MacDisplay, MacKeyboardLayout, MacKeyboardMapper,
-    MacWindow, events::key_to_native, main_thread_marker, ns_string, pasteboard::Pasteboard,
-    renderer, set_active_window_cursor_style,
+    MacWindow, events::key_to_menu_equivalent, main_thread_marker, ns_string,
+    pasteboard::Pasteboard, renderer, set_active_window_cursor_style,
 };
 use anyhow::{Context as _, anyhow};
 use block2::RcBlock;
@@ -13,13 +14,13 @@ use gpui::{
     Action, ActivationPolicy, ActivityGuard, AnyWindowHandle, BackgroundExecutor, ClipboardItem,
     CursorStyle, ForegroundExecutor, GraphicalEnvironment, KeyContext, Keymap, Menu, MenuItem,
     OsMenu, OwnedMenu, PathPromptOptions, Platform, PlatformDisplay, PlatformKeyboardLayout,
-    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Result, SystemMenuType, Task,
-    ThermalState, WindowAppearance, WindowKind, WindowParams, WindowingRequest,
+    PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, PowerMode, Result, SystemMenuType,
+    Task, ThermalState, WindowAppearance, WindowKind, WindowParams, WindowingRequest,
     popup::PopupNotSupportedError,
 };
 use gpui_apple::{
     keychain,
-    thermal::{self, ThermalObserver},
+    process_info::{self, ProcessInfoObserver},
 };
 use gpui_util::{ResultExt, new_std_command};
 use itertools::Itertools;
@@ -32,9 +33,10 @@ use objc2::{
 use objc2_app_kit::{
     NSAppearance, NSAppearanceNameAqua, NSAppearanceNameDarkAqua, NSAppearanceNameVibrantDark,
     NSAppearanceNameVibrantLight, NSApplication, NSApplicationActivationPolicy,
-    NSControlStateValueOn, NSCursor, NSDocumentController, NSEventModifierFlags, NSMenu,
-    NSMenuItem, NSModalResponse, NSModalResponseOK, NSOpenPanel, NSSavePanel, NSScroller,
-    NSScrollerStyle, NSWorkspace, NSWorkspaceDidWakeNotification, NSWorkspaceWillSleepNotification,
+    NSApplicationOcclusionState, NSControlStateValueOn, NSCursor, NSDocumentController,
+    NSEventModifierFlags, NSMenu, NSMenuItem, NSModalResponse, NSModalResponseOK, NSOpenPanel,
+    NSSavePanel, NSScroller, NSScrollerStyle, NSWorkspace, NSWorkspaceDidWakeNotification,
+    NSWorkspaceWillSleepNotification,
 };
 use objc2_foundation::{
     NSActivityOptions, NSArray, NSBundle, NSError, NSInteger, NSProcessInfo, NSString, NSURL,
@@ -55,6 +57,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+use strum::IntoEnumIterator as _;
 
 const MAC_PLATFORM_IVAR: &CStr = c"platform";
 static mut APP_CLASS: *const AnyClass = ptr::null();
@@ -151,7 +154,6 @@ unsafe fn build_classes() {
                 sel!(onSystemSleep:),
                 on_system_sleep as extern "C-unwind" fn(_, Sel, *mut AnyObject),
             );
-
             decl.add_method(
                 sel!(onSystemWake:),
                 on_system_wake as extern "C-unwind" fn(_, Sel, *mut AnyObject),
@@ -172,20 +174,21 @@ pub(crate) struct MacPlatformState {
     headless: bool,
     activation_policy: ActivationPolicy,
     application_created: bool,
-    general_pasteboard: Pasteboard,
-    find_pasteboard: Pasteboard,
+    general_pasteboard: Option<Pasteboard>,
+    find_pasteboard: Option<Pasteboard>,
     reopen: Option<Box<dyn FnMut()>>,
     on_keyboard_layout_change: Option<Box<dyn FnMut()>>,
-    thermal_observer: Option<ThermalObserver>,
+    thermal_observer: Option<ProcessInfoObserver>,
+    power_mode_observer: Option<ProcessInfoObserver>,
     on_displays_changed: Option<Box<dyn FnMut()>>,
     on_system_sleep: Option<Box<dyn FnMut()>>,
     on_system_wake: Option<Box<dyn FnMut()>>,
     system_power_observers_registered: bool,
     quit: Option<Box<dyn FnMut() -> bool>>,
-    menu_command: Option<Box<dyn FnMut(&dyn Action)>>,
-    validate_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
-    will_open_menu: Option<Box<dyn FnMut()>>,
-    menu_actions: Vec<Box<dyn Action>>,
+    pub(crate) menu_command: Option<Box<dyn FnMut(&dyn Action)>>,
+    pub(crate) validate_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
+    pub(crate) will_open_menu: Option<Box<dyn FnMut()>>,
+    pub(crate) menu_actions: Vec<Box<dyn Action>>,
     open_urls: Option<Box<dyn FnMut(Vec<String>)>>,
     finish_launching: Option<Box<dyn FnOnce()>>,
     dock_menu: Option<Retained<NSMenu>>,
@@ -254,6 +257,7 @@ impl MacPlatform {
             dock_menu: None,
             on_keyboard_layout_change: None,
             thermal_observer: None,
+            power_mode_observer: None,
             on_displays_changed: None,
             on_system_sleep: None,
             on_system_wake: None,
@@ -400,7 +404,9 @@ impl MacPlatform {
                                 NSMenuItem::alloc(self.1),
                                 &NSString::from_str(name),
                                 Some(selector),
-                                &NSString::from_str(key_to_native(keystroke.key()).as_ref()),
+                                &NSString::from_str(
+                                    key_to_menu_equivalent(keystroke.key()).as_ref(),
+                                ),
                             );
                             if Self::os_version() >= Version::new(12, 0, 0) {
                                 item.setAllowsAutomaticKeyEquivalentLocalization(false);
@@ -770,7 +776,7 @@ impl Platform for MacPlatform {
             background_executor,
             renderer_context,
             self.1,
-        )))
+        )?))
     }
 
     fn window_appearance(&self) -> WindowAppearance {
@@ -1059,7 +1065,7 @@ impl Platform for MacPlatform {
     }
 
     fn on_thermal_state_change(&self, callback: Box<dyn FnMut()>) {
-        let observer = ThermalObserver::new(&self.foreground_executor(), callback);
+        let observer = process_info::observe_thermal_state(&self.foreground_executor(), callback);
         self.0.lock().thermal_observer = Some(observer);
     }
 
@@ -1068,13 +1074,46 @@ impl Platform for MacPlatform {
         self.ensure_system_power_observers();
     }
 
+    fn on_power_mode_change(&self, callback: Box<dyn FnMut()>) {
+        let observer = process_info::observe_power_mode(&self.foreground_executor(), callback);
+        self.0.lock().power_mode_observer = Some(observer);
+    }
+
     fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
         self.0.lock().on_system_wake = Some(callback);
         self.ensure_system_power_observers();
     }
 
+    fn debug_state(&self) -> serde_json::Value {
+        let app = NSApplication::sharedApplication(self.1);
+        let key_window: *mut AnyObject = unsafe { msg_send![&*app, keyWindow] };
+        let main_window: *mut AnyObject = unsafe { msg_send![&*app, mainWindow] };
+        let window_number = |window: *mut AnyObject| -> Option<isize> {
+            (!window.is_null()).then(|| unsafe { msg_send![window, windowNumber] })
+        };
+        // AppKit's cursor for this app, mapped back to the style GPUI would
+        // have set it from. `None` when it is not one GPUI sets.
+        let current_cursor = Retained::as_ptr(&NSCursor::currentCursor()).cast::<AnyObject>();
+        let current_cursor_style = CursorStyle::iter().find(|style| {
+            // SAFETY: The platform is only used on the main thread.
+            let cursor = unsafe { crate::window::native_cursor(*style) };
+            ptr::eq(cursor, current_cursor)
+        });
+        serde_json::json!({
+            "current_cursor_style": current_cursor_style,
+            "app_is_active": app.isActive(),
+            "app_is_hidden": app.isHidden(),
+            "app_occlusion_state_visible": app
+                .occlusionState()
+                .contains(NSApplicationOcclusionState::Visible),
+            "key_window_number": window_number(key_window),
+            "main_window_number": window_number(main_window),
+            "low_power_mode": NSProcessInfo::processInfo().isLowPowerModeEnabled(),
+        })
+    }
+
     fn thermal_state(&self) -> ThermalState {
-        thermal::thermal_state()
+        process_info::thermal_state()
     }
 
     fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>> {
@@ -1082,6 +1121,10 @@ impl Platform for MacPlatform {
             reason,
             NSActivityOptions::UserInitiated,
         )))
+    }
+
+    fn power_mode(&self) -> PowerMode {
+        process_info::power_mode()
     }
 
     fn show_system_notification(&self, notification: gpui::SystemNotification) {
@@ -1193,22 +1236,26 @@ impl Platform for MacPlatform {
 
     fn read_from_clipboard(&self) -> Option<ClipboardItem> {
         let state = self.0.lock();
-        state.general_pasteboard.read()
+        state.general_pasteboard.as_ref()?.read()
     }
 
     fn write_to_clipboard(&self, item: ClipboardItem) {
         let state = self.0.lock();
-        state.general_pasteboard.write(item);
+        if let Some(pasteboard) = &state.general_pasteboard {
+            pasteboard.write(item);
+        }
     }
 
     fn read_from_find_pasteboard(&self) -> Option<ClipboardItem> {
         let state = self.0.lock();
-        state.find_pasteboard.read()
+        state.find_pasteboard.as_ref()?.read()
     }
 
     fn write_to_find_pasteboard(&self, item: ClipboardItem) {
         let state = self.0.lock();
-        state.find_pasteboard.write(item);
+        if let Some(pasteboard) = &state.find_pasteboard {
+            pasteboard.write(item);
+        }
     }
 
     fn write_credentials(&self, url: &str, username: &str, password: &[u8]) -> Task<Result<()>> {
@@ -1319,7 +1366,6 @@ extern "C-unwind" fn did_finish_launching(this: &AnyObject, _: Sel, _: *mut AnyO
             name: ns_string("NSApplicationDidChangeScreenParametersNotification"),
             object: ptr::null_mut::<AnyObject>()
         ];
-
         let platform = get_mac_platform(this);
         let callback = {
             let mut state = platform.0.lock();
@@ -1500,63 +1546,15 @@ extern "C-unwind" fn open_urls(this: &AnyObject, _: Sel, _: *mut AnyObject, urls
 }
 
 extern "C-unwind" fn handle_menu_item(this: &AnyObject, _: Sel, item: *mut AnyObject) {
-    unsafe {
-        let platform = get_mac_platform(this);
-        let mut lock = platform.0.lock();
-        if let Some(mut callback) = lock.menu_command.take() {
-            let tag: NSInteger = if item.is_null() {
-                0
-            } else {
-                msg_send![item, tag]
-            };
-            let index = tag as usize;
-            if let Some(action) = lock.menu_actions.get(index) {
-                let action = action.boxed_clone();
-                drop(lock);
-                callback(&*action);
-            }
-            platform.0.lock().menu_command.get_or_insert(callback);
-        }
-    }
+    unsafe { crate::fast::menu::handle_menu_item(&get_mac_platform(this).0, item) }
 }
 
 extern "C-unwind" fn validate_menu_item(this: &AnyObject, _: Sel, item: *mut AnyObject) -> Bool {
-    unsafe {
-        let mut result = false;
-        let platform = get_mac_platform(this);
-        let mut lock = platform.0.lock();
-        if let Some(mut callback) = lock.validate_menu_command.take() {
-            let tag: NSInteger = if item.is_null() {
-                0
-            } else {
-                msg_send![item, tag]
-            };
-            let index = tag as usize;
-            if let Some(action) = lock.menu_actions.get(index) {
-                let action = action.boxed_clone();
-                drop(lock);
-                result = callback(action.as_ref());
-            }
-            platform
-                .0
-                .lock()
-                .validate_menu_command
-                .get_or_insert(callback);
-        }
-        result.to_objc()
-    }
+    unsafe { crate::fast::menu::validate_menu_item(&get_mac_platform(this).0, item).to_objc() }
 }
 
 extern "C-unwind" fn menu_will_open(this: &AnyObject, _: Sel, _: *mut AnyObject) {
-    unsafe {
-        let platform = get_mac_platform(this);
-        let mut lock = platform.0.lock();
-        if let Some(mut callback) = lock.will_open_menu.take() {
-            drop(lock);
-            callback();
-            platform.0.lock().will_open_menu.get_or_insert(callback);
-        }
-    }
+    unsafe { crate::fast::menu::menu_will_open(&get_mac_platform(this).0) }
 }
 
 extern "C-unwind" fn handle_dock_menu(

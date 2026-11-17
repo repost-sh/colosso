@@ -289,6 +289,7 @@ struct Cards {
     cards: Vec<CardLayout>,
 }
 
+#[cfg(not(feature = "gpui-fast"))]
 impl IntoElement for Cards {
     type Element = Self;
 
@@ -357,6 +358,7 @@ impl Cards {
                 .h(drawn.height)
                 .child(content),
         )
+        .with_priority(gpui_base::POPUP_PRIORITY)
         .into_any_element()
     }
 }

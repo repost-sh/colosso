@@ -129,14 +129,6 @@ pub struct AtRem {
     child: AnyElement,
 }
 
-impl IntoElement for AtRem {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 impl Element for AtRem {
     type RequestLayoutState = ();
     type PrepaintState = ();

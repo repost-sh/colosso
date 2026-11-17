@@ -376,6 +376,7 @@ impl ShimmerGlyphs {
     }
 }
 
+#[cfg(not(feature = "gpui-fast"))]
 impl IntoElement for ShimmerGlyphs {
     type Element = Self;
 

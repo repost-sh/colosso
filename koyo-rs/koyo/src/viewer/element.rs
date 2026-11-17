@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use gpui_kit::{
     App, Bounds, ContentMask, Corners, CursorStyle, DispatchPhase, Element, ElementId, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId,
+    GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, LayoutId,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PinchEvent, Pixels, RenderImage, ScrollEvent,
     Style, Window, checkerboard, fill, outline, point, px, relative, size,
 };
@@ -35,14 +35,6 @@ pub struct Pages {
     /// A checkerboard under what may be see-through, darker on a dark theme.
     pub checker: Option<bool>,
     pub dragging: bool,
-}
-
-impl IntoElement for Pages {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 impl Element for Pages {

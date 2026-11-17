@@ -506,7 +506,7 @@ impl SyntaxHighlighter {
         // registered parser factory) default to a highlighter that never parses
         // and creates no styles.
         if !LanguageRegistry::singleton().has_parser(lang) {
-            return Ok(Self::build_inert(config.name.clone()));
+            return Ok(Self::build_inert(config.name));
         }
 
         let (mut parser, grammar) = LanguageRegistry::singleton().parser(lang)?;
@@ -1431,7 +1431,7 @@ impl SyntaxHighlighter {
         }
 
         let mut query_cursor = QueryCursor::new();
-        query_cursor.set_byte_range(range.clone());
+        query_cursor.set_byte_range(range);
 
         let mut matches = query_cursor.matches(query, root_node, TextProvider(source));
 
@@ -1461,7 +1461,7 @@ impl SyntaxHighlighter {
                         last_highlight_name.unwrap_or(highlight_name),
                     ));
                 } else {
-                    highlights.push(HighlightItem::new(node_range, highlight_name.clone()));
+                    highlights.push(HighlightItem::new(node_range, highlight_name));
                 }
             }
         }

@@ -44,6 +44,8 @@ impl InputModeKind for EditorMode {
         if let Some(diagnostics) = state.diagnostics_mut() {
             diagnostics.reset(&text);
         }
+        state.extras.gutter_decorations.clear();
+        state.extras.overview_ruler_decorations.clear();
     }
 
     fn editing_syntax_context(state: &InputBaseState<Self>, offset: usize) -> super::SyntaxContext {
@@ -65,6 +67,14 @@ impl InputModeKind for EditorMode {
             diagnostics.edited(range, new_len, &text);
         }
         state.extras.lsp.inlays.edited(range, new_len);
+        state
+            .extras
+            .gutter_decorations
+            .adjust_for_edit(range, new_len);
+        state
+            .extras
+            .overview_ruler_decorations
+            .adjust_for_edit(range, new_len);
     }
 
     fn refresh_language_features(
@@ -279,6 +289,24 @@ impl crate::input::InputExtras for super::EditorExtras {
 
     fn range_decorations(&self, ranges: &[std::ops::Range<usize>]) -> Vec<&super::RangeDecoration> {
         self.range_decorations.intersecting(ranges)
+    }
+
+    fn gutter_decorations_width(&self) -> Option<gpui::Pixels> {
+        self.gutter_decorations
+            .has_collections()
+            .then_some(self.gutter_decorations_width)
+    }
+
+    fn gutter_decorations(&self, range: std::ops::Range<usize>) -> Vec<&super::GutterDecoration> {
+        self.gutter_decorations.intersecting(&[range])
+    }
+
+    fn overview_ruler_decorations(&self) -> Vec<&super::OverviewRulerDecoration> {
+        self.overview_ruler_decorations.iter().flatten().collect()
+    }
+
+    fn overview_ruler_revision(&self) -> u64 {
+        self.overview_ruler_decorations.revision()
     }
 
     fn semantic_token_styles(

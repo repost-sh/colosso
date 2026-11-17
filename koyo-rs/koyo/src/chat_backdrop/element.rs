@@ -6,7 +6,7 @@
 //! dithers it, sets its opacity and fades it down the pane as it draws it (`Texture::mark`).
 
 use gpui_kit::{
-    App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId,
     LayoutId, Pixels, Position, Size, Style, Window, point, px, relative,
 };
 
@@ -20,13 +20,6 @@ use crate::settings::ChatBackdrop;
 pub struct Picture {
     pub settings: ChatBackdrop,
     pub id: ElementId,
-}
-
-impl IntoElement for Picture {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 impl Element for Picture {

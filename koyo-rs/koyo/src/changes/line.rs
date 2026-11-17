@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use gpui_kit::{
     App, AvailableSpace, BorderStyle, Bounds, ContentMask, Edges, Element, ElementId, Font,
-    GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId, Pixels, ShapedLine,
+    GlobalElementId, Hsla, InspectorElementId, LayoutId, Pixels, ShapedLine,
     SharedString, Style, TextAlign, TextRun, Window, WrappedLine, fill, point, px, quad, relative,
     size,
 };
@@ -133,14 +133,6 @@ fn shape(half: &Half, width: Pixels, look: &Look, window: &Window) -> Option<Wra
         .shape_text(half.text.clone(), look.font_size, &half.runs, wrap, None)
         .ok()?;
     lines.into_iter().next()
-}
-
-impl IntoElement for CodeLine {
-    type Element = Self;
-
-    fn into_element(self) -> Self {
-        self
-    }
 }
 
 pub struct Shaped {
