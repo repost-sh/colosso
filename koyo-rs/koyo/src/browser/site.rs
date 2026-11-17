@@ -124,19 +124,22 @@ impl BrowserView {
 pub const FADE: Duration = Duration::from_millis(150);
 
 /// The buttons at the end of the address field of `page`, which `view` is: copy link, and site
-/// controls. None for a page with no site. Their icons are `tint`. They're there while the
-/// pointer is over the field, `hovered` of the way in (`theme::hover::eased`), as a tab's
-/// close button is; and whatever the pointer does while the popover is up or the address was
-/// just copied.
+/// controls, for a page with a site; and before them `pinned`, the pinned extensions' icons
+/// where the layout has no toolbar for them (`extensions::pinned`). None when there's
+/// neither. Their icons are `tint`. They're there while the pointer is over the field,
+/// `hovered` of the way in (`theme::hover::eased`), as a tab's close button is; and whatever
+/// the pointer does while the popover is up or the address was just copied.
 pub fn buttons(
     page: &BrowserView,
     view: &Entity<BrowserView>,
     tint: Hsla,
     hovered: f32,
+    pinned: Vec<AnyElement>,
     cx: &App,
 ) -> Option<AnyElement> {
     if !page.has_site() {
-        return None;
+        let row = div().flex().items_center().flex_shrink_0().gap(px(2.)).opacity(hovered);
+        return (!pinned.is_empty()).then(|| row.children(pinned).into_any_element());
     }
     let p = theme::palette(cx);
     let number = page.pane;
@@ -177,7 +180,7 @@ pub fn buttons(
     };
     let shown = if open || copied { 1. } else { hovered };
     let row = div().flex().items_center().flex_shrink_0().gap(px(2.)).opacity(shown);
-    Some(row.child(copy).child(controls).into_any_element())
+    Some(row.children(pinned).child(copy).child(controls).into_any_element())
 }
 
 /// A button in the address field.

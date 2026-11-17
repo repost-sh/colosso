@@ -108,7 +108,9 @@ pub fn address_bar(
     let (hovered, hover) =
         crate::theme::hover::eased("arc-address", crate::browser::SITE_BUTTONS_FADE, window, cx);
     let ends = (editing.is_none()).then(|| shell.shown_page(cx)).flatten().and_then(|page| {
-        crate::browser::site_buttons(page.read(cx), &page, p.text.opacity(0.7), hovered, cx)
+        // This layout has no toolbar: the pinned extensions' icons are here, with the buttons.
+        let pinned = crate::browser::pinned_extensions(&page, cx);
+        crate::browser::site_buttons(page.read(cx), &page, p.text.opacity(0.7), hovered, pinned, cx)
     });
     div()
         .id("arc-address")
@@ -144,7 +146,8 @@ pub fn address_bar(
                         window.dispatch_action(Box::new(OpenAddress), cx);
                     })
                 })
-                // Copy link and site controls, for the page shown (`browser/site.rs`).
+                // Pinned extensions, copy link and site controls, for the page shown
+                // (`browser/site.rs`).
                 .children(ends),
         })
 }

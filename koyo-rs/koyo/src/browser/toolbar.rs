@@ -195,7 +195,7 @@ fn address(
     let id = ElementId::NamedInteger("browser-address".into(), view.pane);
     let (hovered, hover) = theme::hover::eased(id.clone(), super::site::FADE, window, cx);
     // Not while the field is being typed in.
-    let ends = (!editing).then(|| super::site::buttons(view, &cx.entity(), p.muted, hovered, cx)).flatten();
+    let ends = (!editing).then(|| super::site::buttons(view, &cx.entity(), p.muted, hovered, Vec::new(), cx)).flatten();
     div()
         .id(id)
         .on_hover(hover)

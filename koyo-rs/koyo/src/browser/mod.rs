@@ -55,6 +55,7 @@ pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use lightness::glass_dark;
 pub use menu::handle_actions;
 pub use responsive::{Responsive, devices};
+pub use extensions::pinned::icons as pinned_extensions;
 pub use site::{FADE as SITE_BUTTONS_FADE, buttons as site_buttons};
 pub(crate) use tabs::page_brought_back;
 pub use view::{BrowserEvent, BrowserView, Controls, Visit};
