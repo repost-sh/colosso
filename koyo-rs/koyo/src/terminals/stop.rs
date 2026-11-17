@@ -230,4 +230,4 @@ fn doing(state: &State) -> String {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

@@ -8,7 +8,7 @@ use crate::terminals::states::State;
 use crate::test_support::{repo, select, shell_with, terminal_record as record};
 
 /// A terminal tab showing `record`, the daemon having said so; its id.
-fn tab(shell: &Entity<Shell>, record: &TerminalRecord, cx: &mut TestAppContext) -> u64 {
+pub(in crate::terminals) fn tab(shell: &Entity<Shell>, record: &TerminalRecord, cx: &mut TestAppContext) -> u64 {
     shell.update(cx, |shell, cx| {
         shell.terminals.states.upsert(record);
         let id = shell.terminals.add(Source::Existing {

@@ -5,13 +5,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
-use koyo_agent::agent_client::Notice;
-use koyo_agent::protocol::events::Event;
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 
 use super::super::{Chats, ChatsEvent};
-use super::{chats_of, summary};
+use super::{at, chats_of, summary};
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
@@ -110,20 +108,12 @@ fn what_a_chat_has_new_waits_for_its_tab(cx: &mut TestAppContext) {
 }
 
 fn working(root: &Path) -> ThreadSummary {
-    ThreadSummary {
-        status: Status::Working,
-        ..summary("0001", root, "A chat", true)
-    }
+    at(root, Status::Working)
 }
 
 impl Chat {
     fn hears(&self, summary: ThreadSummary, cx: &mut TestAppContext) {
-        self.chats.update(cx, |chats, cx| {
-            chats.take_in(
-                vec![Notice::Event(Box::new(Event::ThreadSummary(summary)))],
-                cx,
-            );
-        });
+        super::hears(&self.chats, summary, cx);
         draw(self.window, cx);
     }
 

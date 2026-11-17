@@ -69,6 +69,10 @@ const THEME_DELAY: Duration = Duration::from_millis(150);
 struct Made {
     view: Entity<TerminalView>,
     responsive: Entity<responsive::ResponsiveTerminal>,
+    /// The look the view was last given, compared here and not in the view: the shell is
+    /// drawn again whenever a view it reached into while rendering changes, which a terminal's
+    /// does at every frame of output (`budget.rs`).
+    look: Look,
     /// Whether the terminal was pinned when the view last said its pin changed: the terminal
     /// bar's toggle shows it, so the shell draws again when it flips.
     pinned: bool,
@@ -250,10 +254,12 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Option<Entity<TerminalView>> {
         let look = look(theme::palette(cx));
-        if let Some(made) = self.terminals.views.get(&id) {
-            let view = made.view.clone();
-            view.update(cx, |view, cx| view.set_look(look, cx));
-            return Some(view);
+        if let Some(made) = self.terminals.views.get_mut(&id) {
+            if made.look != look {
+                made.look = look.clone();
+                made.view.update(cx, |view, cx| view.set_look(look, cx));
+            }
+            return Some(made.view.clone());
         }
         let source = self.terminals.sources.get(&id)?.clone();
         let client = self.terminals.client()?;
@@ -261,7 +267,7 @@ impl Shell {
             .find(|(_, tab)| *tab == id)
             .map(|(worktree, _)| worktree.to_path_buf());
         let view = cx.new(|cx| {
-            let mut view = TerminalView::new(client, source, look, window, cx);
+            let mut view = TerminalView::new(client, source, look.clone(), window, cx);
             view.set_link_roots(roots.into_iter().collect());
             view
         });
@@ -272,6 +278,7 @@ impl Shell {
         let made = Made {
             view: view.clone(),
             responsive,
+            look,
             pinned: false,
             _events: events,
         };
@@ -428,6 +435,8 @@ impl Shell {
     }
 }
 
+#[cfg(test)]
+mod budget;
 #[cfg(test)]
 mod keys;
 
