@@ -76,7 +76,7 @@ impl Shell {
                 .unwrap_or_default();
             let (view, by) = (self.browser_view(address, &project, window, cx), pane.by());
             view.update(cx, |view, _| view.made_by(by));
-            pane.set_view(view);
+            pane.set_view(view, cx);
         }
         let back = match back {
             Spot::Checkout(project, branch, at) => {

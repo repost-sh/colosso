@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use futures::StreamExt as _;
 use gpui_kit::gpui::{
-    AppContext as _, AsyncApp, Context, Entity, EventEmitter, Subscription, Task, WeakEntity,
+    App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, Subscription, Task, WeakEntity,
     Window,
 };
 use koyo_git::{Change, Checkout as Git};
@@ -28,7 +28,6 @@ use crate::checkouts;
 pub type GitAct = fn(&Git, &[Change]) -> koyo_git::Result<()>;
 
 /// Why reading the changes waits, if it does; it catches up once nothing does.
-#[derive(Default)]
 struct Waits {
     /// The window's out of sight.
     hidden: bool,
@@ -36,10 +35,27 @@ struct Waits {
     unselected: bool,
 }
 
+impl Waits {
+    /// Whether a person can see the checkout: it's selected, in a window seen.
+    fn seen(&self) -> bool {
+        !self.hidden && !self.unselected
+    }
+}
+
 /// `HEAD` or a branch moved: what the checkout's on, or how that stands, may be something else.
 pub struct HeadMoved;
 
 impl EventEmitter<HeadMoved> for Checkout {}
+
+/// The lines its changes add and remove came to other numbers: these.
+pub struct TotalsChanged(pub (u32, u32));
+
+impl EventEmitter<TotalsChanged> for Checkout {}
+
+/// The checkout came into a person's sight (`true`) or went out of it.
+pub struct Seen(pub bool);
+
+impl EventEmitter<Seen> for Checkout {}
 
 pub struct Checkout {
     root: PathBuf,
@@ -52,6 +68,8 @@ pub struct Checkout {
     /// The same, as the file tree marks it.
     marks: Arc<Marks>,
     files: Vec<Arc<FileView>>,
+    /// The lines added and removed across `files`.
+    totals: (u32, u32),
     /// Why the checkout couldn't be read, if it couldn't.
     error: Option<String>,
     /// Why changes aren't followed as they happen, if they aren't.
@@ -72,9 +90,9 @@ pub struct Checkout {
 impl Checkout {
     /// Opens the checkout at `root`, selected, and starts reading and following its changes.
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let _visibility = cx.observe_window_visibility(window, |this, visibility, _, cx| {
-            this.waits.hidden = !visibility.is_visible();
-            this.read(cx);
+        let _visibility = cx.observe_window_visibility(window, |this, _, window, cx| {
+            let hidden = !crate::sight::window_seen(window);
+            this.change_waits(|waits| waits.hidden = hidden, cx);
         });
         let path = root.clone();
         let opening = cx.spawn(async move |this, cx| {
@@ -91,10 +109,14 @@ impl Checkout {
             listed: Vec::new(),
             marks: Arc::default(),
             files: Vec::new(),
+            totals: (0, 0),
             error: None,
             unwatched: None,
             stale: Stale::everything(),
-            waits: Waits::default(),
+            waits: Waits {
+                hidden: !crate::sight::window_seen(window),
+                unselected: false,
+            },
             reading: Some(opening),
             read_once: false,
             coloured: false,
@@ -147,14 +169,11 @@ impl Checkout {
 
     /// The lines added and removed across the files.
     pub fn totals(&self) -> (u32, u32) {
-        self.files.iter().fold((0, 0), |(added, removed), file| {
-            let (a, r) = file.diff.content.line_counts();
-            (added + a, removed + r)
-        })
+        self.totals
     }
 
     /// Colours the diffs while they're on screen; the counts alone don't need it.
-    pub fn set_coloured(&mut self, coloured: bool, cx: &mut Context<Self>) {
+    fn set_coloured(&mut self, coloured: bool, cx: &mut Context<Self>) {
         if self.coloured == coloured {
             return;
         }
@@ -166,11 +185,33 @@ impl Checkout {
         }
     }
 
-    /// Reads the changes only while the checkout is selected; what was written meanwhile is
-    /// read when it is again.
-    pub fn set_selected(&mut self, selected: bool, cx: &mut Context<Self>) {
-        self.waits.unselected = !selected;
+    /// Whether a person can see it ([`Seen`]).
+    pub fn is_seen(&self) -> bool {
+        self.waits.seen()
+    }
+
+    /// Changes what reading the changes waits on, saying if that brings the checkout into
+    /// sight or out of it, and reads them once nothing waits.
+    fn change_waits(&mut self, change: impl FnOnce(&mut Waits), cx: &mut Context<Self>) {
+        let seen = self.waits.seen();
+        change(&mut self.waits);
+        if self.waits.seen() != seen {
+            cx.emit(Seen(!seen));
+        }
         self.read(cx);
+    }
+
+    /// Has `this` read its changes only while it's `selected`, and colour its diffs while they're
+    /// on screen, `coloured`. It's updated only when it isn't already in that state.
+    pub fn show(this: &Entity<Self>, selected: bool, coloured: bool, cx: &mut App) {
+        let now = this.read(cx);
+        if (!now.waits.unselected, now.coloured) == (selected, coloured) {
+            return;
+        }
+        this.update(cx, |checkout, cx| {
+            checkout.change_waits(|waits| waits.unselected = !selected, cx);
+            checkout.set_coloured(coloured, cx);
+        });
     }
 
     /// Changes already read as `files`, coloured, for measuring the panel without a checkout.
@@ -188,6 +229,7 @@ impl Checkout {
             .map(|diff| Arc::new(FileView::new(diff)))
             .inspect(|file| file.colour())
             .collect();
+        checkout.totals = totals_of(&checkout.files);
         checkout
     }
 
@@ -287,8 +329,7 @@ impl Checkout {
 
     /// Reads what's stale, unless a read is under way, which reads again when it's done.
     fn read(&mut self, cx: &mut Context<Self>) {
-        let waits = self.waits.hidden || self.waits.unselected;
-        if waits || self.reading.is_some() || self.stale.is_empty() {
+        if !self.waits.seen() || self.reading.is_some() || self.stale.is_empty() {
             return;
         }
         let Some(git) = self.git.clone() else {
@@ -302,7 +343,8 @@ impl Checkout {
                 .background_spawn(async move {
                     let read = read(&git, &stale, &listed, files)?;
                     let marks = Arc::new(Marks::new(&read.listed));
-                    Ok::<_, koyo_git::GitError>((read, marks))
+                    let totals = totals_of(&read.files);
+                    Ok::<_, koyo_git::GitError>((read, marks, totals))
                 })
                 .await;
             this.update(cx, |this, cx| this.read_done(read, cx)).ok();
@@ -321,13 +363,20 @@ impl Checkout {
         self.error = Some(error);
     }
 
-    fn read_done(&mut self, read: koyo_git::Result<(Read, Arc<Marks>)>, cx: &mut Context<Self>) {
+    fn read_done(
+        &mut self,
+        read: koyo_git::Result<(Read, Arc<Marks>, (u32, u32))>,
+        cx: &mut Context<Self>,
+    ) {
         self.reading = None;
         match read {
-            Ok((read, marks)) => {
+            Ok((read, marks, totals)) => {
                 self.listed = read.listed;
                 self.marks = marks;
                 self.files = read.files;
+                if mem::replace(&mut self.totals, totals) != totals {
+                    cx.emit(TotalsChanged(totals));
+                }
                 self.error = None;
                 self.read_once = true;
                 if self.coloured {
@@ -368,6 +417,14 @@ impl Checkout {
             }
         }));
     }
+}
+
+/// The lines added and removed across `files`.
+fn totals_of(files: &[Arc<FileView>]) -> (u32, u32) {
+    files.iter().fold((0, 0), |(added, removed), file| {
+        let (a, r) = file.diff.content.line_counts();
+        (added + a, removed + r)
+    })
 }
 
 /// Passes on what the checkout's project reports, as it hands it over: the project gathers a

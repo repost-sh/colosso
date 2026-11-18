@@ -17,7 +17,7 @@ use super::Chats;
 use super::rows::word_button;
 use super::subagents::avatar;
 use super::thread::ChatThread;
-use super::timeline::keep_ticking;
+use super::timeline::tick_later;
 use crate::native::liquid;
 use crate::shell::ellipsized;
 use crate::theme::{self, Palette};
@@ -39,7 +39,7 @@ pub(super) struct SubagentBar {
     catalog: Entity<Catalog>,
     chats: Entity<Chats>,
     focus: FocusHandle,
-    /// Keeps the elapsed time going while it runs.
+    /// The next tick of the elapsed time, while it runs.
     ticking: Option<Task<()>>,
     _following: Subscription,
 }
@@ -53,30 +53,15 @@ impl SubagentBar {
         chats: Entity<Chats>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let _following = cx.observe(&thread, |bar, _, cx| {
-            bar.keep_time(cx);
-            cx.notify();
-        });
-        let mut bar = SubagentBar {
+        let _following = cx.observe(&thread, |_, _, cx| cx.notify());
+        SubagentBar {
             thread,
             catalog,
             chats,
             focus: cx.focus_handle(),
             ticking: None,
             _following,
-        };
-        bar.keep_time(cx);
-        bar
-    }
-
-    fn keep_time(&mut self, cx: &mut Context<Self>) {
-        let running = self
-            .thread
-            .read(cx)
-            .replica()
-            .and_then(Replica::live)
-            .is_some();
-        keep_ticking(&mut self.ticking, running, cx);
+        }
     }
 
     fn stop(&mut self, cx: &mut Context<Self>) {
@@ -153,11 +138,11 @@ impl Render for SubagentBar {
         let p = theme::palette(cx);
         let keyed = ElementId::NamedInteger("chat-subagent-glass".into(), cx.entity_id().as_u64());
         let on_glass = liquid::backdrop(keyed, px(18.), window, cx);
-        let run = self
-            .thread
-            .read(cx)
-            .replica()
-            .and_then(|replica| replica.runs.last());
+        let running = (self.thread.read(cx).replica())
+            .and_then(Replica::live)
+            .is_some();
+        self.ticking = tick_later(running, window, cx);
+        let run = (self.thread.read(cx).replica()).and_then(|replica| replica.runs.last());
         let stoppable =
             run.is_some_and(|run| run.status.is_live() && run.status != RunStatus::Stopping);
         let surface = div()

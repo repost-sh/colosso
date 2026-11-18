@@ -45,7 +45,7 @@ pub use hover::Hover;
 pub use pinned::DraggedPin;
 pub use swipe::Swipe;
 pub use tile_grid::TileHand;
-pub use top::controls;
+pub use top::Top;
 
 /// Between the sidebar's parts: the address bar, the pinned pages, the space, its projects' tiles,
 /// the foot.
@@ -125,13 +125,13 @@ pub(crate) fn space_dot(colour: Hsla) -> Div {
 
 pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl IntoElement {
     let look = Look::of(cx);
-    let width = crate::settings::get(cx).sidebar_width();
+    let width = shell.sidebar_width(cx);
     let projects = shell.space_projects(cx);
     let now = cx.background_executor().now();
     if shell.swipe.glides.moving(now) {
         window.request_animation_frame();
     }
-    let (pins, loosens) = shell.taken_elsewhere(cx);
+    let (pins, loosens) = shell.taken_elsewhere();
     let space = div()
         .flex_1()
         .min_h_0()
@@ -153,7 +153,7 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .gap(px(GAP))
         .on_scroll(cx.listener(Shell::swipe))
         .on_mouse_down(MouseButton::Right, cx.listener(Shell::show_space_menu))
-        .child(top::address_bar(shell, look, window, cx))
+        .child(shell.arc_top.bar())
         .children(pinned::region(shell, pins, look, cx))
         .child(space)
         .child(foot::bar(shell, window, cx))

@@ -27,25 +27,26 @@ use cef::{
 };
 use koyo_browser_ipc::PaneId;
 use koyo_browser_ipc::client::token;
-use std::io;
+use std::io::{self, Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
+use std::os::fd::AsRawFd as _;
 use std::os::raw::c_int;
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::Duration;
 use tungstenite::{Message, WebSocket};
 
 pub(crate) mod embedder;
 mod session;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use session::{Fields, Inspected, host_id, object};
 
 /// How long an accepted connection may take to say hello.
 const HANDSHAKE: Duration = Duration::from_secs(5);
-/// How long the connection loop waits for something to send when nothing
-/// was read.
-const IDLE: Duration = Duration::from_millis(5);
 
 /// The frontend's address for `bridge` (`embedder`).
 pub(crate) fn frontend_url(bridge: &Bridge) -> String {
@@ -65,6 +66,9 @@ pub(crate) struct Bridge {
     port: u16,
     token: String,
     to_frontend: Sender<String>,
+    /// Wakes the connection, which sleeps until something happens, to send what it's handed;
+    /// let go with the bridge, it ends the connection.
+    wake: UnixStream,
     stop: Arc<AtomicBool>,
 }
 
@@ -82,44 +86,60 @@ impl Bridge {
         let port = listener.local_addr()?.port();
         let token = token()?;
         let (to_frontend, outgoing) = mpsc::channel();
+        let (wake, woken) = UnixStream::pair()?;
+        wake.set_nonblocking(true)?;
+        woken.set_nonblocking(true)?;
         let stop = Arc::new(AtomicBool::new(false));
         let path = format!("/{token}");
         let stopping = stop.clone();
         std::thread::Builder::new()
             .name(format!("devtools-{pane}"))
-            .spawn(move || serve(pane, &listener, &path, &outgoing, &stopping))?;
+            .spawn(move || {
+                let ends = Ends {
+                    outgoing,
+                    woken,
+                    stop: stopping,
+                };
+                serve(pane, &listener, &path, &ends);
+            })?;
         Ok(Self {
             port,
             token,
             to_frontend,
+            wake,
             stop,
         })
     }
 
-    /// Hands `message` to the frontend, when one is connected.
+    /// Hands `message` to the frontend, when one is connected. A full wake socket has woken the
+    /// connection already.
     fn send(&self, message: String) {
-        let _ = self.to_frontend.send(message);
+        if self.to_frontend.send(message).is_ok() {
+            let _ = (&self.wake).write(&[0]);
+        }
     }
 }
 
+struct Ends {
+    /// What the page hands the frontend.
+    outgoing: Receiver<String>,
+    /// Readable once the bridge hands something on, and at its end once the bridge is gone.
+    woken: UnixStream,
+    stop: Arc<AtomicBool>,
+}
+
 /// Accepts the frontend, one connection at a time, until stopped.
-fn serve(
-    pane: PaneId,
-    listener: &TcpListener,
-    path: &str,
-    outgoing: &Receiver<String>,
-    stop: &AtomicBool,
-) {
-    while !stop.load(Ordering::Relaxed) {
+fn serve(pane: PaneId, listener: &TcpListener, path: &str, ends: &Ends) {
+    while !ends.stop.load(Ordering::Relaxed) {
         let Ok((stream, _)) = listener.accept() else {
             return;
         };
-        if stop.load(Ordering::Relaxed) {
+        if ends.stop.load(Ordering::Relaxed) {
             return;
         }
-        while outgoing.try_recv().is_ok() {}
+        while ends.outgoing.try_recv().is_ok() {}
         if let Some(socket) = handshake(stream, path) {
-            connection(pane, socket, outgoing, stop);
+            connection(pane, socket, ends);
         }
     }
 }
@@ -160,34 +180,87 @@ fn only_path(path: &str, request: &Request, response: Response) -> Result<Respon
 }
 
 /// One frontend connection: what it sends goes to the page on the UI
-/// thread, what the page answers goes back to it.
-fn connection(
-    pane: PaneId,
-    mut socket: WebSocket<TcpStream>,
-    outgoing: &Receiver<String>,
-    stop: &AtomicBool,
-) {
-    while !stop.load(Ordering::Relaxed) {
+/// thread, what the page answers goes back to it. Between the two it
+/// sleeps, waking for nothing while nothing happens (`wait`).
+fn connection(pane: PaneId, mut socket: WebSocket<TcpStream>, ends: &Ends) {
+    loop {
         match socket.read() {
             Ok(Message::Text(text)) => host::from_frontend(pane, text.to_string()),
             Ok(Message::Close(_)) => return,
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                match outgoing.recv_timeout(IDLE) {
-                    Ok(message) => match socket.send(Message::Text(message.into())) {
-                        Ok(()) => {}
-                        Err(tungstenite::Error::Io(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                        }
-                        Err(_) => return,
-                    },
-                    Err(RecvTimeoutError::Timeout) => {}
-                    Err(RecvTimeoutError::Disconnected) => return,
+            Err(e) if would_block(&e) => {
+                let Some(unsent) = send_waiting(&mut socket, &ends.outgoing) else {
+                    return;
+                };
+                if !wait(socket.get_ref(), &ends.woken, unsent) {
+                    break;
                 }
             }
             Err(_) => return,
         }
     }
     let _ = socket.close(None);
+}
+
+fn would_block(error: &tungstenite::Error) -> bool {
+    matches!(error, tungstenite::Error::Io(e) if e.kind() == io::ErrorKind::WouldBlock)
+}
+
+/// Writes out what the page handed the frontend: whether some of it is
+/// still to go once the socket takes more, or none when the connection is
+/// over.
+fn send_waiting(socket: &mut WebSocket<TcpStream>, outgoing: &Receiver<String>) -> Option<bool> {
+    loop {
+        match outgoing.try_recv() {
+            Ok(message) => match socket.write(Message::Text(message.into())) {
+                Ok(()) => {}
+                Err(e) if would_block(&e) => {}
+                Err(_) => return None,
+            },
+            Err(TryRecvError::Empty) => break,
+            Err(TryRecvError::Disconnected) => return None,
+        }
+    }
+    match socket.flush() {
+        Ok(()) => Some(false),
+        Err(e) if would_block(&e) => Some(true),
+        Err(_) => None,
+    }
+}
+
+/// Sleeps until the frontend sends something, the bridge hands something
+/// on (`woken`), or, while some is `unsent`, the socket takes more: whether
+/// the connection goes on, which it doesn't once the bridge is gone.
+fn wait(socket: &TcpStream, mut woken: &UnixStream, unsent: bool) -> bool {
+    let out = if unsent { libc::POLLOUT } else { 0 };
+    let mut ready = [
+        libc::pollfd {
+            fd: socket.as_raw_fd(),
+            events: libc::POLLIN | out,
+            revents: 0,
+        },
+        libc::pollfd {
+            fd: woken.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        },
+    ];
+    // SAFETY: two `pollfd`s, of descriptors the connection holds open meanwhile.
+    if unsafe { libc::poll(ready.as_mut_ptr(), 2, -1) } < 0 {
+        return io::Error::last_os_error().kind() == io::ErrorKind::Interrupted;
+    }
+    if ready[1].revents == 0 {
+        return true;
+    }
+    let mut wakes = [0; 64];
+    loop {
+        match woken.read(&mut wakes) {
+            Ok(0) => return false,
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return e.kind() == io::ErrorKind::WouldBlock,
+        }
+    }
 }
 
 /// Sends `message` to the frontend of `bridge`.

@@ -244,6 +244,16 @@ pub(super) fn close_files(shell: &Entity<Shell>, root: &Path, cx: &mut TestAppCo
     cx.run_until_parked();
 }
 
+pub(super) fn state(server: &Entity<Server>, cx: &TestAppContext) -> State {
+    cx.read(|cx| server.read(cx).state().clone())
+}
+
+/// How many times the fake was started, once what's under way has run.
+pub(super) fn count(starts: &AtomicUsize, cx: &TestAppContext) -> usize {
+    cx.run_until_parked();
+    starts.load(Ordering::SeqCst)
+}
+
 /// The server for the checkout at `root`, while there is one.
 pub(super) fn server(root: &Path, cx: &TestAppContext) -> Option<Entity<Server>> {
     cx.read(|cx| {

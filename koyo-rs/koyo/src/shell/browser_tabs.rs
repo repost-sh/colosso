@@ -106,10 +106,10 @@ impl Shell {
         if self.checkout_shown().is_none() {
             return;
         }
-        let Some(address) = self.workspace.pane(key).and_then(|pane| pane.address(cx)) else {
+        let Some(address) = self.workspace.pane(key).and_then(Pane::address) else {
             return;
         };
-        self.open_page(Some(address), (false, false), None, window, cx);
+        self.open_page(Some(address.to_owned()), (false, false), None, window, cx);
     }
 
     /// A page of `project`'s profile at `url`, the shell hearing what it says.
@@ -134,7 +134,7 @@ impl Shell {
     ) {
         match event {
             BrowserEvent::Changed => {
-                self.retitle(view, cx);
+                self.follow_page(view, cx);
                 self.note_page(view, cx);
             }
             BrowserEvent::Visited(visit) => self.note_visit(view, visit, cx),
@@ -175,12 +175,11 @@ impl Shell {
         self.locate_view(view).map(|located| located.pane)
     }
 
-    /// The tab's title follows its page's, a pinned or a loose page's too.
-    fn retitle(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
-        let title = view.read(cx).title();
+    /// The tab's title, address and icon follow its page's, a pinned or a loose page's too: the
+    /// window draws again only when one of them changed.
+    fn follow_page(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         let showing = self.workspace.pane_mut_where(|pane| pane.view() == Some(view));
-        if let Some(pane) = showing {
-            pane.title = title.into();
+        if showing.is_some_and(|pane| pane.follow_page(cx)) {
             cx.notify();
         }
     }
@@ -335,8 +334,9 @@ mod tests {
 
     use crate::menu::{self, MenuItem};
     use crate::model::{PaneKind, Tab};
-    use crate::shell::NewChat;
-    use crate::test_support::{repo, select, shell_with};
+    use crate::settings::Layout;
+    use crate::shell::{Face, NewChat};
+    use crate::test_support::{open_page_view, repo, select, shell_on, shell_with};
 
     #[gpui_kit::test]
     fn a_new_browser_tab_opens_on_the_selected_checkout(cx: &mut TestAppContext) {
@@ -358,6 +358,33 @@ mod tests {
             let view = pane.view().expect("the pane shows a browser view");
             assert!(view.read(cx).is_start_page());
         });
+    }
+
+    /// The page's tab shows its icon once it's fetched, and the address it's at once it moves.
+    #[gpui_kit::test]
+    fn a_pages_tab_shows_its_icon_and_address_as_they_change(cx: &mut TestAppContext) {
+        let (window, shell, _) = shell_on("tab-follows-page", Layout::Orca, cx);
+        let view = open_page_view(window, &shell, "https://example.com/", cx);
+        let tab = |cx: &mut TestAppContext| {
+            cx.read(|cx| {
+                let pane = shell.read(cx).workspace.tab_shown().expect("the page's tab").first();
+                (Face::of(pane, cx).favicon.is_some(), pane.address().map(str::to_owned))
+            })
+        };
+        assert_eq!(tab(cx), (false, Some("https://example.com/".into())));
+
+        let icon = "https://example.com/a.ico";
+        view.update(cx, |view, cx| view.pretend_page("https://example.com/", Some(icon), cx));
+        cx.run_until_parked();
+        assert_eq!(tab(cx), (true, Some("https://example.com/".into())));
+
+        view.update(cx, |view, cx| view.navigate("https://example.org/".into(), cx));
+        cx.run_until_parked();
+        assert_eq!(tab(cx), (true, Some("https://example.org/".into())));
+
+        view.update(cx, |view, cx| view.pretend_page("https://example.org/", None, cx));
+        cx.run_until_parked();
+        assert_eq!(tab(cx), (false, Some("https://example.org/".into())));
     }
 
     /// A menu is a window of its own; picking a row there dispatches on the shell.

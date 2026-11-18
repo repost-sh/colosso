@@ -15,6 +15,7 @@ mod loose;
 mod moves;
 mod pane;
 mod pinned;
+mod shape;
 mod tab;
 mod terminals;
 mod unopened;

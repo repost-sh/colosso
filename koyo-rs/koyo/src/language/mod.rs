@@ -4,7 +4,8 @@
 //! what it is, and what's wrong with the code.
 //!
 //! - [`Registry`]: the servers by kind and checkout, how many may run at once and which one
-//!   stops for another, and stopping one that has had no file open for a while.
+//!   stops for another, stopping one that has had no file open for a while, and putting a
+//!   checkout's to sleep while it's out of sight.
 //! - [`Server`]: one server's life, started, followed as it indexes, restarted when it
 //!   crashes, stopped; the files open on it (`sync`), what it published for them
 //!   (`diagnostics`), and the files it asked to hear about (`watch`).
@@ -58,7 +59,7 @@ use koyo_lsp::servers::{
 
 pub use locations::Found;
 pub use providers::Attached;
-pub use registry::{Languages, attach, forget, install, locate};
+pub use registry::{Languages, attach, forget, install, locate, seen};
 pub use rename::Prepared;
 pub use server::State;
 pub use status::{ServersListed, ServersStatus};
@@ -70,6 +71,9 @@ actions!(language, [FindReferences, Rename]);
 
 /// A server stops once it has had no file open for this long, if the settings ask.
 const IDLE: Duration = Duration::from_mins(10);
+/// A checkout's servers sleep once it has been out of sight this long, unselected or in a
+/// window no one can see: stopped, their files kept for when it's seen again.
+const SLEEP: Duration = Duration::from_mins(10);
 /// A server that crashes is restarted up to this many times within [`CRASH_WINDOW`], and
 /// left crashed after that until the user retries.
 const MOST_RESTARTS: usize = 3;

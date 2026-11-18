@@ -35,7 +35,7 @@ mod parts;
 mod report;
 mod strays;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub(crate) use adopt::{adopt, holder_of, shown_window_of};
 use adopt::{adopted, adopting};
@@ -83,6 +83,12 @@ static WINDOWS: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) fn windows() -> usize {
     WINDOWS.load(Ordering::Acquire)
+}
+
+/// Whether every window CEF made is gone: each page's holder, and each browser Chrome made on
+/// its own.
+pub(crate) fn none_left() -> bool {
+    windows() == 0 && strays() == 0
 }
 
 /// `pane`'s window of CEF's is destroyed.
@@ -345,6 +351,11 @@ pub(crate) fn size(pane: PaneId, width: u32, height: u32) {
     if parked == Some(true) {
         settle(pane);
     }
+}
+
+/// Whether `pane` has a page, and it's out of every window for the engine.
+pub(crate) fn off_screen(pane: PaneId) -> bool {
+    PAGES.with(|pages| pages.try_borrow().ok()?.get(&pane).map(|entry| !entry.on_screen)) == Some(true)
 }
 
 /// Whether `pane`'s page is on screen for the engine.

@@ -68,10 +68,10 @@ impl Here {
             .flat_map(|tab| tab.panes())
             .filter(|pane| !shown.contains(&pane.id))
             .filter_map(|pane| {
-                if pane.is_inspector(cx) {
+                if pane.is_inspector() {
                     return None;
                 }
-                let (url, favicon) = (pane.address(cx).unwrap_or_default(), pane.favicon(cx));
+                let (url, favicon) = (pane.address().unwrap_or_default().to_owned(), pane.favicon());
                 let title = pane.title.clone();
                 let device = (pane.device_view())
                     .and_then(|view| Some(view.read(cx).chosen()?.udid.clone()));

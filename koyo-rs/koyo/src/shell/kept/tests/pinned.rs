@@ -178,7 +178,7 @@ fn pins_of(shell: &Entity<Shell>, cx: &TestAppContext) -> Pins {
         let pins = (workspace.pinned().iter())
             .map(|pinned| {
                 let page = pinned.tab.first();
-                let address = page.address(cx).unwrap_or_default();
+                let address = page.address().unwrap_or_default().to_owned();
                 let open = page.view().is_some();
                 (address, page.title.to_string(), pinned.home.clone(), open)
             })

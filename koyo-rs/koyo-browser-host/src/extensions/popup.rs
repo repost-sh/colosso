@@ -148,6 +148,11 @@ pub(super) fn expect(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner
     }
 }
 
+/// Whether a popup is expected or open.
+pub(super) fn expected() -> bool {
+    EXPECTED.with(|expected| expected.try_borrow().map_or(true, |expected| expected.is_some()))
+}
+
 /// Nothing is waited for any more: the engine is stopping.
 pub(super) fn forget() {
     if let Some(was) = EXPECTED.with(|expected| expected.borrow_mut().take()) {

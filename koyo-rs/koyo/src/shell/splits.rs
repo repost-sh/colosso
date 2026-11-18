@@ -148,6 +148,7 @@ impl Shell {
         let first = self.part(&split.first, side(&path, false), p, in_hand, cx);
         let second = self.part(&split.second, side(&path, true), p, in_hand, cx);
         let id = SharedString::from(format!("split-{path:?}"));
+        let next_to_page = split.first.shows_page() || split.second.shows_page();
         let dragged = path.clone();
         div()
             .size_full()
@@ -183,14 +184,14 @@ impl Shell {
                     })
                     .child(first),
             )
-            .child(theme::card::seam(
+            .children(theme::card::seam(
                 id,
                 row,
                 SplitDivider(path),
-                p,
-                theme::card::islands(cx),
+                next_to_page,
+                div().flex_1().min_w_0().min_h_0().flex().child(second),
+                cx,
             ))
-            .child(div().flex_1().min_w_0().min_h_0().flex().child(second))
             .into_any_element()
     }
 

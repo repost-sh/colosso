@@ -83,9 +83,7 @@ pub fn finish(grace: Duration) {
     let deadline = began + grace;
     crate::extensions::stopping();
     crate::native::close_strays();
-    let closed = || {
-        crate::host::all_closed() && crate::native::windows() == 0 && crate::native::strays() == 0
-    };
+    let closed = || crate::host::all_closed() && crate::native::none_left();
     let (_never, wait) = std::sync::mpsc::channel::<()>();
     while !closed() && Instant::now() < deadline {
         pump::work();

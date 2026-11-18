@@ -1,20 +1,25 @@
 //! Viewers in the workspace's tabs: a picture opens as a picture where a file's text would,
 //! the pointer zooms it about itself, a drawing shows its text on asking, a file written
-//! again is shown again, and a link to a file opens it.
+//! again is shown again, a link to a file opens it, and a moving picture moves while it's seen.
 
+use std::cell::Cell;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::{
     Action as _, AnyWindowHandle, AppContext as _, Entity, Modifiers, PinchEvent, ScrollDelta,
     ScrollEvent, TestAppContext, TouchPhase, VisualTestContext, point, px,
 };
-use image::{Rgba, RgbaImage};
+use image::codecs::gif::GifEncoder;
+use image::{Delay, Frame, Rgba, RgbaImage};
 
 use super::view::{State, Viewer};
 use crate::files::tests::{checkout, shell_with_tree, tabs, with_shell};
 use crate::files::{At, FilePane, OpenLinked, Place};
+use crate::budget::built_for;
 use crate::shell::Shell;
+use crate::test_support::{draw, on_screen, open_page};
 
 /// A picture `width` by `height` at `path` under `root`, grey with a see-through corner.
 fn picture(root: &Path, path: &str, width: u32, height: u32) {
@@ -249,4 +254,54 @@ fn a_link_to_a_file_opens_it_in_a_tab(cx: &mut TestAppContext) {
     until(window, cx, |cx| cx.read(|cx| viewer.read(cx).is_drawn()));
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&elsewhere);
+}
+
+/// A moving picture at `path` of three frames, each shown for a tenth of a second.
+fn moving(path: &Path) {
+    let file = std::fs::File::create(path).unwrap();
+    let frames = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]].map(|colour| {
+        let tenth = Delay::from_saturating_duration(Duration::from_millis(100));
+        Frame::from_parts(RgbaImage::from_pixel(32, 16, Rgba(colour)), 0, 0, tenth)
+    });
+    GifEncoder::new(file).encode_frames(frames).unwrap();
+}
+
+/// A moving picture moves on at each frame's time while it's drawn; in a window nobody sees, or
+/// a tab not shown, nothing wakes for its frames, and seen again it moves on.
+#[gpui_kit::test]
+fn a_moving_picture_moves_only_while_it_is_seen(cx: &mut TestAppContext) {
+    let root = checkout("viewer-tab-moving");
+    moving(&root.join("moving.gif"));
+    let (window, shell, _) = shell_with_tree(&root, cx);
+    open("moving.gif", window, &shell, cx);
+    let viewer = shown_viewer(&shell, cx);
+    let frames = |cx: &TestAppContext| {
+        cx.read(|cx| (viewer.read(cx).picture.as_ref()).map(|picture| picture.frame_count()))
+    };
+    until(window, cx, |cx| frames(cx) == Some(3));
+    let pane = shell.read_with(cx, |shell, _| shell.shown_tab_key().unwrap());
+    let woke = Rc::new(Cell::new(0));
+    let counted = Rc::clone(&woke);
+    let _woken = cx.update(|cx| cx.observe(&viewer, move |_, _| counted.set(counted.get() + 1)));
+    let second = Duration::from_secs(1);
+    let woken_in = |time: Duration, cx: &mut TestAppContext| {
+        let before = woke.get();
+        cx.executor().advance_clock(time);
+        cx.run_until_parked();
+        woke.get() - before
+    };
+    assert!(built_for(window, cx, second).frames >= 5, "drawn, it moves on");
+
+    on_screen(window, false, cx);
+    assert!(woken_in(2 * second, cx) <= 1, "it woke in a window nobody sees");
+    on_screen(window, true, cx);
+    assert!(built_for(window, cx, second).frames >= 5, "seen again, it moves on");
+
+    open_page(window, &shell, Some("https://example.com/"), cx);
+    draw(window, cx);
+    assert!(woken_in(2 * second, cx) <= 1, "it woke with its tab not shown");
+    shell.update(cx, |shell, cx| assert!(shell.show_tab_holding(pane, cx)));
+    draw(window, cx);
+    assert!(built_for(window, cx, second).frames >= 5, "shown again, it moves on");
+    let _ = std::fs::remove_dir_all(&root);
 }

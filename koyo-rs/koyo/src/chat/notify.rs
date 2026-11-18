@@ -5,8 +5,8 @@ use gpui_kit::Context;
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
-use super::status::is_frontmost;
 use super::{Chats, ChatsEvent};
+use crate::beat::is_frontmost;
 
 impl Chats {
     /// A person who isn't looking hears of what's changed in a chat, as `now` has it.

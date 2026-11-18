@@ -53,7 +53,7 @@ impl Shell {
                 view.made_by(by);
             });
             if let Some(pane) = self.workspace.pane_mut(id) {
-                pane.set_view(view);
+                pane.set_view(view, cx);
             }
         }
     }

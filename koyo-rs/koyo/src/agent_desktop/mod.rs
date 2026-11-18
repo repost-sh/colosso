@@ -3,7 +3,7 @@
 //! latest frame), carries the tools' requests to it and the person's input from the tab, and
 //! remembers when the person last acted, which holds agents off for a while.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::Instant;
 
 use futures::StreamExt as _;
@@ -18,6 +18,7 @@ use koyo_desk_wire::link::{
 use crate::browser::control::{Control, Mode};
 use crate::browser::pointer::Pointer;
 use crate::settings;
+use crate::sight::{Showable, ShownBy};
 
 mod asking;
 mod canvas;
@@ -82,7 +83,7 @@ pub struct Desk {
     offered: bool,
     setup_open: bool,
     /// The tabs that draw the desktop now.
-    shown_by: HashSet<EntityId>,
+    shown_by: ShownBy,
     /// How many times the host was started or stopped: a start knows by it whether it's
     /// still the one that counts.
     starts: u64,
@@ -147,7 +148,7 @@ impl Desk {
             probing: None,
             offered: false,
             setup_open: false,
-            shown_by: HashSet::new(),
+            shown_by: ShownBy::default(),
             starts: 0,
             wanted: None,
             lent: Vec::new(),
@@ -235,7 +236,7 @@ impl Desk {
                 }
                 log::info!("the agent desktop's host runs as process {}", running.pid);
                 koyo_seam::heard::desk_host(Some(running.pid));
-                let visible = !self.shown_by.is_empty();
+                let visible = self.shown_by.any();
                 let _ = (running.tell).send(ToHost::Visible { visible });
                 for message in std::mem::take(&mut self.queued) {
                     let _ = running.tell.send(message);
@@ -439,25 +440,21 @@ impl Desk {
         self.tell(ToHost::Input { input });
     }
 
-    /// A tab started or stopped drawing the desktop: the host sends frames only while one does.
-    pub fn set_shown_by(&mut self, tab: EntityId, shown: bool) {
-        let was = !self.shown_by.is_empty();
-        if shown {
-            self.shown_by.insert(tab);
-        } else {
-            self.shown_by.remove(&tab);
-        }
-        let visible = !self.shown_by.is_empty();
-        if visible != was {
-            self.tell(ToHost::Visible { visible });
-        }
-    }
-
     /// The desktop's size in points, once it's made.
     pub fn size(&self) -> Option<koyo_desk_wire::Size> {
         match &self.desktop {
             Some(DesktopState::Ready { size, .. }) => Some(*size),
             Some(DesktopState::Missing { .. }) | None => None,
+        }
+    }
+}
+
+impl Showable for Desk {
+    /// A tab started or stopped drawing the desktop in a window seen: the host sends frames only
+    /// while one does.
+    fn set_shown_by(&mut self, tab: EntityId, shown: bool) {
+        if let Some(visible) = self.shown_by.set(tab, shown) {
+            self.tell(ToHost::Visible { visible });
         }
     }
 }

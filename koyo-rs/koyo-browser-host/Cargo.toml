@@ -23,6 +23,8 @@ koyo-seam = { path = "../koyo-seam" }
 cef = { version = "=156.2.0", default-features = false, features = ["sandbox"] }
 # The DevTools bridge: a websocket to Chromium's remote debugging port.
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+# The DevTools bridge's connection sleeps on its socket and its wake socket at once (`poll`).
+libc = "0.2"
 # What the host says when it runs inside Koyo, which keeps the log.
 log = "0.4"
 serde = { version = "1", features = ["derive"] }

@@ -20,7 +20,7 @@ mod watch;
 use gpui_kit::{AnyElement, App, ElementId, Hsla, IntoElement as _, ParentElement, Styled};
 
 pub use astc::Blocks;
-pub use screens::memory;
+pub use screens::{look_again, memory};
 pub use watch::init;
 
 use crate::model::{Pane, PaneKind};

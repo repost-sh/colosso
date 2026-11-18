@@ -3,7 +3,6 @@
 //! another past the limit, while turned off for its project, and when the user stops it.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use gpui_kit::TestAppContext;
@@ -22,29 +21,29 @@ async fn a_crashing_server_restarts_with_backoff_then_waits_for_a_retry(cx: &mut
     let shell = shell(&[&root], launcher, cx);
     let _lib = open(&shell, &root, "src/lib.rs", cx);
     let server = server(&root, cx).unwrap();
-    let starts = |cx: &TestAppContext| {
-        cx.run_until_parked();
-        starts.load(Ordering::SeqCst)
-    };
     for (crash, wait) in [(0, 1000), (1, 2000), (2, 4000)] {
         let said = format!("panicked: start {crash}");
         assert_eq!(settled(&server, cx).await, State::Crashed(said.into()));
         assert!(cx.read(|cx| server.read(cx).is_restarting()));
         cx.executor().advance_clock(Duration::from_millis(wait - 1));
-        assert_eq!(starts(cx), crash + 1, "not restarted before the wait");
+        assert_eq!(
+            count(&starts, cx),
+            crash + 1,
+            "not restarted before the wait"
+        );
         cx.executor().advance_clock(Duration::from_millis(1));
-        assert_eq!(starts(cx), crash + 2, "restarted after it");
+        assert_eq!(count(&starts, cx), crash + 2, "restarted after it");
     }
     let crashed = State::Crashed("panicked: start 3".into());
     assert_eq!(settled(&server, cx).await, crashed);
     assert!(!cx.read(|cx| server.read(cx).is_restarting()));
     cx.executor().advance_clock(Duration::from_mins(10));
-    assert_eq!(starts(cx), 4);
+    assert_eq!(count(&starts, cx), 4);
     cx.update(|cx| {
         let Languages(registry) = cx.global::<Languages>().clone();
         registry.update(cx, |registry, cx| registry.restart(Kind::Rust, &root, cx));
     });
-    assert_eq!(starts(cx), 5);
+    assert_eq!(count(&starts, cx), 5);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -112,16 +111,10 @@ async fn past_the_limit_the_least_recently_used_server_stops_an_idle_one_first(
     let _c = open(&shell, c, "src/lib.rs", cx);
     ready(c, cx).await;
     assert!(server(a, cx).is_none());
-    assert_eq!(
-        cx.read(|cx| b_server.read(cx).state().clone()),
-        State::Ready
-    );
+    assert_eq!(state(&b_server, cx), State::Ready);
     let _d = open(&shell, d, "src/lib.rs", cx);
     ready(d, cx).await;
-    assert_eq!(
-        cx.read(|cx| b_server.read(cx).state().clone()),
-        State::Stopped
-    );
+    assert_eq!(state(&b_server, cx), State::Stopped);
     let live = |cx: &TestAppContext| {
         cx.read(|cx| {
             let Languages(registry) = cx.global::<Languages>();
@@ -168,10 +161,7 @@ async fn a_server_turned_off_for_its_project_stops_and_starts_again_once_turned_
         })
     };
     assert!(off(cx));
-    assert_eq!(
-        cx.read(|cx| server.read(cx).state().clone()),
-        State::Stopped
-    );
+    assert_eq!(state(&server, cx), State::Stopped);
     drop(_lib);
     close_files(&shell.1, &root, cx);
     let _lib = open(&shell, &root, "src/lib.rs", cx);
@@ -180,11 +170,11 @@ async fn a_server_turned_off_for_its_project_stops_and_starts_again_once_turned_
         registry.update(cx, |registry, cx| registry.restart(Kind::Rust, &root, cx));
     });
     cx.run_until_parked();
-    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    assert_eq!(count(&starts, cx), 1);
     turn(true, cx);
     assert!(!off(cx));
     assert_eq!(settled(&server, cx).await, State::Ready);
-    assert_eq!(starts.load(Ordering::SeqCst), 2);
+    assert_eq!(count(&starts, cx), 2);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -213,17 +203,14 @@ async fn a_server_the_user_stopped_waits_for_them_to_start_it(cx: &mut TestAppCo
         cx.run_until_parked();
     };
     act(true, cx);
-    assert_eq!(
-        cx.read(|cx| server.read(cx).state().clone()),
-        State::Stopped
-    );
+    assert_eq!(state(&server, cx), State::Stopped);
     drop(_lib);
     close_files(&shell.1, &root, cx);
     let _lib = open(&shell, &root, "src/lib.rs", cx);
     cx.run_until_parked();
-    assert_eq!(starts.load(Ordering::SeqCst), 1);
+    assert_eq!(count(&starts, cx), 1);
     act(false, cx);
     assert_eq!(settled(&server, cx).await, State::Ready);
-    assert_eq!(starts.load(Ordering::SeqCst), 2);
+    assert_eq!(count(&starts, cx), 2);
     let _ = std::fs::remove_dir_all(&root);
 }

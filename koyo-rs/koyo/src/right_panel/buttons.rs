@@ -15,7 +15,7 @@ use crate::theme;
 impl Shell {
     /// Opens and closes the changes, saying how many lines they add and remove.
     pub fn changes_button(&self, cx: &App) -> Button {
-        let (added, removed) = self.right_panel.totals(cx);
+        let (added, removed) = self.right_panel.totals();
         glass("toggle-changes", theme::palette(cx).text, cx)
             .selected(self.right_panel.shows(View::Changes))
             .tooltip_with_action("Changes", &ToggleChanges, None)

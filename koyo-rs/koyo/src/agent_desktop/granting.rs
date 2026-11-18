@@ -12,6 +12,7 @@ use gpui_kit::Context;
 use koyo_desk_wire::link::DesktopState;
 
 use super::{Desk, State, host};
+use crate::beat::is_frontmost;
 use crate::settings;
 
 const ACCESSIBILITY: &str =
@@ -147,7 +148,7 @@ impl Desk {
             loop {
                 cx.background_executor().timer(PROBED_EVERY).await;
                 let waits = this.update(cx, |this, cx| {
-                    if this.setup_open && cx.active_window().is_some() {
+                    if this.setup_open && is_frontmost(cx) {
                         this.expected = Some(Instant::now());
                     }
                     let on = this.expecting() && this.step() != Step::Unavailable;

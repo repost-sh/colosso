@@ -21,7 +21,7 @@ use gpui_kit::{
 
 use super::Kind;
 use super::Languages;
-use super::registry::with_registry;
+use super::registry::{Registry, with_registry};
 use super::server::{Server, State};
 use crate::modal::spinner;
 use crate::settings::{Scope, SetLanguageServer};
@@ -71,7 +71,6 @@ pub struct ServersStatus {
     /// The registry installed, as installing one replaces any there was.
     _installed: Subscription,
     _registry: Option<Subscription>,
-    _servers: Vec<Subscription>,
 }
 
 /// The selected checkout went from having no servers to show to having some (`true`), or
@@ -87,7 +86,6 @@ impl ServersStatus {
             servers: Vec::new(),
             _installed: cx.observe_global::<Languages>(Self::installed),
             _registry: None,
-            _servers: Vec::new(),
         };
         status.installed(cx);
         status
@@ -102,11 +100,14 @@ impl ServersStatus {
         self.list(cx);
     }
 
-    /// Shows the servers of the checkout at `root`, the selected one.
-    pub fn show(&mut self, root: Option<&Path>, cx: &mut Context<Self>) {
-        if self.root.as_deref() != root {
-            self.root = root.map(Path::to_path_buf);
-            self.list(cx);
+    /// Has `this` show the servers of the checkout at `root`, the selected one. It's updated
+    /// only when that's another checkout.
+    pub fn show(this: &Entity<Self>, root: Option<&Path>, cx: &mut App) {
+        if this.read(cx).root.as_deref() != root {
+            this.update(cx, |status, cx| {
+                status.root = root.map(Path::to_path_buf);
+                status.list(cx);
+            });
         }
     }
 
@@ -119,9 +120,6 @@ impl ServersStatus {
         };
         if servers != self.servers {
             let listed = servers.is_empty() != self.servers.is_empty();
-            self._servers = (servers.iter())
-                .map(|server| cx.observe(server, |_, _, cx| cx.notify()))
-                .collect();
             self.servers = servers;
             if listed {
                 cx.emit(ServersListed(!self.servers.is_empty()));
@@ -129,27 +127,36 @@ impl ServersStatus {
         }
         cx.notify();
     }
+
+    /// The few words each server's item says beside its language.
+    #[cfg(test)]
+    pub fn words(&self, cx: &App) -> Vec<Option<SharedString>> {
+        let Some(Languages(registry)) = cx.try_global::<Languages>() else {
+            return Vec::new();
+        };
+        let registry = registry.read(cx);
+        (self.servers.iter())
+            .map(|server| Shown::of(server.read(cx), registry).words())
+            .collect()
+    }
 }
 
 impl Render for ServersStatus {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        let registry = cx.try_global::<Languages>().cloned();
-        let items: Vec<AnyElement> = (self.servers.iter().enumerate())
-            .map(|(index, server)| {
-                let server = server.read(cx);
-                let off = (registry.as_ref()).is_some_and(|Languages(registry)| {
-                    registry.read(cx).is_off(server.kind(), server.root())
-                });
-                let project = (registry.as_ref()).and_then(|Languages(registry)| {
-                    registry
-                        .read(cx)
-                        .project_of(server.root())
-                        .map(Path::to_path_buf)
-                });
-                item(index, Shown::of(server, off), project, p)
-            })
-            .collect();
+        let items: Vec<AnyElement> = match cx.try_global::<Languages>() {
+            Some(Languages(registry)) => {
+                let registry = registry.read(cx);
+                (self.servers.iter().enumerate())
+                    .map(|(index, server)| {
+                        let server = server.read(cx);
+                        let project = registry.project_of(server.root()).map(Path::to_path_buf);
+                        item(index, Shown::of(server, registry), project, p)
+                    })
+                    .collect()
+            }
+            None => Vec::new(),
+        };
         div().flex().items_center().gap_1().children(items)
     }
 }
@@ -160,17 +167,20 @@ struct Shown {
     root: PathBuf,
     state: State,
     off: bool,
+    asleep: bool,
     restarting: bool,
     health: Option<SharedString>,
 }
 
 impl Shown {
-    fn of(server: &Server, off: bool) -> Shown {
+    fn of(server: &Server, registry: &Registry) -> Shown {
+        let (kind, root) = (server.kind(), server.root());
         Shown {
-            kind: server.kind(),
-            root: server.root().to_owned(),
+            kind,
+            root: root.to_owned(),
             state: server.state().clone(),
-            off,
+            off: registry.is_off(kind, root),
+            asleep: registry.is_asleep(kind, root),
             restarting: server.is_restarting(),
             health: server.health().cloned(),
         }
@@ -191,6 +201,7 @@ impl Shown {
             return Some("off".into());
         }
         let words: SharedString = match &self.state {
+            State::Stopped if self.asleep => "asleep".into(),
             State::Stopped => "stopped".into(),
             State::Starting => "starting".into(),
             State::Indexing { done, total, title } if *total > 0 => {
@@ -212,6 +223,9 @@ impl Shown {
             format!("{name} is turned off for this project")
         } else {
             match &self.state {
+                State::Stopped if self.asleep => {
+                    format!("{name} is asleep while this worktree is out of sight")
+                }
                 State::Stopped => format!("{name} is stopped"),
                 State::Starting => format!("{name} is starting"),
                 State::Indexing { title, .. } => format!("{name}: {title}"),

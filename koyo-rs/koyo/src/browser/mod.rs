@@ -18,6 +18,8 @@ use std::path::Path;
 use gpui_kit::{App, Entity, KeyBinding, actions};
 
 pub mod agent;
+#[cfg(test)]
+mod budget;
 pub(crate) mod control;
 mod dialog;
 mod dock;

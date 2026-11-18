@@ -13,10 +13,10 @@ use gpui_kit::{
     SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 use koyo_term::{TermClient, ToggleResponsive};
-use koyo_term_control::{RequestBody, Status};
+use koyo_term_control::{Handle, RequestBody, Status};
 
 use super::responsive::ResponsiveTerminal;
-use super::states::{State, most_urgent};
+use super::states::{State, most_urgent, waits};
 use crate::model::Tab;
 use crate::pane;
 use crate::responsive::bar::toggle_button;
@@ -33,7 +33,7 @@ impl Shell {
     /// for the person.
     pub fn tab_dots(&self, tab: &Tab, p: Palette, cx: &mut App) -> (Option<Div>, Option<Div>) {
         let status = most_urgent(self.tab_terminal_statuses(tab));
-        let mark = (status != Some(Status::NeedsInput))
+        let mark = (!status.is_some_and(waits))
             .then(|| self.chat_tab_mark(tab, p, cx))
             .flatten();
         let dot = mark.or_else(|| status.map(|status| dot(status, p)));
@@ -43,10 +43,19 @@ impl Shell {
         }
     }
 
+    /// Whether the shell draws terminal `handle`, in a tab of the selected checkout: the tab shown
+    /// is one of those, or a pinned or a loose page's, which holds only pages.
+    pub(super) fn terminal_drawn(&self, handle: &Handle) -> bool {
+        let Some(id) = self.terminals.tab_of(handle) else {
+            return false;
+        };
+        (self.workspace.branch())
+            .is_some_and(|unit| unit.tabs.iter().any(|tab| tab.shows_terminal(id)))
+    }
+
     /// Whether a terminal of `tab` waits for the person.
     pub fn tab_terminal_waits(&self, tab: &Tab) -> bool {
-        self.tab_terminal_statuses(tab)
-            .any(|status| status == Status::NeedsInput)
+        self.tab_terminal_statuses(tab).any(waits)
     }
 
     /// What `tab`'s terminals are doing, those the daemon has told of.

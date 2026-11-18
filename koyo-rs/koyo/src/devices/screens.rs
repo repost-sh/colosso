@@ -70,12 +70,7 @@ impl Notice {
 
     /// What it says and its buttons, in a column, wherever it's put; under way, a loader first.
     pub(super) fn block(self, p: Palette) -> gpui_kit::Div {
-        use gpui_kit::component::spinner::Spinner;
-        use gpui_kit::component::{Sizable as _, Size};
-        let loader = self.busy.then(|| {
-            let wheel = Spinner::new().icon(gpui_kit::assets::IconName::LoaderCircle).ease(|delta| delta);
-            wheel.with_size(Size::Size(px(24.))).color(p.muted)
-        });
+        let loader = self.busy.then(|| crate::modal::wheel(gpui_kit::component::Size::Size(px(24.)), p.muted));
         let hint = self.hint.map(|hint| div().text_xs().text_color(p.muted).child(hint));
         let title = self.title.map(|title| {
             let warning = crate::shell::icon(gpui_kit::assets::IconName::TriangleAlert, 15.).text_color(p.modified);

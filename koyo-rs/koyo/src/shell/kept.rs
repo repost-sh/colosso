@@ -185,7 +185,7 @@ impl Shell {
     /// Writes the window and the pinned pages now, on the way out, if a write of either is due.
     fn write_what_is_due(&mut self, cx: &App) {
         kept_file::write_now(self.window_due(cx));
-        kept_file::write_now(self.pinned_due(cx));
+        kept_file::write_now(self.pinned_due());
     }
 
     /// Where to write the window as it is now, and its JSON, if a write is due, which then no
@@ -230,7 +230,7 @@ impl Shell {
             }
         }
         now.checkouts.extend(self.kept.waiting.iter().cloned());
-        now.spaces = self.kept_spaces(cx);
+        now.spaces = self.kept_spaces();
         now
     }
 

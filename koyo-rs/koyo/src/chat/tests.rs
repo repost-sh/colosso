@@ -36,6 +36,7 @@ mod recent;
 mod rewind;
 mod said;
 mod seen;
+mod sight;
 mod turn;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";

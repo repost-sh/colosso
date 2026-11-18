@@ -38,6 +38,11 @@ use queue::{Queued, enqueue, read_requests};
 pub(crate) use start::{quit, run, teardown};
 pub(crate) use start::run_embedded;
 
+use crate::embedded::pump::Load;
+
+#[cfg(test)]
+mod tests;
+
 /// The app's socket, for events. Written from the UI thread only.
 static WRITER: OnceLock<Mutex<UnixStream>> = OnceLock::new();
 
@@ -128,6 +133,30 @@ pub(crate) fn send(event: &HostEvent) {
 /// Whether a shutdown was asked for and every pane has closed since.
 pub(crate) fn all_closed() -> bool {
     with(|host| host.shutting_down && host.panes.is_empty()) == Some(true)
+}
+
+/// What the engine works for: seen while it isn't up, a request of the app's waits for it, a
+/// window of Chrome's own is open, an extension's popup is expected, or a page is on screen or
+/// being opened; idle with no page and no window at all; unseen otherwise.
+pub(crate) fn load() -> Load {
+    let Some((ready, empty, none_on_screen)) = with(|host| {
+        let none_on_screen = host.panes.keys().all(|&pane| crate::native::off_screen(pane));
+        (host.ready, host.panes.is_empty(), none_on_screen)
+    }) else {
+        return Load::Seen;
+    };
+    let waited_on = !ready
+        || !none_on_screen
+        || queue::drain_pending()
+        || crate::native::strays() > 0
+        || crate::extensions::popup_expected();
+    if waited_on {
+        Load::Seen
+    } else if empty && crate::native::none_left() {
+        Load::Idle
+    } else {
+        Load::Unseen
+    }
 }
 
 /// A pane's browser couldn't be made: the pane goes, and the app is told.

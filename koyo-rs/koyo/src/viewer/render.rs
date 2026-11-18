@@ -26,7 +26,8 @@ use crate::theme::{self, Palette};
 const BAR: f32 = 26.;
 
 impl Render for Viewer {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.animate(window, cx);
         let p = theme::palette(cx);
         let body = (div().flex_1().min_h_0().relative().overflow_hidden())
             .debug_selector(|| "viewer-pages".into());

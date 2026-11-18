@@ -3,7 +3,8 @@
 //! settings turn it off, when the user stops it, or when its checkout leaves the sidebar;
 //! once it has had no file open for ten minutes too, if the settings ask; and no more than
 //! the setting's number run at once, the least recently used one stopping for another, an
-//! idle one before a busy one.
+//! idle one before a busy one. A checkout's servers sleep while it's out of sight
+//! ([`SLEEP`]).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -12,7 +13,7 @@ use gpui_kit::{App, AppContext as _, Context, Entity, Global, Subscription, Task
 
 use super::providers::Attached;
 use super::server::{Activity, Server};
-use super::{IDLE, Kind, Launcher};
+use super::{IDLE, Kind, Launcher, SLEEP};
 use crate::checkout::Checkout;
 use crate::files::FileEditor;
 use crate::settings;
@@ -31,6 +32,8 @@ pub struct Registry {
     /// The project each checkout belongs to, by its main checkout: where the settings turn a
     /// server off.
     projects: HashMap<PathBuf, PathBuf>,
+    /// The checkouts out of sight, by root; a checkout seen has none.
+    away: HashMap<PathBuf, Away>,
     /// Counts up with each use, so the least recently used server has the lowest.
     uses: u64,
     _settings: Subscription,
@@ -58,12 +61,23 @@ impl Slot {
     }
 }
 
+/// How a checkout out of sight stands.
+enum Away {
+    Waiting {
+        _countdown: Task<()>,
+    },
+    /// The kinds of server to start once it's seen: those its sleep stopped, and those asked
+    /// to start since.
+    Asleep(Vec<Kind>),
+}
+
 /// Runs servers from `launcher`: the real ones in the app, a fake in tests.
 pub fn install(launcher: Launcher, cx: &mut App) {
     let registry = cx.new(|cx| Registry {
         launcher,
         servers: HashMap::new(),
         projects: HashMap::new(),
+        away: HashMap::new(),
         uses: 0,
         _settings: settings::on_change(cx, Registry::settings_changed),
     });
@@ -100,14 +114,37 @@ pub fn attach(checkout: &Entity<Checkout>, view: &Entity<FileEditor>, cx: &mut A
     });
 }
 
-/// Says the checkout at `root` belongs to the project whose main checkout is `project`.
+/// Says the checkout at `root` belongs to the project whose main checkout is `project`. The
+/// registry is updated only when that's new.
 pub fn locate(root: &Path, project: &Path, cx: &mut App) {
-    with_registry(cx, |registry, cx| {
-        if registry.projects.get(root).map(PathBuf::as_path) != Some(project) {
+    let Some(Languages(registry)) = cx.try_global::<Languages>().cloned() else {
+        return;
+    };
+    if registry.read(cx).project_of(root) != Some(project) {
+        registry.update(cx, |registry, cx| {
             registry
                 .projects
                 .insert(root.to_owned(), project.to_owned());
             registry.settings_changed(cx);
+        });
+    }
+}
+
+/// Says whether the checkout at `root` is seen: selected, in a window someone can see. The
+/// registry is updated only when that's new.
+pub fn seen(root: &Path, seen: bool, cx: &mut App) {
+    let Some(Languages(registry)) = cx.try_global::<Languages>().cloned() else {
+        return;
+    };
+    let was_seen = !registry.read(cx).away.contains_key(root);
+    if was_seen == seen {
+        return;
+    }
+    registry.update(cx, |registry, cx| {
+        if seen {
+            registry.wake(root, cx);
+        } else {
+            registry.wait(root, cx);
         }
     });
 }
@@ -116,6 +153,7 @@ pub fn locate(root: &Path, project: &Path, cx: &mut App) {
 pub fn forget(root: &Path, cx: &mut App) {
     with_registry(cx, |registry, cx| {
         registry.projects.remove(root);
+        registry.away.remove(root);
         let gone: Vec<Key> = (registry.servers.keys())
             .filter(|(_, at)| at == root)
             .cloned()
@@ -252,7 +290,8 @@ impl Registry {
         settings::get(cx).runs_server(kind.name(), self.project_of(root))
     }
 
-    /// Stops the servers the settings now turn off, and starts the ones they turn on again.
+    /// Stops the servers the settings now turn off, and starts the ones they turn on again,
+    /// but for one the user stopped.
     fn settings_changed(&mut self, cx: &mut Context<Self>) {
         let keys: Vec<Key> = self.servers.keys().cloned().collect();
         for key in keys {
@@ -275,7 +314,15 @@ impl Registry {
         }
     }
 
+    /// Starts the server of `key`; while its checkout is asleep, once it's seen.
     fn start(&mut self, key: &Key, cx: &mut Context<Self>) {
+        let (kind, root) = key;
+        if let Some(Away::Asleep(kinds)) = self.away.get_mut(root) {
+            if !kinds.contains(kind) {
+                kinds.push(*kind);
+            }
+            return;
+        }
         self.make_room(key, cx);
         let Some(slot) = self.servers.get(key) else {
             return;
@@ -339,6 +386,61 @@ impl Registry {
             }
             Activity::Busy | Activity::Idle => None,
         };
+    }
+
+    /// Whether the server of `kind` in the checkout at `root` is asleep, to start once the
+    /// checkout is seen.
+    pub fn is_asleep(&self, kind: Kind, root: &Path) -> bool {
+        matches!(self.away.get(root), Some(Away::Asleep(kinds)) if kinds.contains(&kind))
+            && (self.servers.get(&(kind, root.to_owned())))
+                .is_some_and(|slot| !slot.off && !slot.held)
+    }
+
+    fn wait(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let at = root.to_owned();
+        let _countdown = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SLEEP).await;
+            this.update(cx, |this, cx| this.sleep(&at, cx)).ok();
+        });
+        self.away
+            .insert(root.to_owned(), Away::Waiting { _countdown });
+    }
+
+    fn sleep(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let minutes = SLEEP.as_secs() / 60;
+        let why = format!("its worktree was out of sight for {minutes} minutes");
+        let mut stopped = Vec::new();
+        for ((kind, at), slot) in &self.servers {
+            if at == root && slot.server.read(cx).is_live() {
+                slot.stop(&why, cx);
+                stopped.push(*kind);
+            }
+        }
+        self.away.insert(root.to_owned(), Away::Asleep(stopped));
+        cx.notify();
+    }
+
+    /// Stops counting down to the sleep of the checkout at `root`, or wakes its servers asleep:
+    /// least recently used first, each with a file open and nothing else keeping it stopped.
+    fn wake(&mut self, root: &Path, cx: &mut Context<Self>) {
+        let Some(Away::Asleep(kinds)) = self.away.remove(root) else {
+            return;
+        };
+        let mut waking: Vec<(u64, Key)> = (kinds.into_iter())
+            .filter_map(|kind| {
+                let key = (kind, root.to_owned());
+                let slot = self.servers.get(&key)?;
+                let server = slot.server.read(cx);
+                let stopped = *server.state() == super::State::Stopped;
+                let wakes = stopped && !server.is_idle() && !slot.off && !slot.held;
+                wakes.then_some((slot.used, key))
+            })
+            .collect();
+        waking.sort_unstable_by_key(|(used, _)| *used);
+        for (_, key) in waking {
+            self.start(&key, cx);
+        }
+        cx.notify();
     }
 
     /// Stops the server of `key` and lets go of it.

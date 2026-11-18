@@ -34,6 +34,7 @@ use koyo_accounts::env::{Clock as _, SystemClock};
 use koyo_accounts::usage_store::due_candidate;
 use koyo_agent::protocol::limits::AccountLimits;
 
+use crate::beat::is_frontmost;
 use crate::menu::Trigger;
 use crate::settings;
 
@@ -70,7 +71,7 @@ pub fn init(cx: &mut App) {
         trigger: Trigger::new("accounts-panel"),
         running: None,
     });
-    let button = cx.new(|cx| button::AccountsButton::new(accounts.clone(), cx));
+    let button = cx.new(|_| button::AccountsButton::new(accounts.clone()));
     cx.set_global(TheAccounts {
         accounts: accounts.clone(),
         button,
@@ -190,7 +191,7 @@ impl Accounts {
     /// open another Koyo keeps the login of, the store's due candidate (`due_candidate`: not
     /// in backoff, held or parked, the least recently tried).
     fn look(&mut self, cx: &mut Context<Self>) {
-        let focused = cx.active_window().is_some();
+        let focused = is_frontmost(cx);
         let open = self.trigger.is_open(cx);
         let measured = self.view.active().and_then(|row| row.measured_at);
         let Some(running) = (self.running.as_mut()).filter(|running| running.service.on_hand())

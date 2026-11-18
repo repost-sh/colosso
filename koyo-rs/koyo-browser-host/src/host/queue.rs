@@ -75,11 +75,24 @@ pub(super) fn enqueue(work: Queued) {
 /// A drain is queued on the UI thread and has not started yet.
 static DRAIN_POSTED: AtomicBool = AtomicBool::new(false);
 
-/// Queues one drain; requests that arrive before it starts ride along.
+/// Whether a drain is queued and hasn't started: a request of the app's waits for CEF's turn.
+pub(super) fn drain_pending() -> bool {
+    DRAIN_POSTED.load(Ordering::Acquire)
+}
+
+/// Has a drain count as queued, or not, as a test without an engine needs.
+#[cfg(test)]
+pub(super) fn pretend_drain_pending(pending: bool) {
+    DRAIN_POSTED.store(pending, Ordering::Release);
+}
+
+/// Queues one drain; requests that arrive before it starts ride along. CEF's work is run at
+/// once for it in the app's process (`pump`).
 fn post_drain() {
     if !DRAIN_POSTED.swap(true, Ordering::AcqRel) {
         let mut task = Drain::new();
         cef::post_task(ThreadId::UI, Some(&mut task));
+        crate::embedded::pump::schedule(0);
     }
 }
 

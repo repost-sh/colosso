@@ -175,8 +175,8 @@ impl Shell {
             .filter_map(|pane| Some((pane.id, pane.device_view()?.read(cx).chosen()?.clone())))
             .collect();
         let addresses = (tab.panes().into_iter())
-            .filter(|pane| !pane.is_inspector(cx))
-            .filter_map(|pane| Some((pane.id, pane.address(cx)?)))
+            .filter(|pane| !pane.is_inspector())
+            .filter_map(|pane| Some((pane.id, pane.address()?.to_owned())))
             .collect();
         let panes: Vec<_> = tab
             .panes()

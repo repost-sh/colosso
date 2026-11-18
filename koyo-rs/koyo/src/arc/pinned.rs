@@ -199,15 +199,15 @@ fn initial(address: &str) -> Option<SharedString> {
 /// A pinned page's picture, the size of a tab row's icon: its site's icon, its corners a little
 /// rounded; with none, its host's initial; a globe for a page with no host, as a new tab's
 /// start page.
-fn picture(page: &Pane, look: Look, cx: &App) -> AnyElement {
-    if let Some(favicon) = page.favicon(cx) {
+fn picture(page: &Pane, look: Look) -> AnyElement {
+    if let Some(favicon) = page.favicon() {
         return img(favicon)
             .size(px(PICTURE))
             .rounded(px(FAVICON_CORNERS))
             .into_any_element();
     }
     let muted = div().text_color(look.p.muted);
-    match initial(&page.address(cx).unwrap_or_default()) {
+    match initial(page.address().unwrap_or_default()) {
         Some(initial) => muted
             .text_sm()
             .font_weight(FontWeight::SEMIBOLD)
@@ -240,7 +240,7 @@ fn tile(
     let open = page.view().is_some();
     let face = div()
         .when(!open, |face| face.opacity(CLOSED))
-        .child(picture(page, look, cx));
+        .child(picture(page, look));
     let tile = tile_frame(
         ("arc-pinned-tile", key),
         Hovered::Pin(key),
@@ -264,7 +264,7 @@ fn tile(
     }));
     let shell = cx.weak_entity();
     with_menu(tile, move |_, cx| {
-        let menu = shell.read_with(cx, |shell, cx| Menu::of(shell, key, cx).build());
+        let menu = shell.read_with(cx, |shell, _| Menu::of(shell, key).build());
         menu.unwrap_or_else(|_| NativeMenu::new())
     })
 }
@@ -333,11 +333,11 @@ pub(super) struct Menu {
 }
 
 impl Menu {
-    pub(super) fn of(shell: &Shell, key: u64, cx: &App) -> Menu {
+    pub(super) fn of(shell: &Shell, key: u64) -> Menu {
         Menu {
             key,
-            strayed: shell.pinned_strayed(key, cx).is_some(),
-            open: shell.pinned_is_open(key, cx),
+            strayed: shell.pinned_strayed(key).is_some(),
+            open: shell.pinned_is_open(key),
             worktree: shell.checkout_shown().is_some(),
         }
     }

@@ -21,8 +21,9 @@ use crate::shell::{CloseTab, Shell};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
-use crate::test_support::{click_pane, draw, open_page, repo, select, shell_with};
+use crate::test_support::{click_pane, draw, open_page, repo, select, shell_on, shell_with};
 
+mod address;
 mod loose;
 mod pinned;
 mod project_keys;
@@ -182,12 +183,17 @@ fn clear_asks_first_then_closes_every_tab_of_the_worktree(cx: &mut TestAppContex
     assert!(closed);
 }
 
+/// What the address bar says.
+pub(super) fn said(shell: &Entity<Shell>, cx: &TestAppContext) -> String {
+    cx.read(|cx| {
+        let shell = shell.read(cx);
+        super::top::said(shell, shell.shown_page(cx).as_ref(), cx).0.to_string()
+    })
+}
+
 #[gpui_kit::test]
 fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
     let (window, shell, _) = arc_shell(&["arc-address"], cx);
-    let said = |shell: &Entity<Shell>, cx: &TestAppContext| {
-        cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string())
-    };
     assert_eq!(said(&shell, cx), "No tab open");
     let page = Pane::unloaded(
         Unloaded {
@@ -246,10 +252,17 @@ fn a_click_on_the_address_bar_opens_the_launcher_only_on_a_page(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn the_address_bar_is_told_the_page_shown_as_the_layout_turns_to_arc(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("arc-address-turn", Layout::Orca, cx);
+    open_page(window, &shell, Some("https://example.com/"), cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
+    assert!(click_address(window, cx), "the page's address, to change");
+}
+
+#[gpui_kit::test]
 fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(cx: &mut TestAppContext) {
     let (window, shell, _) = arc_shell(&["arc-address-split"], cx);
-    let said =
-        |cx: &TestAppContext| cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string());
+    let said = |cx: &TestAppContext| said(&shell, cx);
     shell.update(cx, |shell, cx| {
         shell.workspace.push_tab(chat("Plan the release"));
         cx.notify();

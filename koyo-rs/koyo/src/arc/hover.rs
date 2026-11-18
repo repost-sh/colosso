@@ -131,7 +131,7 @@ impl Shell {
                 }
             }
             Hovered::Pin(key) => {
-                let Some(card) = self.page_card(key, cx) else {
+                let Some(card) = self.page_card(key) else {
                     return;
                 };
                 Card::Page(card)
@@ -141,13 +141,13 @@ impl Shell {
     }
 
     /// What the card of the pinned page known by `key` says of it: its title and its host.
-    fn page_card(&self, key: u64, cx: &App) -> Option<PageCard> {
+    fn page_card(&self, key: u64) -> Option<PageCard> {
         let page = self.workspace.pinned_of(key)?.tab.first();
-        let address = page.address(cx).unwrap_or_default();
+        let address = page.address().unwrap_or_default();
         Some(PageCard {
             title: page.title.clone(),
-            host: super::top::host_of(&address).into(),
-            icon: page.favicon(cx),
+            host: super::top::host_of(address).into(),
+            icon: page.favicon(),
         })
     }
 

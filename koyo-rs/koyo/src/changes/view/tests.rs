@@ -8,6 +8,7 @@ use gpui_kit::{
 use koyo_git::{Change, Content, FileDiff, Hunk, Lines};
 
 use super::*;
+use crate::budget::{Built, built_again, frame_of, ratchet};
 
 /// The panel's list beside its diffs, as the right panel and the Changes tab show them.
 struct Both {
@@ -113,12 +114,27 @@ fn open_with(
             let changes = cx.new(|cx| Checkout::read_as(files, window, cx));
             let made = cx.new(|cx| ChangesPanel::new(changes, cx));
             panel = Some(made.clone());
-            let diffs = cx.new(|cx| ChangesTab::new(made.clone(), cx));
+            let diffs = cx.new(|_| ChangesTab::new(made.clone()));
             cx.new(|_| Both { panel: made, diffs })
         })
         .unwrap();
         (window, panel.unwrap())
     })
+}
+
+/// The Changes tab draws the diffs again as the panel changes, its files read again or scrolled
+/// to another, as it draws them through the panel: three views build, the tab's among them, where
+/// a tab drawing nothing of the panel builds two.
+#[gpui_kit::test]
+fn a_change_of_the_panel_builds_the_changes_tab_again(cx: &mut TestAppContext) {
+    let (window, panel) = open_with(vec![edited("src/a.rs", 10)], cx);
+    let both = Built {
+        shell: 0,
+        views: 3,
+        frames: 1,
+    };
+    let built = built_again(window, cx, frame_of(&panel));
+    ratchet(built, both, "a change of the panel");
 }
 
 #[gpui_kit::test]

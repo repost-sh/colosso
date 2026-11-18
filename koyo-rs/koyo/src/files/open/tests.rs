@@ -6,12 +6,15 @@ use gpui_kit::{AppContext as _, TestAppContext, VisualTestContext, px};
 
 use super::super::closing::SaveDialog;
 use super::super::tests::{
-    answer, checkout, dialog, editing, selected, shell_with_tree, tabs, typed, with, with_shell,
+    answer, checkout, dialog, editing, listed, selected, shell_with_tree, tabs, typed, with,
+    with_shell,
 };
 use super::super::{At, Place};
+use crate::budget::{Built, built_again, frame_of, ratchet, settle};
 use crate::modal;
-use crate::settings;
-use crate::test_support::write;
+use crate::right_panel::ShowFiles;
+use crate::settings::{self, Layout};
+use crate::test_support::{shell_on, write};
 
 #[gpui_kit::test]
 fn a_preview_gives_way_to_the_next_until_its_kept(cx: &mut TestAppContext) {
@@ -187,4 +190,48 @@ fn the_question_fits_a_file_name_that_wraps_its_title(cx: &mut TestAppContext) {
     assert!(tall > short, "a line more for the name");
     assert_eq!(buttons, tall - padding, "the buttons keep their padding");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A file's tab says the file has unsaved edits, and a preview's title is in italics, as its pane
+/// says: the shell reads the pane as it draws the tab, so a change of the pane renders it.
+#[gpui_kit::test]
+fn a_change_of_a_files_pane_renders_the_shell_that_draws_its_tab(cx: &mut TestAppContext) {
+    let root = checkout("files-tabs-face");
+    let (window, shell, _) = shell_with_tree(&root, cx);
+    editing(window, &shell, "src/lib.rs", At::Bytes(0..0), cx);
+    let file = cx.read(|cx| shell.read(cx).viewing().unwrap());
+
+    let held = Built {
+        shell: 1,
+        views: 2,
+        frames: 1,
+    };
+    let built = built_again(window, cx, frame_of(&file));
+    ratchet(built, held, "a change of the file's pane");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A key typed into a file with unsaved edits already builds the editor and leaves the shell
+/// alone, its tab's dot as it was, with the file tree open beside it too.
+#[gpui_kit::test]
+fn a_key_typed_into_an_unsaved_file_leaves_the_shell_alone(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("files-typed-unsaved", Layout::Orca, cx);
+    let (_, editor, _) = editing(window, &shell, "README.md", At::Bytes(0..0), cx);
+    typed(window, &editor, "x", cx);
+
+    let held = Built {
+        shell: 0,
+        views: 3,
+        frames: 1,
+    };
+    let key = |cx: &mut TestAppContext| typed(window, &editor, "y", cx);
+    ratchet(built_again(window, cx, key), held, "a key typed into an unsaved file");
+
+    cx.dispatch_action(window, ShowFiles);
+    cx.run_until_parked();
+    let files = cx.read(|cx| shell.read(cx).right_panel.files().cloned());
+    listed(&files.expect("the right panel shows the file tree"), cx);
+    settle(cx);
+    let built = built_again(window, cx, key);
+    ratchet(built, held, "a key typed into an unsaved file, the tree open");
 }

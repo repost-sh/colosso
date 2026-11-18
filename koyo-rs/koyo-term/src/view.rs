@@ -24,6 +24,8 @@ use crate::vt::{Command, Vt};
 
 mod link;
 mod responsive;
+#[cfg(test)]
+mod tests;
 
 actions!(
     terminal,
@@ -156,6 +158,9 @@ pub struct TerminalView {
     /// it's dragged to last.
     resize: link::Latest<Size>,
     updates: Option<Task<()>>,
+    /// The title the view last said the terminal has, since it last said it opened.
+    told_title: Option<String>,
+    seen: bool,
     blink: Option<Task<()>>,
     cursor_on: bool,
     pub(crate) marked: Option<String>,
@@ -218,6 +223,8 @@ impl TerminalView {
             focus,
             resize: link::Latest::default(),
             updates: None,
+            told_title: None,
+            seen: true,
             blink: None,
             cursor_on: true,
             marked: None,

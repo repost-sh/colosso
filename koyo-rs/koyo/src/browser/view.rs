@@ -123,9 +123,12 @@ pub struct BrowserView {
     /// Whether the glass of the bar over the page is dark, as the page under it last said; none
     /// while it's the theme's.
     pub(super) bar_dark: Option<bool>,
-    /// How light the page is, as it last said, and the task that asks it (`tone.rs`).
+    /// How light the page is, as it last said, and the task that asks it while it's drawn, and
+    /// how many times that's woken, for a test to read (`tone.rs`).
     pub(super) tone: Option<super::tone::Tone>,
     pub(super) tone_watch: Option<Task<()>>,
+    #[cfg(test)]
+    pub(super) tone_turns: usize,
     /// What the page's site is allowed and blocked from, as the host last said, the button
     /// its popover opens from, and when its address was last copied (`site.rs`).
     pub(super) site: Option<Vec<koyo_browser_ipc::SiteSetting>>,
@@ -289,6 +292,8 @@ impl BrowserView {
             bar_dark: None,
             tone: None,
             tone_watch: None,
+            #[cfg(test)]
+            tone_turns: 0,
             site: None,
             site_trigger: super::site::trigger(pane),
             link_copied: None,

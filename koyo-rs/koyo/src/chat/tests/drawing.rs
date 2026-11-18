@@ -22,7 +22,7 @@ use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
 /// A tool that read `label`, or changed it by `patch`.
-fn tool(family: ToolFamily, label: &str, patch: Option<Vec<Hunk>>) -> ItemBody {
+pub(super) fn tool(family: ToolFamily, label: &str, patch: Option<Vec<Hunk>>) -> ItemBody {
     ItemBody::Tool(Tool {
         name: "Tool".into(),
         family,

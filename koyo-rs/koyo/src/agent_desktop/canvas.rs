@@ -1,17 +1,19 @@
 //! The desktop itself, as an element (`docs/agent-desktop.md` 9): the desktop's shape fitted
 //! to the pane, each window's latest frame drawn at its place, back to front as the host
 //! lists them, and every pointer event over it. The desktop counts as on screen while the
-//! element is drawn (`Shown`, in its state): the host sends its frames only then.
+//! element is drawn (`Shown`, in its state) in a window seen: the host sends its frames only
+//! then.
 
 use gpui_kit::{
-    App, Bounds, ContentMask, Context, DispatchPhase, Element, ElementId, ElementInputHandler,
-    Entity, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, ScrollEvent, Style, WeakEntity, Window,
-    fill, point, px, relative, size,
+    App, Bounds, ContentMask, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, ScrollEvent, Style, Window, fill, point, px, relative,
+    size,
 };
 
 use super::Desk;
 use super::view::DeskView;
+use crate::sight::Shown;
 use crate::theme::Palette;
 
 pub struct Canvas {
@@ -27,22 +29,6 @@ pub struct Placed {
     shown: Bounds<Pixels>,
     /// How much of its true size it shows at.
     fit: f32,
-}
-
-/// The desktop drawn in a window, kept by the element for as long as it's drawn: once no
-/// element draws it, the host stops sending frames.
-pub struct Shown;
-
-impl Shown {
-    fn new(desk: WeakEntity<Desk>, cx: &mut Context<Self>) -> Self {
-        let me = cx.entity_id();
-        let _ = desk.update(cx, |desk, _| desk.set_shown_by(me, true));
-        cx.on_release(move |_: &mut Self, cx| {
-            let _ = desk.update(cx, |desk, _| desk.set_shown_by(me, false));
-        })
-        .detach();
-        Shown
-    }
 }
 
 /// `desk` (in points) at the largest size that fits `area`, centred in it, never larger than
@@ -125,7 +111,7 @@ impl Element for Canvas {
         window.paint_quad(fill(shown, p.sunken));
         let key = ElementId::NamedInteger("agent-desktop".into(), self.view.entity_id().as_u64());
         let owner = self.desk.downgrade();
-        let _shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
+        let _shown = window.use_keyed_state(key, cx, |window, cx| Shown::new(owner, window, cx));
         {
             let desk = self.desk.read(cx);
             let picture = desk.picture.read(cx);

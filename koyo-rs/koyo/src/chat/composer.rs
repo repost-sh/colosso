@@ -186,7 +186,6 @@ impl ChatComposer {
                 .submit_on_enter(true)
                 .placeholder(Asked::Nothing.placeholder())
         });
-        let claude_missing = chats.read(cx).claude_missing.clone();
         let subscriptions = vec![
             cx.subscribe_in(&text, window, |this, _, event, window, cx| match event {
                 InputEvent::PressEnter {
@@ -203,7 +202,6 @@ impl ChatComposer {
                     cx.notify();
                 }
             }),
-            cx.observe(&claude_missing, |_, _, cx| cx.notify()),
             cx.observe(&catalog, |this, _, cx| {
                 this.model_menu.close(cx);
                 this.effort_menu.close(cx);

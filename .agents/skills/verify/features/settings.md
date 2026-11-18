@@ -2,7 +2,7 @@
 
 Settings open in the window as pages: General, Chat, Accounts, Appearance, Editor, Languages,
 Browser, Keyboard, MCP server, Agent desktop, Devices and About. A change made on a page applies
-at once and is saved to `settings.json`, and an edit of that file applies within half a second.
+at once and is saved to `settings.json`, and an edit of that file applies within 2 s while Koyo is in front, or as it comes back in front.
 
 ## Sub-features
 
@@ -33,7 +33,7 @@ Preconditions: the baseline. The test settings are `.superpowers/v/c/settings.js
   `'{"appearance":"system"}'`.
 - **Change by hand.** On a settings page, click the control (measured from a shot and checked
   with `hover`). Read the file afterwards: the field changed within half a second.
-- **The file from outside.** Write a field with `jq` (`.sidebar_width = 320`). Within a second
+- **The file from outside.** Write a field with `jq` (`.sidebar_width = 320`). Within 2 s
   the window follows (take a shot), and `settings_get` agrees.
 - **Proof.** A shot of the page before and after, the `settings_get` answer, and the `jq` line
   of the file.

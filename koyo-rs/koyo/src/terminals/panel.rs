@@ -1,7 +1,7 @@
 //! The activity panel beside a terminal (`docs/terminals.md` 7.4): its logs, read on by
 //! offset while the panel is open, in the tabs agent-terminal's dashboard has: Activity,
 //! Commands, Screenshots, Output and Info. Closed, it's dropped, so nothing reads and nothing
-//! listens.
+//! listens. Out of sight, its Output tab reads nothing, and reads what came meanwhile once seen.
 
 mod log;
 mod rows;
@@ -95,8 +95,12 @@ pub struct ActivityPanel {
     info: Option<TerminalRecord>,
     scroll: ScrollHandle,
     _listening: Task<()>,
-    /// Reads the output since the mark while the Output tab is shown.
+    /// Reads the output since the mark while the Output tab is shown in sight.
     polling: Option<Task<()>>,
+    seen: bool,
+    /// How many times the daemon was asked for output, for a test to read.
+    #[cfg(test)]
+    reads: std::cell::Cell<usize>,
 }
 
 impl ActivityPanel {
@@ -142,6 +146,9 @@ impl ActivityPanel {
             scroll: ScrollHandle::new(),
             _listening: listening,
             polling: None,
+            seen: true,
+            #[cfg(test)]
+            reads: std::cell::Cell::new(0),
         }
     }
 
@@ -222,7 +229,7 @@ impl ActivityPanel {
         self.tab = tab;
         self.following = true;
         self.scroll.scroll_to_bottom();
-        self.polling = (tab == PanelTab::Output).then(|| self.poll_output(cx));
+        self.poll(cx);
         if tab == PanelTab::Info {
             self.refresh_info(cx);
         }
@@ -235,25 +242,39 @@ impl ActivityPanel {
         self.read_output(None, cx);
     }
 
-    fn poll_output(&self, cx: &mut Context<Self>) -> Task<()> {
-        cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_secs(1)).await;
-                let polled = this.update(cx, |this, cx| {
-                    if this.output.mark.is_some() {
-                        this.read_output(Some(this.output.next), cx);
+    /// Whether the panel's in sight: out of it, the Output tab reads nothing; back in, it reads
+    /// what came meanwhile at once.
+    pub fn set_seen(&mut self, seen: bool, cx: &mut Context<Self>) {
+        self.seen = seen;
+        self.poll(cx);
+    }
+
+    /// Has the output since the mark read now and every second after, while the Output tab is
+    /// shown and seen.
+    fn poll(&mut self, cx: &mut Context<Self>) {
+        self.polling = (self.seen && self.tab == PanelTab::Output).then(|| {
+            cx.spawn(async move |this, cx| {
+                loop {
+                    let polled = this.update(cx, |this, cx| {
+                        if this.output.mark.is_some() {
+                            this.read_output(Some(this.output.next), cx);
+                        }
+                    });
+                    if polled.is_err() {
+                        return;
                     }
-                });
-                if polled.is_err() {
-                    return;
+                    cx.background_executor().timer(Duration::from_secs(1)).await;
                 }
-            }
-        })
+            })
+        });
     }
 
     /// Reads the output from `since`, or only where it ends now when `None`, which sets the
-    /// mark. A read overtaken by another, or by a new mark, is dropped.
+    /// mark; and on at once while a read comes back full. A read overtaken by another, or by a
+    /// new mark, is dropped.
     fn read_output(&self, since: Option<u64>, cx: &mut Context<Self>) {
+        #[cfg(test)]
+        self.reads.set(self.reads.get() + 1);
         let client = Arc::clone(&self.client);
         let max = if since.is_some() { OUTPUT_BYTES } else { 1 };
         let request = RequestBody::ReadStream {
@@ -286,6 +307,9 @@ impl ActivityPanel {
                     this.scroll.scroll_to_bottom();
                 }
                 cx.notify();
+                if since.is_some_and(|since| next.saturating_sub(since) >= max as u64) {
+                    this.read_output(Some(next), cx);
+                }
             })
             .ok();
         })
@@ -345,3 +369,6 @@ impl ActivityPanel {
         self.set_mark(cx);
     }
 }
+
+#[cfg(test)]
+mod tests;

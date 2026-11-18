@@ -120,7 +120,7 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
         cx.read(|cx| {
             let workspace = &back.read(cx).workspace;
             let pages = (workspace.loose().iter())
-                .map(|page| page.tab.first().address(cx).unwrap_or_default());
+                .map(|page| page.tab.first().address().unwrap_or_default().to_owned());
             (pages.collect::<Vec<_>>(), workspace.loose_shown())
         })
     };

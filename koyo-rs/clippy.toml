@@ -25,4 +25,6 @@ disallowed-methods = [
     { path = "std::os::unix::process::CommandExt::uid", reason = "forks the app to start the program" },
     { path = "std::os::unix::process::CommandExt::gid", reason = "forks the app to start the program" },
     { path = "std::os::unix::process::CommandExt::groups", reason = "forks the app to start the program" },
+    { path = "gpui::App::refresh_windows", reason = "rebuilds every view of every window: notify the entity that changed, or observe the global as settings::observe does" },
+    { path = "gpui::AsyncApp::refresh", reason = "rebuilds every view of every window: notify the entity that changed, or observe the global as settings::observe does" },
 ]

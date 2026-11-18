@@ -132,11 +132,15 @@ impl Document {
         self.dirty
     }
 
-    /// Whether the view showing it has edits the file doesn't, as the view tells it.
-    pub fn set_dirty(&mut self, dirty: bool, cx: &mut Context<Self>) {
-        if self.dirty != dirty {
-            self.dirty = dirty;
-            cx.notify();
+    /// Has `this` hold whether the view showing it has edits the file doesn't, as the view tells
+    /// it after every key: it's updated only when that's news, as an update builds again whatever
+    /// reads it.
+    pub fn set_dirty(this: &Entity<Self>, dirty: bool, cx: &mut App) {
+        if this.read(cx).dirty != dirty {
+            this.update(cx, |document, cx| {
+                document.dirty = dirty;
+                cx.notify();
+            });
         }
     }
 

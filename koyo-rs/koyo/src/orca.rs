@@ -14,27 +14,26 @@ use crate::pane::CLOSE;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
     Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_button,
-    no_matches, project_error, row, search_field, section_label, tab_close_button, tab_list,
-    tab_row,
+    no_matches, project_error, row, section_label, tab_close_button, tab_list, tab_row,
 };
 use crate::theme::{self, Palette};
 
 pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
-    let query = shell.search_query(cx);
+    let query = shell.search_query();
     let shown: Vec<_> = workspace
         .projects
         .iter()
         .enumerate()
-        .map(|(index, project)| (index, project, project.shown_branches(&query)))
+        .map(|(index, project)| (index, project, project.shown_branches(query)))
         .filter(|(_, _, branches)| query.trim().is_empty() || !branches.is_empty())
         .collect();
     div()
         .flex()
         .flex_col()
         .gap_px()
-        .child(search_field(&shell.search, p))
+        .child(shell.search.clone())
         .child(
             section_label(p)
                 .mt_2()
@@ -135,6 +134,7 @@ fn branch_row(
         ),
         move |_, _| worktree_menu(&path, is_main, terminals),
     )
+    .debug_selector(move || format!("orca-branch-{project_index}-{branch_index}"))
     .pl_6()
     .when(!selected, |row| row.text_color(p.muted))
     .on_click(cx.listener(move |this, _, _, cx| {
@@ -216,3 +216,6 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
             )
         })
 }
+
+#[cfg(test)]
+mod tests;

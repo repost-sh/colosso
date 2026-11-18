@@ -4,7 +4,6 @@
 //! input lands at once and screenshots answer. Hidden, Chromium paints nothing, slows its
 //! timers, and holds back what waits on a frame; a page nobody draws or uses is hidden.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gpui_kit::{Context, WeakEntity};
@@ -12,11 +11,6 @@ use koyo_browser_ipc::AppRequest;
 
 use super::BrowserView;
 use crate::browser::control::sleep_until;
-
-/// Whether a window nothing shows counts as seen all the same: the harness's (`tick`,
-/// `native/probe.rs`), for an app driven on a desktop that isn't the one shown, where `AppKit`
-/// takes no window to be visible. Read in debug builds only, as the harness is there only.
-pub(in crate::browser) static UNSEEN_COUNTS: AtomicBool = AtomicBool::new(false);
 
 /// A page drawn in a window, kept by the page element for as long as it's drawn: once it
 /// isn't, the page is out of sight, and the engine stops painting it, unless it's drawn
@@ -72,11 +66,9 @@ impl BrowserView {
         self.tell_sight(cx);
     }
 
-    /// Whether the person can see the page: its pane draws it, in a window on screen.
+    /// Whether the page is in sight: its pane draws it, in a window seen ([`crate::sight`]).
     pub(in crate::browser) fn drawn(&self) -> bool {
-        let seen = self.window_visible
-            || (cfg!(debug_assertions) && UNSEEN_COUNTS.load(Ordering::Relaxed));
-        self.shown.is_some() && seen
+        self.shown.is_some() && (self.window_visible || crate::sight::unseen_counts())
     }
 
     /// Whether the page is on screen for the engine: drawn, or used by an agent lately.
@@ -91,6 +83,11 @@ impl BrowserView {
     pub(in crate::browser) fn tell_sight(&mut self, cx: &mut Context<Self>) {
         self.set_visible(self.on_screen(), cx);
         let drawn = self.drawn();
+        if drawn {
+            self.watch_tone(cx);
+        } else {
+            self.tone_watch = None;
+        }
         if drawn && !std::mem::replace(&mut self.seen, drawn) {
             self.tell_active(cx);
         }

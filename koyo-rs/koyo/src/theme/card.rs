@@ -79,22 +79,48 @@ pub fn part(p: Palette, islands: bool) -> Div {
     }
 }
 
+/// How far the handle of a seam on the one card reaches over the part either side of its line, in
+/// points: a point that far from the line's middle is on the handle.
+pub const HANDLE_REACH: f32 = 6.;
+const LINE: f32 = 1.;
+
 /// What lies between two parts, `row` when they sit side by side, which picking it up drags
-/// `payload` to resize them: with `islands`, the glass between them, a gutter wide; on the one
-/// card, a hairline, grabbed a few pixels either side.
+/// `payload` to resize them, then `after`, the part after it. With islands it's the glass between
+/// them, a gutter wide. On the one card it's a hairline, picked up a few pixels either side by a
+/// handle drawn last in `after`, so over both parts. A page beside it (`next_to_page`) is a native
+/// view over all the window draws but its overlays, so the handle is among those then
+/// (`deferred`), and the window builds the shell that draws it whenever a view in it changes.
+/// The handle drawn in place holds only while no native glass reaches within [`HANDLE_REACH`] of a
+/// pane edge.
 pub fn seam<T: Clone + 'static>(
     id: impl Into<SharedString>,
     row: bool,
     payload: T,
-    p: Palette,
-    islands: bool,
-) -> AnyElement {
+    next_to_page: bool,
+    after: Div,
+    cx: &App,
+) -> [AnyElement; 2] {
     let id = id.into();
-    if islands {
-        band(id.clone(), id, row, payload, super::GUTTER).into_any_element()
-    } else {
-        hairline(id.clone(), id, row, payload, p).into_any_element()
+    if islands(cx) {
+        let band = band(id.clone(), id, row, payload, super::GUTTER);
+        return [band.into_any_element(), after.into_any_element()];
     }
+    let line = div().flex_shrink_0().bg(super::palette(cx).hairline);
+    let line = if row {
+        line.w(px(LINE)).h_full()
+    } else {
+        line.h(px(LINE)).w_full()
+    };
+    let handle = handle(id, row, payload);
+    let handle = if next_to_page {
+        deferred(handle).into_any_element()
+    } else {
+        handle.into_any_element()
+    };
+    [
+        line.into_any_element(),
+        after.child(handle).into_any_element(),
+    ]
 }
 
 /// How thick the divider between two parts is, and its grip: how long, how thick.
@@ -152,20 +178,12 @@ fn band<T: Clone + 'static>(
         .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
 }
 
-/// The line between two parts on the one card, `row` when they sit side by side, picked up a
-/// few pixels either side of it to drag `payload`. The part picked up is among the window's
-/// overlays, so the parts either side, drawn after it, don't hide the part of it that reaches
-/// over them.
-fn hairline<T: Clone + 'static>(
-    id: impl Into<ElementId>,
-    selector: SharedString,
-    row: bool,
-    payload: T,
-    p: Palette,
-) -> Div {
-    let handle = div()
-        .id(id)
-        .debug_selector(move || selector.to_string())
+/// What picks up a seam's line, in the part after it, reaching [`HANDLE_REACH`] over each part.
+fn handle<T: Clone + 'static>(id: SharedString, row: bool, payload: T) -> Stateful<Div> {
+    let (start, thickness) = (-(HANDLE_REACH + LINE), 2. * HANDLE_REACH + LINE);
+    div()
+        .id(id.clone())
+        .debug_selector(move || id.to_string())
         .absolute()
         .occlude()
         .map(|handle| {
@@ -173,23 +191,17 @@ fn hairline<T: Clone + 'static>(
                 handle
                     .top_0()
                     .bottom_0()
-                    .left(px(-6.))
-                    .w(px(13.))
+                    .left(px(start))
+                    .w(px(thickness))
                     .cursor_col_resize()
             } else {
                 handle
                     .left_0()
                     .right_0()
-                    .top(px(-6.))
-                    .h(px(13.))
+                    .top(px(start))
+                    .h(px(thickness))
                     .cursor_row_resize()
             }
         })
-        .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView));
-    let line = div().flex_shrink_0().relative().bg(p.hairline);
-    if row {
-        line.w(px(1.)).h_full().child(deferred(handle))
-    } else {
-        line.h(px(1.)).w_full().child(deferred(handle))
-    }
+        .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
 }

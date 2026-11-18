@@ -3,12 +3,14 @@
 //! must be sent, in order. Positions are UTF-16, on lines where that differs from both bytes
 //! and characters.
 
+mod budget;
 mod completions;
 mod inlay_hints;
 mod lifecycle;
 mod locations;
 mod rename;
 mod semantic;
+mod sleep;
 mod support;
 mod symbols;
 

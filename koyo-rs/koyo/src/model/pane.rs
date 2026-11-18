@@ -120,10 +120,8 @@ impl Pane {
         }
     }
 
-    /// What the pane's content adds to its header: a device's standing and buttons. Kept in
-    /// the pane as the title is, said by the view when it changes ([`Pane::set_bar`]), so the
-    /// window doesn't read the view as it draws: it would draw again with each of the device's
-    /// pictures.
+    /// What the pane's content adds to its header: a device's standing and buttons, as the
+    /// view last said ([`Pane::set_bar`]).
     pub fn bar(&self) -> Option<AnyView> {
         match &self.page {
             Some(Page::Device(device)) => device.bar.clone(),
@@ -145,7 +143,7 @@ impl Pane {
         Pane {
             title: shown.title().into(),
             by_agent: shown.by() == crate::browser::profiles::By::Agent,
-            page: Some(Page::Made(view)),
+            page: Some(Page::Made(Box::new(Made::of(view, cx)))),
             ..Pane::new(PaneKind::Browser)
         }
     }
@@ -169,14 +167,38 @@ impl Pane {
     /// The page a browser pane shows, once it's made.
     pub fn view(&self) -> Option<&Entity<BrowserView>> {
         match &self.page {
-            Some(Page::Made(view)) => Some(view),
+            Some(Page::Made(made)) => Some(&made.view),
+            Some(Page::Unloaded(_) | Page::Desktop(_) | Page::Device(_)) | None => None,
+        }
+    }
+
+    /// The page the window's own controls act on for a browser pane: its own, or the one its
+    /// `DevTools` inspect (`Shell::shown_page`).
+    pub fn steered_page(&self) -> Option<&Entity<BrowserView>> {
+        match &self.page {
+            Some(Page::Made(made)) => Some(made.inspected.as_ref().unwrap_or(&made.view)),
             Some(Page::Unloaded(_) | Page::Desktop(_) | Page::Device(_)) | None => None,
         }
     }
 
     /// The pane shows `view` from now on, and no longer holds an address to open.
-    pub fn set_view(&mut self, view: Entity<BrowserView>) {
-        self.page = Some(Page::Made(view));
+    pub fn set_view(&mut self, view: Entity<BrowserView>, cx: &App) {
+        self.page = Some(Page::Made(Box::new(Made::of(view, cx))));
+    }
+
+    /// A browser pane's title, address and icon follow its page's (`BrowserEvent::Changed`):
+    /// whether any of them changed.
+    pub fn follow_page(&mut self, cx: &App) -> bool {
+        let Some(Page::Made(made)) = &mut self.page else {
+            return false;
+        };
+        let now = Made::of(made.view.clone(), cx);
+        let title = now.view.read(cx).title();
+        if **made == now && *self.title == *title {
+            return false;
+        }
+        (**made, self.title) = (now, title.into());
+        true
     }
 
     /// A browser pane's page is closed: it holds what it opens once its tab is shown again, as
@@ -195,24 +217,24 @@ impl Pane {
 
     /// The address a browser pane shows, or opens once its tab is shown; `None` for another
     /// kind.
-    pub fn address(&self, cx: &App) -> Option<String> {
+    pub fn address(&self) -> Option<&str> {
         match &self.page {
-            Some(Page::Made(view)) => Some(view.read(cx).address()),
-            Some(Page::Unloaded(unloaded)) => Some(unloaded.address.clone()),
+            Some(Page::Made(made)) => Some(&made.address),
+            Some(Page::Unloaded(unloaded)) => Some(&unloaded.address),
             Some(Page::Desktop(_) | Page::Device(_)) | None => None,
         }
     }
 
     /// Whether it's a browser pane showing another page's `DevTools`.
-    pub fn is_inspector(&self, cx: &App) -> bool {
-        self.view().is_some_and(|view| view.read(cx).is_inspector())
+    pub fn is_inspector(&self) -> bool {
+        matches!(&self.page, Some(Page::Made(made)) if made.inspected.is_some())
     }
 
     /// The image a pane's tab shows for its icon: a browser pane's site's, its page's or the
     /// one kept for its address while it has no view; a chat's, Claude's logo in its colour.
-    pub fn favicon(&self, cx: &App) -> Option<Arc<Image>> {
+    pub fn favicon(&self) -> Option<Arc<Image>> {
         match &self.page {
-            Some(Page::Made(view)) => view.read(cx).favicon(),
+            Some(Page::Made(made)) => made.favicon.clone(),
             Some(Page::Unloaded(unloaded)) => unloaded.favicon.clone(),
             Some(Page::Desktop(_) | Page::Device(_)) => None,
             None => (self.kind == PaneKind::Chat).then(|| Arc::clone(&CLAUDE)),
@@ -252,11 +274,37 @@ impl Device {
     }
 }
 
+/// A browser pane's page, made, and what its tab shows of it beside the title, as the view
+/// last said (`Pane::follow_page`): its address (`BrowserView::address`) and its icon.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Made {
+    view: Entity<BrowserView>,
+    /// The page the view's `DevTools` inspect, when it's theirs.
+    inspected: Option<Entity<BrowserView>>,
+    address: String,
+    favicon: Option<Arc<Image>>,
+}
+
+impl Made {
+    fn of(view: Entity<BrowserView>, cx: &App) -> Self {
+        let page = view.read(cx);
+        let (inspected, address, favicon) =
+            (page.inspected().cloned(), page.address(), page.favicon());
+        Made {
+            view,
+            inspected,
+            address,
+            favicon,
+        }
+    }
+}
+
 /// A browser pane's page: made, or what it opens once its tab is shown, never both. Or, in
 /// the agent desktop's pane, its view; in a device's pane, the device's view.
 #[derive(Clone, Debug)]
 pub(super) enum Page {
-    Made(Entity<BrowserView>),
+    /// Boxed, as it keeps a pane small.
+    Made(Box<Made>),
     Desktop(Entity<DeskView>),
     /// Boxed, as few panes are a device's.
     Device(Box<Device>),

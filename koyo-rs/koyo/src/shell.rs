@@ -5,35 +5,37 @@
 use std::rc::Rc;
 
 use gpui_kit::component::Theme;
-use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
-    Point, Render, Styled, Subscription, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
+    SharedString, Styled, Subscription, Window, div, px,
 };
 
 use crate::bottom::StatusBar;
 use crate::chat::ChatTabs;
 use crate::files::Locations;
 use crate::language::ServersListed;
-use crate::model::{PaneKind, Workspace};
+use crate::model::{PaneKind, Tab, Workspace};
 use crate::navigation::{NavigationHistory, OpenSettings, Route};
 use crate::right_panel::RightPanel;
 use crate::settings::{self, Layout};
-use crate::settings_view::SettingsPage::{Accounts, AgentDesktop};
 use crate::settings_view::{self, SettingsSidebar};
-use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
+use crate::sidebar::{SidebarFrame, slide_out};
 use crate::theme::Palette;
 use crate::theme::card::{island, part};
-use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
+use crate::{arc, backdrop, bottom, gradient, keyboard, orca, picker, theme};
 
 mod actions;
 mod browser_tabs;
+#[cfg(test)]
+mod budget;
 mod closing;
 mod device_tabs;
+mod edges;
 mod elements;
+mod gone;
 mod kept;
 mod keys;
 mod loose;
@@ -44,6 +46,7 @@ mod rails;
 mod reopen;
 mod reorder;
 mod shown_page;
+mod sight;
 mod splits;
 mod state;
 mod switcher;
@@ -59,10 +62,11 @@ pub use actions::{
 pub use actions::{NewTerminal, StopTerminal};
 #[cfg(all(target_os = "macos", feature = "visual-check"))]
 pub use switcher::visual::run as check_switcher;
+use elements::{SearchField, Searched};
 use elements::drag_area;
 pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,
-    no_matches, project_error, row, search_field, section_label, solid, tab_close_button,
+    no_matches, project_error, row, section_label, solid, tab_close_button,
 };
 pub use kept::KeptWindow;
 pub(crate) use one_tab::Place;
@@ -77,6 +81,8 @@ pub struct Shell {
     settings_sidebar: Entity<SettingsSidebar>,
     /// Closed, the window is in compact mode: the rails fold away with the sidebar.
     sidebar_open: bool,
+    /// The sidebar's width while its edge is dragged, before it's saved.
+    sidebar_dragged: Option<f32>,
     rails: rails::Rails,
     /// The selected checkout's changes or files, beside the chat.
     pub right_panel: RightPanel,
@@ -94,13 +100,17 @@ pub struct Shell {
     pub focus: FocusHandle,
     /// What's still to happen to the keyboard, which only the person moves (`keys`).
     keys: keys::Handing,
-    /// What the sidebar's search field narrows its worktrees to.
-    pub search: Entity<InputState>,
+    /// The sidebar's search field.
+    pub(crate) search: Entity<SearchField>,
+    /// What the search field holds, which narrows the sidebar's worktrees.
+    query: SharedString,
     /// Where the rails or the Arc sidebar were last right-clicked, for the theme picker their
     /// menu opens.
     pub(crate) rails_menu_at: Point<Pixels>,
     /// The tile or space dot in the Arc sidebar under the pointer, and its card.
     pub(crate) arc_hover: arc::Hover,
+    /// The Arc sidebar's controls and address bar for the page shown.
+    pub(crate) arc_top: arc::Top,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
     /// The worktree being dragged among its project's in the Arc sidebar.
@@ -111,6 +121,8 @@ pub struct Shell {
     pub pinned_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
+    /// What the walks that let go of what's gone went by when they last ran (`gone`).
+    let_go_at: gone::Keys,
     _subscriptions: [Subscription; 13],
 }
 
@@ -120,11 +132,7 @@ impl Shell {
         window.focus(&focus, cx);
         let history = cx.new(|_| NavigationHistory::new());
         let settings_sidebar = cx.new(|cx| SettingsSidebar::new(history.clone(), window, cx));
-        let search = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Search")
-                .clean_on_escape()
-        });
+        let search = cx.new(|cx| SearchField::new(window, cx));
         let chat_tabs = ChatTabs::new(cx);
         let kept = KeptWindow::new(cx);
         let status_bar = StatusBar::new(cx);
@@ -134,37 +142,46 @@ impl Shell {
                 crate::browser::fullscreen::window_resized(window, cx);
             }),
             cx.observe(&history, |this, _, cx| this.went(cx)),
+            cx.observe_window_visibility(window, |this, visibility, window, cx| {
+                this.tell_sight(window, cx);
+                if visibility.is_visible() {
+                    window.refresh();
+                    crate::chat_backdrop::look_again(cx);
+                }
+            }),
             cx.observe_window_activation(window, |this, window, cx| {
-                crate::keyboard::key(window, cx);
+                keyboard::follow_focus(window, cx);
+                keyboard::key_state(window);
                 if window.is_window_active() {
                     this.reload_projects(cx);
                     crate::accounts::window_activated(cx);
+                    settings::came_to_front(cx);
                 }
             }),
-            cx.subscribe(&search, |_, _, event, cx| {
-                if let InputEvent::Change = event {
-                    cx.notify();
-                }
+            cx.subscribe(&search, |this, _, Searched(query), cx| {
+                this.searched(query.clone(), cx);
             }),
             cx.observe_in(&cx.entity(), window, |this, _, window, cx| {
                 this.workspace.stamp_shown();
                 this.follow_space(cx);
+                this.let_go_of_what_is_gone(cx);
                 this.follow_selection(window, cx);
                 this.make_shown_editors(window, cx);
-                this.terminals.retain(&this.workspace);
-                this.chat_tabs.retain(&this.workspace, cx);
-                pictures::retain(&this.workspace, cx);
                 this.keep_window(cx);
+                this.tell_arc_top(cx);
                 let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
                 let showing = (this.route(cx), Self::layout(cx), this.sidebar_open, pane);
                 crate::popup::showing(window.window_handle(), &showing, cx);
             }),
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
+            cx.on_focus_in(&focus, window, |_, window, cx| keyboard::follow_focus(window, cx)),
             settings::on_change(cx, Self::settings_changed),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
-            settings_view::redraws_while_shown(AgentDesktop, &crate::agent_desktop::desk(cx), cx),
-            settings_view::redraws_while_shown(Accounts, &crate::accounts::accounts(cx), cx),
-            settings_view::redraws_while_shown(settings_view::SettingsPage::Devices, &crate::devices::devices(cx), cx),
+            crate::browser::profiles::on_change(cx, |this, cx| {
+                if this.route(cx) == Route::Settings(settings_view::SettingsPage::Browser) {
+                    cx.notify();
+                }
+            }),
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
                 this.rails.servers = *any;
                 cx.notify();
@@ -178,6 +195,7 @@ impl Shell {
             history,
             settings_sidebar,
             sidebar_open: settings::get(cx).sidebar_open_on_launch,
+            sidebar_dragged: None,
             rails: rails::Rails::default(),
             right_panel: RightPanel::default(),
             bottom_panel_open: false,
@@ -189,19 +207,23 @@ impl Shell {
             swipe: arc::Swipe::default(),
             focus,
             search,
+            query: SharedString::default(),
             rails_menu_at: Point::default(),
             arc_hover: arc::Hover::default(),
+            arc_top: arc::Top::new(cx),
             tab_hand: Rc::default(),
             worktree_hand: Rc::default(),
             tile_hand: Rc::default(),
             pinned_hand: Rc::default(),
             locations: None,
+            let_go_at: gone::Keys::default(),
             _subscriptions,
         };
         shell.restore_pages(cx);
         shell.show_space(settings::get(cx).space, cx);
         shell.reload_projects(cx);
         shell.terminals.tell_theme(cx);
+        shell.tell_arc_top(cx);
         shell
     }
 
@@ -270,17 +292,6 @@ impl Shell {
         self.navigate(Route::Workspace, cx);
     }
 
-    fn resize_sidebar(
-        &mut self,
-        event: &DragMoveEvent<SidebarResize>,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let width = (event.event.position.x.as_f32() - theme::GUTTER)
-            .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH);
-        settings::update(cx, |settings| settings.sidebar_width = width);
-    }
-
     fn show_rails_menu(
         &mut self,
         event: &MouseDownEvent,
@@ -309,7 +320,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let frame = SidebarFrame::new(layout, settings::get(cx).sidebar_width());
+        let frame = SidebarFrame::new(layout, self.sidebar_width(cx));
         match (route, layout) {
             (Route::Settings(_), _) => frame.child(self.settings_sidebar.clone()),
             (Route::Workspace, Layout::Orca) => frame.child(orca::sidebar(self, cx)),
@@ -414,12 +425,13 @@ impl Render for Shell {
             .map(|root| Self::handle_actions(root, cx))
             .size_full();
         self.keys_follow_route(route, window, cx);
+        self.tell_sight(window, cx);
         if let Some(page) = crate::browser::fullscreen::settle(window, cx) {
             return root.bg(gpui_kit::black()).child(page).into_any_element();
         }
         self.step_swipe(window, cx);
         let p = theme::palette(cx);
-        let width = settings::get(cx).sidebar_width();
+        let width = self.sidebar_width(cx);
         let shown = self.move_rails(window, cx);
         let sidebar = (shown.open.0 > 0.)
             .then(|| slide_out(self.sidebar(route, layout, window, cx), width, shown.open.0));
@@ -429,8 +441,9 @@ impl Render for Shell {
         };
         let islands = theme::card::islands(cx);
         let on_workspace = route == Route::Workspace;
-        let beside = rails::left_of_chat(self.sidebar_open, cx);
-        let right_panel = (self.right_panel).render(on_workspace, beside, window, cx);
+        let beside = rails::left_of_chat(self.sidebar_open, width);
+        let next_to_page = self.workspace.tab_shown().is_some_and(Tab::shows_page);
+        let right_panel = (self.right_panel).render(on_workspace, beside, next_to_page, window, cx);
         let main = self.main(route, layout, window, cx);
         let card = if islands { div() } else { island(p) }
             .debug_selector(|| "shell-card".to_owned())

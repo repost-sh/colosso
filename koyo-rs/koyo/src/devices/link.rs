@@ -3,7 +3,7 @@
 //! answered by id, the person's input passed on. Restarted as the browser's host is: once more
 //! if it failed to start, and again when it stops, unless it stopped three times in a minute.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt as _;
@@ -17,6 +17,7 @@ use koyo_device_wire::{
 use super::host::{self, Incoming};
 use super::picture::Picture;
 use crate::browser::control::{Control, Mode};
+use crate::sight::{Showable, ShownBy};
 
 #[cfg(any(test, feature = "visual-check"))]
 mod testing;
@@ -74,7 +75,7 @@ pub struct Link {
     pub control: Control,
     pub(super) lapse: Option<(Instant, Task<()>)>,
     pub(super) rest: Option<(Instant, Task<()>)>,
-    shown_by: HashSet<EntityId>,
+    shown_by: ShownBy,
     /// The tabs showing it: the host ends when the last of them closes.
     tabs: usize,
     /// How many times it was started or stopped: a start knows by it whether it still counts.
@@ -107,7 +108,7 @@ impl Link {
             control: Control::default(),
             lapse: None,
             rest: None,
-            shown_by: HashSet::new(),
+            shown_by: ShownBy::default(),
             tabs: 0,
             starts: 0,
             failed_starts: 0,
@@ -239,7 +240,7 @@ impl Link {
     /// Uses `running` as this device's host: told whether a tab draws it, and what waited.
     pub(super) fn use_host(&mut self, running: host::Running, cx: &mut Context<Self>) {
         log::info!("{}'s host runs as process {}", self.name, running.pid);
-        let visible = !self.shown_by.is_empty();
+        let visible = self.shown_by.any();
         let _ = running.tell.send(ToHost::Visible { visible });
         for message in std::mem::take(&mut self.queued) {
             let _ = running.tell.send(message);
@@ -439,21 +440,6 @@ impl Link {
         self.tell(ToHost::Input { input });
     }
 
-    /// A tab started or stopped drawing the device: its frames are kept current only then, or
-    /// while an agent is at work on it.
-    pub fn set_shown_by(&mut self, tab: EntityId, shown: bool) {
-        let was = !self.shown_by.is_empty();
-        if shown {
-            self.shown_by.insert(tab);
-        } else {
-            self.shown_by.remove(&tab);
-        }
-        let visible = !self.shown_by.is_empty();
-        if visible != was {
-            self.tell(ToHost::Visible { visible });
-        }
-    }
-
     /// Asks the host and waits up to `limit` for the answer; a host that isn't running refuses
     /// at once, and one that runs out of time is told to drop the ask.
     pub fn ask(&mut self, ask: Ask, limit: Duration, cx: &mut Context<Self>) -> Task<Result<Answer, Refusal>> {
@@ -482,5 +468,15 @@ impl Link {
                 }
             }
         })
+    }
+}
+
+impl Showable for Link {
+    /// A tab started or stopped drawing the device in a window seen: its frames are kept current
+    /// only then, or while an agent is at work on it.
+    fn set_shown_by(&mut self, tab: EntityId, shown: bool) {
+        if let Some(visible) = self.shown_by.set(tab, shown) {
+            self.tell(ToHost::Visible { visible });
+        }
     }
 }

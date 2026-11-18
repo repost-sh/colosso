@@ -17,6 +17,7 @@
 //!   front: the person went to another window, another app or another Space.
 //! - Its edge is worked out again once its first frames are in, and a panel can fit what it holds
 //!   as that changes, keeping the corner it opened from ([`fit`]).
+//! - It's drawn again as the settings change, as the shell is: it's in the theme's colours.
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -95,7 +96,8 @@ struct Up {
     /// The window it floats over.
     over: AnyWindowHandle,
     source: Option<Source>,
-    /// Its watch on its own window and the window under it: held here, so they go as it does.
+    /// Its watch on the settings, its own window and the window under it: held here, so they go
+    /// as it does.
     _watching: Vec<Subscription>,
     /// The look, once activation settles, at whether the person has left it: the latest
     /// replaces the one before.
@@ -158,6 +160,7 @@ pub fn open<V: Render>(
         crate::native::window::float_on_its_space(window);
         crate::keyboard::opened_over(window, over);
         cx.new(|cx| {
+            watching.push(crate::settings::observe(cx));
             if !kept {
                 let popup = window.window_handle();
                 let left = move |_: &mut V, _: &mut Window, cx: &mut Context<V>| {
@@ -289,13 +292,18 @@ pub fn pressed(over: AnyWindowHandle, position: Point<Pixels>, cx: &mut App) {
 }
 
 /// The window `over` shows `what` now: if that's changed since it last said, the floating windows
-/// over it go, but a dialog.
+/// over it go, but a dialog. It's noted only when it changed: a write to what's up draws again
+/// every view that reads it, as a menu's trigger does.
 pub fn showing(over: AnyWindowHandle, what: &impl Hash, cx: &mut App) {
     let mut hasher = DefaultHasher::new();
     what.hash(&mut hasher);
     let now = hasher.finish();
-    let before = cx.default_global::<Popups>().showing.insert(over, now);
-    if before.is_some_and(|before| before != now) {
+    let before = (cx.try_global::<Popups>()).and_then(|popups| popups.showing.get(&over).copied());
+    if before == Some(now) {
+        return;
+    }
+    cx.default_global::<Popups>().showing.insert(over, now);
+    if before.is_some() {
         close_over(over, |kind, _| !kind.is_task(), cx);
     }
 }

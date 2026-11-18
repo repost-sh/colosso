@@ -51,6 +51,16 @@ fn filling(page: &WeakEntity<BrowserView>, cx: &App) -> Option<Entity<BrowserVie
     (page.upgrade()).filter(|page| page.read(cx).fullscreen == Fullscreen::Screen)
 }
 
+/// Whether a page fills the window full screen, which then shows it alone ([`settle`]). Read as
+/// `settle` reads it, untracked, so a view that asks as it's drawn isn't drawn again for it.
+pub fn fills_window(cx: &mut App) -> bool {
+    let page = match cx.default_global::<OnScreen>() {
+        OnScreen::Asked(page) | OnScreen::Shown { page, .. } => page.clone(),
+        OnScreen::None => return false,
+    };
+    filling(&page, cx).is_some()
+}
+
 /// The page full screen on the whole screen, if one is, which the window then shows alone, as
 /// the shell draws it: the window goes full screen for the page as it starts, focused on it,
 /// and comes out once the page has left, closed or not, if the app put it in.
@@ -124,6 +134,10 @@ impl BrowserView {
             Fullscreen::Pane
         };
         cx.notify();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the shell settles the window's full screen as it draws, reading where a page's is untracked"
+        )]
         cx.refresh_windows();
     }
 

@@ -133,12 +133,10 @@ fn orca_strip_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestApp
     }
 }
 
-#[gpui_kit::test]
-fn a_chat_shows_claudes_logo_as_a_page_shows_its_own(cx: &mut TestAppContext) {
-    let (chat, terminal) = cx.update(|cx| {
-        let face = |kind| Pane::new(kind).favicon(cx).is_some();
-        (face(PaneKind::Chat), face(PaneKind::Terminal))
-    });
+#[test]
+fn a_chat_shows_claudes_logo_as_a_page_shows_its_own() {
+    let face = |kind| Pane::new(kind).favicon().is_some();
+    let (chat, terminal) = (face(PaneKind::Chat), face(PaneKind::Terminal));
     assert!(chat, "Claude's logo");
     assert!(!terminal, "its kind's icon");
 }

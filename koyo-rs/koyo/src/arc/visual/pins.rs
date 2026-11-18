@@ -92,7 +92,7 @@ fn pinned(drawn: &Drawn) -> (Vec<String>, Option<usize>) {
 fn showing(drawn: &Drawn) -> String {
     drawn.cx.read(|cx| {
         let shell = drawn.shell.read(cx);
-        let said = crate::arc::top::said(shell, cx).0;
+        let said = crate::arc::top::said(shell, shell.shown_page(cx).as_ref(), cx).0;
         let page = (shell.workspace.tab_shown()).map(|tab| tab.first().title.to_string());
         let project = (shell.workspace.project()).map(|project| project.name.to_string());
         let space = settings::get(cx).space;

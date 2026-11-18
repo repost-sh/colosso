@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use gpui_kit::{App, Context};
+use gpui_kit::Context;
 use serde::{Deserialize, Serialize};
 
 use crate::browser;
@@ -41,14 +41,14 @@ pub struct KeptSpace {
 impl Shell {
     /// Each space's loose pages as they're kept: as their panes show them. Not a space with
     /// none.
-    pub(super) fn kept_spaces(&self, cx: &App) -> Vec<KeptSpace> {
+    pub(super) fn kept_spaces(&self) -> Vec<KeptSpace> {
         (self.workspace.loose_by_space())
             .filter(|(_, pages, _)| !pages.is_empty())
             .map(|(space, pages, shown)| {
                 let tabs = pages.iter().map(|page| {
                     let pane = page.tab.first();
                     KeptLoose {
-                        url: pane.address(cx).unwrap_or_default(),
+                        url: pane.address().unwrap_or_default().to_owned(),
                         title: pane.title.to_string(),
                         project: page.project.clone(),
                     }

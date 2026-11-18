@@ -21,7 +21,7 @@ use crate::test_support::{click, draw, open_page};
 fn loose(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
     cx.read(|cx| {
         (shell.read(cx).workspace.loose().iter())
-            .map(|page| page.tab.first().address(cx).unwrap_or_default())
+            .map(|page| page.tab.first().address().unwrap_or_default().to_owned())
             .collect()
     })
 }
@@ -30,8 +30,8 @@ fn loose(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
 fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
     cx.read(|cx| {
         let workspace = &shell.read(cx).workspace;
-        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address(cx));
-        (address, workspace.loose_shown().is_some())
+        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
+        (address.map(str::to_owned), workspace.loose_shown().is_some())
     })
 }
 
@@ -66,8 +66,7 @@ fn a_page_opened_where_no_project_is_shown_is_a_loose_page_of_that_space(cx: &mu
         (Some("https://example.org/inbox".into()), true)
     );
     assert!(drawn(window, "arc-loose-0", cx).is_some(), "its row");
-    let said = cx.read(|cx| crate::arc::top::said(shell.read(cx), cx).0.to_string());
-    assert_eq!(said, "example.org");
+    assert_eq!(super::said(&shell, cx), "example.org");
     let profile = cx.read(|cx| shell.read(cx).workspace.loose()[0].project.clone());
     assert_eq!(profile, std::path::Path::new(crate::browser::NO_PROJECT));
     open_page(window, &shell, Some("https://example.org/next"), cx);
@@ -228,11 +227,11 @@ fn a_pinned_or_a_loose_page_is_copied_into_the_selected_worktree_from_its_menu(
         cx.read(|cx| {
             let unit = &shell.read(cx).workspace.projects[0].branches[0];
             (unit.tabs.iter())
-                .map(|tab| tab.first().address(cx).unwrap_or_default())
+                .map(|tab| tab.first().address().unwrap_or_default().to_owned())
                 .collect::<Vec<_>>()
         })
     };
-    let menu = |cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), pinned, cx));
+    let menu = |cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), pinned));
     assert!(tabs(cx).is_empty());
     assert!(menu(cx).worktree, "a worktree is selected to copy into");
 

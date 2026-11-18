@@ -10,7 +10,7 @@ use super::{Kind, Launcher, kind, launch, launch_with, shell};
 use crate::browser::BrowserView;
 use crate::files::tests::{dialog, press, tabs};
 use crate::history;
-use crate::model::{Edge, PaneKind};
+use crate::model::{Edge, Pane, PaneKind};
 use crate::settings::{self, Layout};
 use crate::shell::Shell;
 use crate::test_support::{click_pane, draw, open_page};
@@ -225,7 +225,8 @@ fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) 
     let addresses: Vec<String> = cx.read(|cx| {
         let tab = shell.read(cx).workspace.tab_shown().expect("the split");
         (tab.panes().into_iter())
-            .filter_map(|pane| pane.address(cx))
+            .filter_map(Pane::address)
+            .map(str::to_owned)
             .collect()
     });
     assert_eq!(

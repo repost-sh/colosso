@@ -61,11 +61,14 @@ a page's history, and give it no keyboard.
 GPUI tells a page its focus left only in a frame that follows one drawn with the window key. A
 move made while the window wasn't, as by the very press that makes it key again (back from the
 launcher or another app, on the composer), is told nothing of, and the page would hold on with
-GPUI's focus elsewhere. So a page holds only while GPUI's focus is its view's: as the window
-becomes key, and as each frame of the shell is drawn (every frame after a focus move is), a page
-whose view hasn't GPUI's focus has the keyboard go to GPUI's view, with "focus moved"
-(`keyboard::follow_focus`). Whether the window is key is read again then too, so a change the
-holders missed is made up.
+GPUI's focus elsewhere. So a page holds only while GPUI's focus is its view's. As the window
+becomes key, and as GPUI's focus comes into the shell's root, a page whose view hasn't GPUI's
+focus has the keyboard go to GPUI's view, with "focus moved" (`keyboard::follow_focus`). The
+second is the very frame whose move the page isn't told of: GPUI takes the frame before, drawn
+while the window wasn't key, to have had no focus, so its focus comes into the root in the next.
+That is not read as the shell draws, so a page's own frames never draw the shell. Whether the
+window is key is told again as each frame of the shell is drawn, so a change the holders missed is
+made up.
 
 ### 3.1 What the person asks for
 

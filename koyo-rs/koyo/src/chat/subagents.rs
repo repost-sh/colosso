@@ -2,7 +2,6 @@
 //! for how long, opening on its own chat; subagents one after the other under one line that says
 //! how they're doing, open as long as any of them runs.
 
-use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
@@ -13,7 +12,7 @@ use koyo_agent::replica::Replica;
 use koyo_agent::timeline::RowId;
 use koyo_agent::words::{subagent_line, subagent_status, subagent_used};
 
-use super::rows::{Drawing, SHIMMER_FPS, chevron, disclosure};
+use super::rows::{Drawing, chevron, disclosure, shimmer};
 use super::timeline::OpenSubagent;
 use crate::shell::ellipsized;
 use crate::theme::Palette;
@@ -45,7 +44,7 @@ pub(super) fn group(
             _ => None,
         })
         .collect();
-    let moving = replica.live().is_some();
+    let moving = drawing.in_front && replica.live().is_some();
     match agents.as_slice() {
         [(item, agent)] => card(drawing, item, agent, moving).into_any_element(),
         several => line(drawing, several, moving, id, index).into_any_element(),
@@ -187,13 +186,7 @@ fn detail(item: &Item, agent: &Subagent, moving: bool, p: Palette) -> Option<Div
             .unwrap_or_else(|| "Working…".to_owned());
         let used = agent.usage.as_ref().map(subagent_used);
         let says = used.map_or_else(|| doing.clone(), |used| format!("{doing} · {used}"));
-        if moving {
-            ShimmerText::new(says)
-                .max_fps(SHIMMER_FPS)
-                .into_any_element()
-        } else {
-            says.into_any_element()
-        }
+        shimmer(says, moving)
     } else {
         let said = agent
             .summary

@@ -29,6 +29,21 @@ impl BrowserView {
         cx.emit(BrowserEvent::Changed);
         cx.notify();
     }
+
+    /// The page is at `url`, showing the icon at `icon` once it's fetched, or none: as the host
+    /// says, for tests outside the browser.
+    #[cfg(test)]
+    pub(crate) fn pretend_page(&mut self, url: &str, icon: Option<&str>, cx: &mut Context<Self>) {
+        let page = koyo_browser_ipc::PageState {
+            url: url.into(),
+            favicon: icon.unwrap_or_default().into(),
+            ..koyo_browser_ipc::PageState::default()
+        };
+        self.page_changed(page, cx);
+        if let Some(icon) = icon {
+            self.favicon_fetched(icon, vec![1], cx);
+        }
+    }
 }
 
 #[cfg(test)]

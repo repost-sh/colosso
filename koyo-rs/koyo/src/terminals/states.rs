@@ -59,6 +59,17 @@ pub struct Takeover {
     pub at: Instant,
 }
 
+/// What an event changed of what the window shows of the terminals.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change {
+    /// Nothing shown: a name, or a status said again.
+    Nothing,
+    /// The terminal's tab and the bar over its pane.
+    Terminal,
+    /// A checkout's counts too: a terminal came or went, or began or stopped waiting.
+    Counts,
+}
+
 #[derive(Default)]
 pub struct States {
     by_handle: HashMap<Handle, State>,
@@ -83,25 +94,38 @@ impl States {
             .collect();
     }
 
-    /// Takes in what the daemon said; whether anything shown changed.
-    pub fn apply(&mut self, event: &Event) -> bool {
+    /// Takes in what the daemon said: what it changed of what the window shows.
+    pub fn apply(&mut self, event: &Event) -> Change {
         if let EventKind::Opened { terminal } = &event.kind {
             self.by_handle
                 .insert(event.handle.clone(), State::of(terminal));
-            return true;
+            return Change::Counts;
         }
         if matches!(event.kind, EventKind::Closed) {
-            return self.by_handle.remove(&event.handle).is_some();
+            let gone = self.by_handle.remove(&event.handle);
+            return gone.map_or(Change::Nothing, |_| Change::Counts);
         }
         let Some(state) = self.by_handle.get_mut(&event.handle) else {
-            return false;
+            return Change::Nothing;
         };
         match &event.kind {
             EventKind::Status { status, reason, .. } => {
+                if (state.status, &state.reason) == (*status, reason) {
+                    return Change::Nothing;
+                }
+                let change = if waits(state.status) == waits(*status) {
+                    Change::Terminal
+                } else {
+                    Change::Counts
+                };
                 state.status = *status;
                 reason.clone_into(&mut state.reason);
+                change
             }
-            EventKind::Renamed { name, .. } => name.clone_into(&mut state.name),
+            EventKind::Renamed { name, .. } => {
+                name.clone_into(&mut state.name);
+                Change::Nothing
+            }
             EventKind::Control { change, control } => {
                 let before = state.agent().map(|agent| agent.label.clone());
                 state.control = control.clone();
@@ -116,10 +140,10 @@ impl States {
                         .take()
                         .filter(|shown| shown.handle != event.handle),
                 };
+                Change::Terminal
             }
-            _ => return false,
+            _ => Change::Nothing,
         }
-        true
     }
 
     /// The takeover notice for `handle`, while it's up.
@@ -148,11 +172,14 @@ impl States {
     /// How many terminals of the checkout at `worktree` wait for the person.
     pub fn needing_input(&self, worktree: &Path) -> usize {
         (self.by_handle.values())
-            .filter(|state| {
-                state.status == Status::NeedsInput && state.worktree.as_deref() == Some(worktree)
-            })
+            .filter(|state| waits(state.status) && state.worktree.as_deref() == Some(worktree))
             .count()
     }
+}
+
+/// Whether a terminal at `status` waits for the person.
+pub fn waits(status: Status) -> bool {
+    status == Status::NeedsInput
 }
 
 /// Of several statuses, the one a tab's dot shows: what needs the person first, then what's
@@ -171,6 +198,7 @@ pub fn most_urgent(statuses: impl IntoIterator<Item = Status>) -> Option<Status>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::status_event;
 
     #[test]
     fn a_tab_shows_what_needs_the_person_before_what_runs() {
@@ -188,7 +216,23 @@ mod tests {
             handle: Handle("term_unknown".into()),
             kind: EventKind::Bell,
         };
-        assert!(!states.apply(&event));
+        assert_eq!(states.apply(&event), Change::Nothing);
+    }
+
+    #[test]
+    fn a_status_said_again_changes_nothing_and_waiting_changes_the_counts() {
+        let mut states = States::default();
+        states.reset([crate::test_support::terminal_record(
+            "zsh",
+            "/w/feat",
+            Status::Idle,
+            "prompt",
+        )]);
+        let mut told = |status, reason| states.apply(&status_event("zsh", status, reason));
+        assert_eq!(told(Status::Idle, "prompt"), Change::Nothing);
+        assert_eq!(told(Status::Running, "make"), Change::Terminal);
+        assert_eq!(told(Status::NeedsInput, "bell"), Change::Counts);
+        assert_eq!(told(Status::Idle, "prompt"), Change::Counts);
     }
 
     #[test]
@@ -238,7 +282,7 @@ mod tests {
             handle: server.handle,
             kind: EventKind::Closed,
         };
-        assert!(states.apply(&closed));
+        assert_eq!(states.apply(&closed), Change::Counts);
         assert_eq!(names(&states), ["shell"]);
         assert!(states.of_worktree(Path::new("/w/none")).is_empty());
     }

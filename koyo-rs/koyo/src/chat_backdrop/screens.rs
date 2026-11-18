@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::{App, Global, Task};
 use objc2::MainThreadMarker;
 use objc2_core_foundation::CFRetained;
@@ -22,11 +23,17 @@ use crate::settings::{ChatBackdrop, Quality};
 /// How long a screen's picture is kept once no chat shows it: a chat shown again within it,
 /// after a terminal's tab say, shows its backdrop at once rather than the card while it's made.
 const KEPT: Duration = Duration::from_secs(30);
+/// How often the wallpapers are looked at while they're watched (`watch.rs`).
+const EVERY: Duration = Duration::from_secs(1);
 
 #[derive(Default)]
 struct Screens {
     by_display: HashMap<u64, Screen>,
+    /// What has the watch look at the screens again at once (`watch.rs`).
+    tell: Option<Tell>,
 }
+
+type Tell = UnboundedSender<()>;
 
 impl Global for Screens {}
 
@@ -59,10 +66,38 @@ struct Shown {
     look: Option<ChatBackdrop>,
 }
 
-/// What a chat holds while it shows a screen's backdrop.
+/// What a chat holds while it shows a screen's backdrop. The first taken since none was, and
+/// the last let go, tell the watch, which looks at a screen's wallpaper only while it's held.
 pub struct Hold {
     pub display: u64,
-    _chats: Rc<()>,
+    chats: Rc<()>,
+    tell: Option<Tell>,
+}
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        if Rc::strong_count(&self.chats) == 2 {
+            tell(self.tell.as_ref());
+        }
+    }
+}
+
+fn tell(watch: Option<&Tell>) {
+    if let Some(watch) = watch {
+        watch.unbounded_send(()).ok();
+    }
+}
+
+/// Has `watch` told whenever the screens are to be looked at again at once, in place of the
+/// watch told before, which ends: an app set up again in a test starts a second.
+pub fn listen(watch: Tell, cx: &mut App) {
+    cx.default_global::<Screens>().tell = Some(watch);
+}
+
+/// Has the watch look at the wallpapers again at once: a window was seen again, after a time
+/// nobody could see one, when one may have changed unwatched.
+pub fn look_again(cx: &App) {
+    tell(cx.try_global::<Screens>().and_then(|screens| screens.tell.as_ref()));
 }
 
 fn screen(display: u64, cx: &mut App) -> &mut Screen {
@@ -117,13 +152,16 @@ fn stand_in(path: std::path::PathBuf) -> Wallpaper {
 /// A hold on screen `display`'s picture, for a chat showing it. The first since none held it
 /// reads the wallpaper again, which nothing watched meanwhile.
 pub fn hold(display: u64, cx: &mut App) -> Hold {
+    let watch = cx.default_global::<Screens>().tell.clone();
     let screen = screen(display, cx);
     if Rc::strong_count(&screen.chats) == 1 {
         (screen.read, screen.unheld_since) = (false, None);
+        tell(watch.as_ref());
     }
     Hold {
         display,
-        _chats: screen.chats.clone(),
+        chats: screen.chats.clone(),
+        tell: watch,
     }
 }
 
@@ -217,33 +255,59 @@ fn finished(display: u64, recipe: Recipe, made: Ready, cx: &mut App) {
         }
     }
     start(display, cx);
+    redraw(cx);
+}
+
+/// Draws every window again, so the chats in them ask for the pictures they then need.
+fn redraw(cx: &mut App) {
+    #[expect(clippy::disallowed_methods, reason = "the pictures are read untracked in paint")]
     cx.refresh_windows();
 }
 
-/// Looks again at the wallpaper of each screen a chat shows the backdrop on, drawing the
-/// windows again when one changed, so they ask for the pictures they then need; and lets the
-/// pictures no chat has shown for [`KEPT`] go.
-pub fn tick(cx: &mut App) {
-    let now = Instant::now();
+/// Looks again at the wallpaper of each screen a chat shows the backdrop on, as the watch does
+/// (`watch.rs`), drawing the windows again when one changed; and lets the pictures no chat has
+/// shown for [`KEPT`] go. How long until it's to run again unless the watch is told sooner: none
+/// while nothing waits on it.
+pub fn tick(cx: &mut App) -> Option<Duration> {
+    let seen = any_window_seen(cx);
+    let now = cx.background_executor().now();
     let mut changed = false;
-    for (&display, screen) in &mut cx.default_global::<Screens>().by_display {
-        if Rc::strong_count(&screen.chats) > 1 {
-            let wallpaper = if screen.read { read(display) } else { continue };
-            if wallpaper != screen.wallpaper {
-                log::info!("screen {display}'s wallpaper changed");
-                (screen.wallpaper, changed) = (wallpaper, true);
+    let screens = &mut cx.default_global::<Screens>().by_display;
+    let next = (screens.iter_mut())
+        .filter_map(|(&display, screen)| {
+            if Rc::strong_count(&screen.chats) > 1 {
+                if !seen {
+                    return None;
+                }
+                if screen.read {
+                    let wallpaper = read(display);
+                    if wallpaper != screen.wallpaper {
+                        log::info!("screen {display}'s wallpaper changed");
+                        (screen.wallpaper, changed) = (wallpaper, true);
+                    }
+                }
+                return Some(EVERY);
             }
-            continue;
-        }
-        let since = *screen.unheld_since.get_or_insert(now);
-        if screen.shown.is_some() && now.saturating_duration_since(since) >= KEPT {
-            log::info!("let screen {display}'s chat backdrop go: no chat shows it");
-            (screen.shown, screen.wanted, screen.making) = (None, None, None);
-        }
-    }
+            let since = *screen.unheld_since.get_or_insert(now);
+            let left = KEPT.saturating_sub(now.saturating_duration_since(since));
+            if left.is_zero() && screen.shown.is_some() {
+                log::info!("let screen {display}'s chat backdrop go: no chat shows it");
+                (screen.shown, screen.wanted, screen.making) = (None, None, None);
+            }
+            screen.shown.is_some().then_some(left)
+        })
+        .min();
     if changed {
-        cx.refresh_windows();
+        redraw(cx);
     }
+    next
+}
+
+/// Whether a person can see any of Koyo's windows.
+fn any_window_seen(cx: &mut App) -> bool {
+    (cx.windows().into_iter()).any(|window| {
+        (window.update(cx, |_, window, _| crate::sight::window_seen(window))).unwrap_or(false)
+    })
 }
 
 /// What the pictures of the screens Koyo's windows are on take at `quality`, as the Quality
