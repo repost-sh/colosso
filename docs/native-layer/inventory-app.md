@@ -525,7 +525,7 @@ Started from main.rs:248 when `KOYO_NATIVE_PROBE` names a folder; it polls `<fol
 | src/browser/view/sight.rs:52-87 | A page is on screen if drawn in a visible window, or used by an agent within 90 s (`AWAKE_FOR`). | Whether the engine paints the page. |
 | src/browser/native/probe.rs:331-437 | Probe input is `NSEvent`s handed to `sendEvent:`, never posted to the system; `escape` alone goes into the app queue. | Not a decision. These inputs reach the keyboard hooks and GPUI as presses. |
 | src/control/exec/browser/pages/consent.rs:1-30 | A pinned or loose page is the person's by where it is (`Spot`), and reaches a client only with the person's grant. | Consent. Ownership by place, not by input. |
-| src/agent_desktop/control.rs:31, 66; devices/control.rs:28 | The person's act on the agent desktop's tab or a device tab, heard through GPUI. | Those surfaces' own leases. Not the native seam. |
+| src/browser/control.rs:248 (`Leased::person_acts`, for the agent desktop and each device) | The person's act on the agent desktop's tab or a device tab, heard through GPUI. | Those surfaces' own leases. Not the native seam. |
 
 `[inferred]` from the rows above: the four press observers disagree on presses posted by a
 program. On the agent desktop, an agent's `desktop_click` on a page arrives as a CGEvent the

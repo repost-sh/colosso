@@ -32,7 +32,7 @@ use koyo_device_wire::{
 use super::host::Running;
 use super::simulators::Simulator;
 use super::view::{Chosen, DeviceView};
-use crate::browser::control::Actor;
+use crate::browser::control::{Actor, Leased as _};
 use crate::shell::Shell;
 use crate::visual::{Drawn, Result};
 

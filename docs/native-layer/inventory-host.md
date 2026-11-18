@@ -470,13 +470,13 @@ sys::CGEventPostToPid(pid, event);
 | `koyo/src/browser/menu.rs:296-306` | a pick from a shown menu is the person's | `person_acts(Implicit)` |
 | `koyo/src/browser/agent.rs:276-281` | a CDP command with an actor is that agent's | lease claim; refused while the person holds the page |
 | `vendor/gpui-fast-macos/src/fast/composition.rs:274-279` (`tell_press`) | "the press is the person's", with no check of its source | `koyo/src/keyboard/appkit.rs:194-204` → `hooks::pressed`: where the keyboard goes |
-| `koyo/src/agent_desktop/mod.rs:441-454` (`Desk::input`) | input from the desktop's tab is the person's | `person_acts(Implicit)` on the desktop: agents' acts refused (`koyo/src/agent_desktop/control.rs:31-62`) |
+| `koyo/src/agent_desktop/mod.rs:373-384` (`Desk::input`) | input from the desktop's tab is the person's | `person_acts(Implicit)` on the desktop: agents' acts refused (`koyo/src/browser/control.rs:248-283`, `Leased`) |
 | `koyo-desk-host/src/acts.rs:332-337` | the person's tab input stops an agent's typing | `RefusalCode::PersonActing` |
 | `koyo-desk-host/src/keyboard.rs:27-30,82-86` | a key from `kCGEventSourceStateHIDSystemState` since a menu opened is the person's ("no event of the host's own is among" them) | closes an agent's menu that took the keyboard |
 | `koyo-desk-host/src/keyboard.rs:22,116` | a menu opened within 1.5 s of the person's press in the tab (`lively`, `acts.rs:393,407,416`) is the person's | leaves that menu up |
 
-"Person has control" is the same lease type for a page (`koyo/src/browser/control.rs`) and for the
-agent desktop (`koyo/src/agent_desktop/control.rs:1-7,28-62`, which reuses `browser::control::Control`).
+"Person has control" is the same lease for a page, a device and the agent desktop
+(`koyo/src/browser/control.rs`, `Lease` and `Leased`).
 Neither looks at an event's source; both trust where the input arrived.
 
 ## 7. What the engine test suites run, and what they see of the seam

@@ -116,7 +116,7 @@ pub(crate) fn observing(page: PaneId, host: &BrowserHost) -> bool {
 
 /// Results larger than this are refused rather than sent, leaving room in
 /// the frame for the rest of the reply.
-const CDP_RESULT_MAX: usize = ipc::MAX_FRAME - 4096;
+const CDP_RESULT_MAX: usize = koyo_frame::MAX_FRAME - 4096;
 
 pub(super) fn cdp_failed(pane: PaneId, call: u64, error: impl Into<String>) {
     send(&HostEvent::CdpReply {

@@ -9,7 +9,7 @@ use gpui_kit::{
     canvas, deferred, point, px,
 };
 
-use super::canvas::fitted;
+use crate::hosted::canvas::fitted;
 use super::view::DeskView;
 use crate::browser::pointer::{Next, paint_pointer, tint};
 
@@ -42,7 +42,7 @@ pub fn overlay(
     let marks = canvas(
         |_, _, _| (),
         move |bounds: Bounds<Pixels>, (), window, _| {
-            let (shown, fit) = fitted(bounds, desk);
+            let (shown, fit) = fitted(bounds, desk, 1.);
             window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
                 let place = |at: Point<f32>| shown.origin + point(px(at.x * fit), px(at.y * fit));
                 paint_pointer(&shot, place, accent, window);

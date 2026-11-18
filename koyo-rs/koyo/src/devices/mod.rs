@@ -12,7 +12,6 @@ use gpui_kit::{App, AppContext as _, Context, Entity, Global, Subscription};
 mod bar;
 mod canvas;
 pub(crate) mod connected;
-mod control;
 mod host;
 mod keeping;
 pub(crate) mod lend;
@@ -25,7 +24,6 @@ pub mod setup;
 pub(crate) mod simulators;
 mod standing;
 mod touch;
-mod typing;
 mod view;
 
 pub use link::Link;

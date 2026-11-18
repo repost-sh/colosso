@@ -20,6 +20,7 @@ koyo-device-gestures = { path = "../koyo-device-gestures" }
 # The ring goes to the app by mach port, on the channel the browser's pages use; the socket
 # comes as the browser host's does, inherited.
 koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+koyo-frame = { path = "../koyo-frame" }
 libc = "0.2"
 # CoreSimulator, SimulatorKit and Vision are reached by message, with blocks for their
 # callbacks; every private call can raise, and is caught.

@@ -8,7 +8,7 @@ use std::io::BufReader;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -29,9 +29,6 @@ unsafe extern "C" {
 unsafe extern "C" {
     fn CFRelease(object: *const c_void);
 }
-
-/// How many hosts this process has started.
-static STARTS: AtomicU32 = AtomicU32::new(0);
 
 /// The frames that came for one window.
 #[derive(Clone, Copy, Debug, Default)]
@@ -105,7 +102,7 @@ fn accept(listener: &UnixListener, dir: &Path) -> UnixStream {
 /// Counts the frames that come from `host`, a window each, on a thread of its own.
 fn take_frames(
     receiver: mach::Receiver,
-    host: u32,
+    host: mach::Process,
     frames: Arc<Mutex<HashMap<u64, Frames>>>,
     stop: Arc<AtomicBool>,
 ) {
@@ -145,9 +142,8 @@ impl Driver {
         let socket = dir.join("l.sock");
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).unwrap();
-        let start = STARTS.fetch_add(1, Ordering::Relaxed);
-        let service = format!("codes.koyo.desk.test.{}.{start}", std::process::id());
-        let receiver = mach::Receiver::check_in(&service).unwrap();
+        let receiver = mach::Receiver::check_in("codes.koyo.desk.test").unwrap();
+        let service = receiver.name().to_owned();
         let status = Command::new("/usr/bin/open")
             .args(["-n", "-g", "-a", &app])
             .arg("--stdout")
@@ -198,7 +194,7 @@ impl Driver {
         };
         driver.until(Duration::from_secs(10), |driver| driver.host != 0);
         assert_ne!(driver.host, 0, "the host didn't say hello");
-        let host = u32::try_from(driver.host).unwrap();
+        let host = mach::Process::at_other_end(&driver.writer).unwrap();
         take_frames(
             receiver,
             host,

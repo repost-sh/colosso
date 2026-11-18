@@ -5,14 +5,14 @@
 //! then.
 
 use gpui_kit::{
-    App, Bounds, ContentMask, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, ScrollEvent, Style, Window, fill, point, px, relative,
-    size,
+    App, Bounds, ContentMask, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
+    Hitbox, HitboxBehavior, InspectorElementId, LayoutId, Pixels, Style, Window, fill, point, px,
+    relative, size,
 };
 
 use super::Desk;
 use super::view::DeskView;
+use crate::hosted::canvas::{fitted, listen};
 use crate::sight::Shown;
 use crate::theme::Palette;
 
@@ -29,25 +29,6 @@ pub struct Placed {
     shown: Bounds<Pixels>,
     /// How much of its true size it shows at.
     fit: f32,
-}
-
-/// `desk` (in points) at the largest size that fits `area`, centred in it, never larger than
-/// it is: where it shows, and how much of its true size that is.
-pub fn fitted(area: Bounds<Pixels>, desk: koyo_desk_wire::Size) -> (Bounds<Pixels>, f32) {
-    let (wide, high) = (desk.width as f32, desk.height as f32);
-    if wide <= 0. || high <= 0. {
-        return (area, 1.);
-    }
-    let fit = (area.size.width.as_f32() / wide)
-        .min(area.size.height.as_f32() / high)
-        .clamp(0.01, 1.);
-    let shown = size(px(wide * fit), px(high * fit));
-    let origin = area.origin
-        + point(
-            (area.size.width - shown.width) / 2.,
-            (area.size.height - shown.height) / 2.,
-        );
-    (Bounds::new(origin, shown), fit)
 }
 
 impl Element for Canvas {
@@ -85,7 +66,7 @@ impl Element for Canvas {
         cx: &mut App,
     ) -> Placed {
         let desk = self.desk.read(cx).size().unwrap_or_default();
-        let (shown, fit) = fitted(bounds, desk);
+        let (shown, fit) = fitted(bounds, desk, 1.);
         if self.view.read(cx).placed != Some((shown.origin, fit)) {
             self.view
                 .update(cx, |view, _| view.placed = Some((shown.origin, fit)));
@@ -137,79 +118,6 @@ impl Element for Canvas {
                 cx,
             );
         }
-        self.listen(&placed.hitbox, window);
-    }
-}
-
-impl Canvas {
-    /// The pointer over the desktop: a press focuses the tab, a drag that started on it keeps
-    /// reaching it, and what's scrolled over it scrolls the window under it, not the pane.
-    fn listen(&self, hitbox: &Hitbox, window: &mut Window) {
-        let (down, over_down) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !over_down.is_hovered(window) {
-                return;
-            }
-            let _ = down.update(cx, |view, cx| view.pressed_at(event, window, cx));
-            cx.stop_propagation();
-        });
-        let up = self.view.downgrade();
-        window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
-            if phase == DispatchPhase::Capture {
-                let _ = up.update(cx, |view, cx| view.released_at(event, cx));
-            }
-        });
-        let (moved, over_move) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-            if phase != DispatchPhase::Capture {
-                return;
-            }
-            let over = over_move.is_hovered(window);
-            let Some(moved) = moved.upgrade() else {
-                return;
-            };
-            if over || moved.read(cx).pressed.is_some() {
-                moved.update(cx, |view, cx| view.moved_to(event, over, cx));
-            }
-        });
-        let (scrolled, over_scroll) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !over_scroll.should_handle_scroll(window) {
-                return;
-            }
-            let _ = scrolled.update(cx, |view, cx| view.wheel(event, cx));
-            cx.stop_propagation();
-        });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn area(width: f32, height: f32) -> Bounds<Pixels> {
-        Bounds::new(point(px(10.), px(20.)), size(px(width), px(height)))
-    }
-
-    #[test]
-    fn the_desktop_keeps_its_shape_and_is_centred() {
-        let desk = koyo_desk_wire::Size {
-            width: 2000.,
-            height: 1000.,
-        };
-        let (shown, fit) = fitted(area(1200., 400.), desk);
-        assert!((fit - 0.4).abs() < 1e-6);
-        assert_eq!(shown.size, size(px(800.), px(400.)));
-        assert_eq!(shown.origin, point(px(210.), px(20.)));
-        let (shown, fit) = fitted(area(4000., 3000.), desk);
-        assert!((fit - 1.).abs() < 1e-6);
-        assert_eq!(shown.size, size(px(2000.), px(1000.)));
-    }
-
-    #[test]
-    fn a_desktop_not_made_yet_takes_the_pane() {
-        let (shown, fit) = fitted(area(300., 200.), koyo_desk_wire::Size::default());
-        assert_eq!(shown, area(300., 200.));
-        assert!((fit - 1.).abs() < 1e-6);
+        listen(&self.view, &placed.hitbox, window);
     }
 }

@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use super::devices::find;
 use super::*;
-use crate::browser::control::{Actor, Mode, Refused};
+use crate::browser::control::{Actor, Leased as _, Mode, Refused};
 use crate::browser::host::Browsers;
 use crate::browser::view::BrowserView;
 use crate::responsive::GUTTER;
@@ -437,7 +437,7 @@ fn the_persons_change_takes_nothing_and_an_agents_needs_the_lease(cx: &mut TestA
     view.update(cx, |view, cx| view.pick_device(Some(iphone()), cx));
     view.read_with(cx, |view, _| {
         assert_eq!(
-            view.control.agent(),
+            view.lease.control.agent(),
             Some(&agent),
             "the agent still holds the page"
         );

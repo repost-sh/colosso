@@ -9,7 +9,7 @@ use gpui_kit::{
 };
 use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go};
 
-use super::control::Mode;
+use super::control::{Leased as _, Mode};
 use super::view::BrowserView;
 use super::{
     Back, Copy, Cut, Forward, Paste, Redo, Reload, SelectAll, ToggleDevTools, ToggleResponsive,

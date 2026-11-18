@@ -96,8 +96,8 @@ pub(in crate::browser) fn overlay(
     cx: &mut Context<BrowserView>,
 ) -> Option<AnyElement> {
     let now = Instant::now();
-    view.marks.glow.set(view.control.agent().is_some(), now);
-    if view.control.person_holds() {
+    view.marks.glow.set(view.lease.control.agent().is_some(), now);
+    if view.lease.control.person_holds() {
         view.marks.pointer.dismiss(now);
     }
     let accent = tint(cx);

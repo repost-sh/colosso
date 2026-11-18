@@ -3,18 +3,29 @@
 //! A Unix socket cannot carry mach ports, so the app checks in a bootstrap
 //! service under a random name, passes the name to the host it starts, and
 //! the host sends each pane's surface ring there as one mach message with a
-//! port per surface. The app only accepts messages whose audit token names
-//! the host it started, so another process that guesses the name cannot
-//! inject surfaces.
+//! port per surface. The name is no secret: any process of the same user can
+//! list it (`launchctl print gui/<uid>`), and the random part only keeps one
+//! from checking the name in first. What keeps another process from injecting
+//! surfaces is the audit token: the app takes only messages whose trailer
+//! carries the token of the process at the other end of its host's socket
+//! ([`Process`]).
 
 use std::ffi::{CString, c_char};
 use std::io;
+use std::os::fd::AsRawFd as _;
+use std::os::unix::net::UnixStream;
 
 type KernReturn = i32;
 type MachPort = u32;
 
 const KERN_SUCCESS: KernReturn = 0;
 const MACH_RCV_TIMED_OUT: KernReturn = 0x1000_4003;
+const MACH_RCV_TOO_LARGE: KernReturn = 0x1000_4004;
+const MACH_RCV_INTERRUPTED: KernReturn = 0x1000_4005;
+const MACH_RCV_HEADER_ERROR: KernReturn = 0x1000_400b;
+const MACH_RCV_BODY_ERROR: KernReturn = 0x1000_400c;
+/// The bits some receive errors add to say where they happened.
+const MACH_MSG_MASK: KernReturn = 0x3e00;
 
 const MACH_SEND_MSG: i32 = 0x1;
 const MACH_RCV_MSG: i32 = 0x2;
@@ -141,6 +152,98 @@ pub fn release(port: u32) {
     }
 }
 
+/// A process as the kernel vouches for it: its audit token, which a socket's peer has
+/// (`LOCAL_PEERTOKEN`) and every mach message carries in its trailer. A process started later
+/// under the same pid has another token: the pid's version in it differs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Process {
+    token: [u32; 8],
+}
+
+impl Process {
+    /// The process at the other end of `stream`, as the kernel has it. On a socket pair that is
+    /// the one that used the other end last: ask once it has spoken.
+    ///
+    /// # Errors
+    /// When the socket isn't connected, or the process at its other end is gone.
+    pub fn at_other_end(stream: &UnixStream) -> io::Result<Self> {
+        let mut token = [0u32; 8];
+        let mut size = libc::socklen_t::try_from(size_of_val(&token)).map_err(io::Error::other)?;
+        // SAFETY: a live socket, and an out-pointer of the size the option is said to have.
+        let got = unsafe {
+            libc::getsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_LOCAL,
+                libc::LOCAL_PEERTOKEN,
+                (&raw mut token).cast(),
+                &raw mut size,
+            )
+        };
+        if got == 0 {
+            Ok(Self { token })
+        } else {
+            let error = io::Error::last_os_error();
+            Err(io::Error::new(
+                error.kind(),
+                format!("no process at the other end of the socket to name: {error}"),
+            ))
+        }
+    }
+
+    /// Its pid.
+    #[must_use]
+    pub fn pid(&self) -> i32 {
+        self.token[5].cast_signed()
+    }
+}
+
+/// What a receive got, by the code it returned and what it left in the buffer.
+#[derive(Debug, PartialEq, Eq)]
+enum Verdict {
+    /// A ring from the sender.
+    Ring,
+    /// A message to give back with all it brought: not a ring, not the sender's, or one the
+    /// kernel copied out only in part (`MACH_RCV_BODY_ERROR`, after it moved in the rights it
+    /// could).
+    Refused,
+    /// No message: none came in time, or the one taken off the queue went with all it brought
+    /// (too large for the buffer, since `MACH_RCV_LARGE` isn't asked for, or its header not
+    /// copied out).
+    Nothing,
+    /// The receiver can't receive any more.
+    Dead,
+}
+
+fn verdict(kr: KernReturn, buffer: &Received, sender: Process) -> Verdict {
+    if kr != KERN_SUCCESS {
+        return match kr & !MACH_MSG_MASK {
+            MACH_RCV_BODY_ERROR => Verdict::Refused,
+            MACH_RCV_TIMED_OUT
+            | MACH_RCV_TOO_LARGE
+            | MACH_RCV_INTERRUPTED
+            | MACH_RCV_HEADER_ERROR => Verdict::Nothing,
+            _ => Verdict::Dead,
+        };
+    }
+    let audit = buffer.trailer.audit;
+    if wellformed(&buffer.message) && audit == sender.token {
+        Verdict::Ring
+    } else {
+        Verdict::Refused
+    }
+}
+
+/// Whether `message` is a ring as [`Sender::send`] makes one: only then is the trailer where
+/// the buffer has it, and the ports what the message says.
+fn wellformed(message: &SurfacesMessage) -> bool {
+    let header = message.header;
+    header.size as usize == size_of::<SurfacesMessage>()
+        && header.id == SURFACES_ID
+        && header.bits & MACH_MSGH_BITS_COMPLEX != 0
+        && message.descriptor_count == u32::from(crate::RING)
+        && message.count <= u32::from(crate::RING)
+}
+
 /// The app's end: a checked-in service that receives surface rings.
 #[derive(Debug)]
 pub struct Receiver {
@@ -149,22 +252,22 @@ pub struct Receiver {
 }
 
 impl Receiver {
-    /// Checks in `name` with the bootstrap server.
+    /// Checks in a service named `prefix` and a random suffix with the bootstrap server, so no
+    /// other process can check the name in before this one does. It doesn't hide the name:
+    /// [`Receiver::receive`] tells the sender by its audit token.
     ///
     /// # Errors
-    /// When the name is taken or the bootstrap server refuses it.
-    pub fn check_in(name: &str) -> io::Result<Self> {
-        let c = CString::new(name).map_err(io::Error::other)?;
+    /// When there's no randomness to be had or the bootstrap server refuses the name.
+    pub fn check_in(prefix: &str) -> io::Result<Self> {
+        let name = format!("{prefix}.{}", crate::client::token()?);
+        let c = CString::new(name.as_str()).map_err(io::Error::other)?;
         let mut port = 0;
         // SAFETY: valid C string and out pointer.
         check(
             unsafe { bootstrap_check_in(bootstrap_port, c.as_ptr(), &raw mut port) },
             "bootstrap_check_in",
         )?;
-        Ok(Self {
-            port,
-            name: name.into(),
-        })
+        Ok(Self { port, name })
     }
 
     /// The service name to give the host.
@@ -174,11 +277,14 @@ impl Receiver {
     }
 
     /// Waits up to `timeout_ms` for a ring. Messages from any process other
-    /// than `sender` are dropped and their ports released.
+    /// than `sender` (a later one under its pid too), any that isn't a ring,
+    /// and any the kernel copied out only in part, are dropped with the
+    /// rights they brought.
     ///
     /// # Errors
-    /// When receiving fails for another reason than the timeout.
-    pub fn receive(&self, sender: u32, timeout_ms: u32) -> io::Result<Option<Ring>> {
+    /// When the receiver can't receive any more: an error is never one
+    /// message's.
+    pub fn receive(&self, sender: Process, timeout_ms: u32) -> io::Result<Option<Ring>> {
         let mut buffer = Received::default();
         // SAFETY: the buffer is large enough for the message and the trailer
         // requested, and lives across the call.
@@ -193,33 +299,29 @@ impl Receiver {
                 0,
             )
         };
-        if kr == MACH_RCV_TIMED_OUT {
-            return Ok(None);
+        match verdict(kr, &buffer, sender) {
+            Verdict::Nothing => Ok(None),
+            Verdict::Dead => Err(io::Error::other(format!(
+                "mach_msg receive failed: {kr:#x}"
+            ))),
+            Verdict::Refused => {
+                // SAFETY: a refusal follows only a receive that copied a message out to the
+                // buffer, whole or in part.
+                unsafe { refused::give_back(&mut buffer) };
+                Ok(None)
+            }
+            Verdict::Ring => {
+                let message = buffer.message;
+                let mut ports: Vec<u32> = message.ports.iter().map(|p| p.name).collect();
+                let count = message.count as usize;
+                ports.drain(count..).filter(|p| *p != 0).for_each(release);
+                Ok(Some(Ring {
+                    pane: message.pane,
+                    generation: message.generation,
+                    ports,
+                }))
+            }
         }
-        check(kr, "mach_msg receive")?;
-        let message = buffer.message;
-        let ports: Vec<u32> = message.ports.iter().map(|p| p.name).collect();
-        let pid = buffer.trailer.audit[5];
-        let header = message.header;
-        let wellformed = header.id == SURFACES_ID
-            && header.bits & MACH_MSGH_BITS_COMPLEX != 0
-            && message.descriptor_count == u32::from(crate::RING)
-            && message.count <= u32::from(crate::RING);
-        if pid != sender || !wellformed {
-            ports.iter().copied().filter(|p| *p != 0).for_each(release);
-            return Ok(None);
-        }
-        let count = message.count as usize;
-        ports[count..]
-            .iter()
-            .copied()
-            .filter(|p| *p != 0)
-            .for_each(release);
-        Ok(Some(Ring {
-            pane: message.pane,
-            generation: message.generation,
-            ports: ports[..count].to_vec(),
-        }))
     }
 }
 
@@ -267,31 +369,7 @@ impl Sender {
                 "too many surfaces",
             ));
         }
-        let mut message = SurfacesMessage {
-            header: Header {
-                bits: MACH_MSGH_BITS_COMPLEX | MACH_MSG_TYPE_COPY_SEND,
-                size: u32::try_from(size_of::<SurfacesMessage>()).map_err(io::Error::other)?,
-                remote_port: self.port,
-                id: SURFACES_ID,
-                ..Header::default()
-            },
-            descriptor_count: u32::from(crate::RING),
-            pane,
-            generation,
-            count: u32::try_from(ports.len()).map_err(io::Error::other)?,
-            ..SurfacesMessage::default()
-        };
-        for (slot, port) in message.ports.iter_mut().zip(ports) {
-            *slot = PortDescriptor {
-                name: *port,
-                disposition: u8::try_from(MACH_MSG_TYPE_MOVE_SEND).unwrap_or_default(),
-                kind: MACH_MSG_PORT_DESCRIPTOR,
-                ..PortDescriptor::default()
-            };
-        }
-        for slot in message.ports.iter_mut().skip(ports.len()) {
-            slot.kind = MACH_MSG_PORT_DESCRIPTOR;
-        }
+        let mut message = message(self.port, pane, generation, ports)?;
         // SAFETY: the message is fully initialized and sized in its header.
         let kr = unsafe {
             mach_msg(
@@ -306,6 +384,42 @@ impl Sender {
         };
         check(kr, "mach_msg send")
     }
+}
+
+/// A ring as it goes to the service at `remote`: one descriptor a slot, which moves the send
+/// right in `ports` there, or none.
+fn message(
+    remote: MachPort,
+    pane: u64,
+    generation: u32,
+    ports: &[u32],
+) -> io::Result<SurfacesMessage> {
+    let mut message = SurfacesMessage {
+        header: Header {
+            bits: MACH_MSGH_BITS_COMPLEX | MACH_MSG_TYPE_COPY_SEND,
+            size: u32::try_from(size_of::<SurfacesMessage>()).map_err(io::Error::other)?,
+            remote_port: remote,
+            id: SURFACES_ID,
+            ..Header::default()
+        },
+        descriptor_count: u32::from(crate::RING),
+        pane,
+        generation,
+        count: u32::try_from(ports.len()).map_err(io::Error::other)?,
+        ..SurfacesMessage::default()
+    };
+    for (slot, port) in message.ports.iter_mut().zip(ports) {
+        *slot = PortDescriptor {
+            name: *port,
+            disposition: u8::try_from(MACH_MSG_TYPE_MOVE_SEND).unwrap_or_default(),
+            kind: MACH_MSG_PORT_DESCRIPTOR,
+            ..PortDescriptor::default()
+        };
+    }
+    for slot in message.ports.iter_mut().skip(ports.len()) {
+        slot.kind = MACH_MSG_PORT_DESCRIPTOR;
+    }
+    Ok(message)
 }
 
 impl Drop for Sender {
@@ -334,62 +448,7 @@ pub fn new_port() -> io::Result<u32> {
     Ok(name)
 }
 
+mod refused;
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A name no other test uses: the clock alone repeats within a
-    /// microsecond when tests run in parallel.
-    fn service() -> String {
-        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        format!(
-            "codes.koyo.browser-ipc-test.{}.{}.{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or_default(),
-            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        )
-    }
-
-    #[test]
-    fn a_ring_reaches_the_service_with_its_ports() {
-        let name = service();
-        let receiver = Receiver::check_in(&name).expect("check in");
-        let sender = Sender::look_up(receiver.name()).expect("look up");
-        let ports = [new_port().expect("port"), new_port().expect("port")];
-        sender.send(9, 4, &ports).expect("send");
-        let ring = receiver
-            .receive(std::process::id(), 1_000)
-            .expect("receive")
-            .expect("a ring");
-        assert_eq!((ring.pane, ring.generation, ring.ports.len()), (9, 4, 2));
-        assert_eq!(ring.ports, ports);
-        ring.ports.into_iter().for_each(release);
-    }
-
-    #[test]
-    fn rings_from_another_sender_are_dropped() {
-        let receiver = Receiver::check_in(&service()).expect("check in");
-        let sender = Sender::look_up(receiver.name()).expect("look up");
-        sender
-            .send(1, 1, &[new_port().expect("port")])
-            .expect("send");
-        assert_eq!(
-            receiver
-                .receive(std::process::id() + 1, 1_000)
-                .expect("receive"),
-            None
-        );
-        assert_eq!(
-            receiver.receive(std::process::id(), 10).expect("timeout"),
-            None
-        );
-    }
-
-    #[test]
-    fn an_unknown_service_is_an_error() {
-        assert!(Sender::look_up(&service()).is_err());
-    }
-}
+mod tests;

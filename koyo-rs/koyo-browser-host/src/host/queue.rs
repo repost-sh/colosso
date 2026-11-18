@@ -39,19 +39,17 @@ pub(crate) fn protocol_heard(message: String) {
     enqueue(Queued::Protocol(message));
 }
 
+/// The app's requests, queued as they come until it asks the host to shut down or goes away,
+/// which asks the same.
 pub(super) fn read_requests(reader: UnixStream) {
-    let mut reader = std::io::BufReader::new(reader);
-    loop {
-        let request = match ipc::read_frame::<AppRequest>(&mut reader) {
-            Ok(Some(request)) => request,
-            Ok(None) | Err(_) => AppRequest::Shutdown,
-        };
+    for request in koyo_frame::frames(reader, ipc::read_frame::<AppRequest>) {
         let last = request == AppRequest::Shutdown;
         enqueue(Queued::App(request));
         if last {
             return;
         }
     }
+    enqueue(Queued::App(AppRequest::Shutdown));
 }
 
 wrap_task! {

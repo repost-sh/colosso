@@ -6,8 +6,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use futures::StreamExt as _;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::oneshot;
 use gpui_kit::{AppContext as _, Context, Entity, EntityId, Task};
 use koyo_device_wire::{
     Answer, Ask, FromHost, Input, LogLevel, Mark, Point, Refusal, RefusalCode, RequestId, Screen,
@@ -16,7 +15,8 @@ use koyo_device_wire::{
 
 use super::host::{self, Incoming};
 use super::picture::Picture;
-use crate::browser::control::{Control, Mode};
+use crate::browser::control::{Lease, Leased, Mode};
+use crate::hosted::host::{Host, follow};
 use crate::sight::{Showable, ShownBy};
 
 #[cfg(any(test, feature = "visual-check"))]
@@ -68,13 +68,13 @@ pub struct Link {
     pub said: Option<Said>,
     pub picture: Entity<Picture>,
     pub touch: Option<Touch>,
-    running: Option<host::Running>,
-    queued: Vec<ToHost>,
+    host: Host<ToHost>,
     pending: HashMap<RequestId, oneshot::Sender<Result<Answer, Refusal>>>,
     next: RequestId,
-    pub control: Control,
-    pub(super) lapse: Option<(Instant, Task<()>)>,
-    pub(super) rest: Option<(Instant, Task<()>)>,
+    /// Who drives it (`docs/devices.md` 8). A simulator's Take control holds it until the person
+    /// gives it back; a device of the person's own that is lent has Take it back, which ends the
+    /// lend. On a real device the person can also touch the glass, which no lease stops.
+    pub lease: Lease,
     shown_by: ShownBy,
     /// The tabs showing it: the host ends when the last of them closes.
     tabs: usize,
@@ -91,6 +91,20 @@ pub struct Link {
     pub started_at: Option<Instant>,
 }
 
+impl Leased for Link {
+    fn lease(&self) -> &Lease {
+        &self.lease
+    }
+
+    fn lease_mut(&mut self) -> &mut Lease {
+        &mut self.lease
+    }
+
+    fn named(&self) -> &str {
+        &self.name
+    }
+}
+
 impl Link {
     pub fn new(udid: String, name: String, phone: bool, cx: &mut Context<Self>) -> Link {
         Link {
@@ -101,13 +115,10 @@ impl Link {
             said: None,
             picture: cx.new(|_| Picture::default()),
             touch: None,
-            running: None,
-            queued: Vec::new(),
+            host: Host::default(),
             pending: HashMap::new(),
             next: 1,
-            control: Control::default(),
-            lapse: None,
-            rest: None,
+            lease: Lease::default(),
             shown_by: ShownBy::default(),
             tabs: 0,
             starts: 0,
@@ -175,38 +186,14 @@ impl Link {
         self.said = None;
         self.started_at.get_or_insert_with(Instant::now);
         cx.notify();
-        let (tell, mut told) = mpsc::unbounded::<Incoming>();
-        let started = cx.background_executor().spawn(async move {
-            host::start(&launch, move |incoming| {
-                let _ = tell.unbounded_send(incoming);
-            })
-        });
         self.starts += 1;
-        let mine = self.starts;
-        cx.spawn(async move |this, cx| {
-            let started = started.await;
-            let running = this.update(cx, |this, cx| this.started(mine, started, cx));
-            if !matches!(running, Ok(true)) {
-                return;
+        let heard = |link: &mut Link, batch: Vec<Incoming>, cx: &mut Context<Link>| {
+            for incoming in batch {
+                link.receive(incoming, cx);
             }
-            while let Some(first) = told.next().await {
-                let handled = this.update(cx, |this, cx| {
-                    if this.starts != mine {
-                        return false;
-                    }
-                    let mut next = Some(first);
-                    while let Some(incoming) = next.take() {
-                        this.receive(incoming, cx);
-                        next = told.try_recv().ok();
-                    }
-                    true
-                });
-                if !matches!(handled, Ok(true)) {
-                    return;
-                }
-            }
-        })
-        .detach();
+        };
+        let start = move |sink| host::start(&launch, sink);
+        follow(self.starts, |link: &Link| link.starts, start, Link::started, heard, cx);
     }
 
     /// The start numbered `mine` came to its end: its host runs, or it failed.
@@ -239,13 +226,11 @@ impl Link {
 
     /// Uses `running` as this device's host: told whether a tab draws it, and what waited.
     pub(super) fn use_host(&mut self, running: host::Running, cx: &mut Context<Self>) {
-        log::info!("{}'s host runs as process {}", self.name, running.pid);
-        let visible = self.shown_by.any();
-        let _ = running.tell.send(ToHost::Visible { visible });
-        for message in std::mem::take(&mut self.queued) {
-            let _ = running.tell.send(message);
+        if let Some(pid) = running.pid {
+            log::info!("{}'s host runs as process {pid}", self.name);
         }
-        self.running = Some(running);
+        let visible = self.shown_by.any();
+        self.host.take(running, ToHost::Visible { visible });
         self.state = State::Running;
         cx.notify();
     }
@@ -274,7 +259,7 @@ impl Link {
         if self.stopping() {
             return;
         }
-        if let Some(running) = self.running.take() {
+        if let Some(running) = self.host.end() {
             let _ = running.tell.send(ToHost::Quit);
             self.state = State::Stopping;
         } else {
@@ -290,7 +275,7 @@ impl Link {
     /// The person took the device back from the agents it was lent to: none holds it, and what
     /// they asked that's still under way is called off.
     pub fn revoke(&mut self, why: &str, cx: &mut Context<Self>) {
-        self.released();
+        self.lease = Lease::default();
         for (request, answer) in std::mem::take(&mut self.pending) {
             self.tell(ToHost::Cancel { request });
             let _ = answer.send(Err(Refusal::new(RefusalCode::PersonActing, why)));
@@ -300,7 +285,6 @@ impl Link {
 
     fn fail(&mut self, why: String, cx: &mut Context<Self>) {
         log::warn!("{why}");
-        self.running = None;
         self.forget(&why, cx);
         self.state = State::Failed(why);
         self.started_at = None;
@@ -311,9 +295,9 @@ impl Link {
     fn forget(&mut self, why: &str, cx: &mut Context<Self>) {
         self.said = None;
         self.touch = None;
-        self.released();
+        self.lease = Lease::default();
         self.picture.update(cx, Picture::clear);
-        self.queued.clear();
+        self.host.end();
         for (_, answer) in self.pending.drain() {
             let _ = answer.send(Err(Refusal::new(RefusalCode::Gone, why)));
         }
@@ -340,7 +324,7 @@ impl Link {
         if !self.running_or_starting() {
             return;
         }
-        self.running = None;
+        self.host.end();
         if self.gave_up() {
             let last = self.said.take();
             self.stop(cx);
@@ -374,7 +358,7 @@ impl Link {
                     self.ended_at = Some(Instant::now());
                 }
                 if matches!(state, Said::Unavailable { .. })
-                    && let Some(running) = &self.running
+                    && let Some(running) = &self.host.running
                 {
                     let _ = running.tell.send(ToHost::Quit);
                 }
@@ -421,13 +405,7 @@ impl Link {
     }
 
     fn tell(&mut self, message: ToHost) {
-        match (&self.state, &self.running) {
-            (State::Running, Some(running)) => {
-                let _ = running.tell.send(message);
-            }
-            (State::Starting, _) => self.queued.push(message),
-            _ => {}
-        }
+        self.host.tell(message, self.state == State::Starting);
     }
 
     /// The person's input in the tab: passed on to a device that stands ready, and the device

@@ -13,6 +13,9 @@ use koyo_device_gestures::{At, Mac, Phase, Step, key_usage};
 use koyo_device_wire::{Button, Input, Orientation};
 
 use super::view::DeviceView;
+use crate::hosted::canvas::Pointed;
+
+crate::hosted::typing::typed_as_text!(DeviceView, Input);
 
 /// How often a resting trackpad's fingers are looked at, to be lifted.
 const TICK: Duration = Duration::from_millis(100);
@@ -87,8 +90,10 @@ impl DeviceView {
             link.update(cx, |link, cx| link.input(input, cx));
         }
     }
+}
 
-    pub(super) fn pressed_at(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+impl Pointed for DeviceView {
+    fn pressed_at(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if event.button != MouseButton::Left {
             return;
         }
@@ -106,7 +111,7 @@ impl DeviceView {
         );
     }
 
-    pub(super) fn released_at(&mut self, event: &MouseUpEvent, cx: &mut Context<Self>) {
+    fn released_at(&mut self, event: &MouseUpEvent, cx: &mut Context<Self>) {
         if event.button != MouseButton::Left || !std::mem::take(&mut self.pressed) {
             return;
         }
@@ -118,7 +123,7 @@ impl DeviceView {
 
     /// The pointer moved: a drag while the button is held; otherwise only where it is, for the
     /// trackpad's gestures, which GPUI tells without a place of their own.
-    pub(super) fn moved_to(&mut self, event: &MouseMoveEvent, over: bool, cx: &mut Context<Self>) {
+    fn moved_to(&mut self, event: &MouseMoveEvent, over: bool, cx: &mut Context<Self>) {
         let Some((at, _)) = self.share(event.position, cx) else {
             return;
         };
@@ -140,7 +145,7 @@ impl DeviceView {
     /// Two fingers scrolling on the trackpad drag a finger on the device. A mouse's wheel does
     /// nothing: its notches are lines, no distance, and steps as fine as a trackpad's that never
     /// say they began are left by the mapping.
-    pub(super) fn scrolled(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
+    fn scrolled(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         let ScrollDelta::Pixels(by) = event.delta else {
             return;
         };
@@ -154,6 +159,12 @@ impl DeviceView {
         self.mac(Mac::Scroll { at, phase, dx, dy }, cx);
     }
 
+    fn pressing(&self) -> bool {
+        self.pressed
+    }
+}
+
+impl DeviceView {
     pub(super) fn pinch(&mut self, event: &PinchEvent, cx: &mut Context<Self>) {
         let Some((at, on)) = self.share(event.position, cx) else {
             return;

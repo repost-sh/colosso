@@ -6,7 +6,7 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, ClipboardItem, Context, Div, InteractiveElement as _, Window};
 use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, PaneId};
 
-use super::control::Mode;
+use super::control::{Leased as _, Mode};
 use super::host::Browsers;
 use super::view::{BrowserEvent, BrowserView};
 use crate::native::menus::{self, Refusal};
@@ -276,7 +276,7 @@ impl BrowserView {
     /// key, in a window on their screen (`docs/browser.md` 14). Never while an agent drives
     /// the page, as its act asked for it; the person's press in the page takes it back first.
     pub(super) fn menu_gate(&self, window: &Window) -> Result<(), Refusal> {
-        match self.control.agent() {
+        match self.lease.control.agent() {
             Some(_) => Err(Refusal::Agent),
             None => menus::may_show(window, "a page's menu"),
         }

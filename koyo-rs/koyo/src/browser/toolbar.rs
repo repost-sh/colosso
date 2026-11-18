@@ -14,7 +14,7 @@ use gpui_kit::{
 };
 use koyo_browser_ipc::{Go, PageState};
 
-use super::control::Mode;
+use super::control::{Leased as _, Mode};
 use super::host::HostStatus;
 use super::lightness::glass_dark;
 use super::view::{BrowserView, Notice};
@@ -231,15 +231,15 @@ pub(super) fn control_bar(
     window: &mut Window,
     cx: &mut Context<BrowserView>,
 ) -> Option<AnyElement> {
-    let (text, id, label, on_click): (_, _, _, OnClick) = if let Some(agent) = view.control.agent()
+    let (text, id, label, on_click): (_, _, _, OnClick) = if let Some(agent) = view.lease.control.agent()
     {
         let take = cx.listener(|this, _: &ClickEvent, _, cx| this.person_acts(Mode::Explicit, cx));
         let text = format!("{} is using this tab", agent.label);
         (text, "browser-take-control", "Take control", Box::new(take))
     } else {
-        let displaced = view.control.displaced.as_ref()?;
+        let displaced = view.lease.control.displaced.as_ref()?;
         let give_back = cx.listener(|this, _: &ClickEvent, _, cx| this.give_back(cx));
-        let text = if view.control.person_using() {
+        let text = if view.lease.control.person_using() {
             format!("{} waits while you use this tab", displaced.label)
         } else {
             format!("You took over this tab from {}", displaced.label)

@@ -13,7 +13,7 @@ use koyo_device_wire::{
 use serde_json::{Value, json};
 
 use super::{DENIAL, activity, allow, call, controlled, external, op, send, taken, terminal};
-use crate::browser::control::Mode;
+use crate::browser::control::{Leased as _, Mode};
 use crate::control::Caller;
 use crate::control::activity::{ActivityKind, Decision};
 use crate::devices::{Chosen, Link};
@@ -120,7 +120,7 @@ fn a_snapshot_and_a_tap_go_to_the_shown_device_and_answer_in_app_controls_words(
     let got = taken(&pending).expect("answered").expect("acted");
     assert_eq!((got["change"].as_str(), got["did"].as_str()), (Some("large"), Some("Tapped e3")));
     assert_eq!(got["name"], "iPhone U-1");
-    let holder = cx.read(|cx| link.read(cx).control.holder.clone());
+    let holder = cx.read(|cx| link.read(cx).lease.control.holder.clone());
     assert!(matches!(holder, Some(crate::browser::control::Holder::Agent { .. })), "{holder:?}");
 }
 

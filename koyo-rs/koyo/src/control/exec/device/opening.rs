@@ -11,6 +11,7 @@ use koyo_app_control::ops::device::{DeviceDone, DeviceOpenInput, DeviceOpenOutpu
 
 use super::looks::{screen, step};
 use super::{claim, last_device, panes_of, remember, which};
+use crate::browser::control::Leased as _;
 use crate::control::Caller;
 use crate::control::exec::{Exec, beside, output, update_shell};
 use crate::devices::{self, Chosen, Simulator, Standing};

@@ -23,7 +23,7 @@ pub(crate) use looks::{list, screenshot, snapshot, wait};
 pub(crate) use opening::{close, open};
 
 use super::{Exec, main_shell};
-use crate::browser::control::{Mode, Refused};
+use crate::browser::control::{Leased as _, Mode, Refused};
 use crate::control::Caller;
 use crate::devices::{self, Link};
 

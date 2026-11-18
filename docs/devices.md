@@ -322,9 +322,16 @@ number both sides refuse to differ on, each side's hello first. Places are point
 picture from its top left; nothing above the host knows about orientation.
 
 App to host: `Hello { protocol, token, surfaces }`, `Visible`, `Input(Input)` (the person's, no
-answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { protocol, pid }`,
+answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { protocol }`,
 `State` (`Starting`, `Ready { screen }`, `Locked`, `Gone`, `Unavailable { code, why }`),
-`Surfaces`, `Frame`, `Touched`, `Answer`, `Log`.
+`Surfaces`, `Frame`, `Touched`, `Answer`, `Log`. The process whose mach messages count as the
+host's is the one the kernel names at the other end of the socket, not one a hello names: its
+audit token (`LOCAL_PEERTOKEN`), which a message's trailer must carry whole, so a process that
+comes later under the host's pid isn't taken for it. A host gone before the app could name it
+(one that says it is unavailable and exits) sends no picture again, but what it said before it
+went still reaches the app, then the link's end. The mach service's name is no secret (any
+process of the person's can list it); its random part only keeps another from checking it in
+first.
 
 ## 8. The tab [decided]
 

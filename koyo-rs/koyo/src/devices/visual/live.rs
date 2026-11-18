@@ -79,7 +79,7 @@ pub fn run(drawn: &mut Drawn, udid: &str, lines: &mut Vec<String>) -> Result<()>
     lines.push(format!("{}", drawn.save("live.png")?.display()));
     let pid = drawn.cx.read(|cx| link.read(cx).pid()).ok_or("no host pid")?;
     // SAFETY: ending a process of this program's own making, by its pid.
-    unsafe { libc::kill(i32::try_from(pid).unwrap_or(0), libc::SIGKILL) };
+    unsafe { libc::kill(pid, libc::SIGKILL) };
     let started = Instant::now();
     drawn
         .until(Duration::from_secs(10), |drawn| Ok(drawn.cx.read(|cx| !link.read(cx).ready())))

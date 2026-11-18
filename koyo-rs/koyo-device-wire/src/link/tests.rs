@@ -161,10 +161,7 @@ fn every_message_to_the_host_round_trips() {
 #[test]
 fn every_message_from_the_host_round_trips() {
     let mut messages = vec![
-        FromHost::Hello {
-            protocol: PROTOCOL,
-            pid: 4242,
-        },
+        FromHost::Hello { protocol: PROTOCOL },
         FromHost::Surfaces {
             generation: 2,
             pixels: PixelSize {

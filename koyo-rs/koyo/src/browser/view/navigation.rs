@@ -9,7 +9,7 @@ use gpui_kit::{App, Context};
 use koyo_browser_ipc::{AppRequest, Go};
 
 use super::{BrowserEvent, BrowserView, Notice};
-use crate::browser::control::Mode;
+use crate::browser::control::{Leased as _, Mode};
 use crate::browser::{Address, read_address, search_url};
 use crate::history::How;
 

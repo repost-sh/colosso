@@ -10,6 +10,7 @@
 //! the app's window, where Chromium draws them and `AppKit` hands them their input
 //! (`docs/native-pages.md`). [`mach`] and [`inherit`] are how the simulator's and the agent
 //! desktop's hosts, processes of their own, hand over their pictures and inherit a socket.
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
@@ -72,10 +73,6 @@ pub use requests::{AppRequest, Edit, Go, ViewAction};
 /// [`HostEvent::TabActivated`], [`HostEvent::TabClosed`]).
 pub const PROTOCOL: u32 = 15;
 
-/// Frames larger than this are refused, so a confused peer cannot make the
-/// other side allocate without bound.
-pub const MAX_FRAME: usize = 16 * 1024 * 1024;
-
 /// Surfaces in a ring sent over a mach service ([`mach`]): one shown, one being drawn, one
 /// spare. The device and desktop hosts send their pictures so.
 pub const RING: u8 = 3;
@@ -106,76 +103,23 @@ pub struct Hello {
 /// A pane, by the app's id for it.
 pub type PaneId = u64;
 
+/// Writes `message` as one frame of JSON, in one write.
 ///
 /// # Errors
-/// When the message is larger than [`MAX_FRAME`] or the writer fails.
+/// When the message is larger than [`koyo_frame::MAX_FRAME`] or the writer fails.
 pub fn write_frame<T: Serialize>(writer: &mut impl Write, message: &T) -> io::Result<()> {
-    let mut frame = vec![0u8; 4];
-    serde_json::to_writer(&mut frame, message).map_err(io::Error::other)?;
-    let body = frame.len() - 4;
-    if body > MAX_FRAME {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "message too large",
-        ));
-    }
-    let len = u32::try_from(body).map_err(io::Error::other)?;
-    frame[..4].copy_from_slice(&len.to_le_bytes());
-    writer.write_all(&frame)?;
-    writer.flush()
+    koyo_frame::write(writer, |body| serde_json::to_writer(body, message))
 }
 
-/// Reads one frame. `Ok(None)` is a clean end of stream between frames.
-/// Readers of a stream of frames should be buffered, so a frame is one read
-/// rather than two.
+/// Reads one frame. `Ok(None)` is a clean end of stream between frames. A
+/// link's reader reads a stream of them through [`koyo_frame::frames`], which
+/// buffers it.
 ///
 /// # Errors
 /// When the stream ends inside a frame, a frame is larger than
-/// [`MAX_FRAME`], or its body is not the expected message.
-pub fn read_frame<T: for<'de> Deserialize<'de>>(reader: &mut impl Read) -> io::Result<Option<T>> {
-    let mut len = [0u8; 4];
-    match reader.read_exact(&mut len) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(e) => return Err(e),
-    }
-    let len = u32::from_le_bytes(len) as usize;
-    if len > MAX_FRAME {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "frame too large",
-        ));
-    }
-    let mut body = vec![0u8; len];
-    reader.read_exact(&mut body)?;
-    serde_json::from_slice(&body)
-        .map(Some)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-}
-
-/// Checks a [`Hello`] on the host side.
-///
-/// # Errors
-/// A message for the app when the version or token differs.
-pub fn check_hello(hello: &Hello, token: &str) -> Result<(), String> {
-    if hello.protocol != PROTOCOL {
-        return Err(format!(
-            "The browser engine speaks protocol {PROTOCOL}, the app {}.",
-            hello.protocol
-        ));
-    }
-    let same = hello.token.len() == token.len()
-        && hello
-            .token
-            .bytes()
-            .zip(token.bytes())
-            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-            == 0;
-    if same {
-        Ok(())
-    } else {
-        Err("The browser host refused the connection.".into())
-    }
+/// [`koyo_frame::MAX_FRAME`], or its body is not the expected message.
+pub fn read_frame<T: DeserializeOwned>(reader: &mut impl Read) -> io::Result<Option<T>> {
+    koyo_frame::read(reader, |body| serde_json::from_slice(body))
 }
 
 #[cfg(test)]

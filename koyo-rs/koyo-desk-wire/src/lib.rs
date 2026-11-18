@@ -7,5 +7,5 @@ pub mod geometry;
 pub mod keys;
 pub mod link;
 
-pub use frame::{MAX_FRAME, read_frame, write_frame};
+pub use frame::{read_frame, write_frame};
 pub use geometry::{Point, Rect, Size};

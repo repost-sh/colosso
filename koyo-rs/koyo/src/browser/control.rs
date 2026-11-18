@@ -4,11 +4,12 @@
 //! page only while they're at it, the page going back [`IMPLICIT_HOLD`] after their last
 //! act; or explicitly, with Take control, which holds it, agents refused, until they give
 //! it back. Unlike a terminal's, then, a page taken by using it comes back on its own: a
-//! click on a page an agent drives is a pause, not a takeover.
+//! click on a page an agent drives is a pause, not a takeover. A device and the agent desktop
+//! hold the same lease ([`Leased`]) as a page, where an agent's hold also lapses once it rests.
 
 use std::time::{Duration, Instant};
 
-use gpui_kit::{AsyncApp, Context, WeakEntity};
+use gpui_kit::{AsyncApp, Context, Task, WeakEntity};
 
 use super::view::BrowserView;
 
@@ -181,59 +182,148 @@ impl Control {
     }
 }
 
-impl BrowserView {
-    /// The person acts in the page: theirs from now on, whoever drove it, and for
-    /// [`IMPLICIT_HOLD`] past this act unless they asked for it.
-    pub(super) fn person_acts(&mut self, mode: Mode, cx: &mut Context<Self>) {
-        let held = self.control.holder.clone();
-        if let Some(displaced) = self.control.person_takes(mode) {
-            log::info!("the person took a browser page from {}", displaced.label);
+/// How long after its last act an agent still has a device or the agent desktop.
+pub const RESTS_AFTER: Duration = Duration::from_secs(10);
+
+/// What comes to its end by itself: the person's hold by acting, an agent's by resting.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ends {
+    Hold,
+    Rest,
+}
+
+/// The lease of a page, a device or the agent desktop, and a task for each hold that ends by
+/// itself: one task however often the hold is renewed, each renewal only moving its deadline
+/// on.
+#[derive(Default)]
+pub struct Lease {
+    pub control: Control,
+    lapse: Option<(Instant, Task<()>)>,
+    rest: Option<(Instant, Task<()>)>,
+}
+
+impl Lease {
+    fn end(&mut self, which: Ends) -> &mut Option<(Instant, Task<()>)> {
+        match which {
+            Ends::Hold => &mut self.lapse,
+            Ends::Rest => &mut self.rest,
         }
-        self.keep_hold(cx);
-        if self.control.holder != held {
+    }
+
+    fn deadline(&self, which: Ends) -> Option<Instant> {
+        let end = match which {
+            Ends::Hold => &self.lapse,
+            Ends::Rest => &self.rest,
+        };
+        end.as_ref().map(|(deadline, _)| *deadline)
+    }
+
+    /// `which` came to its end: the person's hold lapses, or the resting agent lets go.
+    fn ended(&mut self, which: Ends) {
+        *self.end(which) = None;
+        match which {
+            Ends::Hold => self.control.person_gives_back(),
+            Ends::Rest => {
+                if let Some(agent) = self.control.agent().cloned() {
+                    self.control.agent_releases(&agent);
+                }
+            }
+        }
+    }
+}
+
+/// A page, a device or the agent desktop, which agents share and the person pre-empts, by its
+/// [`Lease`]: the person by acting in its tab, which holds it while they're at it and
+/// [`IMPLICIT_HOLD`] after, or with Take control, which holds it until they give it back. On a
+/// device or the agent desktop, an agent's act takes it for that agent, from another agent too,
+/// and an agent that rests [`RESTS_AFTER`] has let it go.
+pub trait Leased: Sized + 'static {
+    fn lease(&self) -> &Lease;
+    fn lease_mut(&mut self) -> &mut Lease;
+    /// What the log calls it.
+    fn named(&self) -> &str;
+
+    /// The person acts in the tab, or asks for it: theirs from now on, whoever drove it, and
+    /// for [`IMPLICIT_HOLD`] past this act unless they asked for it.
+    fn person_acts(&mut self, mode: Mode, cx: &mut Context<Self>) {
+        let held = self.lease().control.holder.clone();
+        if let Some(displaced) = self.lease_mut().control.person_takes(mode) {
+            log::info!("the person took {} from {}", self.named(), displaced.label);
+        }
+        if self.lease().control.person_using() {
+            ends(self, Ends::Hold, IMPLICIT_HOLD, cx);
+        } else {
+            self.lease_mut().lapse = None;
+        }
+        if self.lease().control.holder != held {
             cx.notify();
         }
     }
 
-    /// The person is at the page. Taken by acting in it, it goes back [`IMPLICIT_HOLD`]
-    /// from now unless they act again first; taken by asking, it stays theirs. One task
-    /// waits on the hold however often they act: each act only moves its deadline on.
-    fn keep_hold(&mut self, cx: &mut Context<Self>) {
-        if !self.control.person_using() {
-            self.lapse = None;
-            return;
-        }
-        let until = cx.background_executor().now() + IMPLICIT_HOLD;
-        if let Some((deadline, _)) = &mut self.lapse {
-            *deadline = until;
-            return;
-        }
-        let task = cx.spawn(async move |this, cx| {
-            if sleep_until(&this, |this| Some(this.lapse.as_ref()?.0), cx).await {
-                let _ = this.update(cx, BrowserView::give_back);
-            }
-        });
-        self.lapse = Some((until, task));
+    /// The person gives it back: nobody holds it, and an agent may act again.
+    fn give_back(&mut self, cx: &mut Context<Self>) {
+        let lease = self.lease_mut();
+        lease.lapse = None;
+        lease.control.person_gives_back();
+        cx.notify();
     }
 
-    /// The person gives the page back, or their hold of it lapses: an agent may drive it
-    /// again.
+    /// An agent is about to act: refused while the person holds it, and its own otherwise,
+    /// until it has rested [`RESTS_AFTER`].
+    fn agent_acts(&mut self, actor: Actor, cx: &mut Context<Self>) -> Result<(), Refused> {
+        let held = self.lease().control.holder.clone();
+        self.lease_mut().control.agent_claims(actor, true, None)?;
+        ends(self, Ends::Rest, RESTS_AFTER, cx);
+        if self.lease().control.holder != held {
+            cx.notify();
+        }
+        Ok(())
+    }
+}
+
+/// Has `which` end `after` from now.
+fn ends<T: Leased>(this: &mut T, which: Ends, after: Duration, cx: &mut Context<T>) {
+    let until = cx.background_executor().now() + after;
+    if let Some((deadline, _)) = this.lease_mut().end(which) {
+        *deadline = until;
+        return;
+    }
+    let task = cx.spawn(async move |this, cx| {
+        if sleep_until(&this, |this: &T| this.lease().deadline(which), cx).await {
+            let _ = this.update(cx, |this, cx| {
+                this.lease_mut().ended(which);
+                cx.notify();
+            });
+        }
+    });
+    *this.lease_mut().end(which) = Some((until, task));
+}
+
+impl Leased for BrowserView {
+    fn lease(&self) -> &Lease {
+        &self.lease
+    }
+
+    fn lease_mut(&mut self) -> &mut Lease {
+        &mut self.lease
+    }
+
+    fn named(&self) -> &'static str {
+        "a browser page"
+    }
+}
+
+impl BrowserView {
     /// Whether the person has the page, as a test outside the browser reads it.
     #[cfg(test)]
     pub fn person_has_it(&self) -> bool {
-        self.control.person_holds()
+        self.lease.control.person_holds()
     }
 
     /// The page given back, as a test outside the browser does it.
     #[cfg(test)]
     pub fn nobody_has_it(&mut self, cx: &mut Context<Self>) {
         self.give_back(cx);
-    }
-
-    pub(super) fn give_back(&mut self, cx: &mut Context<Self>) {
-        self.lapse = None;
-        self.control.person_gives_back();
-        cx.notify();
     }
 
     /// `actor`, an agent, asks to drive the page; one it drives is on screen for the engine
@@ -245,7 +335,7 @@ impl BrowserView {
         reason: Option<String>,
         cx: &mut Context<Self>,
     ) -> Result<(), Refused> {
-        let claimed = self.control.agent_claims(actor, takeover, reason);
+        let claimed = self.lease.control.agent_claims(actor, takeover, reason);
         if claimed.is_ok() {
             self.agent_uses(cx);
         }
@@ -255,43 +345,43 @@ impl BrowserView {
 
     /// `actor` is done with the page.
     pub fn agent_releases(&mut self, actor: &Actor, cx: &mut Context<Self>) {
-        self.control.agent_releases(actor);
+        self.lease.control.agent_releases(actor);
         cx.notify();
     }
 
     /// Whether `actor` may drive the page now, as [`BrowserView::agent_claims`] would let it.
     pub fn agent_may_claim(&self, actor: &Actor, takeover: bool) -> Result<(), Refused> {
-        self.control.may_claim(actor, takeover)
+        self.lease.control.may_claim(actor, takeover)
     }
 
     /// The agent driving the page, if one does.
     pub fn agent_holding(&self) -> Option<&Actor> {
-        self.control.agent()
+        self.lease.control.agent()
     }
 
     /// The agent driving the page and which of the page's leases it holds: one taken after it
     /// ended, by the same agent too, is another.
     pub fn agent_lease(&self) -> Option<(&Actor, u64)> {
-        self.control.agent_lease()
+        self.lease.control.agent_lease()
     }
 
     /// Whether the person holds the page.
     pub fn person_holding(&self) -> bool {
-        self.control.person_holds()
+        self.lease.control.person_holds()
     }
 }
 
-/// Sleeps until the deadline `deadline` reads from the page, and on to it again each time it
-/// moved meanwhile, so one task waits however often it moves: whether it passed, rather than
-/// the deadline or the page going first.
-pub(super) async fn sleep_until(
-    page: &WeakEntity<BrowserView>,
-    deadline: fn(&BrowserView) -> Option<Instant>,
+/// Sleeps until the deadline `deadline` reads from `entity` (a page, a device, the agent
+/// desktop), and on to it again each time it moved meanwhile, so one task waits however often
+/// it moves: whether it passed, rather than the deadline or the entity going first.
+pub(super) async fn sleep_until<T: 'static>(
+    entity: &WeakEntity<T>,
+    deadline: impl Fn(&T) -> Option<Instant>,
     cx: &mut AsyncApp,
 ) -> bool {
     loop {
-        let left = page.read_with(cx, |page, cx| {
-            Some(deadline(page)?.saturating_duration_since(cx.background_executor().now()))
+        let left = entity.read_with(cx, |entity, cx| {
+            Some(deadline(entity)?.saturating_duration_since(cx.background_executor().now()))
         });
         match left {
             Ok(Some(left)) if !left.is_zero() => cx.background_executor().timer(left).await,
@@ -302,103 +392,4 @@ pub(super) async fn sleep_until(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn agent(id: &str) -> Actor {
-        Actor {
-            id: id.into(),
-            label: id.to_uppercase(),
-        }
-    }
-
-    #[test]
-    fn an_agent_claims_a_free_page_and_takes_over_another_agents_only_by_saying_so() {
-        let mut control = Control::default();
-        assert_eq!(control.agent_claims(agent("a"), false, None), Ok(()));
-        assert_eq!(control.agent(), Some(&agent("a")));
-        assert_eq!(
-            control.agent_claims(agent("b"), false, None),
-            Err(Refused::ControlRequired { holder: agent("a") })
-        );
-        assert_eq!(
-            control.agent_claims(agent("a"), false, None),
-            Ok(()),
-            "renewed"
-        );
-        assert_eq!(
-            control.agent_claims(agent("b"), true, Some("rerunning".into())),
-            Ok(())
-        );
-        assert_eq!(control.agent(), Some(&agent("b")));
-        control.agent_releases(&agent("a"));
-        assert_eq!(control.agent(), Some(&agent("b")), "not its lease to end");
-        control.agent_releases(&agent("b"));
-        assert_eq!(control.holder, None);
-    }
-
-    #[test]
-    fn the_person_takes_a_page_and_agents_stay_out_until_they_give_it_back() {
-        let mut control = Control::default();
-        control.agent_claims(agent("a"), false, None).ok();
-        assert_eq!(control.person_takes(Mode::Implicit), Some(agent("a")));
-        assert!(control.person_holds());
-        assert_eq!(control.displaced, Some(agent("a")));
-        assert!(matches!(
-            control.agent_claims(agent("a"), true, None),
-            Err(Refused::PersonHasControl {
-                mode: Mode::Implicit,
-                ..
-            })
-        ));
-        assert_eq!(control.person_takes(Mode::Explicit), None, "already theirs");
-        assert!(
-            matches!(
-                control.agent_claims(agent("a"), true, None),
-                Err(Refused::PersonHasControl {
-                    mode: Mode::Explicit,
-                    ..
-                })
-            ),
-            "asked for, a page they were using is theirs to keep"
-        );
-        assert_eq!(control.person_takes(Mode::Implicit), None);
-        assert!(
-            !control.person_using(),
-            "and using it doesn't make it a page they're only using"
-        );
-        assert!(matches!(
-            control.agent_claims(agent("b"), false, None),
-            Err(Refused::PersonHasControl { .. })
-        ));
-        control.person_gives_back();
-        assert_eq!(control.holder, None);
-        assert_eq!(control.displaced, None);
-        assert_eq!(control.agent_claims(agent("b"), false, None), Ok(()));
-    }
-
-    #[test]
-    fn a_lease_taken_again_after_the_person_had_the_page_is_another() {
-        let mut control = Control::default();
-        control.agent_claims(agent("a"), false, None).unwrap();
-        let first = control.agent_lease().map(|(_, lease)| lease);
-        control.agent_claims(agent("a"), false, None).unwrap();
-        assert_eq!(control.agent_lease().map(|(_, lease)| lease), first, "renewed");
-        control.person_takes(Mode::Implicit);
-        control.person_gives_back();
-        assert_eq!(control.agent_lease(), None);
-        control.agent_claims(agent("a"), false, None).unwrap();
-        let again = control.agent_lease().map(|(_, lease)| lease);
-        assert_ne!(again, first, "taken again, it's another lease");
-    }
-
-    #[test]
-    fn a_page_nobody_held_is_the_persons_once_they_use_it() {
-        let mut control = Control::default();
-        assert_eq!(control.person_takes(Mode::Implicit), None);
-        assert!(control.person_holds());
-        assert!(control.person_using());
-        assert_eq!(control.displaced, None, "nobody to name");
-        assert!(control.agent_claims(agent("a"), false, None).is_err());
-    }
-}
+mod tests;

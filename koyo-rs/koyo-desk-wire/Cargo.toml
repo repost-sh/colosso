@@ -7,6 +7,7 @@ publish.workspace = true
 description = "What Koyo's agent desktop agrees on between the app and its host: the link's messages and frames, shapes, key names (docs/agent-desktop.md)."
 
 [dependencies]
+koyo-frame = { path = "../koyo-frame" }
 # The link's frames are CBOR, as the terminal daemon's are: self-describing, and byte strings
 # (screenshots) travel as they are.
 ciborium = "0.2"

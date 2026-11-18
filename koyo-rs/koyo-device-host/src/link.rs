@@ -3,7 +3,7 @@
 //! to say (frames are announced from the GPU's completion handlers).
 
 use std::collections::VecDeque;
-use std::io::{self, BufReader};
+use std::io;
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -72,8 +72,7 @@ impl Link {
         std::thread::Builder::new()
             .name("device-link".into())
             .spawn(move || {
-                let mut reader = BufReader::new(reader);
-                while let Ok(Some(message)) = read_frame::<ToHost>(&mut reader) {
+                for message in koyo_frame::frames(reader, read_frame::<ToHost>) {
                     (told.lock().unwrap_or_else(PoisonError::into_inner)).push_back(message);
                     wake();
                 }

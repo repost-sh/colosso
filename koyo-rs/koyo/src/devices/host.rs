@@ -4,53 +4,22 @@
 //! Unlike the browser's, the child isn't killed when its link is dropped: it shuts its simulator
 //! down itself once the link closes, and Koyo's quit doesn't wait for it.
 
-use std::io::{self, BufReader};
+use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use koyo_browser_ipc::{client, inherit, mach};
-use koyo_device_wire::{ENV_SOCKET_FD, ENV_TOKEN, FromHost, PROTOCOL, ToHost, read_frame, write_frame};
+use koyo_device_wire::{
+    ENV_SOCKET_FD, ENV_TOKEN, FromHost, PROTOCOL, ToHost, read_frame, write_frame,
+};
 
-/// How long a host has to say hello.
-const HELLO_WITHIN: Duration = Duration::from_secs(10);
+use crate::hosted::link;
 
-/// What a host says, in the order it came on each channel.
-pub enum Incoming {
-    Said(FromHost),
-    Ring(mach::Ring),
-    /// The link closed: the host went.
-    Closed,
-}
-
-/// A host that said hello.
-pub struct Running {
-    pub pid: u32,
-    pub tell: std::sync::mpsc::Sender<ToHost>,
-    stop: Arc<AtomicBool>,
-}
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
-}
-
-impl Running {
-    /// A host that isn't there, for the stand-in tests and the off-screen pictures: what is
-    /// told to it comes out of the receiver.
-    #[cfg(any(test, feature = "visual-check"))]
-    pub fn stand_in(tell: std::sync::mpsc::Sender<ToHost>) -> Running {
-        Running {
-            pid: 0,
-            tell,
-            stop: Arc::new(AtomicBool::new(false)),
-        }
-    }
-}
+/// What a device's host says.
+pub type Incoming = link::Incoming<FromHost>;
+/// A device's host that said hello.
+pub type Running = link::Running<ToHost>;
 
 /// What a host is started for: one simulator of Koyo's set, or a real device by its name.
 pub struct Launch {
@@ -99,11 +68,10 @@ pub fn program() -> Result<PathBuf, String> {
 ///
 /// # Errors
 /// When the host can't be started, doesn't say hello in time, or speaks another protocol.
-pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) -> io::Result<Running> {
-    let (mut ours, theirs) = UnixStream::pair()?;
+pub fn start(launch: &Launch, sink: link::Sink<FromHost>) -> io::Result<Running> {
+    let (ours, theirs) = UnixStream::pair()?;
     let token = client::token()?;
-    let service = format!("codes.koyo.device.{}.{}", std::process::id(), &token[..12]);
-    let receiver = mach::Receiver::check_in(&service)?;
+    let receiver = mach::Receiver::check_in(&format!("codes.koyo.device.{}", std::process::id()))?;
     std::fs::create_dir_all(&launch.state)?;
     let log = std::fs::OpenOptions::new()
         .create(true)
@@ -130,89 +98,37 @@ pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) 
         .spawn(move || {
             let _ = child.wait();
         })?;
-    write_frame(
-        &mut ours,
-        &ToHost::Hello {
-            protocol: PROTOCOL,
-            token,
-            surfaces: service,
+    linked(ours, token, receiver, sink)
+}
+
+/// The link to the host at the other end of `stream`: told hello with `token`, and once its own
+/// hello is in this app's protocol, written to and read from on threads of its own, and its
+/// pictures received on `receiver`.
+fn linked(
+    mut stream: UnixStream,
+    token: String,
+    receiver: mach::Receiver,
+    sink: link::Sink<FromHost>,
+) -> io::Result<Running> {
+    let hello = ToHost::Hello {
+        protocol: PROTOCOL,
+        token,
+        surfaces: receiver.name().to_owned(),
+    };
+    write_frame(&mut stream, &hello)?;
+    koyo_frame::hello(
+        &mut stream,
+        koyo_frame::HELLO_WITHIN,
+        koyo_frame::End::App,
+        PROTOCOL,
+        |stream| {
+            Ok(read_frame(stream)?.and_then(|said| match said {
+                FromHost::Hello { protocol } => Some((protocol, ())),
+                _ => None,
+            }))
         },
     )?;
-    let pid = hello(&mut ours)?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let tell = writer(ours.try_clone()?)?;
-    reader(ours, sink.clone())?;
-    rings(receiver, pid, Arc::clone(&stop), sink)?;
-    Ok(Running { pid, tell, stop })
-}
-
-/// The host's hello: its pid, once its protocol is this app's.
-fn hello(stream: &mut UnixStream) -> io::Result<u32> {
-    stream.set_read_timeout(Some(HELLO_WITHIN))?;
-    let said = read_frame::<FromHost>(stream)?;
-    stream.set_read_timeout(None)?;
-    match said {
-        Some(FromHost::Hello { protocol, pid }) if protocol == PROTOCOL => {
-            u32::try_from(pid).map_err(io::Error::other)
-        }
-        Some(FromHost::Hello { protocol, .. }) => Err(io::Error::other(format!(
-            "this Koyo and its device host don't match (the host speaks version {protocol})"
-        ))),
-        _ => Err(io::Error::other("the device host didn't say hello")),
-    }
-}
-
-/// The socket's writes, off the main thread.
-fn writer(mut stream: UnixStream) -> io::Result<std::sync::mpsc::Sender<ToHost>> {
-    let (tell, told) = std::sync::mpsc::channel::<ToHost>();
-    std::thread::Builder::new()
-        .name("device-host-tell".into())
-        .spawn(move || {
-            while let Ok(message) = told.recv() {
-                if write_frame(&mut stream, &message).is_err() {
-                    return;
-                }
-            }
-        })?;
-    Ok(tell)
-}
-
-fn reader(stream: UnixStream, sink: impl Fn(Incoming) + Send + 'static) -> io::Result<()> {
-    std::thread::Builder::new()
-        .name("device-host-said".into())
-        .spawn(move || {
-            let mut reader = BufReader::new(stream);
-            while let Ok(Some(message)) = read_frame::<FromHost>(&mut reader) {
-                sink(Incoming::Said(message));
-            }
-            sink(Incoming::Closed);
-        })?;
-    Ok(())
-}
-
-/// The host's rings, by mach port, from its pid alone. A failure to receive ends the thread
-/// rather than spinning on it (the agent desktop's frames thread did).
-fn rings(
-    receiver: mach::Receiver,
-    pid: u32,
-    stop: Arc<AtomicBool>,
-    sink: impl Fn(Incoming) + Send + 'static,
-) -> io::Result<()> {
-    std::thread::Builder::new()
-        .name("device-host-rings".into())
-        .spawn(move || {
-            while !stop.load(Ordering::Relaxed) {
-                match receiver.receive(pid, 200) {
-                    Ok(Some(ring)) => sink(Incoming::Ring(ring)),
-                    Ok(None) => {}
-                    Err(error) => {
-                        log::warn!("a device host's pictures stopped coming: {error}");
-                        return;
-                    }
-                }
-            }
-        })?;
-    Ok(())
+    link::run(stream, receiver, "device-host", sink)
 }
 
 /// What a host left behind when it was killed: `<pid> <start time> <udid>` in `state`. Each
@@ -246,3 +162,6 @@ pub(super) fn started_at(pid: i32) -> Option<u64> {
         (got == size).then_some(info.pbi_start_tvsec)
     }
 }
+
+#[cfg(test)]
+mod tests;
