@@ -4,6 +4,7 @@ mod cli;
 mod failure;
 mod files;
 mod fix;
+mod imports;
 mod language;
 mod lexical;
 mod pool;

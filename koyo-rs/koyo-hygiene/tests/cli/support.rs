@@ -17,13 +17,16 @@ impl Run {
     }
 }
 
+/// A folder of a test's own. It sits in the workspace's `target/tmp`, not
+/// `CARGO_TARGET_TMPDIR`, which a shared build folder may put outside the checkout.
 pub struct Scratch {
     root: PathBuf,
 }
 
 impl Scratch {
     pub fn new(name: &str) -> Self {
-        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        let root = PathBuf::from(env!("KOYO_TARGET_DIR"))
+            .join("tmp")
             .join("hygiene")
             .join(name);
         let _ = fs::remove_dir_all(&root);
@@ -57,6 +60,7 @@ impl Scratch {
         let output = Command::new(env!("CARGO_BIN_EXE_koyo-hygiene"))
             .args(arguments)
             .current_dir(self.root.join(folder))
+            .env("GIT_CEILING_DIRECTORIES", self.outside())
             .output()
             .expect("the binary runs");
         Run {
@@ -70,11 +74,27 @@ impl Scratch {
         let status = Command::new("git")
             .args(arguments)
             .current_dir(&self.root)
+            .env("GIT_CEILING_DIRECTORIES", self.outside())
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
             .status()
             .expect("git runs");
         assert!(status.success(), "git {arguments:?}");
+    }
+
+    pub fn commit(&self) {
+        self.git(&["add", "-A"]);
+        self.git(&["commit", "-q", "-m", "fixture"]);
+    }
+
+    /// The folder above the scratch, where git stops looking for a checkout, since the
+    /// scratch sits inside Koyo's own.
+    fn outside(&self) -> &Path {
+        self.root.parent().expect("a parent folder")
     }
 }
 

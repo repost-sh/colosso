@@ -11,7 +11,7 @@ pub struct Finding {
     pub line: usize,
     pub column: usize,
     pub rule: &'static Rule,
-    pub excerpt: String,
+    pub detail: String,
 }
 
 pub fn check(language: Language, source: &str) -> Result<Vec<Finding>, ParseFailed> {
@@ -34,7 +34,7 @@ pub fn findings_of(comments: &[Comment], source: &str) -> Vec<Finding> {
                 line: comment.start.row + 1,
                 column: character_column(source, comment.range.start),
                 rule,
-                excerpt: excerpt(&source[comment.range.clone()]),
+                detail: excerpt(&source[comment.range.clone()]),
             })
         })
         .collect()

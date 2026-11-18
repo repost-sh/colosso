@@ -1,13 +1,15 @@
 use std::ffi::OsString;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use crate::cli::{Mode, Request, USAGE, parse};
+use crate::cli::{Command, Mode, Request, USAGE, parse};
 use crate::failure::Failure;
-use crate::files::{Source, listed_by_git, named};
+use crate::files::{Source, checkout_root, listed_by_git, named};
+use crate::imports::{self, LIST};
 use crate::pool::map_in_order;
 use crate::process::{FileReport, process};
-use crate::report::{write_findings, write_fix_summary};
+use crate::report::{counted, write_findings, write_fix_summary};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Exit {
@@ -53,13 +55,47 @@ fn execute(
         }
         Err(message) => return Err(Failure::new("usage", message)),
     };
-    let sources = if command.paths.is_empty() {
-        listed_by_git()?
-    } else {
-        named(&command.paths)?
+    let (reports, failures) = match command {
+        Command::Everything => {
+            let root = checkout_root()?;
+            let (mut reports, mut failures) = process_all(&listed_by_git(&root)?, Mode::Check)?;
+            match imports::check(&root) {
+                Ok(found) => reports.extend(found),
+                Err(failure) => failures.push(failure),
+            }
+            reports.sort_by(|left, right| left.path.cmp(&right.path));
+            (reports, failures)
+        }
+        Command::Comments { mode, paths } => comments(mode, &paths, out)?,
+        Command::Prune => {
+            let (pruned, reports) = imports::prune(&checkout_root()?)?;
+            writeln!(out, "Pruned {} from {LIST}.", counted(pruned, "edge"))?;
+            (reports, Vec::new())
+        }
+        Command::Stats => {
+            imports::stats(&checkout_root()?, out)?;
+            return Ok(Exit::Clean);
+        }
     };
-    let (reports, failures) = process_all(&sources, command.mode)?;
-    if command.mode == Mode::Fix {
+    write_findings(out, &reports)?;
+    for failure in &failures {
+        writeln!(err, "koyo-hygiene: {failure}")?;
+    }
+    Ok(exit_for(&reports, failures.len()))
+}
+
+fn comments(
+    mode: Mode,
+    paths: &[PathBuf],
+    out: &mut impl Write,
+) -> Result<(Vec<FileReport>, Vec<Failure>), Failure> {
+    let sources = if paths.is_empty() {
+        listed_by_git(&checkout_root()?)?
+    } else {
+        named(paths)?
+    };
+    let (reports, failures) = process_all(&sources, mode)?;
+    if mode == Mode::Fix {
         let changed = reports.iter().filter(|report| report.deleted > 0).count();
         write_fix_summary(
             out,
@@ -67,11 +103,7 @@ fn execute(
             changed,
         )?;
     }
-    write_findings(out, &reports)?;
-    for failure in &failures {
-        writeln!(err, "koyo-hygiene: {failure}")?;
-    }
-    Ok(exit_for(&reports, failures.len()))
+    Ok((reports, failures))
 }
 
 fn process_all(sources: &[Source], mode: Mode) -> Result<(Vec<FileReport>, Vec<Failure>), Failure> {

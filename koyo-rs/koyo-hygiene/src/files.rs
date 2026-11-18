@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use crate::failure::Failure;
 use crate::language::Language;
@@ -23,9 +23,13 @@ pub struct Source {
     pub presence: Presence,
 }
 
-pub fn listed_by_git() -> Result<Vec<Source>, Failure> {
-    let root_output = git(None, &["rev-parse", "--show-toplevel"])?;
-    let root = PathBuf::from(OsStr::from_bytes(root_output.trim_ascii_end()));
+/// The top of the git checkout the tool runs in.
+pub fn checkout_root() -> Result<PathBuf, Failure> {
+    let output = git(None, &["rev-parse", "--show-toplevel"])?;
+    Ok(PathBuf::from(OsStr::from_bytes(output.trim_ascii_end())))
+}
+
+pub fn listed_by_git(root: &Path) -> Result<Vec<Source>, Failure> {
     let mut arguments = vec![
         "ls-files",
         "-z",
@@ -35,7 +39,7 @@ pub fn listed_by_git() -> Result<Vec<Source>, Failure> {
         "--",
     ];
     arguments.extend(TRACKED_PATHSPECS);
-    let listing = git(Some(&root), &arguments)?;
+    let listing = git(Some(root), &arguments)?;
     let sources = listing
         .split(|&byte| byte == 0)
         .filter(|name| !name.is_empty())
@@ -106,25 +110,44 @@ fn in_path_order(mut sources: Vec<Source>) -> Vec<Source> {
     sources
 }
 
-fn git(directory: Option<&Path>, arguments: &[&str]) -> Result<Vec<u8>, Failure> {
+pub fn git(directory: Option<&Path>, arguments: &[&str]) -> Result<Vec<u8>, Failure> {
+    let output = run_git(directory, arguments)?;
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(git_failed(arguments, &output))
+    }
+}
+
+/// What git prints, or `None` when it exits 1, as `git rev-parse --verify -q` does for a name
+/// that names nothing.
+pub fn git_lookup(root: &Path, arguments: &[&str]) -> Result<Option<Vec<u8>>, Failure> {
+    let output = run_git(Some(root), arguments)?;
+    match output.status.code() {
+        Some(0) => Ok(Some(output.stdout)),
+        Some(1) => Ok(None),
+        _ => Err(git_failed(arguments, &output)),
+    }
+}
+
+fn run_git(directory: Option<&Path>, arguments: &[&str]) -> Result<Output, Failure> {
     let mut command = Command::new("git");
     if let Some(directory) = directory {
         command.arg("-C").arg(directory);
     }
-    let output = command
+    command
         .args(arguments)
         .output()
-        .map_err(|failure| Failure::new("git", format!("cannot run git: {failure}")))?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        Err(Failure::new(
-            "git",
-            format!(
-                "git {} failed: {}",
-                arguments.first().copied().unwrap_or_default(),
-                String::from_utf8_lossy(&output.stderr).trim()
-            ),
-        ))
-    }
+        .map_err(|failure| Failure::new("git", format!("cannot run git: {failure}")))
+}
+
+fn git_failed(arguments: &[&str], output: &Output) -> Failure {
+    Failure::new(
+        "git",
+        format!(
+            "git {} failed: {}",
+            arguments.first().copied().unwrap_or_default(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ),
+    )
 }

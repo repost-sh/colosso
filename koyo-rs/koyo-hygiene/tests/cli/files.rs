@@ -131,6 +131,8 @@ fn help_and_unknown_options_are_answered_without_checking_anything() {
 fn git_checkout(name: &str) -> Scratch {
     let scratch = Scratch::new(name);
     scratch.write(".gitignore", "ignored.rs\n");
+    scratch.write("koyo-rs/module-edges.txt", "");
+    scratch.write("koyo-rs/koyo/src/main.rs", "fn main() {}\n");
     scratch.write("koyo-rs/koyo/src/a.rs", "// a\n");
     scratch.write("koyo-rs/koyo/src/ignored.rs", "// ignored\n");
     scratch.write("koyo-rs/koyo/src/gone.rs", "// gone\n");
