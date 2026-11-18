@@ -167,14 +167,10 @@ impl Launcher {
 
 /// A row's icon: the page's own, its site's once read, or the kind's.
 fn glyph(row: &Row, p: Palette, cx: &App) -> AnyElement {
-    let image = match &row.glyph {
-        Glyph::Image(image) => Some(image.clone()),
-        Glyph::Site(url) => crate::history::icon(url, cx),
-        Glyph::Icon(_) => None,
-    };
-    let name = match &row.glyph {
-        Glyph::Icon(name) => *name,
-        Glyph::Image(_) | Glyph::Site(_) => IconName::Globe,
+    let (image, name) = match &row.glyph {
+        Glyph::Image(image) => (Some(image.clone()), IconName::Globe),
+        Glyph::Site(url) => (crate::history::icon(url, cx), IconName::Globe),
+        Glyph::Icon(name) => (None, *name),
     };
     match image {
         Some(image) => img(image).size(px(GLYPH)).flex_shrink_0().into_any_element(),

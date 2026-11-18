@@ -17,8 +17,8 @@ use super::super::super::super::gate;
 use super::super::super::Caller;
 use super::asks;
 use crate::browser::agent::Actor;
-use crate::browser::profiles::{self, By};
 use crate::browser::BrowserView;
+use crate::browser::profiles::{self, By};
 use crate::model::{Spot, Tab};
 use crate::shell::Shell;
 

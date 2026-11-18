@@ -409,7 +409,7 @@ fn a_sites_icon_is_read_off_the_main_thread_the_first_time_its_host_is_asked_for
 ) {
     let folder = crate::test_support::scratch("history-icons");
     std::fs::write(folder.join("example.com.png"), b"a png").unwrap();
-    cx.update(|cx| super::icons::keep_icons_in(&folder, cx));
+    cx.update(|cx| super::keep_icons_in(&folder, cx));
     assert_eq!(icon_of("https://example.com/a", cx), None, "a globe while it's read");
     cx.run_until_parked();
     assert_eq!(icon_of("https://www.example.com/b", cx), Some(b"a png".to_vec()));
@@ -427,7 +427,7 @@ fn the_icons_of_the_pages_a_window_brings_back_are_there_as_it_asks(cx: &mut Tes
     let folder = crate::test_support::scratch("history-icons-kept");
     std::fs::write(folder.join("example.com.png"), b"a png").unwrap();
     cx.update(|cx| {
-        super::icons::keep_icons_in(&folder, cx);
+        super::keep_icons_in(&folder, cx);
         let pages = ["https://example.com/kept", "", "https://elsewhere.example/"];
         crate::blocking::in_test(|may| super::read_icons(&pages, may, cx));
     });
@@ -449,7 +449,7 @@ fn what_observes_the_icons_hears_what_changes_a_row_and_nothing_else(cx: &mut Te
     }
     let folder = crate::test_support::scratch("history-icons-heard");
     std::fs::write(folder.join("example.com.png"), b"a png").unwrap();
-    cx.update(|cx| super::icons::keep_icons_in(&folder, cx));
+    cx.update(|cx| super::keep_icons_in(&folder, cx));
     let heard = Rc::new(Cell::new(0));
     let counting = heard.clone();
     let _listening = cx.new(|cx| {

@@ -61,22 +61,18 @@ fn execute(
         Command::Everything => {
             let root = checkout_root()?;
             let (mut reports, mut failures) = process_all(&listed_by_git(&root)?, Mode::Check)?;
-            let checks = shipped_build(&root).map(|(graph, calls)| {
-                [
+            let checks = match shipped_build(&root) {
+                Ok((graph, calls)) => vec![
                     imports::check(&root, &graph),
                     blocking::check(&root, &calls),
-                ]
-            });
-            match checks {
-                Ok(checks) => {
-                    for check in checks {
-                        match check {
-                            Ok(found) => reports.extend(found),
-                            Err(failure) => failures.push(failure),
-                        }
-                    }
+                ],
+                Err(failure) => vec![Err(failure)],
+            };
+            for check in checks {
+                match check {
+                    Ok(found) => reports.extend(found),
+                    Err(failure) => failures.push(failure),
                 }
-                Err(failure) => failures.push(failure),
             }
             reports.sort_by(|left, right| left.path.cmp(&right.path));
             (reports, failures)

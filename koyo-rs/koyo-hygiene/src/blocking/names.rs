@@ -7,6 +7,7 @@ use super::calls::{blocks, named};
 /// What the file's `use` items name: each name with the path it stands for, where each item
 /// starts and the token after it, the globs that import from `std::fs` or `std::process`, and
 /// what a `pub use` hands on that blocks, each by the index of its token.
+#[derive(Default)]
 pub struct Names {
     paths: BTreeMap<String, Vec<String>>,
     pub declarations: BTreeMap<usize, usize>,
@@ -16,12 +17,7 @@ pub struct Names {
 
 impl Names {
     pub fn of(tokens: &[Token<'_>]) -> Self {
-        let mut names = Names {
-            paths: BTreeMap::new(),
-            declarations: BTreeMap::new(),
-            globs: Vec::new(),
-            exported: Vec::new(),
-        };
+        let mut names = Self::default();
         for (index, _) in tokens
             .iter()
             .enumerate()

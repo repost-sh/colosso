@@ -9,9 +9,9 @@ use gpui_kit::{
     canvas, deferred, point, px,
 };
 
-use crate::hosted::canvas::fitted;
 use super::view::DeskView;
 use crate::browser::pointer::{Next, paint_pointer, tint};
+use crate::hosted::canvas::fitted;
 
 /// The pointer over the desktop, unless there's none to show; asks for the frames and the
 /// wake-up it needs to move and fade.

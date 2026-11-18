@@ -158,7 +158,9 @@ fn closed_tabs_of_a_checkout_gone_since_are_let_go(cx: &mut gpui_kit::TestAppCon
 }
 
 #[gpui_kit::test]
-fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves_it(cx: &mut gpui_kit::TestAppContext) {
+fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves_it(
+    cx: &mut gpui_kit::TestAppContext,
+) {
     let mut workspace = unit_with_tabs(1, 0);
     let tab = workspace.branch().unwrap().tabs[0].clone();
     let loose = ClosedFrom::Loose {

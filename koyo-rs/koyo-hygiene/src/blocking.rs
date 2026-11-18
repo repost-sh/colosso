@@ -161,12 +161,10 @@ fn compare(calls: &Calls, debt: &Debt, head: Option<&Debt>) -> Vec<FileReport> {
                 "{} {}: not on the last commit's list",
                 owed.path, owed.count
             ),
-            Some(Some(was)) if was < owed.count => {
-                format!(
-                    "{} {}: {was} on the last commit's list",
-                    owed.path, owed.count
-                )
-            }
+            Some(Some(was)) if was < owed.count => format!(
+                "{} {}: {was} on the last commit's list",
+                owed.path, owed.count
+            ),
             _ => continue,
         };
         found.add(DEBT, entry.line, 1, &ADDED_CALL, detail);

@@ -1,9 +1,7 @@
-use crate::imports::support::checkout;
+use crate::imports::support::{SOURCE, checkout};
 use crate::support::{Run, Scratch};
 
 pub use crate::imports::support::DEBT;
-
-const SOURCE: &str = "koyo-rs/koyo/src/";
 
 /// A git checkout with no commit yet, these files under `koyo-rs/koyo/src/`, an empty edge
 /// list and `debt` as the debt list.

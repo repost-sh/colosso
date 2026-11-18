@@ -156,9 +156,9 @@ pub fn heard_at_window(root: Div, cx: &mut Context<Shell>) -> Div {
 }
 
 impl Shell {
-    /// Makes the views of the shown tab's chat panes `missing`, by their panes and the threads
-    /// they show, so the panes draw them (`Shell::make_shown`), and tells the tab's chats where
-    /// they work.
+    /// Makes the views the shown tab's chat panes in `missing` lack, each of the thread its pane
+    /// shows, so the panes draw them (`Shell::make_shown`), and tells the tab's chats where they
+    /// work.
     pub(crate) fn make_chats(
         &mut self,
         missing: Vec<(u64, Option<ThreadId>)>,

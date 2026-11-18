@@ -50,7 +50,9 @@ pub fn open_git(path: &Path, _: Blocking<'_>) -> koyo_git::Result<Opened> {
         git_dir,
         common_dir,
     };
-    let root = CheckoutRoot(std::fs::canonicalize(git.root()).unwrap_or_else(|_| git.root().to_owned()));
+    let root = CheckoutRoot(
+        std::fs::canonicalize(git.root()).unwrap_or_else(|_| git.root().to_owned()),
+    );
     Ok(Opened { git, dirs, root })
 }
 

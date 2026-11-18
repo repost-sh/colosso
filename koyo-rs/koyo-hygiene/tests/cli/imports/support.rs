@@ -2,7 +2,7 @@ use crate::support::{Run, Scratch};
 
 pub const LIST: &str = "koyo-rs/module-edges.txt";
 pub const DEBT: &str = "koyo-rs/blocking-debt.txt";
-const SOURCE: &str = "koyo-rs/koyo/src/";
+pub const SOURCE: &str = "koyo-rs/koyo/src/";
 
 /// A git checkout with no commit yet, these files under `koyo-rs/koyo/src/`, and an empty
 /// edge list and debt list.

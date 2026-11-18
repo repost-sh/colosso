@@ -17,8 +17,8 @@ pub fn write_frame<T: Serialize>(writer: &mut impl Write, message: &T) -> io::Re
 /// reads a stream of them through [`koyo_frame::frames`], which buffers it.
 ///
 /// # Errors
-/// When the stream ends inside a frame, a frame is larger than [`koyo_frame::MAX_FRAME`], or its body
-/// isn't the expected message.
+/// When the stream ends inside a frame, a frame is larger than [`koyo_frame::MAX_FRAME`], or
+/// its body isn't the expected message.
 pub fn read_frame<T: DeserializeOwned>(reader: &mut impl Read) -> io::Result<Option<T>> {
     koyo_frame::read(reader, |body| ciborium::from_reader(body))
 }

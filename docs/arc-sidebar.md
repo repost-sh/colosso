@@ -591,7 +591,8 @@ menu is Arc's.
   The one that was shown is shown again; no other page is made until its tile is picked.
   **[asked; ours: that the one shown is shown again]**
 - Written 500 ms after a change and on the way out, through the file's one writer
-  (`kept_file::Writers`), only when it differs from what the file holds. Read tolerantly: see `docs/browser.md` 10. **[asked]**
+  (`kept_file::Writers`), only when it differs from what the file holds. Read tolerantly: see
+  `docs/browser.md` 10. **[asked]**
 - **Loose pages** are open tabs, so they're kept with the window, in `window.json`, by their
   space's `id` (`docs/browser.md` 2): each comes back in its space, in order, at the address
   it showed, titled as it was, of the profile it had, the one the space showed shown. Those

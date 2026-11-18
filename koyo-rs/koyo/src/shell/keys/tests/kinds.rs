@@ -20,7 +20,9 @@ fn the_desktop_and_a_device_take_the_keyboard_and_come_back_as_they_were(cx: &mu
     let (window, shell) = shell("keys-desktop-device", cx);
     let (desktop, device) = shell.update(cx, |shell, cx| {
         let desktop = shell.desktop_pane(false, cx).expect("the desktop's tab");
-        let device = shell.device_pane(Some(iphone("UDID-KEYS")), false, cx).expect("the device's tab");
+        let device = shell
+            .device_pane(Some(iphone("UDID-KEYS")), false, cx)
+            .expect("the device's tab");
         (desktop, device)
     });
     for (pane, context, title, udid) in [

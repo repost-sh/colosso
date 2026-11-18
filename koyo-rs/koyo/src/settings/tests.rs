@@ -9,7 +9,7 @@ use super::*;
 use crate::blocking::in_test;
 use crate::budget::{settle, wakes_a_minute};
 use crate::gradient::Harmony;
-use crate::test_support::{Blank, in_front, in_window, scratch};
+use crate::test_support::{Blank, in_front, in_window, init_settings, scratch};
 
 /// What the settings file at `path` holds.
 fn read(path: &Path) -> Result<Settings, String> {
@@ -21,11 +21,6 @@ fn read(path: &Path) -> Result<Settings, String> {
 fn look_again(path: &Path, cx: &mut TestAppContext) {
     let looked = in_test(|may| file::look(path, file::modified(path, may), may));
     cx.update(|cx| file::take_up(looked, cx));
-}
-
-/// The settings started as the app starts them, with no file in a test.
-fn started(cx: &mut TestAppContext) {
-    cx.update(|cx| in_test(|may| init(cx, may)));
 }
 
 /// Gives a test's settings a file in `folder` to be saved to, as the app's are: its path.
@@ -45,7 +40,7 @@ pub(crate) fn hearing(cx: &mut TestAppContext) -> (Rc<Cell<usize>>, Subscription
 
 /// Starts the settings with a file to be saved to in the scratch folder `name`: its path.
 fn started_with_file(name: &str, cx: &mut TestAppContext) -> PathBuf {
-    started(cx);
+    cx.update(init_settings);
     cx.update(|cx| saved_in(&scratch(name), cx))
 }
 

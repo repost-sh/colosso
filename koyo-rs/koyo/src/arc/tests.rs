@@ -11,9 +11,9 @@ use gpui_kit::{
 use super::actions::{ClearWorktree, MoveProjectToNewSpace, NewSpace};
 use super::clear::Clear;
 use super::delete_space::DeleteSpace;
+use crate::browser::profiles::By;
 use crate::files::tests::{dialog, tabs};
 use crate::launcher::Launcher;
-use crate::browser::profiles::By;
 use crate::model::{Browser, Content, Edge, Pane, PaneKind, Tab, Unloaded};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};

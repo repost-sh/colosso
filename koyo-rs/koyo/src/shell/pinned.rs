@@ -114,8 +114,7 @@ impl Shell {
             let rested = browser::page_brought_back(&address, "", By::Person, cx);
             (rested.title.clone(), rested.favicon())
         };
-        let restored = true;
-        (title, Unloaded { address, favicon, restored })
+        (title, Unloaded { address, favicon, restored: true })
     }
 
     /// Whether the pinned page known by `key` has something to close: a page open, or, brought

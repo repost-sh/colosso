@@ -21,8 +21,8 @@ use documents::Documents;
 pub use documents::read_at_most;
 pub use documents::{Content, Document, DocumentEvent, MOST_BYTES};
 
-use crate::changes::{FileView, Marks, Read, Stale, Touched, read, touched};
 use crate::blocking;
+use crate::changes::{FileView, Marks, Read, Stale, Touched, read, touched};
 use crate::checkouts;
 
 /// Something done to some of a checkout's changes: staging, unstaging or discarding them.

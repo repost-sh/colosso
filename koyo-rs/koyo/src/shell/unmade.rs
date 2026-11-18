@@ -14,7 +14,8 @@ use crate::browser::profiles::By;
 use crate::devices::Chosen;
 use crate::model::{Content, Device, Editor, EditorFile, Tab, Unloaded};
 
-/// What the shown tab's panes don't have yet, by their panes' ids.
+/// What the shown tab's panes don't have yet, by their panes' ids; a terminal by the number
+/// `crate::terminals` knows it by.
 #[derive(Default)]
 struct Unmade {
     terminals: Vec<u64>,

@@ -2,7 +2,6 @@
 //! a save that renames a new file over it, and the file written again after it was deleted,
 //! each reach the app once they settle.
 
-use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -10,8 +9,8 @@ use super::watch;
 use crate::blocking;
 use crate::test_support::scratch;
 
-fn delay(json: u64) -> String {
-    format!(r#"{{ "key_repeat": {{ "delay_ms": {json} }} }}"#)
+fn delay(ms: u64) -> String {
+    format!(r#"{{ "key_repeat": {{ "delay_ms": {ms} }} }}"#)
 }
 
 #[test]
@@ -48,5 +47,5 @@ fn an_edit_made_outside_reaches_the_app_whether_written_in_place_or_renamed_over
 
     drop(told);
     std::fs::write(&path, delay(15)).unwrap();
-    let _ = std::fs::remove_dir_all(Path::new(&path).parent().unwrap());
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }

@@ -10,14 +10,14 @@ use serde_json::{Value, json};
 use super::super::SAVE_DELAY;
 use super::super::pinned::{FILE, KeptPinned, KeptPins};
 use crate::blocking::in_test;
+use crate::settings::{self, Layout};
+use crate::shell::Shell;
+use crate::test_support::{draw, open_page, repo, scratch, select, shell_window, shell_with};
 
 /// What the pinned pages' file at `path` holds, as a launch reads it.
 fn read_file(path: &Path) -> KeptPins {
     in_test(|may| super::super::pinned::read_file(path, may))
 }
-use crate::settings::{self, Layout};
-use crate::shell::Shell;
-use crate::test_support::{draw, open_page, repo, scratch, select, shell_window, shell_with};
 
 fn kept(url: &str, title: &str, pinned_url: &str, project: &str) -> KeptPinned {
     KeptPinned {
