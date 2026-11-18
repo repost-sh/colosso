@@ -1,6 +1,7 @@
 //! Each screen's wallpaper as `NSWorkspace` names it: its file, how it's laid out, and the
-//! colour round a picture that doesn't cover the screen. Read on the main thread, as `AppKit`
-//! asks of its screens; a few calls that cost next to nothing.
+//! colour round a picture that doesn't cover the screen. Named on the main thread, as `AppKit`
+//! asks of its screens, a few calls that cost next to nothing; its file read off it, which may
+//! wait on the disk, or on macOS asking the person to let Koyo read a folder.
 
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -15,8 +16,35 @@ use objc2_app_kit::{
 use objc2_foundation::{NSNumber, NSString, ns_string};
 
 use super::layout::Scaling;
+use crate::blocking::Blocking;
 
-/// A screen's wallpaper: what its picture is made from, as far as `AppKit` says it.
+/// A screen's wallpaper as `AppKit` names it, its file not yet read.
+#[derive(Clone)]
+pub struct Named {
+    pub path: PathBuf,
+    pub scaling: Scaling,
+    /// The colour round a picture that leaves part of the screen bare, in sRGB.
+    pub fill: [f32; 3],
+}
+
+impl Named {
+    /// The wallpaper, with what its file says: when it last changed, and which of its pictures
+    /// macOS shows.
+    pub fn read(self, may: Blocking<'_>) -> Wallpaper {
+        let modified = std::fs::metadata(&self.path)
+            .and_then(|file| file.modified())
+            .ok();
+        Wallpaper {
+            image: super::dynamic::image(&self.path, modified, may),
+            path: self.path,
+            modified,
+            scaling: self.scaling,
+            fill: self.fill,
+        }
+    }
+}
+
+/// A screen's wallpaper: what its picture is made from, as far as `AppKit` and its file say it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Wallpaper {
     pub path: PathBuf,
@@ -32,17 +60,14 @@ pub struct Wallpaper {
 /// The colour round a picture when `AppKit` says none.
 const FILL: [f32; 3] = [0., 0., 0.];
 
-/// The wallpaper of the screen whose display ID is `display`, or none when it has no file
-/// `AppKit` names.
-pub fn read(display: u32, main: MainThreadMarker) -> Option<Wallpaper> {
+/// The wallpaper `AppKit` names for the screen whose display ID is `display`, or none when it
+/// names no file.
+pub fn named(display: u32, main: MainThreadMarker) -> Option<Named> {
     let screen = screen(display, main)?;
     let workspace = NSWorkspace::sharedWorkspace();
     let path = workspace
         .desktopImageURLForScreen(&screen)?
         .to_file_path()?;
-    let modified = std::fs::metadata(&path)
-        .and_then(|file| file.modified())
-        .ok();
     let options = workspace.desktopImageOptionsForScreen(&screen);
     let option = |key: &NSString| {
         options
@@ -66,10 +91,8 @@ pub fn read(display: u32, main: MainThreadMarker) -> Option<Wallpaper> {
         .and_then(|fill| fill.downcast::<NSColor>().ok())
         .and_then(|fill| srgb(&fill))
         .unwrap_or(FILL);
-    Some(Wallpaper {
-        image: super::dynamic::image(&path, modified),
+    Some(Named {
         path,
-        modified,
         scaling: Scaling::from_options(scaling, clipping),
         fill,
     })

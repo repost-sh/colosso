@@ -13,6 +13,8 @@ use chrono::Timelike as _;
 use objc2_core_foundation::CFString;
 use serde::Deserialize;
 
+use crate::blocking::Blocking;
+
 /// The pictures a dynamic wallpaper shows in light and dark.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 pub struct Appearance {
@@ -212,8 +214,8 @@ fn sun(unix: f64, place: Place) -> (f64, f64) {
 
 /// The picture to show of the wallpaper at `path`, last changed at `modified`: the one macOS
 /// shows now, if it's dynamic; none if it isn't.
-pub fn image(path: &Path, modified: Option<SystemTime>) -> Option<usize> {
-    let dynamic = metadata(path, modified)?;
+pub fn image(path: &Path, modified: Option<SystemTime>, may: Blocking<'_>) -> Option<usize> {
+    let dynamic = metadata(path, modified, may)?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0., |since| since.as_secs_f64());
@@ -222,13 +224,13 @@ pub fn image(path: &Path, modified: Option<SystemTime>) -> Option<usize> {
         dark: dark(),
         unix: now,
         day: f64::from(local.num_seconds_from_midnight()) / 86_400.,
-        place: place(),
+        place: place(may),
     };
-    Some(dynamic.pick(style().unwrap_or(Style::Dynamic), now))
+    Some(dynamic.pick(style(may).unwrap_or(Style::Dynamic), now))
 }
 
 /// The dynamic metadata of the wallpaper at `path`, read once for each time it changes.
-fn metadata(path: &Path, modified: Option<SystemTime>) -> Option<Dynamic> {
+fn metadata(path: &Path, modified: Option<SystemTime>, may: Blocking<'_>) -> Option<Dynamic> {
     type Read = HashMap<PathBuf, (Option<SystemTime>, Option<Dynamic>)>;
     static READ: LazyLock<Mutex<Read>> = LazyLock::new(Mutex::default);
     let mut read = READ.lock().ok()?;
@@ -237,13 +239,13 @@ fn metadata(path: &Path, modified: Option<SystemTime>) -> Option<Dynamic> {
     {
         return dynamic.clone();
     }
-    let dynamic = read_metadata(path);
+    let dynamic = read_metadata(path, may);
     read.insert(path.to_owned(), (modified, dynamic.clone()));
     dynamic
 }
 
 /// The `apple_desktop` values of the first image of the picture at `path`.
-fn read_metadata(path: &Path) -> Option<Dynamic> {
+fn read_metadata(path: &Path, _: Blocking<'_>) -> Option<Dynamic> {
     let source = crate::viewer::picture::source(path).ok()?;
     // SAFETY: a source just made, and a path in ImageIO's own prefix:name form.
     let metadata = unsafe { source.metadata_at_index(0, None) }?;
@@ -267,7 +269,7 @@ fn dark() -> bool {
 
 /// Where the system's time zone is, from the zone's own entry in the time zone database: the
 /// place a dynamic wallpaper follows the sun at, as Koyo has no location of its own.
-fn place() -> Option<Place> {
+fn place(_: Blocking<'_>) -> Option<Place> {
     static PLACE: OnceLock<Option<Place>> = OnceLock::new();
     *PLACE.get_or_init(|| {
         let zone = std::fs::read_link("/etc/localtime").ok()?;
@@ -305,7 +307,7 @@ fn place_of(table: &str, zone: &str) -> Option<Place> {
 /// in, a private format read as macOS 27.2 writes it (`docs/chat-backdrop.md` 3.2). The choice
 /// for every screen and Space; one made for a single display isn't read. Read again only when
 /// the store changes; none, said once, when it can't be read.
-fn style() -> Option<Style> {
+fn style(_: Blocking<'_>) -> Option<Style> {
     type Kept = Option<(Option<SystemTime>, Option<Style>)>;
     static KEPT: Mutex<Kept> = Mutex::new(None);
     static SAID: Once = Once::new();

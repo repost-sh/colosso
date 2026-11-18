@@ -20,9 +20,6 @@ koyo/src/chat/composer/asked.rs 1
 koyo/src/chat/composer/draft.rs 1
 koyo/src/chat/host.rs 2
 koyo/src/chat/view/details/open_in.rs 2
-koyo/src/chat_backdrop/dynamic.rs 4
-koyo/src/chat_backdrop/screens.rs 1
-koyo/src/chat_backdrop/wallpaper.rs 1
 koyo/src/checkout/documents.rs 3
 koyo/src/control/exec/device/apps.rs 1
 koyo/src/control/exec/open.rs 2

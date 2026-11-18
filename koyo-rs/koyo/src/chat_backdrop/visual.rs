@@ -22,7 +22,7 @@ use image::{Rgb, RgbImage};
 
 use super::layout::Scaling;
 use super::screens;
-use super::wallpaper::Wallpaper;
+use super::wallpaper::Named;
 use crate::navigation::Route;
 use crate::settings::{self, Quality};
 use crate::settings_view::SettingsPage;
@@ -51,7 +51,7 @@ The backdrop is the wallpaper behind the window, dithered in its own colours.
 Each screen's picture is made once, compressed to ASTC, and only moved as the window moves.";
 
 /// The wallpaper the check stands its window's screen on, while it runs.
-static STAND_IN: Mutex<Option<Wallpaper>> = Mutex::new(None);
+static STAND_IN: Mutex<Option<Named>> = Mutex::new(None);
 
 /// The check's own screen and where it lies relative to the window, while the check runs.
 pub fn screen() -> Option<(u64, Bounds<Pixels>)> {
@@ -64,7 +64,7 @@ pub fn screen() -> Option<(u64, Bounds<Pixels>)> {
 }
 
 /// The wallpaper of the check's own screen, while the check runs.
-pub fn wallpaper() -> Option<Wallpaper> {
+pub fn wallpaper() -> Option<Named> {
     STAND_IN.lock().ok()?.clone()
 }
 
@@ -77,11 +77,9 @@ fn draw() -> Result<Vec<String>> {
     let out = out_dir(OUT)?;
     let path = out.join("wallpaper.png");
     paint_wallpaper(&path)?;
-    *STAND_IN.lock().map_err(|error| error.to_string())? = Some(Wallpaper {
+    *STAND_IN.lock().map_err(|error| error.to_string())? = Some(Named {
         path,
-        modified: None,
         scaling: Scaling::Fill,
-        image: None,
         fill: [0., 0., 0.],
     });
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;
