@@ -17,6 +17,10 @@
 # its window; the launch scene's from the app's start. A build older than the meter logs none.
 # They report and fail nothing, as a time threshold flakes with the machine.
 #
+# KOYO_PERF_SETTLE is how long the idle scene waits after opening its tabs, 15 s unless set: a
+# build that starts the browser engine for its first page is compared fairly with one that started
+# it at launch only once the engine has run as long in both.
+#
 # A step the app takes more than 10 s to answer is a stall: the app is sampled for 5 s while it
 # lasts, into .superpowers/perf/<stamp>-<label>-stall.sample.txt, and the run stops there.
 set -eu
@@ -68,7 +72,7 @@ total "$seconds" launch
 app tab_open '{"kind":"terminal","command":"/bin/zsh -f","select":true}'
 app tab_open "{\"kind\":\"browser\",\"url\":\"file://$fixture\",\"select\":true}"
 app chat_create '{"text":"hello","select":true}'
-sleep 15
+sleep "${KOYO_PERF_SETTLE:-15}"
 total "$seconds" idle
 
 app layout_set '{"rightPanel":"changes"}'
