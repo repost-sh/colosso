@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 
@@ -6,11 +7,50 @@ use crate::cli::Mode;
 use crate::failure::Failure;
 use crate::files::{Presence, Source};
 use crate::fix::fix;
+use crate::rule::Rule;
 
 pub struct FileReport {
     pub path: String,
     pub findings: Vec<Finding>,
     pub deleted: usize,
+}
+
+/// The findings of a check over the checkout, by file.
+#[derive(Default)]
+pub struct Found(BTreeMap<String, Vec<Finding>>);
+
+impl Found {
+    pub fn add(
+        &mut self,
+        file: &str,
+        line: usize,
+        column: usize,
+        rule: &'static Rule,
+        detail: String,
+    ) {
+        let finding = Finding {
+            line,
+            column,
+            rule,
+            detail,
+        };
+        self.0.entry(file.to_owned()).or_default().push(finding);
+    }
+
+    /// A report for each file, its findings in the order they stand in it.
+    pub fn reports(self) -> Vec<FileReport> {
+        self.0
+            .into_iter()
+            .map(|(path, mut findings)| {
+                findings.sort_by_key(|finding| (finding.line, finding.column));
+                FileReport {
+                    path,
+                    findings,
+                    deleted: 0,
+                }
+            })
+            .collect()
+    }
 }
 
 pub fn process(source: &Source, mode: Mode) -> Result<Option<FileReport>, Failure> {

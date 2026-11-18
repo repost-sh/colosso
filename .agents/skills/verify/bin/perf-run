@@ -11,6 +11,12 @@
 # in .superpowers/perf/<stamp>-<label>-<scene>.tsv. Ends with `koyo-verify stop`. KOYO_VERIFY names
 # another helper, such as one whose bundle is an older build, for a before/after.
 #
+# Each scene's printed row ends with the main thread's stalls, read from the test Koyo's log
+# (.superpowers/v/l/Koyo.log): `stalls`, the turns of its run loop that ran 50 ms or more (the
+# `[koyo::stall]` lines), and `worst_ms`, the longest, from the scene's first step to the end of
+# its window; the launch scene's from the app's start. A build older than the meter logs none.
+# They report and fail nothing, as a time threshold flakes with the machine.
+#
 # A step the app takes more than 10 s to answer is a stall: the app is sampled for 5 s while it
 # lasts, into .superpowers/perf/<stamp>-<label>-stall.sample.txt, and the run stops there.
 set -eu
@@ -21,8 +27,26 @@ B=${KOYO_VERIFY:-$here/koyo-verify}
 pid=$1 label=$2 seconds=${3:-60}
 fixture="$PWD/.superpowers/v/fixture/focus.html"
 stall="$PWD/.superpowers/perf/$(date +%Y%m%d-%H%M%S)-$label-stall.sample.txt"
+log="$PWD/.superpowers/v/l/Koyo.log"
 
-total() { script/perf-sample "$pid" "$1" "$label-$2" | awk '$2 == "total" { print }'; }
+# The log's line count, and the line the next scene's stalls are counted after: the test Koyo's
+# start, its last `==========` line.
+lines() { if [ -f "$log" ]; then wc -l < "$log" | tr -d ' '; else echo 0; fi; }
+since=$(grep -n '^.* ========== Koyo ' "$log" 2>/dev/null | tail -1 | cut -d: -f1 || true)
+since=$(( ${since:-1} - 1 ))
+
+stalls() {
+  [ -f "$log" ] || { echo "stalls n/a  worst_ms n/a (no $log)"; return; }
+  tail -n "+$((since + 1))" "$log" | awk '
+    /\[koyo::stall\]/ { n++; ms = $(NF - 1) + 0; if (ms > worst) worst = ms }
+    END { printf "stalls %d  worst_ms %d\n", n, worst }'
+}
+
+total() {
+  row=$(script/perf-sample "$pid" "$1" "$label-$2" | awk '$2 == "total" { print }')
+  echo "$row  $(stalls)"
+  since=$(lines)
+}
 
 app() {
   (sleep 10 && sample "$pid" 5 -file "$stall" >/dev/null 2>&1) &

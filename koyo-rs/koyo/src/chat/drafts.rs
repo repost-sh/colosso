@@ -17,6 +17,7 @@ use koyo_agent::protocol::model::Attachment;
 use serde::{Deserialize, Serialize};
 
 use super::attachments;
+use crate::blocking::Blocking;
 use crate::kept_file::{self, KeptFile};
 use crate::settings;
 
@@ -53,18 +54,20 @@ struct Drafts {
 
 impl Global for Drafts {}
 
-pub(super) fn init(cx: &mut App) {
+pub(super) fn init(cx: &mut App, may: Blocking<'_>) {
     let data = settings::data_dir().filter(|_| !cfg!(test));
     open(
         data.map(|data| client::host_dir(&data).root().join(FILE)),
         attachments::folder(),
+        may,
         cx,
     );
     kept_file::write_on_quit(cx, due);
 }
 
-fn open(path: Option<PathBuf>, attachments: Option<PathBuf>, cx: &mut App) {
-    let listed: Option<Vec<(DraftOf, Draft)>> = path.as_deref().and_then(kept_file::read);
+fn open(path: Option<PathBuf>, attachments: Option<PathBuf>, may: Blocking<'_>, cx: &mut App) {
+    let listed: Option<Vec<(DraftOf, Draft)>> =
+        (path.as_deref()).and_then(|path| kept_file::read(path, may));
     cx.set_global(Drafts {
         kept: listed.unwrap_or_default().into_iter().collect(),
         file: KeptFile::new(path),
@@ -160,7 +163,7 @@ pub(super) fn kept(of: &DraftOf, cx: &App) -> Option<Draft> {
 /// From now on they're kept at `path`, as if the app had just started.
 #[cfg(test)]
 pub(super) fn open_at(path: &std::path::Path, cx: &mut App) {
-    open(Some(path.to_owned()), None, cx);
+    crate::blocking::in_test(|may| open(Some(path.to_owned()), None, may, cx));
 }
 
 /// From now on what they attach is kept in `folder`.

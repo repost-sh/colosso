@@ -39,4 +39,46 @@ pub static ADDED_EDGE: Rule = Rule {
 the code so the edge closes no cycle; --prune then takes the line off.",
 };
 
-pub static RULES: [&Rule; 5] = [&COMMENT, &SAFETY, &NEW_EDGE, &GONE_EDGE, &ADDED_EDGE];
+pub static BLOCKING_CALL: Rule = Rule {
+    name: "blocking call",
+    fix: "The main thread draws Koyo's frames and runs the browser engine, so the koyo crate reads
+files, probes paths, starts and waits on processes, and waits on an executor or a park only where
+a `Blocking` (koyo/src/blocking.rs) is in scope, which code on the main thread isn't handed: in a
+function that takes one, or in the closure blocking::spawn, thread, on_quit or in_test lends one
+to. Take `may: Blocking<'_>` from the caller if it has one, and the callers of yours inherit the
+rule. Otherwise start the work with blocking::spawn(cx.background_executor(), |may| ...) and show
+what it returns when it lands. A file on koyo-rs/blocking-debt.txt holds no more such calls
+outside a Blocking's scope than its line allows.",
+};
+
+pub static LAUNCH: Rule = Rule {
+    name: "launch read",
+    fix: "blocking::at_launch holds the main thread before the first window, and only
+koyo/src/main.rs may: no debt allows it elsewhere. Take `may: Blocking<'_>` from main.rs's launch
+instead, or read with blocking::spawn once the window is up.",
+};
+
+pub static GONE_CALL: Rule = Rule {
+    name: "gone call",
+    fix: "The file holds fewer blocking calls than koyo-rs/blocking-debt.txt allows it, so its line
+comes down, or off once it holds none: script/cargo run -q -p koyo-hygiene -- --prune",
+};
+
+pub static ADDED_CALL: Rule = Rule {
+    name: "added call",
+    fix: "koyo-rs/blocking-debt.txt only shrinks, and the last commit's list lacks this line or
+allows the file fewer calls. Move the calls onto a `Blocking` instead; --prune then lowers the
+line.",
+};
+
+pub static RULES: [&Rule; 9] = [
+    &COMMENT,
+    &SAFETY,
+    &NEW_EDGE,
+    &GONE_EDGE,
+    &ADDED_EDGE,
+    &BLOCKING_CALL,
+    &LAUNCH,
+    &GONE_CALL,
+    &ADDED_CALL,
+];

@@ -8,7 +8,7 @@ use crate::keyboard::characters::{KEY, ShowCharacters};
 /// page, whose own context binds nothing to it, it still finds its action.
 #[gpui_kit::test]
 fn the_emoji_key_is_bound_for_the_whole_app(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     cx.update(|cx| {
         let wanted = Keystroke::parse(KEY).unwrap();
         let keymap = cx.key_bindings();

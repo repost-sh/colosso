@@ -69,7 +69,7 @@ pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,
     no_matches, project_error, row, section_label, solid, tab_close_button,
 };
-pub use kept::KeptWindow;
+pub use kept::{KeptWindow, reopen};
 pub(crate) use one_tab::Place;
 pub use reorder::{Drop, MOTION, Reorder, TabHand};
 pub use splits::{Dragged, DraggedPane, drag_chip};
@@ -128,14 +128,14 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, kept: KeptWindow, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let history = cx.new(|_| NavigationHistory::new());
         let settings_sidebar = cx.new(|cx| SettingsSidebar::new(history.clone(), window, cx));
         let search = cx.new(|cx| SearchField::new(window, cx));
         let chat_tabs = ChatTabs::new(cx);
-        let kept = KeptWindow::new(cx);
+        Self::keep_on_the_way_out(cx);
         let status_bar = StatusBar::new(cx);
         let _subscriptions = [
             settings::observe(cx),
@@ -156,7 +156,6 @@ impl Shell {
                 if window.is_window_active() {
                     this.reload_projects(cx);
                     crate::accounts::window_activated(cx);
-                    settings::came_to_front(cx);
                 }
             }),
             cx.subscribe(&search, |this, _, Searched(query), cx| {

@@ -87,8 +87,9 @@ pub struct Browsers {
     host: Host,
     /// Bumped once the host is ready, when views open their pages.
     epoch: u64,
-    /// When the host now starting was asked for.
-    starting_since: Option<Instant>,
+    /// When the host was asked for, and whether a page has started loading since, until the
+    /// first page loads: the host's start and the first page's wait, logged.
+    asked_at: Option<(Instant, bool)>,
     views: HashMap<PaneId, WeakEntity<BrowserView>>,
     /// Pages the host is closing because browsing data was cleared under it, or their project
     /// was put on another profile: each opens again, in its profile's fresh folder or the other
@@ -156,7 +157,7 @@ impl Browsers {
         let browsers = cx.new(|cx| Self {
             host: Host::Idle,
             epoch: 0,
-            starting_since: None,
+            asked_at: None,
             views: HashMap::new(),
             reopening: std::collections::HashSet::new(),
             queued: Vec::new(),
@@ -202,8 +203,8 @@ impl Browsers {
     pub fn starting_long(&self) -> bool {
         matches!(self.host, Host::Starting)
             && self
-                .starting_since
-                .is_none_or(|since| since.elapsed() >= STARTING_QUIETLY)
+                .asked_at
+                .is_none_or(|(since, _)| since.elapsed() >= STARTING_QUIETLY)
     }
 
     /// A view joins; once shown, it starts the host.
@@ -230,9 +231,10 @@ impl Browsers {
         self.views.get(&pane)?.upgrade()
     }
 
-    /// Starts the host unless it is starting or running.
-    pub fn start_if_idle(&mut self, cx: &mut Context<Self>) {
+    /// Starts the host unless it is starting or running, saying `why`.
+    pub fn start_if_idle(&mut self, why: &str, cx: &mut Context<Self>) {
         if matches!(self.host, Host::Idle) {
+            log::info!("starting the browser engine for {why}");
             self.start(cx);
         }
     }

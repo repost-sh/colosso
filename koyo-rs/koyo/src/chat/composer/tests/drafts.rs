@@ -30,7 +30,7 @@ struct Place {
 
 impl Place {
     fn new(name: &str, cx: &mut TestAppContext) -> Place {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         let (cwd, files) = (scratch(name), scratch(&format!("{name}-files")));
         cx.update(|cx| drafts::attach_into(&files, cx));
         write(&cwd, "note.txt", b"a note");

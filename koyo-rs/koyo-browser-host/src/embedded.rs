@@ -45,25 +45,31 @@ pub(crate) fn engine() -> Option<&'static Path> {
     ENGINE.get().map(PathBuf::as_path)
 }
 
-/// Starts the host in this process, from any thread: it starts on the main thread, from the
-/// run loop, and says so on the socket as a host process would. A start that fails says why
-/// there too.
+/// Starts the host in this process, off the main thread, the app's hello already on the
+/// socket: here the hello is read, CEF loaded and the profiles' folder readied, then on the
+/// main thread, from the run loop, CEF starts and the host says so on the socket as a host
+/// process would. A start that fails says why there too.
 pub fn start(start: Start) {
+    let began = Instant::now();
     crate::host::drop_cleared(&start.profiles);
     forget_sessions(&start.profiles);
+    let cleared = began.elapsed();
+    if ENGINE.set(start.engine.clone()).is_err() {
+        let mut stream = start.stream;
+        let _ = ipc::write_frame(
+            &mut stream,
+            &HostEvent::Error {
+                pane: None,
+                message: "The browser engine runs once while Koyo does: restart Koyo.".into(),
+            },
+        );
+        return;
+    }
+    let Ok(readied) = crate::host::ready_embedded(start, cleared) else {
+        return;
+    };
     on_main(move || {
-        if ENGINE.set(start.engine.clone()).is_err() {
-            let mut stream = start.stream;
-            let _ = ipc::write_frame(
-                &mut stream,
-                &HostEvent::Error {
-                    pane: None,
-                    message: "The browser engine runs once while Koyo does: restart Koyo.".into(),
-                },
-            );
-            return;
-        }
-        if let Err(why) = crate::host::run_embedded(start) {
+        if let Err(why) = crate::host::run_embedded(readied) {
             log::error!("the browser engine didn't start in the app: {why}");
         }
     });

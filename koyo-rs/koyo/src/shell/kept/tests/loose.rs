@@ -36,7 +36,9 @@ fn the_windows_file_keeps_each_spaces_loose_pages_and_one_from_before_them_still
     let path = scratch("kept-loose-file").join("window.json");
     std::fs::write(&path, crate::kept_file::encode(&window).unwrap()).unwrap();
     assert_eq!(read_file(&path), window);
-    let json: serde_json::Value = crate::kept_file::read(&path).unwrap();
+    let json: Option<serde_json::Value> =
+        crate::blocking::in_test(|may| crate::kept_file::read(&path, may));
+    let json = json.unwrap();
     assert_eq!(json["spaces"][0]["space"], 2);
     assert_eq!(json["spaces"][0]["shown"], 1);
     assert_eq!(

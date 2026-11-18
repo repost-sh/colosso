@@ -3,16 +3,23 @@ use std::path::PathBuf;
 
 pub const USAGE: &str = "koyo-hygiene [--fix] [PATH...] | --prune | --stats
 
-Holds Koyo's source to two rules. Rust (.rs) and TypeScript (.ts, .tsx) have no plain
+Holds Koyo's source to three rules. Rust (.rs) and TypeScript (.ts, .tsx) have no plain
 comments. No import between the koyo crate's top-level modules closes a new cycle:
-koyo-rs/module-edges.txt lists the edges on a cycle today, and only shrinks.
-With no argument it checks both, the comments in the koyo-rs/koyo, koyo-rs/koyo-* and
+koyo-rs/module-edges.txt lists the edges on a cycle today, and only shrinks. The koyo crate's
+shipped build reads files, probes paths, starts and waits on processes, and waits on an executor
+or a park only where a `Blocking` is in scope: in a function that takes one, or in the closure
+koyo/src/blocking.rs's spawn, thread, on_quit, at_launch (koyo/src/main.rs's alone) or in_test
+lends one to; koyo/src/logs/sink.rs may anywhere. koyo-rs/blocking-debt.txt lists the files that
+still make such calls outside one, with how many each makes, and only shrinks.
+With no argument it checks all three, the comments in the koyo-rs/koyo, koyo-rs/koyo-* and
 koyo-js files git lists.
 A PATH is one file, or a folder searched for those files, whose comments alone are checked.
 --fix deletes every plain comment it can prove is only a comment; // SAFETY: comments stay.
---prune takes the edges no longer on a cycle off koyo-rs/module-edges.txt.
+--prune takes the edges no longer on a cycle off koyo-rs/module-edges.txt, and lowers each
+count on koyo-rs/blocking-debt.txt to what its file holds, taking off the files that hold none.
 --stats prints the import graph's size, its largest cycle, and the edges on a cycle with the
-fewest import sites: the cheapest cuts.
+fewest import sites: the cheapest cuts; then how many blocking calls are made where a Blocking
+is in scope, and how many are owed, in how many files.
 Exit 0 when nothing is left to report, 1 when findings remain, 2 when the tool itself failed.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,7 +30,8 @@ pub enum Mode {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
-    /// No argument: the comment check over the files git lists, and the import check.
+    /// No argument: the comment check over the files git lists, and the import and blocking
+    /// checks.
     Everything,
     /// The comment check or fix over the PATHs, or over the files git lists when none is given.
     Comments {

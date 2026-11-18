@@ -276,7 +276,7 @@ mod tests {
     fn what_the_menus_pick_reaches_the_settings(cx: &mut TestAppContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
-            settings::init(cx);
+            crate::test_support::init_settings(cx);
             init(cx);
             cx.dispatch_action(&SetInterfaceFont(Some("Inter".to_owned())));
             cx.dispatch_action(&SetCodeFont(Some("Fira Code".to_owned())));
@@ -294,7 +294,7 @@ mod tests {
     fn code_stays_in_the_font_through_a_change_of_appearance(cx: &mut TestAppContext) {
         cx.update(|cx| {
             gpui_kit::init(cx);
-            settings::init(cx);
+            crate::test_support::init_settings(cx);
             init(cx);
             for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::Dark] {
                 Theme::change(mode, None, cx);

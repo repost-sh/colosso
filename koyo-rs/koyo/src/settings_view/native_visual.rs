@@ -50,7 +50,7 @@ pub fn run() -> ExitCode {
     gpui_kit::application()
         .with_assets(gpui_kit::assets::AllAssets)
         .run(move |cx| {
-            crate::init(cx);
+            crate::test_support::init(cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                     point(px(80.), px(80.)),
@@ -69,7 +69,8 @@ pub fn run() -> ExitCode {
             let mut made = None;
             let opened = cx.open_window(options, |window, cx| {
                 theme::follow_window_appearance(window);
-                let shell = cx.new(|cx| Shell::new(window, cx));
+                let kept = crate::shell::KeptWindow::default();
+                let shell = cx.new(|cx| Shell::new(window, kept, cx));
                 made = Some(shell.clone());
                 cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
             });

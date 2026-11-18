@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use super::Simulator;
 use super::simulators::{self, Model, numbers, ordinary};
+use crate::blocking::Blocking;
 
 #[cfg(any(test, feature = "visual-check"))]
 pub mod fixtures;
@@ -97,12 +98,16 @@ impl Found {
 }
 
 /// Reads what the Mac has and, once `simctl` may be asked, lists Koyo's set beside it; a
-/// second or so, off the main thread. `known`, what was found last, spares the checks it found
-/// passing while the setup waits for a system.
-pub fn find(set: &Path, known: Option<&Found>) -> (Found, Option<Result<Vec<Simulator>, String>>) {
+/// second or so. `known`, what was found last, spares the checks it found passing while the
+/// setup waits for a system.
+pub fn find(
+    set: &Path,
+    known: Option<&Found>,
+    may: Blocking<'_>,
+) -> (Found, Option<Result<Vec<Simulator>, String>>) {
     let mut found = match known.filter(|known| known.need() == Some(Need::System)) {
         Some(known) => known.clone(),
-        None => xcode(),
+        None => xcode(may),
     };
     if !found.components {
         return (found, None);
@@ -122,8 +127,8 @@ pub fn find(set: &Path, known: Option<&Found>) -> (Found, Option<Result<Vec<Simu
 
 /// Whether `simctl` may be asked: Xcode and its components are there. What's missing, said,
 /// if not: an agent's tool isn't the call that installs Xcode's components.
-pub fn before_simctl() -> Result<(), String> {
-    let found = xcode();
+pub fn before_simctl(may: Blocking<'_>) -> Result<(), String> {
+    let found = xcode(may);
     match found.need() {
         Some(need @ (Need::Xcode | Need::Components)) => Err(found.sentence(need)),
         _ => Ok(()),
@@ -131,10 +136,10 @@ pub fn before_simctl() -> Result<(), String> {
 }
 
 /// Xcode's part of what the Mac has: the one in use, and its components when it'll do.
-fn xcode() -> Found {
-    let (selected, developer) = selected();
-    let xcode = stands(selected, installed);
-    let components = matches!(xcode, Xcode::Ready(_)) && components(&developer);
+fn xcode(may: Blocking<'_>) -> Found {
+    let (selected, developer) = selected(may);
+    let xcode = stands(selected, || installed(may));
+    let components = matches!(xcode, Xcode::Ready(_)) && components(&developer, may);
     Found {
         xcode,
         components,
@@ -152,7 +157,7 @@ fn short_version(plist: &str) -> Option<String> {
 }
 
 /// The version of the Xcode at `app`.
-fn version(app: &Path) -> Option<String> {
+fn version(app: &Path, _: Blocking<'_>) -> Option<String> {
     short_version(&std::fs::read_to_string(app.join("Contents/version.plist")).ok()?)
 }
 
@@ -161,7 +166,7 @@ fn major(version: &str) -> u32 {
 }
 
 /// Every Xcode in the Applications folder, by its version.
-fn installed() -> Vec<String> {
+fn installed(may: Blocking<'_>) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(APPLICATIONS) else {
         return Vec::new();
     };
@@ -171,13 +176,13 @@ fn installed() -> Vec<String> {
             path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("app"))
                 && path.file_name().is_some_and(|name| name.to_string_lossy().starts_with("Xcode"))
         })
-        .filter_map(|app| version(&app))
+        .filter_map(|app| version(&app, may))
         .collect()
 }
 
 /// The version of the Xcode in use, as the device's host finds it (`DEVELOPER_DIR`, else
 /// `xcode-select -p`), and its developer folder; `None` for the Command Line Tools or nothing.
-fn selected() -> (Option<String>, PathBuf) {
+fn selected(may: Blocking<'_>) -> (Option<String>, PathBuf) {
     let developer = std::env::var_os("DEVELOPER_DIR").filter(|dir| !dir.is_empty()).map(PathBuf::from).or_else(|| {
         let mut command = Command::new("/usr/bin/xcode-select");
         command.arg("-p");
@@ -186,7 +191,7 @@ fn selected() -> (Option<String>, PathBuf) {
     });
     let developer = developer.unwrap_or_else(|| PathBuf::from(COMMAND_LINE_TOOLS));
     let app = developer.parent().and_then(Path::parent).filter(|app| app.extension().is_some_and(|ext| ext == "app"));
-    (app.and_then(version), developer)
+    (app.and_then(|app| version(app, may)), developer)
 }
 
 /// How Xcode stands, `installed` read only when the one in use won't do.
@@ -204,7 +209,7 @@ fn stands(selected: Option<String>, installed: impl FnOnce() -> Vec<String>) -> 
 }
 
 /// Whether the components Xcode's first launch installs are there (R6).
-fn components(developer: &Path) -> bool {
+fn components(developer: &Path, _: Blocking<'_>) -> bool {
     let mut command = Command::new("/usr/bin/xcodebuild");
     command.arg("-checkFirstLaunchStatus").env("DEVELOPER_DIR", developer);
     koyo_device_wire::process::output(command, QUICK).is_ok()

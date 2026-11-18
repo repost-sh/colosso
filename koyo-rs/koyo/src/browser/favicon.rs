@@ -58,7 +58,7 @@ mod tests {
 
     #[gpui_kit::test]
     fn a_page_shows_the_icon_it_names_once_fetched_until_it_names_none(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         let (_, view) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
             cx.new(|cx| BrowserView::new(String::new(), Path::new("/work/app"), window, cx))
         });

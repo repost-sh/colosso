@@ -61,7 +61,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
     use Command as C;
     match command {
         C::AppStatus(_) => Exec::Ready(status_value(cx)),
-        C::AppFocus(_) => Exec::Ready(app::focus(cx)),
+        C::AppFocus(_) => app::focus(cx),
         C::LayoutSet(input) => Exec::Ready(app::layout_set(&input, cx)),
         C::SettingsOpen(input) => Exec::Ready(app::settings_open(input.page, cx)),
         C::SettingsClose(_) => Exec::Ready(app::settings_close(cx)),

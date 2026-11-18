@@ -1,0 +1,46 @@
+# The files of the koyo crate's shipped build that still read files, probe paths, start or wait
+# on processes, or wait on an executor or a park where no `Blocking` is in scope (a function that
+# takes one, or the closure koyo/src/blocking.rs's spawn, thread, on_quit, at_launch or in_test
+# lends one to), one `path count` line each: the calls the file makes outside one. This is the
+# main thread's debt, and it only shrinks: a file may lose calls but not gain them, and a file
+# not listed may make none. koyo-hygiene, which script/hygiene runs, fails on a call the list
+# doesn't allow, and on a line the last commit's list lacks or allows less. When a file makes
+# fewer, `script/cargo run -q -p koyo-hygiene -- --prune` lowers its line, or takes it off at none.
+koyo/src/accounts/environment.rs 2
+koyo/src/agent_desktop/host.rs 1
+koyo/src/arc/avatar.rs 1
+koyo/src/browser/dialog.rs 1
+koyo/src/browser/engine.rs 1
+koyo/src/browser/extensions.rs 1
+koyo/src/browser/host.rs 1
+koyo/src/browser/native/probe.rs 3
+koyo/src/browser/native/probe/keys.rs 1
+koyo/src/chat/attachments.rs 9
+koyo/src/chat/composer/asked.rs 1
+koyo/src/chat/composer/draft.rs 1
+koyo/src/chat/host.rs 2
+koyo/src/chat/view/details/open_in.rs 2
+koyo/src/chat_backdrop/dynamic.rs 4
+koyo/src/chat_backdrop/screens.rs 1
+koyo/src/chat_backdrop/wallpaper.rs 1
+koyo/src/checkout/documents.rs 3
+koyo/src/control/exec/device/apps.rs 1
+koyo/src/control/exec/open.rs 2
+koyo/src/control/exec/project.rs 1
+koyo/src/control/exec/select.rs 1
+koyo/src/delete_worktree/removal.rs 1
+koyo/src/devices/connected.rs 3
+koyo/src/devices/host.rs 4
+koyo/src/devices/simulators.rs 7
+koyo/src/files/markdown/diagram.rs 1
+koyo/src/files/open.rs 1
+koyo/src/hosted/link.rs 4
+koyo/src/language/edits.rs 2
+koyo/src/language/server_log.rs 3
+koyo/src/language/status.rs 1
+koyo/src/language/watch.rs 1
+koyo/src/launcher/suggest.rs 3
+koyo/src/settings_view/chat.rs 1
+koyo/src/shell/kept/shape.rs 1
+koyo/src/viewer/svg.rs 2
+koyo/src/viewer/view.rs 1

@@ -12,7 +12,7 @@ use crate::test_support::{draw, in_window};
 /// A start page in a window of its own. A test names no engine, so the host it starts
 /// fails to.
 fn start_page(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<BrowserView>) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let (window, view) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
         cx.new(|cx| BrowserView::new(String::new(), Path::new("/work/app"), window, cx))
     });

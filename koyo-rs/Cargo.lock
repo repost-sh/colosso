@@ -5509,6 +5509,7 @@ dependencies = [
  "koyo-term-engine",
  "koyo-term-mcp",
  "koyo-termd",
+ "kqueue",
  "libc",
  "log",
  "markdown",

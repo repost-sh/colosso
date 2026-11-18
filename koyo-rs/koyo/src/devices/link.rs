@@ -15,6 +15,7 @@ use koyo_device_wire::{
 
 use super::host::{self, Incoming};
 use super::picture::Picture;
+use crate::blocking::Blocking;
 use crate::browser::control::{Lease, Leased, Mode};
 use crate::hosted::host::{Host, follow};
 use crate::sight::{Showable, ShownBy};
@@ -192,7 +193,7 @@ impl Link {
                 link.receive(incoming, cx);
             }
         };
-        let start = move |sink| host::start(&launch, sink);
+        let start = move |sink, may: Blocking<'_>| host::start(&launch, sink, may);
         follow(self.starts, |link: &Link| link.starts, start, Link::started, heard, cx);
     }
 

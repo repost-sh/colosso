@@ -6,8 +6,9 @@ use cef::{CefString, Settings};
 use koyo_browser_ipc::{self as ipc, HostEvent};
 use koyo_frame::{End, HELLO_WITHIN};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// Tells the app why its hello was refused, and hands that on.
 fn refuse(stream: &mut UnixStream, why: &str) -> String {
@@ -45,18 +46,38 @@ fn connect(mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
     Ok(reader)
 }
 
-/// Starts CEF on `profiles`: as the browser process of its own, or in the app's
-/// (`embedded.rs`), where the app runs the loop and CEF is found in the engine.
-fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
-    let mut app = crate::app::HostApp::new();
+/// CEF's root cache, made if it's not there, by the path the file system gives it, and the
+/// generation of the profiles in it.
+struct Root {
+    profiles: PathBuf,
+    generation: u32,
+}
+
+/// The root cache at `profiles`, readied for CEF: made, and its path and generation read.
+fn root(profiles: &Path) -> Result<Root, String> {
     std::fs::create_dir_all(profiles).map_err(|e| format!("{}: {e}", profiles.display()))?;
     let profiles = profiles
         .canonicalize()
         .map_err(|e| format!("{}: {e}", profiles.display()))?;
     let generation = super::profiles::generation(&profiles);
+    Ok(Root {
+        profiles,
+        generation,
+    })
+}
+
+/// Starts CEF on the root cache `root`: as the browser process of its own, or in the app's
+/// (`embedded.rs`), where the app runs the loop and CEF is found in the engine. On the main
+/// thread.
+fn initialize(args: &Args, root: &Root) -> Result<(), String> {
+    let mut app = crate::app::HostApp::new();
+    let Root {
+        profiles,
+        generation,
+    } = root;
     with(|host| {
-        host.profiles.clone_from(&profiles);
-        host.generation = generation;
+        host.profiles.clone_from(profiles);
+        host.generation = *generation;
     });
     let path = |p: PathBuf| CefString::from(p.to_string_lossy().as_ref());
     let engine = crate::embedded::engine();
@@ -134,7 +155,7 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
         return Err(format!("started as a subprocess ({code})"));
     }
     super::profiles::drop_cleared(&profiles);
-    initialize(args, &profiles)?;
+    initialize(args, &root(&profiles)?)?;
     serve(reader)?;
     cef::run_message_loop();
     teardown();
@@ -142,33 +163,100 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
-/// The host's start in the app's own process, on its main thread (`embedded.rs`): the same
-/// hello, then CEF loaded from the engine and started with the app running the loop. What
-/// goes wrong once the app is heard is said on the socket, as a host process would say it.
-pub(crate) fn run_embedded(start: crate::embedded::Start) -> Result<(), String> {
+/// The steps of the host's start in the app's process, each with how long it took.
+struct Steps(Vec<(&'static str, Duration)>);
+
+impl Steps {
+    fn time<T>(&mut self, step: &'static str, run: impl FnOnce() -> T) -> T {
+        let began = Instant::now();
+        let ran = run();
+        self.0.push((step, began.elapsed()));
+        ran
+    }
+}
+
+/// What of the host's start in the app's process is done off the main thread (`embedded.rs`):
+/// the hello heard, CEF loaded from the engine, the root cache readied; and since when it
+/// waits for the main thread.
+pub(crate) struct Readied {
+    reader: UnixStream,
+    root: Root,
+    steps: Steps,
+    posted: Instant,
+}
+
+/// Starts the host in the app's own process up to what the main thread must do, on the thread
+/// `embedded::start` runs on, the old profiles having been `cleared` already: the same hello as
+/// a host process's, then CEF loaded from the engine and its root cache readied. What goes
+/// wrong once the app is heard is said on the socket, as a host process would say it.
+pub(crate) fn ready_embedded(
+    start: crate::embedded::Start,
+    cleared: Duration,
+) -> Result<Readied, String> {
     let crate::embedded::Start {
         stream,
         token,
         profiles,
         engine,
     } = start;
-    let reader = connect(stream, &token)?;
-    let started = (|| {
-        crate::embedded::load(&engine)?;
+    let mut steps = Steps(vec![("clear", cleared)]);
+    let reader = steps.time("hello", || connect(stream, &token))?;
+    let readied = (|| {
+        steps.time("load", || crate::embedded::load(&engine))?;
         let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
-        crate::embedded::adopt_app()?;
-        let args: &'static Args = Box::leak(Box::new(Args::new()));
-        initialize(args, &profiles)?;
-        crate::embedded::pump::started();
-        serve(reader)
+        steps.time("root", || root(&profiles))
     })();
-    if let Err(message) = &started {
-        send(&HostEvent::Error {
-            pane: None,
-            message: message.clone(),
-        });
+    match readied {
+        Ok(root) => Ok(Readied {
+            reader,
+            root,
+            steps,
+            posted: Instant::now(),
+        }),
+        Err(message) => Err(said(message)),
     }
-    started
+}
+
+/// The rest of the host's start in the app's own process, on its main thread: CEF started with
+/// the app running the loop, then served. Says how long each step of the start took, once.
+pub(crate) fn run_embedded(readied: Readied) -> Result<(), String> {
+    let Readied {
+        reader,
+        root,
+        mut steps,
+        posted,
+    } = readied;
+    let off_main = steps.0.len();
+    steps.0.push(("waiting for the main thread", posted.elapsed()));
+    let started = (|| {
+        steps.time("adopt", crate::embedded::adopt_app)?;
+        let args: &'static Args = Box::leak(Box::new(Args::new()));
+        steps.time("initialize", || initialize(args, &root))?;
+        crate::embedded::pump::started();
+        steps.time("serve", || serve(reader))
+    })();
+    let took = |steps: &[(&str, Duration)]| {
+        (steps.iter())
+            .map(|(step, took)| format!("{step} {} ms", took.as_millis()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let (before, on) = steps.0.split_at(off_main);
+    log::info!(
+        "the browser engine's start in the app: {} off the main thread; then on it {}",
+        took(before),
+        took(on)
+    );
+    started.map_err(said)
+}
+
+/// Says `message` on the socket, as a host process would, and hands it on.
+fn said(message: String) -> String {
+    send(&HostEvent::Error {
+        pane: None,
+        message: message.clone(),
+    });
+    message
 }
 
 /// Every pane has closed after a shutdown was asked for: the loop ends. In the app's process

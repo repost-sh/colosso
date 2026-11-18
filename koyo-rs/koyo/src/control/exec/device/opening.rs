@@ -11,6 +11,7 @@ use koyo_app_control::ops::device::{DeviceDone, DeviceOpenInput, DeviceOpenOutpu
 
 use super::looks::{screen, step};
 use super::{claim, last_device, panes_of, remember, which};
+use crate::blocking;
 use crate::browser::control::Leased as _;
 use crate::control::Caller;
 use crate::control::exec::{Exec, beside, output, update_shell};
@@ -161,8 +162,8 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
         at_once: devices::at_once(cx),
     };
     let (last, asked) = (last_device(caller, cx), super::simctl_asked(cx));
-    let chosen = cx.background_executor().spawn(async move {
-        asked()?;
+    let chosen = blocking::spawn(cx.background_executor(), move |may| {
+        asked(may)?;
         choose(&set, &input, last.as_deref(), &room)
     });
     let caller = caller.clone();

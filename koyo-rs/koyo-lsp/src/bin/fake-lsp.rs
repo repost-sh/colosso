@@ -16,7 +16,8 @@
 //! - `{"raw": text}`: writes `text` as it is, framing and all.
 //! - `{"stderr": line}`: writes `line` to stderr.
 //! - `{"exit": code}`: exits with `code`.
-//! - `{"hang": true}`: stops, reading nothing and never exiting.
+//! - `{"hang": true}`: stops answering, as a server still loading its workspace does: it reads
+//!   and drops its input until that closes, then exits.
 //!
 //! After the script it answers `shutdown`, and exits on `exit` or at the end of its input.
 //! A message other than the script expects ends it with code 2, saying why on stderr.
@@ -123,9 +124,10 @@ impl Fake {
                 writeln!(io::stderr(), "{line}").map_err(|error| error.to_string())?;
             }
             "exit" => return Ok(Some(value.as_u64().unwrap_or(0) as u8)),
-            "hang" => loop {
-                std::thread::park();
-            },
+            "hang" => {
+                io::copy(&mut self.input, &mut io::sink()).map_err(|error| error.to_string())?;
+                return Ok(Some(0));
+            }
             _ => return Err(format!("an unknown step: {step}")),
         }
         Ok(None)

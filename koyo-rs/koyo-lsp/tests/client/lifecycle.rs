@@ -1,6 +1,8 @@
 //! A server's life: initialized, shut down, killed when it won't go, and reported when it
 //! crashes or breaks the protocol.
 
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
@@ -233,4 +235,31 @@ fn dropping_the_last_client_kills_the_server() {
     drop(client);
     let exit = wait(5, exited);
     assert!(exit.killed && !exit.crashed, "{exit:?}");
+}
+
+#[test]
+fn a_hung_server_exits_once_its_input_closes() {
+    let mut server = Command::new(env!("CARGO_BIN_EXE_fake-lsp"))
+        .arg(json!([{"hang": true}]).to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+    drop(server.stdin.take());
+    let once_closed = exited_within(&mut server, Duration::from_secs(5));
+    let _ = server.kill();
+    let _ = server.wait();
+    assert_eq!(once_closed.and_then(|status| status.code()), Some(0));
+}
+
+fn exited_within(server: &mut Child, limit: Duration) -> Option<ExitStatus> {
+    let (_keep_open, ticks) = mpsc::channel::<()>();
+    let started = Instant::now();
+    while started.elapsed() < limit {
+        if let Some(status) = server.try_wait().unwrap() {
+            return Some(status);
+        }
+        let _ = ticks.recv_timeout(Duration::from_millis(10));
+    }
+    server.try_wait().unwrap()
 }

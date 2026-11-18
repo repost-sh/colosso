@@ -378,7 +378,7 @@ fn the_keymap_has_projects_spaces_and_tabs_on_the_option_arrows_outside_text(
     cx: &mut TestAppContext,
 ) {
     cx.update(|cx| {
-        crate::init(cx);
+        crate::test_support::init(cx);
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();
         let fires = |stack: &[&str], keys: [&'static str; 2]| -> [Option<&'static str>; 2] {

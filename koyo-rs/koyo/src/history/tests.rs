@@ -342,7 +342,7 @@ fn entries_remember_where_they_were_used_and_what_is_kept_is_bounded() {
 #[gpui_kit::test]
 fn a_visit_counts_and_a_page_retitled_or_the_engines_own_does_not(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        super::init(cx);
+        crate::blocking::in_test(|may| super::init(cx, may));
         super::visited("https://example.com/", "", How::Typed, &here(), cx);
         super::retitled("https://example.com/", "Example", cx);
         super::visited("https://example.com/", "", How::Followed, &here(), cx);
@@ -368,7 +368,7 @@ fn a_visit_counts_and_a_page_retitled_or_the_engines_own_does_not(cx: &mut TestA
 fn changes_are_written_a_moment_after_the_first_however_steady_they_come(cx: &mut TestAppContext) {
     let file = crate::test_support::scratch("history-saves").join(super::FILE);
     cx.update(|cx| {
-        super::init(cx);
+        crate::blocking::in_test(|may| super::init(cx, may));
         cx.global_mut::<History>().file = crate::kept_file::KeptFile::new(Some(file.clone()));
     });
     let said = |text: &str, cx: &mut TestAppContext| {
@@ -393,4 +393,81 @@ fn changes_are_written_a_moment_after_the_first_however_steady_they_come(cx: &mu
         written().contains("\"three\""),
         "and the next change, a moment after it"
     );
+}
+
+/// What the icon of the host of the page at `url` is now: the bytes of its PNG, or `None`,
+/// which a launcher row shows as a globe.
+fn icon_of(url: &str, cx: &mut TestAppContext) -> Option<Vec<u8>> {
+    cx.read(|cx| super::icon(url, cx)).map(|icon| icon.bytes.clone())
+}
+
+/// A site's icon is read off the main thread the first time its host is asked for: a globe
+/// until the read lands, then the site's own, read once; a host with none stays a globe.
+#[gpui_kit::test]
+fn a_sites_icon_is_read_off_the_main_thread_the_first_time_its_host_is_asked_for(
+    cx: &mut TestAppContext,
+) {
+    let folder = crate::test_support::scratch("history-icons");
+    std::fs::write(folder.join("example.com.png"), b"a png").unwrap();
+    cx.update(|cx| super::icons::keep_icons_in(&folder, cx));
+    assert_eq!(icon_of("https://example.com/a", cx), None, "a globe while it's read");
+    cx.run_until_parked();
+    assert_eq!(icon_of("https://www.example.com/b", cx), Some(b"a png".to_vec()));
+    std::fs::remove_file(folder.join("example.com.png")).unwrap();
+    assert_eq!(icon_of("https://example.com/c", cx), Some(b"a png".to_vec()), "read once");
+    assert_eq!(icon_of("https://elsewhere.example/", cx), None);
+    cx.run_until_parked();
+    assert_eq!(icon_of("https://elsewhere.example/", cx), None, "it has none");
+}
+
+/// The icons of the pages a window brings back are read with its file, so a tab brought back
+/// asks for its site's icon and has it at once.
+#[gpui_kit::test]
+fn the_icons_of_the_pages_a_window_brings_back_are_there_as_it_asks(cx: &mut TestAppContext) {
+    let folder = crate::test_support::scratch("history-icons-kept");
+    std::fs::write(folder.join("example.com.png"), b"a png").unwrap();
+    cx.update(|cx| {
+        super::icons::keep_icons_in(&folder, cx);
+        let pages = ["https://example.com/kept", "", "https://elsewhere.example/"];
+        crate::blocking::in_test(|may| super::read_icons(&pages, may, cx));
+    });
+    assert_eq!(icon_of("https://example.com/kept", cx), Some(b"a png".to_vec()));
+    assert_eq!(icon_of("https://elsewhere.example/", cx), None);
+}
+
+/// What observes the icons hears one land, and one kept that's new, but not a host found to
+/// have none, nor an icon kept again as it was: neither changes what a row shows.
+#[gpui_kit::test]
+fn what_observes_the_icons_hears_what_changes_a_row_and_nothing_else(cx: &mut TestAppContext) {
+    use gpui_kit::{AppContext as _, Image, ImageFormat, Subscription};
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    struct Listening {
+        _subscription: Subscription,
+    }
+    let folder = crate::test_support::scratch("history-icons-heard");
+    std::fs::write(folder.join("example.com.png"), b"a png").unwrap();
+    cx.update(|cx| super::icons::keep_icons_in(&folder, cx));
+    let heard = Rc::new(Cell::new(0));
+    let counting = heard.clone();
+    let _listening = cx.new(|cx| {
+        let _subscription = super::observe_icons(cx, move |_, _| counting.set(counting.get() + 1));
+        Listening { _subscription }
+    });
+    let png = |bytes: &[u8]| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec()));
+
+    assert_eq!(icon_of("https://elsewhere.example/", cx), None);
+    cx.run_until_parked();
+    assert_eq!(heard.get(), 0, "a host found to have none");
+    assert_eq!(icon_of("https://example.com/", cx), None);
+    cx.run_until_parked();
+    assert_eq!(heard.get(), 1, "an icon landing");
+    cx.update(|cx| super::keep_icon("https://example.com/b", &png(b"a png"), cx));
+    cx.run_until_parked();
+    assert_eq!(heard.get(), 1, "an icon kept again as it was");
+    cx.update(|cx| super::keep_icon("https://example.com/b", &png(b"a new png"), cx));
+    cx.run_until_parked();
+    assert_eq!(heard.get(), 2, "an icon kept that's new");
 }

@@ -10,6 +10,7 @@ use futures::channel::mpsc;
 use gpui_kit::Context;
 
 use super::link::{Incoming, Running, Sink};
+use crate::blocking::{self, Blocking};
 
 /// The host that runs, and what is told it while it starts.
 pub struct Host<Tell> {
@@ -60,7 +61,7 @@ impl<Tell> Host<Tell> {
 pub fn follow<E, Said, Started>(
     mine: u64,
     starts: impl Fn(&E) -> u64 + 'static,
-    start: impl FnOnce(Sink<Said>) -> io::Result<Started> + Send + 'static,
+    start: impl FnOnce(Sink<Said>, Blocking<'_>) -> io::Result<Started> + Send + 'static,
     started: impl FnOnce(&mut E, u64, io::Result<Started>, &mut Context<E>) -> bool + 'static,
     heard: impl Fn(&mut E, Vec<Incoming<Said>>, &mut Context<E>) + 'static,
     cx: &mut Context<E>,
@@ -70,7 +71,7 @@ pub fn follow<E, Said, Started>(
     Started: Send + 'static,
 {
     let (sink, mut said) = mpsc::unbounded();
-    let starting = cx.background_executor().spawn(async move { start(sink) });
+    let starting = blocking::spawn(cx.background_executor(), move |may| start(sink, may));
     cx.spawn(async move |this, cx| {
         let result = starting.await;
         let taken = this.update(cx, |this, cx| started(this, mine, result, cx));

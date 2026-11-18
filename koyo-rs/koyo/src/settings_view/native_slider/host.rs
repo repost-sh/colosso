@@ -83,7 +83,7 @@ mod tests {
         reason = "a stop is written as it's listed, and a value by hand left as it was"
     )]
     fn moving_the_thumb_writes_the_stop_unless_the_slider_is_disabled(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         set_by_hand(cx);
         let shown = Some(Shown {
             at: 5,

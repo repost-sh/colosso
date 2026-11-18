@@ -31,7 +31,7 @@ impl Browsers {
             }
         };
         self.host = Host::Starting;
-        self.starting_since = Some(Instant::now());
+        self.asked_at = Some((Instant::now(), false));
         self.notify_views(cx);
         let (tell, mut told) = mpsc::unbounded::<Incoming>();
         let started = cx.background_executor().spawn(async move {
@@ -110,15 +110,15 @@ impl Browsers {
             let _ = requests.send(request);
         }
         log::info!(
-            "browser engine {} (Chromium {}) serving",
+            "browser engine {} (Chromium {}) serving, {} ms after it was asked for",
             connection.engine,
-            connection.chromium
+            connection.chromium,
+            self.asked_at.map_or(0, |(since, _)| since.elapsed().as_millis())
         );
         self.host = Host::Running {
             connection,
             requests,
         };
-        self.starting_since = None;
         self.epoch += 1;
         self.notify_views(cx);
         Some(())
@@ -137,7 +137,7 @@ impl Browsers {
 
     fn fail(&mut self, message: String, cx: &mut Context<Self>) {
         log::warn!("{message}");
-        self.starting_since = None;
+        self.asked_at = None;
         self.drop_calls(&message);
         self.host = Host::Failed(message);
         self.queued.clear();

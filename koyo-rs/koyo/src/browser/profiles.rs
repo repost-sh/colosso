@@ -22,6 +22,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use gpui_kit::{App, Context, Global, Subscription};
 use serde::{Deserialize, Serialize};
 
+use crate::blocking::Blocking;
 use crate::kept_file::{self, KeptFile};
 use crate::settings;
 use crate::spaces::ProjectLooks;
@@ -314,14 +315,14 @@ fn due(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
 }
 
 /// Reads the profiles from the data folder; and picking one for a project needs no window.
-pub(super) fn init(cx: &mut App) {
+pub(super) fn init(cx: &mut App, may: Blocking<'_>) {
     let path = settings::data_dir()
         .filter(|_| !cfg!(test))
         .map(|data| data.join(FILE));
     let root = super::engine::profiles();
     let kept =
         |id: &str| (root.as_deref()).is_some_and(|root| koyo_browser_host::keeps_profile(root, id));
-    open(path, kept, cx);
+    open(path, kept, may, cx);
     kept_file::write_on_quit(cx, due);
     actions::init(cx);
 }
@@ -329,14 +330,14 @@ pub(super) fn init(cx: &mut App) {
 /// Takes up the profiles kept at `path`. With none kept there yet, as the first time a build
 /// with profiles starts, each project's own profile is brought over, which `kept` says has a
 /// folder (`Profiles::bring_over`), and the file's written at once, so that's done once.
-fn open(path: Option<PathBuf>, kept: impl Fn(&str) -> bool, cx: &mut App) {
-    let read: Option<Profiles> = path.as_deref().and_then(kept_file::read);
+fn open(path: Option<PathBuf>, kept: impl Fn(&str) -> bool, may: Blocking<'_>, cx: &mut App) {
+    let read: Option<Profiles> = (path.as_deref()).and_then(|path| kept_file::read(path, may));
     let bring_over = read.is_none() && path.is_some();
     let mut profiles = read.unwrap_or_default();
     if bring_over {
         let settings = settings::get(cx);
         profiles.bring_over(&settings.projects, &settings.project_looks, kept);
-        kept_file::write_now(path.clone().zip(kept_file::encode(&profiles)));
+        kept_file::write_due(path.clone().zip(kept_file::encode(&profiles)), cx);
     }
     let file = RefCell::new(KeptFile::new(path));
     cx.set_global(Store { profiles, file });

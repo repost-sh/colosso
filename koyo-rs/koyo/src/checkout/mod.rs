@@ -15,13 +15,14 @@ use gpui_kit::gpui::{
     Window,
 };
 use koyo_git::{Change, Checkout as Git};
-use koyo_project::{Feed, GitDirs, Project};
+use koyo_project::{Feed, Project};
 
 use documents::Documents;
 pub use documents::read_at_most;
 pub use documents::{Content, Document, DocumentEvent, MOST_BYTES};
 
 use crate::changes::{FileView, Marks, Read, Stale, Touched, read, touched};
+use crate::blocking;
 use crate::checkouts;
 
 /// Something done to some of a checkout's changes: staging, unstaging or discarding them.
@@ -96,9 +97,10 @@ impl Checkout {
         });
         let path = root.clone();
         let opening = cx.spawn(async move |this, cx| {
-            let opened = cx
-                .background_spawn(async move { checkouts::open_git(&path) })
-                .await;
+            let opened = blocking::spawn(cx.background_executor(), move |may| {
+                checkouts::open_git(&path, may)
+            })
+            .await;
             this.update(cx, |this, cx| this.opened(opened, cx)).ok();
         });
         Checkout {
@@ -284,12 +286,12 @@ impl Checkout {
 
     /// Starts following the checkout through its project, shared with every other window
     /// showing it, once git's open.
-    fn opened(&mut self, opened: koyo_git::Result<(Git, GitDirs)>, cx: &mut Context<Self>) {
+    fn opened(&mut self, opened: koyo_git::Result<checkouts::Opened>, cx: &mut Context<Self>) {
         self.reading = None;
         match opened {
             Err(error) => self.failed(error.message),
-            Ok((git, dirs)) => {
-                let project = checkouts::project(git.root(), dirs, cx);
+            Ok(checkouts::Opened { git, dirs, root }) => {
+                let project = checkouts::project(&root, dirs, cx);
                 log::info!("following the changes in {}", self.root.display());
                 let updates = project.subscribe(Feed::Written);
                 self._following =

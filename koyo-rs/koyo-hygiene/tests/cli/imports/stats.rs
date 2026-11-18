@@ -1,5 +1,8 @@
 use super::support::checkout;
 
+/// The line `--stats` ends with for a crate that blocks nowhere.
+const NO_BLOCKING: &str = "Blocking calls: 0 on a Blocking, 0 owed in 0 files (koyo-rs/blocking-debt.txt), 0 at_launch outside main.rs.\n";
+
 #[test]
 fn stats_count_the_graph_and_name_the_cheapest_cuts() {
     let scratch = checkout(
@@ -20,13 +23,16 @@ fn stats_count_the_graph_and_name_the_cheapest_cuts() {
         (run.code, run.stdout.as_str()),
         (
             0,
-            "\
+            format!(
+                "\
 modules 5, edges 5, edges on a cycle 4, largest cycle 3 modules
 b -> a: 1 site
 b -> c: 1 site
 c -> a: 1 site
 a -> b: 2 sites
-"
+{NO_BLOCKING}"
+            )
+            .as_str()
         )
     );
 }
@@ -57,7 +63,7 @@ fn stats_name_at_most_fifteen_cuts() {
         "modules 18, edges 17, edges on a cycle 17, largest cycle 17 modules"
     );
     assert_eq!(
-        lines[1..],
+        lines[1..16],
         (0..15)
             .map(|index| format!("m{index:02} -> m{:02}: 1 site", index + 1))
             .collect::<Vec<_>>()
@@ -79,7 +85,10 @@ fn stats_of_a_graph_with_no_cycle_say_so() {
         (run.code, run.stdout.as_str()),
         (
             0,
-            "modules 3, edges 1, edges on a cycle 0, largest cycle 0 modules\n"
+            format!(
+                "modules 3, edges 1, edges on a cycle 0, largest cycle 0 modules\n{NO_BLOCKING}"
+            )
+            .as_str()
         )
     );
 }

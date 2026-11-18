@@ -34,6 +34,7 @@ pub use simulators::Simulator;
 pub use standing::Standing;
 pub use view::{Chosen, DeviceEvent, DeviceView, bind_keys};
 
+use crate::blocking;
 use crate::settings;
 
 pub struct Devices {
@@ -257,9 +258,9 @@ impl Devices {
         };
         self.listing = true;
         let known = self.found.clone().filter(|_| spare);
-        let looked = cx.background_executor().spawn(async move {
+        let looked = blocking::spawn(cx.background_executor(), move |may| {
             if whole {
-                let (found, listed) = needs::find(&set, known.as_ref());
+                let (found, listed) = needs::find(&set, known.as_ref(), may);
                 (Some(found), listed)
             } else {
                 (None, Some(simulators::list(&set)))

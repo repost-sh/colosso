@@ -273,13 +273,21 @@ pub(crate) fn stop_then_quit(running: Running, cx: &mut App) {
     .detach();
 }
 
-/// Asks over the window, opening it again if it was closed.
+/// Asks over the window, opening it again first if it was closed.
 fn ask(running: Running, listed: Listed, cx: &mut App) {
-    if crate::control::main_shell(cx).is_none()
-        && let Err(error) = crate::open_main_window(cx)
-    {
-        log::warn!("couldn't open the window to ask about quitting: {error:#}");
+    if crate::control::main_shell(cx).is_some() {
+        return ask_in_window(running, listed, cx);
     }
+    crate::reopen_main_window(cx, move |opened, cx| {
+        if let Err(error) = opened {
+            log::warn!("couldn't open the window to ask about quitting: {error:#}");
+        }
+        ask_in_window(running, listed, cx);
+    });
+}
+
+/// Asks over the window, or quits with no window to ask in.
+fn ask_in_window(running: Running, listed: Listed, cx: &mut App) {
     let Some((window, _)) = crate::control::main_shell(cx) else {
         return cx.quit();
     };

@@ -50,7 +50,7 @@ fn draw() -> Result<Vec<String>> {
     let platform = gpui_kit::platform::current_platform(false);
     let mut cx =
         VisualTestAppContext::with_asset_source(platform, Arc::new(gpui_kit::assets::AllAssets));
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let accounts = cx.update(|cx| super::accounts(cx));
     let now = super::now();
     let mut said = Vec::new();

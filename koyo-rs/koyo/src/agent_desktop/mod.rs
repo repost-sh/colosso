@@ -14,6 +14,7 @@ use koyo_desk_wire::link::{
     ToHost, Window,
 };
 
+use crate::blocking::Blocking;
 use crate::browser::control::{Lease, Leased as _, Mode};
 use crate::browser::pointer::Pointer;
 use crate::hosted::host::{Host, follow};
@@ -172,7 +173,7 @@ impl Desk {
         self.state = State::Starting;
         cx.notify();
         self.starts += 1;
-        let start = move |sink| host::start(&loader, &dir, sink);
+        let start = move |sink, may: Blocking<'_>| host::start(&loader, &dir, sink, may);
         follow(self.starts, |desk: &Desk| desk.starts, start, Desk::started, Desk::heard, cx);
     }
 

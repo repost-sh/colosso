@@ -1,4 +1,4 @@
-use super::code::Token;
+use crate::shipped::Token;
 
 /// Where a path starts: the crate root, or `levels` modules up from where it's written, `0`
 /// for the module itself.

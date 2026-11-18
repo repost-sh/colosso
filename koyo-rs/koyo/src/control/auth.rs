@@ -162,14 +162,23 @@ fn external_hello(caller: Caller, reply: Answer<Welcome>, cx: &mut App) {
 }
 
 /// Asks the person whether `caller`'s client may control Koyo, opening the window to ask
-/// in when it's closed.
+/// in first when it's closed.
 fn ask(caller: Caller, reply: Answer<Welcome>, cx: &mut App) {
-    let name = caller.client.name.clone();
-    if main_shell(cx).is_none()
-        && let Err(error) = crate::open_main_window(cx)
-    {
-        log::error!("couldn't open the window to ask about {name}: {error:#}");
+    if main_shell(cx).is_some() {
+        return ask_in_window(caller, reply, cx);
     }
+    crate::reopen_main_window(cx, move |opened, cx| {
+        if let Err(error) = opened {
+            let name = &caller.client.name;
+            log::error!("couldn't open the window to ask about {name}: {error:#}");
+        }
+        ask_in_window(caller, reply, cx);
+    });
+}
+
+/// Asks the person in the window, or answers that there's no window to ask in.
+fn ask_in_window(caller: Caller, reply: Answer<Welcome>, cx: &mut App) {
+    let name = caller.client.name.clone();
     let Some((window, _)) = main_shell(cx) else {
         return reply(Err(ControlError::internal(
             "Koyo couldn't open its window to ask the person.",

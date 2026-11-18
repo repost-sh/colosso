@@ -49,7 +49,7 @@ impl Render for Occluded {
 
 /// A window to float over, made after the app.
 fn behind(cx: &mut TestAppContext) -> AnyWindowHandle {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     in_window(size(px(800.), px(600.)), cx, |_, cx| cx.new(|_| Blank)).0
 }
 
@@ -100,7 +100,7 @@ fn a_press_in_the_window_puts_away_what_floats_over_it_but_on_a_menus_trigger(
 
 #[gpui_kit::test]
 fn the_listener_hears_a_press_on_what_keeps_the_pointer_to_itself(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let (over, _) = in_window(size(px(800.), px(600.)), cx, |_, cx| cx.new(|_| Occluded));
     let menu = float(Kind::Menu, None, false, over, cx);
     let page = &mut VisualTestContext::from_window(over, cx);

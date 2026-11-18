@@ -2,9 +2,9 @@ mod accounts;
 mod agent_desktop;
 mod ago;
 mod arc;
-mod atomic_file;
 mod backdrop;
 mod beat;
+mod blocking;
 mod bottom;
 mod browser;
 #[cfg(test)]
@@ -56,6 +56,8 @@ mod shell;
 mod sidebar;
 mod sight;
 mod spaces;
+#[cfg(target_os = "macos")]
+mod stall;
 mod surfaces;
 mod symbols;
 mod terminals;
@@ -76,15 +78,17 @@ use gpui_kit::{
     WindowOptions, point, px, size, transparent_black,
 };
 
+use blocking::Blocking;
+
 /// What the app sets up before its first window, the visual check's included.
-fn init(cx: &mut App) {
+fn init(cx: &mut App, may: Blocking<'_>) {
     gpui_kit::init(cx);
-    settings::init(cx);
+    settings::init(cx, may);
     settings_view::init(cx);
     key_repeat::init(cx);
     theme::init(cx);
     shell::init(cx);
-    history::init(cx);
+    history::init(cx, may);
     launcher::init(cx);
     quitting::init(cx);
     agent_desktop::init(cx);
@@ -92,14 +96,14 @@ fn init(cx: &mut App) {
     agent_desktop::bind_keys(cx);
     devices::init(cx);
     devices::bind_keys(cx);
-    browser::init(cx);
+    browser::init(cx, may);
     right_panel::init(cx);
     files::init(cx);
     viewer::init(cx);
     navigation::bind_keys(cx);
     arc::bind_keys(cx);
     go_to_file::init(cx);
-    chat::init(cx);
+    chat::init(cx, may);
     chat_backdrop::init(cx);
     symbols::init(cx);
     koyo_term::init(cx);
@@ -110,9 +114,20 @@ fn init(cx: &mut App) {
     edit_menu::init(cx);
 }
 
-/// The app's window: most of the screen, so the chat, the sidebar and the changes fit side
-/// by side.
-fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
+/// Opens the window again, as the Dock, a quit asked over it or a control client does, with
+/// what its file holds, read off the main thread (`shell::reopen`); `opened` hears how that
+/// went once it's open.
+pub fn reopen_main_window(
+    cx: &mut App,
+    opened: impl FnOnce(&gpui_kit::Result<()>, &mut App) + 'static,
+) {
+    let open = |kept, cx: &mut App| open_main_window(cx, kept);
+    shell::reopen(shell::KeptWindow::path(), open, opened, cx);
+}
+
+/// The app's window, bringing back what `kept` holds: most of the screen, so the chat, the
+/// sidebar and the changes fit side by side.
+fn open_main_window(cx: &mut App, kept: shell::KeptWindow) -> gpui_kit::Result<()> {
     let screen = cx
         .primary_display()
         .map_or(size(px(1440.), px(900.)), |display| {
@@ -139,7 +154,7 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
     };
     let opened = cx.open_window(options, |window, cx| {
         theme::follow_window_appearance(window);
-        let shell = cx.new(|cx| shell::Shell::new(window, cx));
+        let shell = cx.new(|cx| shell::Shell::new(window, kept, cx));
         cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
     })?;
     popup::refresh_edge(opened.into(), cx);
@@ -152,14 +167,16 @@ fn main() -> ExitCode {
         Some("termd") => return koyo_termd::main(args),
         Some("app") => return koyo_app_control::cli_main(args),
         Some("mcp") => {
-            former_name::move_data();
+            blocking::at_launch("the data folder's move", former_name::move_data);
             return koyo_term_mcp::main(args, terminals::daemon_command());
         }
         _ => {}
     }
-    former_name::move_logs();
-    logs::init();
-    former_name::move_data();
+    blocking::at_launch("the folders' moves", |may| {
+        former_name::move_logs(may);
+        logs::init();
+        former_name::move_data(may);
+    });
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check") {
         return files::visual::run();
@@ -224,25 +241,36 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check-switcher") {
         return shell::check_switcher();
     }
+    #[cfg(target_os = "macos")]
+    stall::watch_main();
     let app = gpui_kit::application()
         .with_assets(gpui_kit::assets::AllAssets);
     app.on_reopen(|cx| {
-        if cx.windows().is_empty()
-            && let Err(error) = open_main_window(cx)
-        {
-            log::error!("couldn't open the window again: {error:#}");
+        if cx.windows().is_empty() {
+            reopen_main_window(cx, |opened, _| {
+                if let Err(error) = opened {
+                    log::error!("couldn't open the window again: {error:#}");
+                }
+            });
         }
     });
-    app.run(|cx| {
-        init(cx);
+    app.run(launch);
+    ExitCode::SUCCESS
+}
+
+/// What the app does once it runs: it sets itself up and opens its window, reading what it
+/// kept on the main thread, timed (`blocking::at_launch`).
+fn launch(cx: &mut App) {
+    blocking::at_launch("the launch", |may| {
+        init(cx, may);
         quitting::set_menu(cx);
         language::init(cx);
         control::start(cx);
+        let kept = shell::KeptWindow::read(may);
+        history::read_icons(&kept.addresses(), may, cx);
         #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
-        open_main_window(cx).expect("failed to open window");
-        browser::warm_up(cx);
-        #[cfg(all(target_os = "macos", debug_assertions, not(test)))]
-        browser::native::probe::start(cx);
+        open_main_window(cx, kept).expect("failed to open window");
     });
-    ExitCode::SUCCESS
+    #[cfg(all(target_os = "macos", debug_assertions, not(test)))]
+    browser::native::probe::start(cx);
 }

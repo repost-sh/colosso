@@ -17,6 +17,7 @@ use koyo_project::{Finder, Results};
 
 use self::matching::{CommandRow, Own, Token, TokenKind, commands_matching, naming, token_at};
 use super::ChatComposer;
+use crate::blocking;
 use crate::checkouts;
 use crate::files::ROW;
 use crate::go_to_file::{self, Row, follow_files};
@@ -178,18 +179,18 @@ impl ChatComposer {
     fn follow_files(&self, cx: &mut Context<Self>) -> FileSearch {
         let finder = go_to_file::finder(&self.cwd, cx);
         let root = self.cwd.clone();
-        let opened = cx.background_spawn(async move { checkouts::open_git(&root) });
+        let opened =
+            blocking::spawn(cx.background_executor(), move |may| checkouts::open_git(&root, may));
         let following = Arc::clone(&finder);
         let _following = cx.spawn(async move |this, cx| {
-            let (git, dirs) = match opened.await {
+            let checkouts::Opened { dirs, root, .. } = match opened.await {
                 Ok(opened) => opened,
                 Err(error) => {
                     log::warn!("the files a chat can name: {}", error.message);
                     return;
                 }
             };
-            let project = cx.update(|cx| checkouts::project(git.root(), dirs, cx));
-            drop(git);
+            let project = cx.update(|cx| checkouts::project(&root, dirs, cx));
             follow_files(this, project, following, cx, |this, changed, _, cx| {
                 if changed {
                     this.search(cx);

@@ -4,6 +4,7 @@
 use koyo_frame::Mismatch;
 
 use super::*;
+use crate::blocking::in_test;
 
 #[test]
 fn a_host_of_another_protocol_is_refused_before_it_runs() {
@@ -16,7 +17,8 @@ fn a_host_of_another_protocol_is_refused_before_it_runs() {
     };
     write_frame(&mut host, &hello).unwrap();
     let surfaces = mach::Receiver::check_in("codes.koyo.desk-test").unwrap();
-    let linked = linked(app, surfaces, futures::channel::mpsc::unbounded().0);
+    let sink = futures::channel::mpsc::unbounded().0;
+    let linked = in_test(|may| linked(app, surfaces, sink, may));
     let refused = linked
         .err()
         .expect("a host of another protocol counted as running");
@@ -39,7 +41,8 @@ fn a_host_in_this_protocol_runs_with_the_grants_it_said_it_holds() {
     };
     write_frame(&mut host, &hello).unwrap();
     let surfaces = mach::Receiver::check_in("codes.koyo.desk-test").unwrap();
-    let (_running, grants) = linked(app, surfaces, futures::channel::mpsc::unbounded().0).unwrap();
+    let sink = futures::channel::mpsc::unbounded().0;
+    let (_running, grants) = in_test(|may| linked(app, surfaces, sink, may)).unwrap();
     let expected = Grants {
         accessibility: true,
         screen_recording: false,

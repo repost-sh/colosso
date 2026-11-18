@@ -44,8 +44,9 @@ Status marks: `[decided]`, `[not built]`.
   get a tab of their own after the others, as they did before the window kept its shape.
 - The browser host runs in the app's own process (`docs/native-pages.md` 3.1), so it never
   outlives it: the app stops it on quit (`browser/host.rs`,
-  `koyo-browser-ipc/src/client.rs`). It starts at launch with no page (`browser::warm_up`),
-  once while Koyo runs.
+  `koyo-browser-ipc/src/client.rs`). It starts once while Koyo runs, when a page is needed: as
+  a page view is made (`BrowserView::ensure_open`), so a page brought back starts it once its
+  tab is shown, and the launcher only once it opens a page. With no page, it doesn't run.
 
 ## 2. Where it's kept [decided]
 
@@ -443,8 +444,8 @@ folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
   brings them back once as the window opens, with the loose pages (section 2), before any
   project's worktrees are listed, as they wait for none.
 - **The rule** is the window's (section 3): after each change of the shell a write is due,
-  made 500 ms on or on the way out from the pinned pages as they are then, through
-  `atomic_file`, and only if it differs from what the file holds.
+  made 500 ms on or on the way out from the pinned pages as they are then, through the file's
+  one writer (`kept_file::Writers`), and only if it differs from what the file holds.
 - **Read tolerantly**, by hand rather than by a shape (`shell/kept/pinned.rs`), so that no
   build's file drops a pinned page:
   - A field this build doesn't know, in the file or in a page's entry, is carried with what
@@ -1081,7 +1082,7 @@ signed in to is lost: **[asked]**
   `pinned-tabs.json`): `made`, each profile's `id` (its folder's name) and `name`, in their
   order; and `projects`, each project's main checkout and the id of the profile it's on, left
   out for Default. A profile the file names that's gone is Default. Written 300 ms after a
-  change and on the way out, through `atomic_file` (`kept_file`).
+  change and on the way out, through the file's one writer (`kept_file::Writers`).
 - **Not in `settings.json`**, so a build without profiles can't lose them: such a build reads
   the settings into what it knows and writes back only that, which would drop keys it doesn't
   know, but it never opens this file. Installed between two builds with profiles, it uses each

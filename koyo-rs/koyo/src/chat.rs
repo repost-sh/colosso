@@ -126,10 +126,10 @@ pub struct Chats {
 impl EventEmitter<ChatsEvent> for Chats {}
 
 /// What's bound for the chats, and what's kept of them.
-pub fn init(cx: &mut App) {
+pub fn init(cx: &mut App, may: crate::blocking::Blocking<'_>) {
     asks::bind_keys(cx);
     composer::bind_keys(cx);
-    drafts::init(cx);
+    drafts::init(cx, may);
     queued::bind_keys(cx);
     subagent_bar::bind_keys(cx);
     view::details::bind_keys(cx);

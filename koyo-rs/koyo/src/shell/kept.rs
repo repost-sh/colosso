@@ -14,10 +14,11 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gpui_kit::{App, Context};
+use gpui_kit::{App, Context, Global};
 use serde::{Deserialize, Serialize};
 
 use super::Shell;
+use crate::blocking::{self, Blocking};
 use crate::kept_file::{self, KeptFile};
 use crate::model::{Tab, Workspace};
 use crate::settings;
@@ -69,6 +70,7 @@ pub struct Kept {
     pub spaces: Vec<KeptSpace>,
 }
 
+#[derive(Default)]
 pub struct KeptWindow {
     /// Where it's kept, if the app has a folder to keep it in.
     file: KeptFile,
@@ -84,44 +86,57 @@ pub struct KeptWindow {
     pins: pinned::PinsFile,
 }
 
-/// Whether the window is kept in a file. Tests keep none; nor does a visual check, which draws
-/// tabs of its own making: kept, they'd come back on its next run, and one run on the app's own
-/// data folder would have the person's window come back as the check's.
-fn keeps_a_file() -> bool {
-    #[cfg(feature = "visual-check")]
-    let checking = crate::visual::checking();
-    #[cfg(not(feature = "visual-check"))]
-    let checking = false;
-    !cfg!(test) && !checking
-}
-
 impl KeptWindow {
-    /// What the file in the app's data folder holds; tests and visual checks keep none.
-    pub fn new(cx: &mut Context<Shell>) -> Self {
-        let path = settings::data_dir()
-            .filter(|_| keeps_a_file())
-            .map(|data| data.join(FILE));
-        cx.on_app_quit(|shell, cx| {
-            shell.write_what_is_due(cx);
-            async {}
-        })
-        .detach();
-        cx.on_release(|shell, cx| shell.write_what_is_due(cx))
-            .detach();
-        Self::at(path)
+    /// Where the window is kept: in the app's data folder; a test keeps it nowhere, and a
+    /// test's or a visual check's window starts from [`KeptWindow::default`], which keeps none.
+    pub fn path() -> Option<PathBuf> {
+        settings::data_dir()
+            .filter(|_| !cfg!(test))
+            .map(|data| data.join(FILE))
+    }
+
+    /// What the file in the app's data folder holds.
+    pub fn read(may: Blocking<'_>) -> Self {
+        Self::at(Self::path(), may)
     }
 
     /// What the file at `path` holds. With no such file yet, the browser tabs the build before
     /// kept beside it (`browser-tabs.json`) come back, each a tab of its own as they did then.
-    pub(super) fn at(path: Option<PathBuf>) -> Self {
-        let kept = path.as_deref().map(read_file).unwrap_or_default();
+    pub(super) fn at(path: Option<PathBuf>, may: Blocking<'_>) -> Self {
+        let kept = (path.as_deref())
+            .map(|path| read_file(path, may))
+            .unwrap_or_default();
+        let pins = (path.as_deref()).map(|path| path.with_file_name(pinned::FILE));
         KeptWindow {
-            file: KeptFile::new(path.clone()),
+            file: KeptFile::new(path),
             waiting: kept.checkouts.clone(),
             selecting: kept.projects.clone(),
             kept,
-            pins: pinned::PinsFile::at(path.map(|path| path.with_file_name(pinned::FILE))),
+            pins: pinned::PinsFile::at(pins, may),
         }
+    }
+
+    /// The addresses of the pages it brings back: each checkout's, each space's loose ones, and
+    /// the pinned ones.
+    pub fn addresses(&self) -> Vec<&str> {
+        fn of_tree<'a>(tree: &'a KeptTree, addresses: &mut Vec<&'a str>) {
+            match tree {
+                KeptTree::Split { first, second, .. } => {
+                    of_tree(first, addresses);
+                    of_tree(second, addresses);
+                }
+                KeptTree::Pane(KeptPane::Page { url, .. }) => addresses.push(url),
+                KeptTree::Pane(_) => {}
+            }
+        }
+        let mut addresses = Vec::new();
+        for tab in self.kept.checkouts.iter().flat_map(|checkout| &checkout.tabs) {
+            of_tree(tab, &mut addresses);
+        }
+        let loose = self.kept.spaces.iter().flat_map(|space| &space.tabs);
+        addresses.extend(loose.map(|tab| tab.url.as_str()));
+        addresses.extend(self.pins.addresses());
+        addresses
     }
 
     /// Drops what waits for a checkout that won't come: its project gone, or listed without it.
@@ -137,16 +152,57 @@ impl KeptWindow {
     }
 }
 
+/// Told how opening the window again went.
+type Opened = Box<dyn FnOnce(&gpui_kit::Result<()>, &mut App)>;
+
+/// The window opening again, its files still being read: who's told once it's open.
+#[derive(Default)]
+struct Reopening(Vec<Opened>);
+
+impl Global for Reopening {}
+
+/// Opens the window again with what the file at `at` holds, read as a launch reads it but off
+/// the main thread, once the writes due as the last window closed have landed: `open` opens it
+/// when the read lands, and `opened` hears how that went. Asked again meanwhile, no second
+/// window opens: that `opened` hears how the first went.
+pub fn reopen(
+    at: Option<PathBuf>,
+    open: impl FnOnce(KeptWindow, &mut App) -> gpui_kit::Result<()> + 'static,
+    opened: impl FnOnce(&gpui_kit::Result<()>, &mut App) + 'static,
+    cx: &mut App,
+) {
+    let reopening = &mut cx.default_global::<Reopening>().0;
+    reopening.push(Box::new(opened));
+    if reopening.len() > 1 {
+        return;
+    }
+    let writers = kept_file::Writers::of(cx);
+    let read = blocking::spawn(cx.background_executor(), move |may| {
+        writers.settle(may);
+        KeptWindow::at(at, may)
+    });
+    cx.spawn(async move |cx| {
+        let kept = read.await;
+        cx.update(|cx| {
+            let result = open(kept, cx);
+            for opened in std::mem::take(&mut cx.global_mut::<Reopening>().0) {
+                opened(&result, cx);
+            }
+        });
+    })
+    .detach();
+}
+
 /// What's in the file, or nothing if it can't be read: tabs aren't worth stopping for. The
 /// first time there's none, what the browser tabs' own file held.
-fn read_file(path: &Path) -> Kept {
+fn read_file(path: &Path, may: Blocking<'_>) -> Kept {
     if !path.exists() {
         return Kept {
-            checkouts: before::tabs_kept_before(path),
+            checkouts: before::tabs_kept_before(path, may),
             ..Kept::default()
         };
     }
-    kept_file::read(path).unwrap_or_default()
+    kept_file::read(path, may).unwrap_or_default()
 }
 
 /// Of `items`, what `keep` keeps of each, in order; and among those the place of the one at
@@ -182,10 +238,30 @@ impl Shell {
         }
     }
 
-    /// Writes the window and the pinned pages now, on the way out, if a write of either is due.
-    fn write_what_is_due(&mut self, cx: &App) {
-        kept_file::write_now(self.window_due(cx));
-        kept_file::write_now(self.pinned_due());
+    /// Has the window and the pinned pages written as the app quits, and as the window
+    /// closes, if a write of either is due then: handed to their files' writers as it closes,
+    /// written with everything else waiting as the app quits.
+    pub(super) fn keep_on_the_way_out(cx: &mut Context<Self>) {
+        let shell = cx.weak_entity();
+        blocking::on_quit(cx, move |may, cx| {
+            if let Ok(dues) = shell.update(cx, |shell, cx| shell.what_is_due(cx)) {
+                for due in dues {
+                    kept_file::write_due(due, cx);
+                }
+            }
+            kept_file::Writers::of(cx).settle(may);
+        });
+        cx.on_release(|shell, cx| {
+            for due in shell.what_is_due(cx) {
+                kept_file::write_due(due, cx);
+            }
+        })
+        .detach();
+    }
+
+    /// What's due to be written of the window and the pinned pages, taken now.
+    fn what_is_due(&mut self, cx: &App) -> [Option<(PathBuf, Vec<u8>)>; 2] {
+        [self.window_due(cx), self.pinned_due()]
     }
 
     /// Where to write the window as it is now, and its JSON, if a write is due, which then no
@@ -280,6 +356,6 @@ impl Shell {
     /// From now on the window is kept at `path`, as if the app had just started.
     #[cfg(test)]
     pub(crate) fn keep_window_at(&mut self, path: &Path) {
-        self.kept = KeptWindow::at(Some(path.to_owned()));
+        self.kept = blocking::in_test(|may| KeptWindow::at(Some(path.to_owned()), may));
     }
 }

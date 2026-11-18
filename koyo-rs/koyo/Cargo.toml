@@ -143,6 +143,9 @@ gpui-fast-apple = "0.1.17"
 gpui-fast-macos = { version = "0.1.17", default-features = false }
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
+# The settings file's watch (settings/watch.rs): a kqueue on the file, and on its folder while
+# it's missing; the version notify already names in Cargo.lock.
+kqueue = "1.2.1"
 # The system's accent colour, under each appearance, and word when System Settings changes
 # it; all versions GPUI already pulls in, with every feature named here already built.
 objc2 = { version = "0.6", features = [
@@ -234,6 +237,10 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
   "CFURL",
   # A chat backdrop's picture, compressed into memory (chat_backdrop/astc.rs).
   "CFData",
+  # The stall meter's observers on the main run loop (stall.rs), and its test's timer.
+  "CFRunLoop",
+  "CFDate",
+  "block2",
 ] }
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
 objc2-core-video = { version = "=0.3.2", default-features = false, features = [

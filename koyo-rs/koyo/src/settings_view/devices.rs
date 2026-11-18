@@ -203,7 +203,7 @@ mod tests {
 
     #[gpui_kit::test]
     fn an_xcode_too_old_is_said_and_no_ios_version_is_listed(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         cx.update(|cx| {
             let old = found(Xcode::Older("26.4".into()), false, false);
             crate::devices::devices(cx).update(cx, |devices, cx| devices.listed(Ok(Vec::new()), Some(old), cx));
@@ -217,7 +217,7 @@ mod tests {
 
     #[gpui_kit::test]
     fn the_page_shows_what_runs_with_stop_and_the_limit(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         cx.update(|cx| {
             let devices = crate::devices::devices(cx);
             devices.update(cx, |devices, cx| devices.listed(Ok(vec![booted("U-RUNS"), simulator("U-OFF")]), Some(found(ready(), true, true)), cx));

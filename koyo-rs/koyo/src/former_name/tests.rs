@@ -1,8 +1,30 @@
 use std::cell::Cell;
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 
-use super::{answers, move_data_folder, move_log_folder, move_newest};
+use super::answers;
+use crate::blocking::in_test;
+
+fn move_data_folder(
+    former: &Path,
+    data: &Path,
+    stop: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<bool> {
+    in_test(|may| super::move_data_folder(former, data, stop, may))
+}
+
+fn move_log_folder(former: &Path, logs: &Path) -> io::Result<()> {
+    in_test(|may| super::move_log_folder(former, logs, may))
+}
+
+fn move_newest(
+    base: &Path,
+    runs: impl FnOnce(&Path) -> bool,
+    stop: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<Option<PathBuf>> {
+    in_test(|may| super::move_newest(base, runs, stop, may))
+}
 use crate::test_support::scratch;
 
 #[test]

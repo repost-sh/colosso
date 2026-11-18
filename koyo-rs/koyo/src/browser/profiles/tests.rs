@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use gpui_kit::TestAppContext;
 
 use super::*;
+use crate::blocking::in_test;
 use crate::browser::NO_PROJECT;
 use crate::spaces::ProjectLook;
 use crate::test_support::scratch;
@@ -158,16 +159,17 @@ fn agents_pages_are_the_projects_or_the_agents_profiles_as_the_person_has_them()
 
 #[gpui_kit::test]
 fn the_profiles_come_back_from_their_file_and_are_brought_over_once(cx: &mut TestAppContext) {
-    cx.update(settings::init);
+    cx.update(crate::test_support::init_settings);
     let colosso = PathBuf::from("/work/colosso");
     cx.update(|cx| {
         settings::update(cx, |settings| settings.projects = vec![colosso.clone()]);
     });
     let file = scratch("browser-profiles").join(FILE);
-    cx.update(|cx| open(Some(file.clone()), |_| true, cx));
+    cx.update(|cx| in_test(|may| open(Some(file.clone()), |_| true, may, cx)));
+    cx.run_until_parked();
     let brought = cx.read(|cx| get(cx).clone());
     assert_eq!(brought.of(&colosso), own(&colosso));
-    assert_eq!(kept_file::read::<Profiles>(&file).as_ref(), Some(&brought));
+    assert_eq!(in_test(|may| kept_file::read::<Profiles>(&file, may)).as_ref(), Some(&brought));
 
     cx.update(|cx| {
         update(cx, |profiles| {
@@ -176,8 +178,9 @@ fn the_profiles_come_back_from_their_file_and_are_brought_over_once(cx: &mut Tes
         });
     });
     let changed = cx.read(|cx| get(cx).clone());
-    kept_file::write_now(cx.update(due));
-    cx.update(|cx| open(Some(file.clone()), |_| true, cx));
+    cx.update(|cx| kept_file::write_due(due(cx), cx));
+    cx.run_until_parked();
+    cx.update(|cx| in_test(|may| open(Some(file.clone()), |_| true, may, cx)));
     assert_eq!(cx.read(|cx| get(cx).clone()), changed);
     assert_eq!(cx.read(|cx| get(cx).of(&colosso).to_owned()), DEFAULT);
 }
@@ -190,7 +193,7 @@ fn an_open_page_moves_with_its_projects_profile(cx: &mut TestAppContext) {
     use crate::browser::host::Browsers;
     use crate::test_support::in_window;
 
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let app = Path::new("/work/app");
     let page = |cx: &mut TestAppContext| {
         in_window(size(px(800.), px(600.)), cx, |window, cx| {

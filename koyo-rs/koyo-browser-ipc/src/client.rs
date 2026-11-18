@@ -48,8 +48,9 @@ impl<F: Fn(Incoming) -> Option<Incoming> + Clone + Send + 'static> Sink for F {}
 /// (`docs/native-pages.md`): the app gives the host's library its end of the socket, and at
 /// the end has it stop on the main thread, which is the host's there.
 pub struct Embedded {
-    /// Starts the host with its end of the socket and the token it's greeted with. From any
-    /// thread.
+    /// Starts the host with its end of the socket and the token it's greeted with, the app's
+    /// hello already on the socket: what of the start needn't be on the main thread runs on
+    /// the thread that calls it. Off the main thread.
     pub start: Box<dyn FnOnce(UnixStream, String) + Send>,
     /// Stops the host within the time given, once it's been asked to shut down. On the main
     /// thread.
@@ -91,6 +92,11 @@ fn handshake(
     token: String,
     passkeys: bool,
 ) -> io::Result<(String, String)> {
+    say_hello(stream, token, passkeys)?;
+    hear_ready(stream)
+}
+
+fn say_hello(stream: &mut UnixStream, token: String, passkeys: bool) -> io::Result<()> {
     crate::write_frame(
         stream,
         &Hello {
@@ -98,7 +104,11 @@ fn handshake(
             token,
             passkeys,
         },
-    )?;
+    )
+}
+
+/// The host's hello, the engine's versions in it, or why it refused.
+fn hear_ready(stream: &mut UnixStream) -> io::Result<(String, String)> {
     koyo_frame::hello(
         stream,
         START_TIMEOUT,
@@ -193,8 +203,9 @@ impl Connection {
         sink: impl Sink,
     ) -> io::Result<Self> {
         let (mut stream, host_end, token) = Self::begin(launch)?;
-        (embedded.start)(host_end, token.clone());
-        let versions = handshake(&mut stream, token, launch.passkeys).map_err(|e| {
+        say_hello(&mut stream, token.clone(), launch.passkeys)?;
+        (embedded.start)(host_end, token);
+        let versions = hear_ready(&mut stream).map_err(|e| {
             if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) {
                 io::Error::new(io::ErrorKind::TimedOut, "the browser engine did not start")
             } else {

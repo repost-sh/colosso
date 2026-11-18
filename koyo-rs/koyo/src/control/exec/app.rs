@@ -1,6 +1,7 @@
 //! The window: its status, bringing it forward, its panels and layout, and the settings
 //! pages it shows.
 
+use futures::channel::oneshot;
 use gpui_kit::App;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::app::{
@@ -10,7 +11,7 @@ use koyo_app_control::ops::app::{
 use koyo_app_control::ops::shared::Layout;
 use serde_json::Value;
 
-use super::{main_shell, output, try_update_shell, update_shell};
+use super::{Exec, main_shell, output, try_update_shell, update_shell};
 use crate::navigation::Route;
 use crate::right_panel::View;
 use crate::settings;
@@ -74,13 +75,31 @@ pub(crate) fn status_value(cx: &mut App) -> Result<Value, ControlError> {
     output(&status(cx))
 }
 
-/// Brings the window forward, opening it when it's closed.
-pub(crate) fn focus(cx: &mut App) -> Result<Value, ControlError> {
-    if main_shell(cx).is_none() {
-        crate::open_main_window(cx).map_err(|error| {
-            ControlError::internal(format!("Koyo couldn't open its window: {error:#}"))
-        })?;
+/// Brings the window forward, opening it first when it's closed: then the answer comes once
+/// its file is read and it's open, as it stands then.
+pub(crate) fn focus(cx: &mut App) -> Exec {
+    if main_shell(cx).is_some() {
+        return Exec::Ready(focused(cx));
     }
+    let (answer, answered) = oneshot::channel();
+    crate::reopen_main_window(cx, move |opened, cx| {
+        let focused = match opened {
+            Ok(()) => focused(cx),
+            Err(error) => Err(ControlError::internal(format!(
+                "Koyo couldn't open its window: {error:#}"
+            ))),
+        };
+        let _ = answer.send(focused);
+    });
+    Exec::Later(cx.spawn(async move |_| {
+        answered.await.unwrap_or_else(|_| {
+            Err(ControlError::internal("Koyo didn't open its window."))
+        })
+    }))
+}
+
+/// Brings the open window forward, and says how it stands.
+fn focused(cx: &mut App) -> Result<Value, ControlError> {
     cx.activate(true);
     update_shell(cx, |_, window, _| window.activate_window())?;
     status_value(cx)

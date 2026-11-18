@@ -99,7 +99,7 @@ fn open_with(
     cx: &mut TestAppContext,
 ) -> (AnyWindowHandle, Entity<ChangesPanel>) {
     cx.update(gpui_kit::init);
-    cx.update(settings::init);
+    cx.update(crate::test_support::init_settings);
     cx.update(|cx| {
         let bounds = Bounds {
             origin: Point::default(),

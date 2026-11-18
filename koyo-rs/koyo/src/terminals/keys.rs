@@ -11,7 +11,7 @@ const THE_APPS: [&str; 2] = ["ctrl-tab", "ctrl-shift-tab"];
 #[gpui_kit::test]
 fn a_terminal_gets_its_keys_before_the_app(cx: &mut TestAppContext) {
     cx.update(|cx| {
-        crate::init(cx);
+        crate::test_support::init(cx);
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();
         let stack: Vec<KeyContext> = ["Root", crate::arc::SPACES, koyo_term::CONTEXT]

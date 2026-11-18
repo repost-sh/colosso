@@ -16,6 +16,7 @@ use crate::new_worktree::NewWorktreeDialog;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
+mod icons;
 mod on_page;
 
 /// A shell over a checkout of its own, selected.
@@ -370,7 +371,7 @@ fn browser_rows(here: &Here, typed: &str, suggested: &[String], cx: &mut App) ->
 #[gpui_kit::test]
 #[expect(clippy::single_range_in_vec_init, reason = "one word's bytes matched")]
 fn a_page_a_tab_shows_is_switched_to_and_searches_share_the_rows(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let here = Here {
         place: place(Path::new("/work/app")),
         tabs: vec![tab(
@@ -458,7 +459,7 @@ fn suggestions_answer_the_words_asked_about_only() {
 
 #[gpui_kit::test]
 fn the_page_the_first_row_visits_is_not_listed_again(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let here = Here {
         place: place(Path::new("/work/app")),
         tabs: Vec::new(),

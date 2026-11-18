@@ -14,6 +14,7 @@ use koyo_app_control::ops::device::{
 use koyo_device_wire::{Answer, Ask, Orientation, Screen, Source, Step};
 
 use super::{SCREENSHOT, SNAPSHOT, WAIT_SLACK, asking, pane_of, unexpected, which};
+use crate::blocking;
 use crate::browser::control::Holder;
 use crate::control::Caller;
 use crate::control::exec::{Exec, output};
@@ -110,8 +111,8 @@ fn plugged_info(device: &Connected, cx: &App) -> DeviceInfo {
 pub(crate) fn list(cx: &mut App) -> Result<Exec, ControlError> {
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
     let (path, asked) = (set.clone(), super::simctl_asked(cx));
-    let listed = cx.background_executor().spawn(async move {
-        asked()?;
+    let listed = blocking::spawn(cx.background_executor(), move |may| {
+        asked(may)?;
         devices::simulators::list(&path).map_err(ControlError::internal)
     });
     let registry = devices::devices(cx);

@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::{KeptCheckout, KeptPane, KeptTree};
+use crate::blocking::Blocking;
 use crate::kept_file;
 
 /// What that file is called.
@@ -34,8 +35,8 @@ struct TabBefore {
 
 /// The browser tabs kept beside the window's file at `window`, as the window keeps them: each
 /// checkout's pages, a tab each, the first shown.
-pub(super) fn tabs_kept_before(window: &Path) -> Vec<KeptCheckout> {
-    let before: Option<Before> = kept_file::read(&window.with_file_name(FILE));
+pub(super) fn tabs_kept_before(window: &Path, may: Blocking<'_>) -> Vec<KeptCheckout> {
+    let before: Option<Before> = kept_file::read(&window.with_file_name(FILE), may);
     let checkouts = before.map(|before| before.checkouts).unwrap_or_default();
     (checkouts.into_iter())
         .map(|kept| KeptCheckout {

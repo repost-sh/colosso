@@ -74,7 +74,7 @@ fn prepare(test: &str, cx: &mut TestAppContext) -> PathBuf {
         passkeys: false,
     };
     cx.update(|cx| {
-        crate::init(cx);
+        crate::test_support::init(cx);
         cx.set_global(TestLaunch(launch));
     });
     scratch

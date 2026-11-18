@@ -8,7 +8,13 @@ use gpui_kit::{AppContext as _, Entity, TestAppContext};
 use serde_json::{Value, json};
 
 use super::super::SAVE_DELAY;
-use super::super::pinned::{FILE, KeptPinned, KeptPins, read_file};
+use super::super::pinned::{FILE, KeptPinned, KeptPins};
+use crate::blocking::in_test;
+
+/// What the pinned pages' file at `path` holds, as a launch reads it.
+fn read_file(path: &Path) -> KeptPins {
+    in_test(|may| super::super::pinned::read_file(path, may))
+}
 use crate::settings::{self, Layout};
 use crate::shell::Shell;
 use crate::test_support::{draw, open_page, repo, scratch, select, shell_window, shell_with};
@@ -313,7 +319,7 @@ fn a_window_file_that_cant_be_read_doesnt_take_the_pinned_pages_with_it(cx: &mut
         cx.run_until_parked();
         cx.executor().advance_clock(SAVE_DELAY);
         cx.run_until_parked();
-        crate::kept_file::read(&folder.join(FILE)).expect("the file, written")
+        in_test(|may| crate::kept_file::read(&folder.join(FILE), may)).expect("the file, written")
     };
     assert_eq!(file["version"], 3);
     assert_eq!(file["theme"], "glass");
