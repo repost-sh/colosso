@@ -167,7 +167,7 @@ mod tests {
         let heard = Rc::new(Cell::new(0));
         cx.update(|cx| {
             gpui_kit::init(cx);
-            crate::settings::init(cx);
+            crate::test_support::init_settings(cx);
             Theme::change(ThemeMode::Light, None, cx);
             let heard = heard.clone();
             cx.observe_global::<Theme>(move |_| heard.set(heard.get() + 1))

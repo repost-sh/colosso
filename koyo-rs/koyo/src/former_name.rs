@@ -16,13 +16,15 @@ use koyo_app_control::Endpoint;
 use koyo_daemon::{APP_ID, FORMER_APP_ID};
 use koyo_term_control::{ClientKind, Hello, TermDir};
 
+use crate::blocking::Blocking;
+
 /// The app's folder under the platform's data folder, as Colosso named it.
 const COLOSSO_APP_ID: &str = "dev.colosso.desktop";
 /// The log file's name as Colosso named it, with `.log`; Koyo's is `Koyo.log`.
 const FORMER_LOG: &str = "Colosso";
 
 /// Moves Colosso's log folder to Koyo's, its log files renamed, before the log opens.
-pub fn move_logs() {
+pub fn move_logs(may: Blocking<'_>) {
     if pointed_elsewhere() {
         return;
     }
@@ -32,19 +34,19 @@ pub fn move_logs() {
         dirs::data_local_dir().map(|dir| dir.join("Colosso/logs"))
     };
     if let (Some(former), Some(logs)) = (former, crate::logs::logs_dir()) {
-        let _ = move_log_folder(&former, &logs);
+        let _ = move_log_folder(&former, &logs, may);
     }
 }
 
 /// Moves the newest former data folder to Koyo's, once what ran in it has stopped.
-pub fn move_data() {
+pub fn move_data(may: Blocking<'_>) {
     if pointed_elsewhere() {
         return;
     }
     let Some(base) = dirs::data_dir() else {
         return;
     };
-    match move_newest(&base, older_koyo_runs, stop_daemons) {
+    match move_newest(&base, older_koyo_runs, stop_daemons, may) {
         Ok(Some(former)) => log::info!(
             "moved {} to {}",
             former.display(),
@@ -71,6 +73,7 @@ fn move_newest(
     base: &Path,
     runs: impl FnOnce(&Path) -> bool,
     stop: impl FnOnce(&Path) -> io::Result<()>,
+    may: Blocking<'_>,
 ) -> io::Result<Option<PathBuf>> {
     let data = base.join(APP_ID);
     if data.exists() {
@@ -89,7 +92,7 @@ fn move_newest(
     } else {
         base.join(COLOSSO_APP_ID)
     };
-    Ok(move_data_folder(&former, &data, stop)?.then_some(former))
+    Ok(move_data_folder(&former, &data, stop, may)?.then_some(former))
 }
 
 /// Whether a Koyo answers on the control socket of the folder `former`, as every running Koyo
@@ -121,6 +124,7 @@ fn move_data_folder(
     former: &Path,
     data: &Path,
     stop: impl FnOnce(&Path) -> io::Result<()>,
+    _: Blocking<'_>,
 ) -> io::Result<bool> {
     if !former.is_dir() || data.exists() {
         return Ok(false);
@@ -133,7 +137,7 @@ fn move_data_folder(
 
 /// Moves `former` to `logs` when only `former` is there, `Colosso.log` and
 /// `Colosso.log.old` renamed to Koyo's names.
-fn move_log_folder(former: &Path, logs: &Path) -> io::Result<()> {
+fn move_log_folder(former: &Path, logs: &Path, _: Blocking<'_>) -> io::Result<()> {
     if !former.is_dir() || logs.exists() {
         return Ok(());
     }

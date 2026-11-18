@@ -25,6 +25,8 @@ mod migration;
 mod picks;
 mod project_scripts;
 mod save_scope;
+#[cfg(target_os = "macos")]
+mod watch;
 
 pub use accounts::{AccountSettings, SetAccountsThreshold};
 pub use chat_activity::{ChatActivity, SetChatActivity};
@@ -44,7 +46,7 @@ pub use picks::{SetBranchPrefix, SetMostLanguageServers, SetPreviewFiles};
 pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use save_scope::{SaveScope, SetSaveScope};
 
-use crate::atomic_file;
+use crate::blocking::{self, Blocking};
 use crate::gradient::GradientTheme;
 use crate::key_repeat::KeyRepeat;
 use crate::theme::{self, ThemePreference};
@@ -340,32 +342,36 @@ struct OnDisk {
     unsaved: bool,
     /// When the file was last changed as the app knows it, read or written.
     seen: Option<SystemTime>,
-    /// The looking at the file for an edit made outside the app (`file::LOOK_EVERY`).
-    looking: Option<Task<()>>,
 }
 
 impl Global for Store {}
 
-/// Loads the settings, falling back to the defaults for a missing or unreadable file.
-pub fn init(cx: &mut App) {
+/// Loads the settings, falling back to the defaults for a missing or unreadable file, and
+/// watches the file for an edit made outside the app.
+pub fn init(cx: &mut App, may: Blocking<'_>) {
     let path = std::env::var_os("KOYO_CONFIG_DIR")
         .map(PathBuf::from)
         .or_else(|| dirs::data_dir().map(|dir| koyo_daemon::app_folder(&dir)))
         .map(|dir| dir.join(FILE))
         .filter(|_| !cfg!(test));
-    let mut settings: Settings = path.as_deref().map(file::load).unwrap_or_default();
+    let mut settings: Settings = (path.as_deref())
+        .map(|path| file::load(path, may))
+        .unwrap_or_default();
     settings.reconcile_spaces();
-    let seen = path.as_deref().and_then(file::modified);
+    let seen = path.as_deref().and_then(|path| file::modified(path, may));
     let file = RefCell::new(OnDisk {
         seen,
         ..OnDisk::default()
     });
+    #[cfg(target_os = "macos")]
+    if let Some(path) = &path {
+        watch::start(path.clone(), seen, cx);
+    }
     cx.set_global(Store {
         settings,
         path,
         file,
     });
-    file::look_while_in_front(cx);
     cx.on_action(|SetLayout(layout): &SetLayout, cx| {
         update(cx, |settings| settings.layout = *layout);
     });
@@ -418,13 +424,6 @@ pub fn get(cx: &App) -> &Settings {
     &cx.global::<Store>().settings
 }
 
-/// Koyo came in front: an edit made to the settings file meanwhile is taken up, and the file is
-/// looked at again (`file::LOOK_EVERY`).
-pub fn came_to_front(cx: &mut App) {
-    file::reload(cx);
-    file::look_while_in_front(cx);
-}
-
 /// Where the settings are saved, if the app has a folder to save them in.
 pub fn path(cx: &App) -> Option<&Path> {
     cx.global::<Store>().path.as_deref()
@@ -469,11 +468,12 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
     let save = cx.spawn(async move |cx| {
         cx.background_executor().timer(SAVE_DELAY).await;
         if let Some((path, json)) = cx.update(file::encode) {
-            let written = cx.background_executor().spawn(async move {
-                atomic_file::write(&path, &json);
-                file::modified(&path)
-            });
-            let seen = written.await;
+            let landed = cx.update(|cx| crate::kept_file::write(path.clone(), json, cx));
+            let _ = landed.await;
+            let seen = blocking::spawn(cx.background_executor(), move |may| {
+                file::modified(&path, may)
+            })
+            .await;
             cx.update(|cx| {
                 let mut file = cx.global::<Store>().file.borrow_mut();
                 (file.unsaved, file.seen) = (false, seen);

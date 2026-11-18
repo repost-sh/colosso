@@ -26,12 +26,16 @@ use crate::right_panel::{ToggleChanges, View};
 #[cfg(test)]
 use crate::settings::{self, Layout};
 #[cfg(test)]
-use crate::shell::Shell;
+use crate::shell::{KeptWindow, Shell};
 
 #[cfg(test)]
 mod panes;
+mod started;
 #[cfg(test)]
 pub use panes::{iphone, terminals_listed};
+#[cfg(test)]
+pub use started::init_settings;
+pub use started::init;
 
 /// A folder for one test under the target folder, empty.
 #[cfg(test)]
@@ -165,7 +169,7 @@ pub fn in_window<V: Render>(
 #[cfg(test)]
 pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
     cx.executor().allow_parking();
-    cx.update(crate::init);
+    cx.update(init);
     let (window, shell) = shell_window(cx);
     shell.update(cx, |shell, cx| {
         for root in roots {
@@ -199,7 +203,7 @@ pub fn shell_on(
 #[cfg(test)]
 pub fn shell_window(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
     in_window(size(px(1400.), px(900.)), cx, |window, cx| {
-        cx.new(|cx| Shell::new(window, cx))
+        cx.new(|cx| Shell::new(window, KeptWindow::default(), cx))
     })
 }
 

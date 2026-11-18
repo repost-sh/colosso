@@ -19,9 +19,12 @@ use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
 pub use address::{display_url, host, same_page_key};
-pub use icons::{icon, keep_icon};
+pub use icons::{icon, keep_icon, observe_icons, read_icons};
+#[cfg(test)]
+pub use icons::keep_icons_in;
 pub use rank::{Found, Origins, match_words};
 
+use crate::blocking::Blocking;
 use crate::kept_file::{self, KeptFile};
 use crate::settings;
 
@@ -147,16 +150,17 @@ pub fn now() -> i64 {
 }
 
 /// Reads the history from the app's data folder; tests keep theirs in memory.
-pub fn init(cx: &mut App) {
+pub fn init(cx: &mut App, may: Blocking<'_>) {
     let path = settings::data_dir()
         .filter(|_| !cfg!(test))
         .map(|data| data.join(FILE));
-    let read: Option<History> = path.as_deref().and_then(kept_file::read);
+    let read: Option<History> = (path.as_deref()).and_then(|path| kept_file::read(path, may));
     let history = History {
         file: KeptFile::new(path),
         ..read.unwrap_or_default()
     };
     cx.set_global(history);
+    icons::init(cx);
     kept_file::write_on_quit(cx, due);
 }
 

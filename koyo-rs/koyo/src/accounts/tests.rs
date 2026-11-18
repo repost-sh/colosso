@@ -76,7 +76,7 @@ fn on(sandbox: &Sandbox, cx: &mut TestAppContext) -> Entity<Accounts> {
     let env = sandbox.env();
     cx.update(|cx| {
         cx.set_global(TestEnv(env));
-        crate::init(cx);
+        crate::test_support::init(cx);
     });
     cx.run_until_parked();
     cx.update(|cx| accounts(cx))

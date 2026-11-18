@@ -152,7 +152,7 @@ mod tests {
     #[gpui_kit::test]
     fn a_browser_tab_takes_back_and_forward_for_its_own_history(cx: &mut gpui_kit::TestAppContext) {
         cx.update(|cx| {
-            crate::init(cx);
+            crate::test_support::init(cx);
             let keymap = cx.key_bindings();
             let keymap = keymap.borrow();
             let first = |keys: &'static str, at: &[&str]| {

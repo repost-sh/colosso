@@ -23,6 +23,7 @@ pub(crate) use looks::{list, screenshot, snapshot, wait};
 pub(crate) use opening::{close, open};
 
 use super::{Exec, main_shell};
+use crate::blocking::Blocking;
 use crate::browser::control::{Leased as _, Mode, Refused};
 use crate::control::Caller;
 use crate::devices::{self, Link};
@@ -175,15 +176,15 @@ pub(super) fn not_running(link: &Link) -> Option<ControlError> {
 /// Whether `simctl` may be asked, to be called off the main thread: at once when Koyo knows
 /// Xcode and its components are there, else after looking. An agent's tool is never the first
 /// `simctl` call, which would install Xcode's components and may ask the person's password.
-fn simctl_asked(cx: &App) -> impl FnOnce() -> Result<(), ControlError> + Send + 'static {
+fn simctl_asked(cx: &App) -> impl FnOnce(Blocking<'_>) -> Result<(), ControlError> + Send + 'static {
     use devices::Need;
     let known = (devices::devices(cx).read(cx).found.as_ref())
         .is_some_and(|found| !matches!(found.need(), Some(Need::Xcode | Need::Components)));
-    move || {
+    move |may| {
         if known {
             return Ok(());
         }
-        devices::needs::before_simctl().map_err(|why| needs_person(&why))
+        devices::needs::before_simctl(may).map_err(|why| needs_person(&why))
     }
 }
 

@@ -2,23 +2,29 @@
 //! browser tabs are: read as it starts, or nothing if it can't be; written a moment after a
 //! change, with whatever changed meanwhile, so changes as steady as typing can't put the write
 //! off for good; and written once more on the way out if a write is still due. Compact, as the
-//! history runs to thousands of entries. Each write goes through `atomic_file`, off the main
-//! thread but for the last.
+//! history runs to thousands of entries. Each file has one writer ([`Writers`]), so writes land
+//! in the order they're handed over, off the main thread, and the app quitting waits on them.
 
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use futures::channel::oneshot;
 use gpui_kit::App;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::atomic_file;
+use crate::blocking::{self, Blocking};
+
+mod writer;
+
+pub use writer::Writers;
 
 /// What's in the JSON file at `path`; `None` when there's none, or it can't be read, which is
 /// said.
-pub fn read<T: DeserializeOwned>(path: &Path) -> Option<T> {
-    let read = std::fs::read(path).and_then(|json| Ok(serde_json::from_slice(&json)?));
+pub fn read<T: DeserializeOwned>(path: &Path, _: Blocking<'_>) -> Option<T> {
+    let read = fs::read(path).and_then(|json| Ok(serde_json::from_slice(&json)?));
     read.inspect_err(|error: &io::Error| {
         if error.kind() != io::ErrorKind::NotFound {
             log::warn!("couldn't read {}: {error}", path.display());
@@ -65,8 +71,8 @@ impl KeptFile {
     }
 }
 
-/// Writes, `delay` from now, what `take` gives then: where, and the JSON, if the write is still
-/// due; one written on the way out meanwhile isn't.
+/// Hands, `delay` from now, what `take` gives then to its file's writer: where, and the JSON,
+/// if the write is still due; one handed on the way out meanwhile isn't.
 pub fn write_later(
     cx: &mut App,
     delay: Duration,
@@ -74,31 +80,47 @@ pub fn write_later(
 ) {
     cx.spawn(async move |cx| {
         cx.background_executor().timer(delay).await;
-        if let Some((path, json)) = cx.update(take) {
-            cx.background_executor()
-                .spawn(async move { atomic_file::write(&path, &json) })
-                .await;
-        }
+        cx.update(|cx| write_due(take(cx), cx));
     })
     .detach();
 }
 
-/// Writes, as the app quits, what `take` gives then: where, and the JSON, if a write is due.
+/// Writes, as the app quits, what `take` gives then, if a write is due, with everything else
+/// still waiting to be written.
 pub fn write_on_quit(
     cx: &mut App,
     mut take: impl FnMut(&mut App) -> Option<(PathBuf, Vec<u8>)> + 'static,
 ) {
-    cx.on_app_quit(move |cx| {
-        write_now(take(cx));
-        async {}
-    })
-    .detach();
+    blocking::on_quit(cx, move |may, cx| {
+        write_due(take(cx), cx);
+        Writers::of(cx).settle(may);
+    });
 }
 
-/// Writes `due`, where and the JSON, now, if there's a write due.
-pub fn write_now(due: Option<(PathBuf, Vec<u8>)>) {
+/// Hands `json` to the writer of the file at `path`; what it returns is ready once the file
+/// holds it, or what was handed after it.
+pub fn write(path: PathBuf, json: Vec<u8>, cx: &mut App) -> oneshot::Receiver<()> {
+    Writers::of(cx).write(path, json, cx)
+}
+
+/// Hands `due`, where and the JSON, to its file's writer, if there's a write due.
+pub fn write_due(due: Option<(PathBuf, Vec<u8>)>, cx: &mut App) {
     if let Some((path, json)) = due {
-        atomic_file::write(&path, &json);
+        drop(write(path, json, cx));
+    }
+}
+
+/// Writes `json` to `path` through a temporary file beside it, so a crash mid-write never
+/// leaves half a file behind, making its folder first if it has none; a failure is logged.
+pub fn write_atomic(path: &Path, json: &[u8], _: Blocking<'_>) {
+    let temporary = path.with_extension("json.tmp");
+    let written = path
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| fs::write(&temporary, json))
+        .and_then(|()| fs::rename(&temporary, path));
+    if let Err(error) = written {
+        log::error!("couldn't save {}: {error}", path.display());
     }
 }
 
@@ -108,8 +130,13 @@ mod tests {
 
     use gpui_kit::{App, Global, TestAppContext};
 
-    use super::{KeptFile, encode, read, write_later};
+    use super::{KeptFile, encode, write_later};
+    use crate::blocking::in_test;
     use crate::test_support::scratch;
+
+    fn read<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+        in_test(|may| super::read(path, may))
+    }
 
     const DELAY: Duration = Duration::from_millis(100);
 
@@ -154,12 +181,25 @@ mod tests {
             say("three", cx);
             let words = cx.global_mut::<Words>();
             let due = words.file.take_due().expect("a write is due");
-            super::write_now(Some((due.clone(), encode(&words.words).unwrap())));
-            std::fs::remove_file(&due).unwrap();
+            let json = encode(&words.words).unwrap();
+            super::write_due(Some((due, json)), cx);
         });
+        cx.run_until_parked();
+        std::fs::remove_file(&path).unwrap();
         cx.executor().advance_clock(DELAY);
         cx.run_until_parked();
         assert!(!path.exists(), "the late write was no longer due");
+    }
+
+    #[gpui_kit::test(iterations = 20)]
+    fn writes_handed_in_a_row_land_in_the_order_handed(cx: &mut TestAppContext) {
+        let path = scratch("kept-file-in-order").join("words.json");
+        cx.update(|cx| {
+            drop(super::write(path.clone(), encode(&["one"]).unwrap(), cx));
+            drop(super::write(path.clone(), encode(&["two"]).unwrap(), cx));
+        });
+        cx.run_until_parked();
+        assert_eq!(read(&path), Some(vec!["two".to_owned()]));
     }
 
     #[test]

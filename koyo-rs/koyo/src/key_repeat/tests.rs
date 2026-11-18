@@ -45,7 +45,7 @@ fn list(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<List>) {
 /// The list in a window of its own, a held arrow repeating as `repeat` says.
 fn list_with(repeat: KeyRepeat, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<List>) {
     cx.update(|cx| {
-        settings::init(cx);
+        crate::test_support::init_settings(cx);
         settings::update(cx, |settings| settings.key_repeat = repeat);
         init(cx);
         let list = Some("RepeatList");

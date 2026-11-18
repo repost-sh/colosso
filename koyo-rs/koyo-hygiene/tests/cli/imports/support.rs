@@ -1,16 +1,18 @@
 use crate::support::{Run, Scratch};
 
 pub const LIST: &str = "koyo-rs/module-edges.txt";
+pub const DEBT: &str = "koyo-rs/blocking-debt.txt";
 const SOURCE: &str = "koyo-rs/koyo/src/";
 
 /// A git checkout with no commit yet, these files under `koyo-rs/koyo/src/`, and an empty
-/// edge list.
+/// edge list and debt list.
 pub fn checkout(name: &str, files: &[(&str, &str)]) -> Scratch {
     let scratch = Scratch::new(&format!("imports-{name}"));
     for (path, text) in files {
         scratch.write(&format!("{SOURCE}{path}"), text);
     }
     scratch.write(LIST, "");
+    scratch.write(DEBT, "");
     scratch.git(&["init", "-q"]);
     scratch
 }

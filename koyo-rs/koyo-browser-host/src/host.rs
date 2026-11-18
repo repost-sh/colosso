@@ -36,7 +36,7 @@ pub(crate) use site::{keep_media, media_decided};
 pub(crate) use queue::{context_initialized, protocol_heard};
 use queue::{Queued, enqueue, read_requests};
 pub(crate) use start::{quit, run, teardown};
-pub(crate) use start::run_embedded;
+pub(crate) use start::{ready_embedded, run_embedded};
 
 use crate::embedded::pump::Load;
 

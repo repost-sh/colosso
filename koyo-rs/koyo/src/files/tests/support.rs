@@ -17,7 +17,6 @@ use super::super::{At, FileEditor, FilePane, FilesPanel, Place};
 use crate::checkout::{Checkout, Document};
 use crate::modal;
 use crate::right_panel;
-use crate::settings;
 use crate::shell::Shell;
 use crate::test_support::{git, in_window, scratch, select, shell_with, write};
 
@@ -43,7 +42,7 @@ pub(crate) fn open(root: &Path, cx: &mut TestAppContext) -> (AnyWindowHandle, En
     cx.executor().allow_parking();
     let root = root.to_owned();
     cx.update(gpui_kit::init);
-    cx.update(settings::init);
+    cx.update(crate::test_support::init_settings);
     cx.update(right_panel::init);
     let (window, panel) = in_window(size(px(320.), px(600.)), cx, |window, cx| {
         let checkout = cx.new(|cx| Checkout::new(root, window, cx));

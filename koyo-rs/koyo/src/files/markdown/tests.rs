@@ -37,7 +37,7 @@ fn a_fenced_block_is_mermaid_by_its_language() {
 /// The app's settings and theme, as a window has them.
 fn init(cx: &mut TestAppContext) {
     cx.update(gpui_kit::init);
-    cx.update(settings::init);
+    cx.update(crate::test_support::init_settings);
 }
 
 /// The looks a diagram's drawn in, in the app's light theme and its dark.

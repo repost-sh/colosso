@@ -14,6 +14,7 @@ use koyo_desk_wire::{Point, Rect, Size};
 use super::granting::{Grant, Step};
 use super::host::{Incoming, Running};
 use super::{Desk, Grants, State};
+use crate::blocking::in_test;
 use crate::browser::control::{Actor, IMPLICIT_HOLD, Leased as _, Mode, RESTS_AFTER, Refused};
 use crate::sight::Showable as _;
 
@@ -332,7 +333,7 @@ fn a_loader_inside_koyos_bundle_is_run_from_a_copy_standing_alone() {
     .unwrap();
     let state = root.join("state");
 
-    let copy = super::host::standing_alone(&loader, &state).unwrap();
+    let copy = in_test(|may| super::host::standing_alone(&loader, &state, may)).unwrap();
     assert_eq!(copy, state.join("host/Koyo Agent Desktop.app"));
     let read = |path: &str| std::fs::read_to_string(state.join("host").join(path)).unwrap();
     assert_eq!(
@@ -347,12 +348,12 @@ fn a_loader_inside_koyos_bundle_is_run_from_a_copy_standing_alone() {
         "host, build two",
     )
     .unwrap();
-    assert_eq!(super::host::standing_alone(&loader, &state).unwrap(), copy);
+    assert_eq!(in_test(|may| super::host::standing_alone(&loader, &state, may)).unwrap(), copy);
     assert_eq!(read("libkoyo_desk_host.dylib"), "host, build two");
     let kept = std::fs::metadata(copy.join("Contents/Info.plist")).unwrap();
     assert_eq!(placed.modified().unwrap(), kept.modified().unwrap());
 
-    assert_eq!(super::host::standing_alone(&copy, &state).unwrap(), copy);
+    assert_eq!(in_test(|may| super::host::standing_alone(&copy, &state, may)).unwrap(), copy);
 }
 
 /// The desktop's lease is a browser page's: an agent's while it acts, the person's once

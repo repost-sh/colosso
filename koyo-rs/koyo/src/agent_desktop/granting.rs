@@ -13,6 +13,7 @@ use koyo_desk_wire::link::DesktopState;
 
 use super::{Desk, State, host};
 use crate::beat::is_frontmost;
+use crate::blocking;
 use crate::settings;
 
 const ACCESSIBILITY: &str =
@@ -93,13 +94,12 @@ impl Desk {
     /// looks for the grant.
     pub fn ask_grant(&mut self, grant: Grant, cx: &mut Context<Self>) {
         if let (Ok(loader), Some(dir)) = (host::loader(), desk_dir()) {
-            cx.background_executor()
-                .spawn(async move {
-                    if let Err(error) = host::ask(&loader, &dir, grant.said()) {
-                        log::warn!("the agent desktop's host couldn't ask for a grant: {error}");
-                    }
-                })
-                .detach();
+            blocking::spawn(cx.background_executor(), move |may| {
+                if let Err(error) = host::ask(&loader, &dir, grant.said(), may) {
+                    log::warn!("the agent desktop's host couldn't ask for a grant: {error}");
+                }
+            })
+            .detach();
         }
         cx.open_url(match grant {
             Grant::Accessibility => ACCESSIBILITY,
@@ -112,7 +112,14 @@ impl Desk {
     /// that macOS didn't put it in.
     pub fn reveal_host(&self, cx: &mut Context<Self>) {
         if let (Ok(loader), Some(dir)) = (host::loader(), desk_dir()) {
-            cx.reveal_path(&host::shown(&loader, &dir));
+            let shown = blocking::spawn(cx.background_executor(), move |may| {
+                host::shown(&loader, &dir, may)
+            });
+            cx.spawn(async move |_, cx| {
+                let shown = shown.await;
+                cx.update(|cx| cx.reveal_path(&shown));
+            })
+            .detach();
         }
     }
 
@@ -163,10 +170,10 @@ impl Desk {
                     Ok((true, false)) => continue,
                     Ok((false, _)) | Err(_) => break,
                 }
-                let probed = cx
-                    .background_executor()
-                    .spawn(async move { host::probe(&loader, &dir) })
-                    .await;
+                let probed = blocking::spawn(cx.background_executor(), move |may| {
+                    host::probe(&loader, &dir, may)
+                })
+                .await;
                 let given = matches!(probed, Ok((_, true)));
                 let restarted = this.update(cx, |this, cx| {
                     if given && this.step() == Step::Needs(Grant::ScreenRecording) {

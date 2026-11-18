@@ -14,6 +14,7 @@ use koyo_device_wire::{
     ENV_SOCKET_FD, ENV_TOKEN, FromHost, PROTOCOL, ToHost, read_frame, write_frame,
 };
 
+use crate::blocking::Blocking;
 use crate::hosted::link;
 
 /// What a device's host says.
@@ -68,7 +69,11 @@ pub fn program() -> Result<PathBuf, String> {
 ///
 /// # Errors
 /// When the host can't be started, doesn't say hello in time, or speaks another protocol.
-pub fn start(launch: &Launch, sink: link::Sink<FromHost>) -> io::Result<Running> {
+pub fn start(
+    launch: &Launch,
+    sink: link::Sink<FromHost>,
+    may: Blocking<'_>,
+) -> io::Result<Running> {
     let (ours, theirs) = UnixStream::pair()?;
     let token = client::token()?;
     let receiver = mach::Receiver::check_in(&format!("codes.koyo.device.{}", std::process::id()))?;
@@ -98,7 +103,7 @@ pub fn start(launch: &Launch, sink: link::Sink<FromHost>) -> io::Result<Running>
         .spawn(move || {
             let _ = child.wait();
         })?;
-    linked(ours, token, receiver, sink)
+    linked(ours, token, receiver, sink, may)
 }
 
 /// The link to the host at the other end of `stream`: told hello with `token`, and once its own
@@ -109,6 +114,7 @@ fn linked(
     token: String,
     receiver: mach::Receiver,
     sink: link::Sink<FromHost>,
+    _: Blocking<'_>,
 ) -> io::Result<Running> {
     let hello = ToHost::Hello {
         protocol: PROTOCOL,

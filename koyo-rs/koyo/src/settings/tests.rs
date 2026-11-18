@@ -3,12 +3,30 @@ use std::rc::Rc;
 
 use gpui_kit::{AppContext as _, TestAppContext, point, px, size};
 
-use super::file::{read, reload};
+use super::file;
 use super::migration::migrate;
 use super::*;
+use crate::blocking::in_test;
 use crate::budget::{settle, wakes_a_minute};
 use crate::gradient::Harmony;
 use crate::test_support::{Blank, in_front, in_window, scratch};
+
+/// What the settings file at `path` holds.
+fn read(path: &Path) -> Result<Settings, String> {
+    in_test(|may| file::read(path, may))
+}
+
+/// The settings file at `path` looked at again, as its watch does once it changes, and what
+/// it holds handed to the app (`watch.rs`).
+fn look_again(path: &Path, cx: &mut TestAppContext) {
+    let looked = in_test(|may| file::look(path, file::modified(path, may), may));
+    cx.update(|cx| file::take_up(looked, cx));
+}
+
+/// The settings started as the app starts them, with no file in a test.
+fn started(cx: &mut TestAppContext) {
+    cx.update(|cx| in_test(|may| init(cx, may)));
+}
 
 /// Gives a test's settings a file in `folder` to be saved to, as the app's are: its path.
 pub(crate) fn saved_in(folder: &Path, cx: &mut App) -> PathBuf {
@@ -27,7 +45,7 @@ pub(crate) fn hearing(cx: &mut TestAppContext) -> (Rc<Cell<usize>>, Subscription
 
 /// Starts the settings with a file to be saved to in the scratch folder `name`: its path.
 fn started_with_file(name: &str, cx: &mut TestAppContext) -> PathBuf {
-    cx.update(init);
+    started(cx);
     cx.update(|cx| saved_in(&scratch(name), cx))
 }
 
@@ -90,14 +108,14 @@ fn edits_to_the_file_are_taken_up_while_the_app_runs(cx: &mut TestAppContext) {
     let path = started_with_file("settings-reload", cx);
     let delay = |cx: &mut TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
     edit(&path, r#"{ "key_repeat": { "delay_ms": 90 } }"#, 1);
-    cx.update(reload);
+    look_again(&path, cx);
     assert_eq!(delay(cx), 90);
     edit(&path, r#"{ "key_repeat": { "delay_ms": 4"#, 2);
-    cx.update(reload);
+    look_again(&path, cx);
     assert_eq!(delay(cx), 90);
     cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
     edit(&path, r#"{ "key_repeat": { "delay_ms": 60 } }"#, 3);
-    cx.update(reload);
+    look_again(&path, cx);
     assert_eq!(delay(cx), 120);
 }
 
@@ -115,50 +133,32 @@ fn observers_hear_of_a_change_once_and_not_of_its_save(cx: &mut TestAppContext) 
     settle(cx);
     assert_eq!(read(&path).unwrap().key_repeat.delay_ms, 120, "saved");
     assert_eq!(heard.get(), 1, "the save");
-    cx.update(reload);
+    look_again(&path, cx);
     assert_eq!(heard.get(), 1, "the app's own save read again");
 
     let saved = std::fs::read_to_string(&path).unwrap();
     edit(&path, &saved, 1);
-    cx.update(reload);
+    look_again(&path, cx);
     assert_eq!(heard.get(), 1, "the file touched, every setting as it was");
     edit(&path, r#"{ "key_repeat": { "delay_ms": 60 } }"#, 2);
-    cx.update(reload);
+    look_again(&path, cx);
     assert_eq!(delay(cx), 60, "an edit outside is taken up");
     assert_eq!(heard.get(), 2, "and heard once");
 }
 
-/// The file is looked at for an edit made outside the app only while Koyo is in front, every two
-/// seconds, so one made there is taken up within them; one made while another app is in front is
-/// taken up as Koyo comes back. With no file, nothing looks.
+/// The file is watched by a thread of its own (`watch.rs`), so nothing in the app wakes to
+/// look at it, in front or behind, nor as Koyo comes in front.
 #[gpui_kit::test]
-fn the_file_is_looked_at_only_while_koyo_is_in_front(cx: &mut TestAppContext) {
-    cx.update(init);
+fn nothing_in_the_app_wakes_to_look_at_the_file(cx: &mut TestAppContext) {
+    let path = started_with_file("settings-no-wakes", cx);
     let (window, _) = in_window(size(px(400.), px(300.)), cx, |_, cx| cx.new(|_| Blank));
-    let delay = |cx: &mut TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
-    let to_front = |front: bool, cx: &mut TestAppContext| {
-        in_front(window, front, cx);
-        if front {
-            cx.update(came_to_front);
-        }
-    };
-    to_front(true, cx);
-    assert_eq!(wakes_a_minute(cx), 0, "no file to look at");
-
-    let path = cx.update(|cx| saved_in(&scratch("settings-in-front"), cx));
-    to_front(true, cx);
+    in_front(window, true, cx);
+    assert_eq!(wakes_a_minute(cx), 0, "in front");
     edit(&path, r#"{ "key_repeat": { "delay_ms": 90 } }"#, 1);
-    cx.executor().advance_clock(Duration::from_secs(2));
-    cx.run_until_parked();
-    assert_eq!(delay(cx), 90, "an edit made in front, taken up within two seconds");
-    assert_eq!(wakes_a_minute(cx), 30, "looked at every two seconds in front");
-
-    to_front(false, cx);
-    edit(&path, r#"{ "key_repeat": { "delay_ms": 60 } }"#, 2);
-    assert_eq!(wakes_a_minute(cx), 0, "not looked at behind");
-    assert_eq!(delay(cx), 90, "so an edit made behind waits");
-    to_front(true, cx);
-    assert_eq!(delay(cx), 60, "an edit made behind, taken up as Koyo comes in front");
+    in_front(window, false, cx);
+    assert_eq!(wakes_a_minute(cx), 0, "behind");
+    in_front(window, true, cx);
+    assert_eq!(wakes_a_minute(cx), 0, "come in front again");
 }
 
 /// A change still settling is written as the app quits, so it's not lost.

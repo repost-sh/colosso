@@ -189,7 +189,7 @@ mod tests {
         reason = "a stop is written as it's listed, and a value by hand left as it was"
     )]
     fn the_keyboard_section_sets_how_a_held_arrow_repeats(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         cx.update(|cx| {
             settings::update(cx, |settings| {
                 settings.key_repeat = KeyRepeat {

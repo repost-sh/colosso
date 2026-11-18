@@ -86,7 +86,11 @@ engine's helper apps running the browser host's binary, so what the host does in
   GPUI's frame, and what edits a page is done from it too. `[proven]` The 1/30 s holds while a
   page is on screen or the app waits on the engine; while pages are open and none is, the
   latest is 1/10 s, and with none, 1 s (`embedded/pump.rs` says why). Not measured live yet.
-- **Started as the app starts** (`browser::warm_up`), from the run loop. Not measured: what `cef_initialize` costs the main thread.
+- **Started when a page is needed**, as a page view is made (`BrowserView::ensure_open`). The
+  hello, loading CEF and readying its root cache run on the thread that starts it; CEF's own
+  start (`adopt_app`, `cef_initialize`) runs from the run loop. One log line says how long each
+  step took (`the browser engine's start in the app: ...`), and `stall` what it held the main
+  thread for.
 - **Koyo must run from a bundle that holds the engine.** Run as a bare binary with the engine
   elsewhere (`koyo-rs/target/debug/koyo`), every helper exits at once (GPU process
   `exit_code=5`, then "GPU process isn't usable"). Run from

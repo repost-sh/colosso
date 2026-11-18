@@ -24,6 +24,7 @@ use koyo_desk_wire::link::{FromHost, PROTOCOL, ToHost};
 use koyo_desk_wire::{read_frame, write_frame};
 
 use super::Grants;
+use crate::blocking::Blocking;
 use crate::hosted::link;
 
 const LOADER: &str = "Koyo Agent Desktop.app";
@@ -97,7 +98,7 @@ fn program(pid: i32) -> Option<PathBuf> {
 
 /// Waits for the host to connect. A connection from any other program than the loader's own
 /// (inside `app`) is closed: what the person types in the tab goes down this link.
-fn accept(listener: &UnixListener, app: &Path) -> io::Result<UnixStream> {
+fn accept(listener: &UnixListener, app: &Path, _: Blocking<'_>) -> io::Result<UnixStream> {
     listener.set_nonblocking(true)?;
     let ours = std::fs::canonicalize(app.join("Contents/MacOS")).ok();
     let started = Instant::now();
@@ -137,7 +138,7 @@ fn accept(listener: &UnixListener, app: &Path) -> io::Result<UnixStream> {
 /// as Koyo's, and was refused without a word where another build of Koyo had an answer on
 /// record). By itself the loader is asked about, and granted, under its own name, the same
 /// one for every build of Koyo.
-pub(super) fn standing_alone(loader: &Path, dir: &Path) -> io::Result<PathBuf> {
+pub(super) fn standing_alone(loader: &Path, dir: &Path, may: Blocking<'_>) -> io::Result<PathBuf> {
     let inside = (loader.ancestors().skip(1)).any(|above| {
         above
             .extension()
@@ -149,12 +150,12 @@ pub(super) fn standing_alone(loader: &Path, dir: &Path) -> io::Result<PathBuf> {
     let home = dir.join("host");
     std::fs::create_dir_all(&home)?;
     let copy = home.join(name);
-    if !same_tree(loader, &copy) {
+    if !same_tree(loader, &copy, may) {
         let _ = std::fs::remove_dir_all(&copy);
-        copy_tree(loader, &copy)?;
+        copy_tree(loader, &copy, may)?;
     }
     let (library, placed) = (beside.join(LIBRARY), home.join(LIBRARY));
-    if !same_file(&library, &placed) {
+    if !same_file(&library, &placed, may) {
         let fresh = home.join(format!("{LIBRARY}.new"));
         std::fs::copy(&library, &fresh)?;
         std::fs::rename(&fresh, &placed)?;
@@ -163,23 +164,26 @@ pub(super) fn standing_alone(loader: &Path, dir: &Path) -> io::Result<PathBuf> {
 }
 
 /// The files under `root`, by their paths from it.
-fn files(root: &Path, under: &Path, found: &mut Vec<PathBuf>) -> io::Result<()> {
-    for entry in std::fs::read_dir(root.join(under))? {
-        let entry = entry?;
-        let path = under.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            files(root, &path, found)?;
-        } else {
-            found.push(path);
+fn files(root: &Path, _: Blocking<'_>) -> io::Result<Vec<PathBuf>> {
+    let (mut found, mut folders) = (Vec::new(), vec![PathBuf::new()]);
+    while let Some(under) = folders.pop() {
+        for entry in std::fs::read_dir(root.join(&under))? {
+            let entry = entry?;
+            let path = under.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                folders.push(path);
+            } else {
+                found.push(path);
+            }
         }
     }
-    Ok(())
+    Ok(found)
 }
 
 /// Whether `copy` holds what `original` does. A copy as long as the original and no older
 /// than it is taken for that unread: this is asked every second while a grant is waited
 /// for, of megabytes that a build writes anew when they change.
-fn same_file(original: &Path, copy: &Path) -> bool {
+fn same_file(original: &Path, copy: &Path, _: Blocking<'_>) -> bool {
     let (Ok(ours), Ok(theirs)) = (std::fs::metadata(original), std::fs::metadata(copy)) else {
         return false;
     };
@@ -198,16 +202,14 @@ fn same_file(original: &Path, copy: &Path) -> bool {
 }
 
 /// Whether `copy` holds every file of `original`.
-fn same_tree(original: &Path, copy: &Path) -> bool {
-    let mut listed = Vec::new();
-    files(original, Path::new(""), &mut listed).is_ok()
-        && (listed.iter()).all(|file| same_file(&original.join(file), &copy.join(file)))
+fn same_tree(original: &Path, copy: &Path, may: Blocking<'_>) -> bool {
+    files(original, may).is_ok_and(|listed| {
+        (listed.iter()).all(|file| same_file(&original.join(file), &copy.join(file), may))
+    })
 }
 
-fn copy_tree(original: &Path, copy: &Path) -> io::Result<()> {
-    let mut listed = Vec::new();
-    files(original, Path::new(""), &mut listed)?;
-    for file in listed {
+fn copy_tree(original: &Path, copy: &Path, may: Blocking<'_>) -> io::Result<()> {
+    for file in files(original, may)? {
         let to = copy.join(&file);
         if let Some(folder) = to.parent() {
             std::fs::create_dir_all(folder)?;
@@ -219,7 +221,7 @@ fn copy_tree(original: &Path, copy: &Path) -> io::Result<()> {
 
 /// Launch Services' `open` for a new instance of `app`, in the background: what comes after
 /// is the caller's to add.
-fn launching(app: &Path) -> Command {
+fn launching(app: &Path, _: Blocking<'_>) -> Command {
     let mut open = Command::new("/usr/bin/open");
     open.args(["-n", "-g", "-a"]).arg(app);
     open
@@ -229,9 +231,14 @@ fn launching(app: &Path) -> Command {
 /// wait for it. Through Launch Services, as the host itself: started as a child it would be
 /// asked about under Koyo's name, not its own. `open` isn't waited on either: the process is
 /// gone again before `open` can watch it, which it then reports as its own failure.
-fn starts(loader: &Loader, dir: &Path, arguments: &[&OsStr]) -> io::Result<()> {
-    let app = standing_alone(&loader.app, dir)?;
-    let started = launching(&app)
+fn starts(
+    loader: &Loader,
+    dir: &Path,
+    arguments: &[&OsStr],
+    may: Blocking<'_>,
+) -> io::Result<()> {
+    let app = standing_alone(&loader.app, dir, may)?;
+    let started = launching(&app, may)
         .arg("--args")
         .args(&loader.before)
         .args(arguments)
@@ -248,19 +255,19 @@ fn starts(loader: &Loader, dir: &Path, arguments: &[&OsStr]) -> io::Result<()> {
 /// Has macOS list the loader for `grant` (`accessibility`, `screen-recording`), by a process
 /// of it started afresh for the asking (`--ask`): macOS hears a process ask only once, and
 /// drops what it's asked while one of its own alerts is up, so each time the person asks is
-/// a process of its own. Blocks for the moment `open` takes: called off the main thread.
-pub fn ask(loader: &Loader, dir: &Path, grant: &str) -> io::Result<()> {
-    starts(loader, dir, &[OsStr::new("--ask"), OsStr::new(grant)])
+/// a process of its own. Blocks for the moment `open` takes.
+pub fn ask(loader: &Loader, dir: &Path, grant: &str, may: Blocking<'_>) -> io::Result<()> {
+    starts(loader, dir, &[OsStr::new("--ask"), OsStr::new(grant)], may)
 }
 
 /// What the loader holds now, asked of a process of it started afresh for the asking
 /// (`--grants`): Accessibility, then Screen Recording. A host that runs never learns that
 /// Screen Recording was given since it started; one started now does. Blocks for the fraction
-/// of a second that process lives: called off the main thread.
-pub fn probe(loader: &Loader, dir: &Path) -> io::Result<(bool, bool)> {
+/// of a second that process lives.
+pub fn probe(loader: &Loader, dir: &Path, may: Blocking<'_>) -> io::Result<(bool, bool)> {
     let answer = dir.join("grants");
     let _ = std::fs::remove_file(&answer);
-    starts(loader, dir, &[OsStr::new("--grants"), answer.as_os_str()])?;
+    starts(loader, dir, &[OsStr::new("--grants"), answer.as_os_str()], may)?;
     let started = Instant::now();
     loop {
         match std::fs::read_to_string(&answer) {
@@ -280,17 +287,18 @@ pub fn probe(loader: &Loader, dir: &Path) -> io::Result<(bool, bool)> {
 }
 
 /// The loader as the person finds it in Finder: the copy that stands alone, once made.
-pub fn shown(loader: &Loader, dir: &Path) -> PathBuf {
-    standing_alone(&loader.app, dir).unwrap_or_else(|_| loader.app.clone())
+pub fn shown(loader: &Loader, dir: &Path, may: Blocking<'_>) -> PathBuf {
+    standing_alone(&loader.app, dir, may).unwrap_or_else(|_| loader.app.clone())
 }
 
 /// Starts the host with `dir` for what it and the link keep, says hello and reads its hello,
-/// which says what grants it holds. Blocks while the host starts: called off the main thread.
-/// `sink` hears what comes after, on threads of the link's own, `Closed` last.
+/// which says what grants it holds. Blocks while the host starts. `sink` hears what comes
+/// after, on threads of the link's own, `Closed` last.
 pub fn start(
     loader: &Loader,
     dir: &Path,
     sink: link::Sink<FromHost>,
+    may: Blocking<'_>,
 ) -> io::Result<(Running, Grants)> {
     std::fs::create_dir_all(dir)?;
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
@@ -306,8 +314,8 @@ pub fn start(
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
     let surfaces = mach::Receiver::check_in(&format!("codes.koyo.desk.{}", std::process::id()))?;
     let log = dir.join("host.log");
-    let app = standing_alone(&loader.app, dir)?;
-    let launched = launching(&app)
+    let app = standing_alone(&loader.app, dir, may)?;
+    let launched = launching(&app, may)
         .arg("--stdout")
         .arg(&log)
         .arg("--stderr")
@@ -326,10 +334,10 @@ pub fn start(
             app.display()
         )));
     }
-    let stream = accept(&listener, &app)?;
+    let stream = accept(&listener, &app, may)?;
     drop(listener);
     let _ = std::fs::remove_file(&socket);
-    linked(stream, surfaces, sink)
+    linked(stream, surfaces, sink, may)
 }
 
 /// The link to the host that connected on `stream`: told hello, and once its own hello is in
@@ -339,6 +347,7 @@ fn linked(
     mut stream: UnixStream,
     surfaces: mach::Receiver,
     sink: link::Sink<FromHost>,
+    _: Blocking<'_>,
 ) -> io::Result<(Running, Grants)> {
     let hello = ToHost::Hello {
         protocol: PROTOCOL,

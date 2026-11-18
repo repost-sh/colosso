@@ -172,6 +172,7 @@ impl Launcher {
                     this.refresh(cx);
                 }
             }),
+            history::observe_icons(cx, |_: &mut Self, cx| cx.notify()),
             cx.on_release(|this, cx| {
                 let untouched = (this.page.as_ref()).is_some_and(|page| page.address == this.typed);
                 if !this.picked && !untouched && !this.typed.trim().is_empty() {

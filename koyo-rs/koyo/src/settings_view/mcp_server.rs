@@ -197,7 +197,7 @@ mod tests {
 
     #[gpui_kit::test]
     fn the_page_lists_no_activity_and_offers_the_size_of_agents_pages(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         let _requests = cx.update(control::start_for_test);
         cx.update(|cx| {
             settings::update(cx, |settings| settings.external_control.enabled = true);

@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use gpui_kit::{App, Task};
 
+use crate::blocking::{self, Blocking};
 use crate::{browser, settings};
 
 /// Google's suggestions in Firefox's format: `["query", ["suggestion", …], …]`.
@@ -50,19 +51,7 @@ pub fn fetch(query: String, cx: &App) -> Task<Option<Vec<String>>> {
     cx.background_executor().spawn(async move {
         executor.timer(PAUSE).await;
         let encoded: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
-        let child = Command::new("curl")
-            .arg("--disable")
-            .args(["--fail", "--silent", "--compressed", "--proto", "=https"])
-            .args(["--max-time", TIMEOUT])
-            .args(["--header", "Accept: application/json"])
-            .arg(format!("{ENDPOINT}{encoded}"))
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .inspect_err(|error| log::debug!("couldn't ask for search suggestions: {error}"))
-            .ok()?;
-        let mut asking = Asking(child);
+        let mut asking = blocking::spawn(&executor, move |may| ask(&encoded, may)).await?;
         let mut polls = 0;
         let status = loop {
             if let Some(status) = asking.0.try_wait().ok()? {
@@ -82,6 +71,23 @@ pub fn fetch(query: String, cx: &App) -> Task<Option<Vec<String>>> {
 
 /// `curl` asking: stopped if it's still at it when what wanted its answer goes.
 struct Asking(Child);
+
+/// `curl` started to ask what's suggested for the URL-encoded `encoded`.
+fn ask(encoded: &str, _: Blocking<'_>) -> Option<Asking> {
+    let child = Command::new("curl")
+        .arg("--disable")
+        .args(["--fail", "--silent", "--compressed", "--proto", "=https"])
+        .args(["--max-time", TIMEOUT])
+        .args(["--header", "Accept: application/json"])
+        .arg(format!("{ENDPOINT}{encoded}"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .inspect_err(|error| log::debug!("couldn't ask for search suggestions: {error}"))
+        .ok()?;
+    Some(Asking(child))
+}
 
 impl Drop for Asking {
     fn drop(&mut self) {

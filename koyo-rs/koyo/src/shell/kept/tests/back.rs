@@ -275,7 +275,10 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
     let (_, shell) = crate::test_support::in_window(
         gpui_kit::size(gpui_kit::px(1400.), gpui_kit::px(900.)),
         cx,
-        |window, cx| cx.new(|cx| crate::shell::Shell::new(window, cx)),
+        |window, cx| {
+            let kept = crate::shell::KeptWindow::default();
+            cx.new(|cx| crate::shell::Shell::new(window, kept, cx))
+        },
     );
     shell.update(cx, |shell, _| {
         shell.workspace.add_project(root.clone());
@@ -294,6 +297,48 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
             "the unsent chat, its tab kept"
         );
     });
+}
+
+/// A window opened again while the app runs, as the Dock opens one, brings back what its file
+/// holds, read as a launch reads it once the writes due as the last one closed have landed
+/// (`shell::reopen`).
+#[gpui_kit::test]
+fn a_window_opened_again_brings_back_what_its_file_holds(cx: &mut TestAppContext) {
+    let root = repo("kept-window-reopened", &[("README.md", "hi\n")]);
+    let path = file("kept-window-reopened-file", &Kept::default());
+    let (window, shell) = shell_with(&[&root], cx);
+    launch(&shell, &path, &[&root], cx);
+    select(&shell, &root, cx);
+    open_page(window, &shell, Some("https://example.com/"), cx);
+    cx.run_until_parked();
+    drop(shell);
+    cx.update_window(window, |_, window, _| window.remove_window())
+        .unwrap();
+    cx.run_until_parked();
+    let edited = main_with(&root, 0, &[page("https://example.org/", "example.org")]);
+    std::fs::write(&path, crate::kept_file::encode(&edited).unwrap()).unwrap();
+
+    let opened = std::rc::Rc::new(std::cell::RefCell::new(None));
+    cx.update(|cx| {
+        let slot = opened.clone();
+        let open = move |kept, cx: &mut gpui_kit::App| {
+            let options = gpui_kit::WindowOptions::default();
+            let (_, shell) = gpui_kit::open_window(options, cx, |window, cx| {
+                cx.new(|cx| crate::shell::Shell::new(window, kept, cx))
+            })?;
+            slot.replace(Some(shell));
+            Ok(())
+        };
+        crate::shell::reopen(Some(path.clone()), open, |_, _| {}, cx);
+    });
+    cx.run_until_parked();
+    let shell = opened.take().expect("the window opened once its file was read");
+    shell.update(cx, |shell, cx| {
+        shell.workspace.add_project(root.clone());
+        shell.show_worktrees(&root, crate::projects::read_worktrees(&root), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(tabs_of(&shell, &root, cx), (titles(&[&["example.org"]]), 0));
 }
 
 fn kept_terminal(handle: &str, name: &str) -> KeptTree {

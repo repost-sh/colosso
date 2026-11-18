@@ -5,9 +5,10 @@
 # are the workspace's, as cargo prints them.
 #
 # Then koyo-rs/koyo-hygiene holds the Rust and TypeScript source free of plain comments (it
-# prints what to write instead, and deletes them on --fix), and the koyo crate's top-level
-# modules free of new import cycles (koyo-rs/module-edges.txt lists the edges on one today, and
-# only shrinks).
+# prints what to write instead, and deletes them on --fix), the koyo crate's top-level modules
+# free of new import cycles (koyo-rs/module-edges.txt lists the edges on one today, and only
+# shrinks), and the koyo crate's file, process and wait calls where a `Blocking` is in scope
+# (koyo-rs/blocking-debt.txt lists the files that still make them outside one, and only shrinks).
 set -eu
 cd "$(dirname "$0")/../koyo-rs"
 

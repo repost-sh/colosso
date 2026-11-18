@@ -55,11 +55,13 @@ pub enum Act {
     Device(Chosen),
 }
 
-/// What marks a row: an icon, or a page's own.
+/// What marks a row: an icon, a tab's own, or the site's of the page at an address, looked up
+/// as the row is drawn (`history::icon`), a globe until it's read.
 #[derive(Clone)]
 pub enum Glyph {
     Icon(IconName),
     Image(Arc<Image>),
+    Site(String),
 }
 
 #[derive(Clone)]
@@ -153,7 +155,7 @@ fn browser_empty(here: &Here, cx: &mut App) -> Vec<Row> {
     );
     let pages = (top.into_iter())
         .filter(|found| here.tab_showing(&found.text).is_none())
-        .map(|found| page(found, cx));
+        .map(page);
     rows.extend(pages);
     rows.truncate(MOST_EMPTY);
     rows
@@ -172,7 +174,7 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
         (None, Some(url)) => {
             rows.push(
                 Row::new(
-                    page_glyph(url, cx),
+                    Glyph::Site(url.clone()),
                     typed.to_owned(),
                     Act::Visit(url.clone()),
                 )
@@ -225,7 +227,7 @@ fn origin(host: &str, cx: &mut App) -> Row {
         ),
     };
     let shown = title.clone().unwrap_or_else(|| host.to_owned());
-    let mut row = Row::new(page_glyph(&url, cx), shown, Act::Visit(url));
+    let mut row = Row::new(Glyph::Site(url.clone()), shown, Act::Visit(url));
     if title.is_some() {
         row.detail = host.to_owned().into();
     }
@@ -286,7 +288,7 @@ fn pages(here: &Here, typed: &str, now: i64, cx: &mut App) -> Vec<Row> {
                 switched.push(tab.pane);
                 matching_tab(tab, typed).unwrap_or_else(|| switch(tab, Vec::new(), Vec::new()))
             }
-            _ => page(found, cx),
+            _ => page(found),
         })
         .collect();
     let unmatched = here
@@ -305,9 +307,9 @@ fn matching_tab(tab: &OpenTab, typed: &str) -> Option<Row> {
 }
 
 /// A page the history found.
-fn page(found: Found, cx: &mut App) -> Row {
+fn page(found: Found) -> Row {
     Row {
-        glyph: page_glyph(&found.text, cx),
+        glyph: Glyph::Site(found.text.clone()),
         title: found.title.into(),
         title_matched: found.title_matched,
         detail: found.detail.into(),
@@ -316,11 +318,6 @@ fn page(found: Found, cx: &mut App) -> Row {
         act: Act::Visit(found.text.clone()),
         entry: Some((found.kind, found.text)),
     }
-}
-
-/// The icon of the page at `url`: its site's own, kept from a tab that showed it, or a globe.
-fn page_glyph(url: &str, cx: &mut App) -> Glyph {
-    history::icon(url, cx).map_or(Glyph::Icon(IconName::Globe), Glyph::Image)
 }
 
 /// The bytes of `field` the words of `typed` matched, if it holds every one.

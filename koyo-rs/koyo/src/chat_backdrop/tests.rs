@@ -419,7 +419,7 @@ fn a_picture_no_chat_shows_is_let_go_a_while_on(cx: &mut TestAppContext) {
 /// the agent desktop's and a device's, and none behind a page, whose view covers it.
 #[gpui_kit::test]
 fn each_kind_of_pane_has_the_backdrop_of_what_it_shows(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let panes = [
         ("a chat", Pane::new(PaneKind::Chat), Some(Surface::Chat)),
         ("a terminal", Pane::new(PaneKind::Terminal), Some(Surface::Terminal)),

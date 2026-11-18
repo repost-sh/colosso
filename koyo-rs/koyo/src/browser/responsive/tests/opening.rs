@@ -98,7 +98,7 @@ fn made_in(
     drawn: bool,
     cx: &mut TestAppContext,
 ) -> (gpui_kit::AnyWindowHandle, gpui_kit::Entity<BrowserView>) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let make = move |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App| {
         cx.new(|cx| {
             let url = "https://example.com/".to_owned();

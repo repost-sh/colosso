@@ -16,6 +16,7 @@ use serde_json::{Map, Value, json};
 use super::SAVE_DELAY;
 use crate::browser;
 use crate::browser::profiles::By;
+use crate::blocking::Blocking;
 use crate::kept_file::{self, KeptFile};
 use crate::model::{Pinned, Tab};
 use crate::shell::Shell;
@@ -144,7 +145,7 @@ impl KeptPins {
 
 /// What the file at `path` holds; nothing when there's none. One this build can't read at all
 /// is set aside beside it, so the next write doesn't lose what it held.
-pub(super) fn read_file(path: &Path) -> KeptPins {
+pub(super) fn read_file(path: &Path, _: Blocking<'_>) -> KeptPins {
     let json = match std::fs::read(path) {
         Ok(json) => json,
         Err(error) => {
@@ -177,12 +178,19 @@ pub struct PinsFile {
 
 impl PinsFile {
     /// What the file at `path` holds, if the app keeps one.
-    pub(super) fn at(path: Option<PathBuf>) -> Self {
-        let kept = path.as_deref().map(read_file).unwrap_or_default();
+    pub(super) fn at(path: Option<PathBuf>, may: Blocking<'_>) -> Self {
+        let kept = (path.as_deref())
+            .map(|path| read_file(path, may))
+            .unwrap_or_default();
         PinsFile {
             file: KeptFile::new(path),
             kept,
         }
+    }
+
+    /// The addresses of the pinned pages.
+    pub(super) fn addresses(&self) -> impl Iterator<Item = &str> {
+        self.kept.tabs.iter().map(|tab| tab.url.as_str())
     }
 }
 

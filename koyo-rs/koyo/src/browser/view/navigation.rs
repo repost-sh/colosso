@@ -190,7 +190,7 @@ mod tests {
     fn a_page_is_told_once_loaded_how_it_came_and_a_reload_or_back_is_no_new_visit(
         cx: &mut TestAppContext,
     ) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         let (_, view) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
             cx.new(|cx| BrowserView::new(String::new(), Path::new("/work/app"), window, cx))
         });

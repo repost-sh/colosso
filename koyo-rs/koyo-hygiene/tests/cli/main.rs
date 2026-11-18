@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 mod blank_lines;
+mod blocking;
 mod check_rust;
 mod check_typescript;
 mod files;

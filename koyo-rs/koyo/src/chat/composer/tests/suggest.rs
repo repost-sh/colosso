@@ -160,8 +160,8 @@ fn an_at_finds_the_files_of_the_checkout_and_names_the_one_picked(cx: &mut TestA
     let cwd = chat
         .composer
         .read_with(cx, |composer, _| composer.cwd.clone());
-    let (git, dirs) = checkouts::open_git(&cwd).unwrap();
-    let project = cx.update(|cx| checkouts::project(git.root(), dirs, cx));
+    let opened = crate::blocking::in_test(|may| checkouts::open_git(&cwd, may)).unwrap();
+    let project = cx.update(|cx| checkouts::project(&opened.root, opened.dirs, cx));
     let updates = project.subscribe(Feed::Everything);
 
     type_in(&chat, "see @READ", cx);

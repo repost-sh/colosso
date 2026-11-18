@@ -297,7 +297,7 @@ fn a_page_has_settled_once_it_reports_the_size() {
 /// A page of `url` in a window of its own; a test names no engine, so its host fails to
 /// start, and the page counts as open only when the test says so.
 fn page(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<BrowserView>) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let (window, view) = in_window(size(px(1000.), px(800.)), cx, |window, cx| {
         let url = "https://example.com/".to_owned();
         cx.new(|cx| BrowserView::new(url, Path::new("/work/app"), window, cx))

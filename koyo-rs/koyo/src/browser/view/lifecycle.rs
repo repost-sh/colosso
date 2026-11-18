@@ -6,7 +6,7 @@ use gpui_kit::{App, Context};
 use koyo_browser_ipc::{AppRequest, Viewport};
 
 use super::{BrowserView, Kind};
-use crate::browser::host::{Browsers, HostStatus};
+use crate::browser::host::HostStatus;
 
 impl BrowserView {
     pub(in crate::browser) fn status(&self, cx: &App) -> HostStatus {
@@ -70,7 +70,7 @@ impl BrowserView {
         }
         match status {
             HostStatus::Idle => {
-                self.browsers.update(cx, Browsers::start_if_idle);
+                (self.browsers).update(cx, |browsers, cx| browsers.start_if_idle("a page", cx));
                 return;
             }
             HostStatus::Starting | HostStatus::Failed(_) => return,

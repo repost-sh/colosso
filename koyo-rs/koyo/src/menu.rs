@@ -411,7 +411,7 @@ mod tests {
 
     /// A window with a menu open, and the menu's own window.
     fn opened(cx: &mut TestAppContext) -> (WindowHandle<Opener>, AnyWindowHandle) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         let opener = cx.add_window(|_, cx| Opener(cx.focus_handle()));
         opener
             .update(cx, |opener, window, cx| {

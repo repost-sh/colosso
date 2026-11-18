@@ -12,7 +12,7 @@ fn key(source: &'static str) -> Keystroke {
 
 #[gpui_kit::test]
 fn the_menu_bar_has_an_edit_menu_with_the_systems_six_edits(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     cx.update(|cx| crate::quitting::set_menu(cx));
     let menus = cx.update(|cx| cx.get_menus()).unwrap();
     let edit = menus.iter().find(|menu| menu.name.as_ref() == "Edit").expect("an Edit menu");
@@ -32,7 +32,7 @@ fn the_menu_bar_has_an_edit_menu_with_the_systems_six_edits(cx: &mut TestAppCont
 /// key it shows it can take. None is bound: the menu can't take ⌘C from a page or an input.
 #[gpui_kit::test]
 fn no_key_is_bound_to_an_edit_item_so_the_menu_takes_none(cx: &mut TestAppContext) {
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     cx.update(|cx| {
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();

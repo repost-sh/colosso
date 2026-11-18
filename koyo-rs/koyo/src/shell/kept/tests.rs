@@ -4,9 +4,15 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{Entity, TestAppContext};
+use gpui_kit::{AppContext as _, Entity, TestAppContext};
 
-use super::{Kept, KeptCheckout, KeptPane, KeptProject, KeptTree, SAVE_DELAY, read_file};
+use super::{Kept, KeptCheckout, KeptPane, KeptProject, KeptTree, SAVE_DELAY};
+use crate::blocking::in_test;
+
+/// What the window's file at `path` holds, as a launch reads it.
+pub(super) fn read_file(path: &Path) -> Kept {
+    in_test(|may| super::read_file(path, may))
+}
 use crate::model::{Edge, PaneKind, SplitAxis};
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
@@ -181,7 +187,8 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_nothing() {
     };
     let path = file("kept-window-file", &kept);
     assert_eq!(read_file(&path), kept);
-    let json: serde_json::Value = crate::kept_file::read(&path).unwrap();
+    let json: Option<serde_json::Value> = in_test(|may| crate::kept_file::read(&path, may));
+    let json = json.unwrap();
     assert_eq!(json["projects"][0]["checkout"], "/src/app-feature");
     let tabs = &json["checkouts"][0]["tabs"];
     assert_eq!(tabs[0]["kind"], "page");
@@ -333,6 +340,28 @@ fn a_change_still_settling_is_written_when_the_app_quits(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
+fn a_window_closed_then_the_app_quit_keeps_what_was_due_as_it_closed(cx: &mut TestAppContext) {
+    let root = repo("kept-window-close-quit", &[("README.md", "hi\n")]);
+    let path = file("kept-window-close-quit-file", &Kept::default());
+    let (window, shell) = shell_with(&[&root], cx);
+    launch(&shell, &path, &[&root], cx);
+    select(&shell, &root, cx);
+    open_page(window, &shell, Some("https://example.com/"), cx);
+    cx.run_until_parked();
+    assert!(!path.exists(), "written a moment later");
+
+    drop(shell);
+    cx.update_window(window, |_, window, _| window.remove_window())
+        .unwrap();
+    cx.quit();
+
+    assert_eq!(
+        read_file(&path),
+        main_with(&root, 0, &[page("https://example.com/", "example.com")])
+    );
+}
+
+#[gpui_kit::test]
 fn the_browser_tabs_an_earlier_build_kept_come_back_the_first_time(cx: &mut TestAppContext) {
     let root = repo("kept-window-before", &[("README.md", "hi\n")]);
     let path = scratch("kept-window-before-file").join("window.json");
@@ -411,4 +440,42 @@ fn a_device_s_tab_brought_back_starts_nothing_until_asked(cx: &mut TestAppContex
     (gpui_kit::AppContext::update_window(cx, window, |_, window, cx| view.update(cx, |view, cx| view.start_asking(window, cx)))).expect("the window");
     let state = cx.read(|cx| link.read(cx).state.clone());
     assert!(matches!(state, crate::devices::State::Failed(_)), "{state:?}");
+}
+
+/// The pages a window brings back, whose sites' icons are read with its file at launch: each
+/// checkout's, splits' sides too, each space's loose ones and the pinned ones; a start page has
+/// no address.
+#[test]
+fn the_pages_a_window_brings_back_are_each_checkouts_each_spaces_and_the_pinned_ones() {
+    let root = Path::new("/work/app");
+    let terminal = KeptTree::Pane(KeptPane::NewChat);
+    let tabs = [
+        split(SplitAxis::Row, 0.5, page("https://a.example/", "A"), terminal),
+        page("", "New Tab"),
+        page("https://b.example/", "B"),
+    ];
+    let mut kept = main_with(root, 0, &tabs);
+    kept.spaces = vec![super::loose::KeptSpace {
+        space: 1,
+        shown: None,
+        tabs: vec![super::loose::KeptLoose {
+            url: "https://c.example/".into(),
+            title: "C".into(),
+            project: root.to_owned(),
+        }],
+    }];
+    let path = file("kept-addresses", &kept);
+    let pinned = serde_json::json!({"version": 1, "tabs": [{"url": "https://d.example/"}]});
+    std::fs::write(path.with_file_name(super::pinned::FILE), pinned.to_string()).unwrap();
+    let window = in_test(|may| super::KeptWindow::at(Some(path), may));
+    assert_eq!(
+        window.addresses(),
+        [
+            "https://a.example/",
+            "",
+            "https://b.example/",
+            "https://c.example/",
+            "https://d.example/"
+        ]
+    );
 }

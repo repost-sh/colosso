@@ -72,18 +72,13 @@ pub fn noted(name: &str) -> Option<Bounds<Pixels>> {
     NOTED.with_borrow(|noted| noted.get(name).copied())
 }
 
-/// Whether the app was started as one of the visual checks, each a `--visual-check…` mode of
-/// it, rather than as the app a person uses.
-pub fn checking() -> bool {
-    std::env::args().any(|arg| arg.starts_with("--visual-check"))
-}
-
 /// A laptop-sized window off screen with a shell of its own in it.
 fn shell_window(cx: &mut VisualTestAppContext) -> Result<(AnyWindowHandle, Entity<Shell>)> {
     let mut made = None;
     let window = cx
         .open_offscreen_window(size(px(1600.), px(1000.)), |window, cx| {
-            let shell = cx.new(|cx| Shell::new(window, cx));
+            let kept = crate::shell::KeptWindow::default();
+            let shell = cx.new(|cx| Shell::new(window, kept, cx));
             made = Some(shell.clone());
             cx.new(|cx| Root::new(shell, window, cx))
         })
@@ -151,7 +146,7 @@ impl Drawn {
         let mut cx = VisualTestAppContext::with_asset_source(platform, assets);
         cx.executor().allow_parking();
         cx.update(|cx| {
-            crate::init(cx);
+            crate::test_support::init(cx);
             cx.dispatch_action(&UseLightTheme);
         });
         let (window, shell) = shell_window(&mut cx)?;

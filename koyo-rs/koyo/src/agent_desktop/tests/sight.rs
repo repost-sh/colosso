@@ -27,7 +27,7 @@ fn told_seen(told: &Receiver<ToHost>) -> Option<bool> {
 #[gpui_kit::test]
 fn the_host_is_told_the_desktop_isnt_seen_while_its_window_is_unseen(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
-    cx.update(crate::init);
+    cx.update(crate::test_support::init);
     let (desk, told) = running(cx);
     cx.update(|cx| cx.set_global(TheDesk(desk.clone())));
     let ready = DesktopState::Ready {

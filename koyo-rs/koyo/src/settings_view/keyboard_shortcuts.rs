@@ -133,7 +133,7 @@ mod tests {
     #[gpui_kit::test]
     fn every_chat_and_space_command_has_its_key(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            chat::init(cx);
+            crate::blocking::in_test(|may| chat::init(cx, may));
             crate::arc::bind_keys(cx);
             let sections = SECTIONS
                 .iter()

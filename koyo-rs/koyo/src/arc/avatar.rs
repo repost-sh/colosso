@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime};
 use gpui_kit::{App, AppContext as _, Context, Entity, Global};
 use koyo_git::Repo;
 
+use crate::blocking::{self, Blocking};
 use crate::settings;
 
 /// How long a kept avatar is shown before it's fetched again, in case it changed.
@@ -49,9 +50,9 @@ pub fn picture(project: &Path, cx: &mut App) -> Option<PathBuf> {
     }
     let (fetched, project) = (avatars.fetched.clone(), project.to_owned());
     let folder = settings::data_dir().map(|data| data.join("avatars"));
-    let fetching = cx.background_spawn({
+    let fetching = blocking::spawn(cx.background_executor(), {
         let project = project.clone();
-        async move { fetch(&project, &folder?) }
+        move |may| fetch(&project, &folder?, may)
     });
     cx.spawn(async move |cx| {
         if let Some(found) = fetching.await {
@@ -187,8 +188,8 @@ enum Source {
 }
 
 /// The avatar of the project at `project`, kept in `folder`: the kept one while it's fresh, or
-/// fetched from its git host. Blocks; call it off the main thread.
-fn fetch(project: &Path, folder: &Path) -> Option<PathBuf> {
+/// fetched from its git host.
+fn fetch(project: &Path, folder: &Path, may: Blocking<'_>) -> Option<PathBuf> {
     let url = Repo::open(project).ok()?.remote_url()?;
     let remote = Remote::parse(&url)?;
     let kept = remote.kept_at(folder);
@@ -219,8 +220,7 @@ fn fetch(project: &Path, folder: &Path) -> Option<PathBuf> {
     });
     match fetched {
         Some(bytes) => {
-            std::fs::create_dir_all(kept.parent()?).ok()?;
-            crate::atomic_file::write(&kept, &bytes);
+            crate::kept_file::write_atomic(&kept, &bytes, may);
             Some(kept)
         }
         None => kept.exists().then_some(kept),

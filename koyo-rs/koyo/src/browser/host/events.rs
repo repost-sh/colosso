@@ -82,6 +82,23 @@ impl Browsers {
         }
     }
 
+    /// A page is loading, or done: the first to finish after the engine was asked for logs how
+    /// long that took, the wait the first page cost.
+    fn first_page_loading(&mut self, loading: bool) {
+        let Some((asked, started)) = &mut self.asked_at else {
+            return;
+        };
+        if loading {
+            *started = true;
+        } else if *started {
+            log::info!(
+                "the first page loaded {} ms after the browser engine was asked for",
+                asked.elapsed().as_millis()
+            );
+            self.asked_at = None;
+        }
+    }
+
     pub(in crate::browser) fn receive(&mut self, message: Incoming, cx: &mut Context<Self>) {
         match message {
             Incoming::Event(event) => self.event(event, cx),
@@ -106,6 +123,7 @@ impl Browsers {
                 }
             }
             HostEvent::Page { pane, state } => {
+                self.first_page_loading(state.loading);
                 self.update_view(pane, cx, |view, cx| view.page_changed(state, cx));
             }
             HostEvent::Favicon { pane, url, png } => {

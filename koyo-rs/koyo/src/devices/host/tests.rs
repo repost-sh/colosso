@@ -13,12 +13,8 @@ fn a_host_of_another_protocol_is_refused_before_it_runs() {
     };
     write_frame(&mut host, &hello).unwrap();
     let receiver = mach::Receiver::check_in("codes.koyo.device-test").unwrap();
-    let linked = linked(
-        app,
-        "token".into(),
-        receiver,
-        futures::channel::mpsc::unbounded().0,
-    );
+    let sink = futures::channel::mpsc::unbounded().0;
+    let linked = crate::blocking::in_test(|may| linked(app, "token".into(), receiver, sink, may));
     let refused = linked
         .err()
         .expect("a host of another protocol counted as running");

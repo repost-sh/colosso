@@ -165,7 +165,7 @@ mod tests {
     fn its_rows_show_only_while_they_apply_and_search_finds_them_either_way(
         cx: &mut TestAppContext,
     ) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         let finds = |words: &[&str], cx: &mut TestAppContext| {
             cx.read(|cx| words.iter().all(|word| section(cx).matches(word)))
         };

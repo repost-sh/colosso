@@ -59,7 +59,7 @@ mod tests {
 
     /// The app as it starts, in the dark theme.
     fn dark(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::test_support::init);
         cx.update(|cx| set_preference(ThemePreference::Dark, cx));
     }
 

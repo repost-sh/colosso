@@ -75,7 +75,7 @@ fn unseen<'a>(
         Tab { page, shown: false }
     });
     let browsers = cx.update(|_, cx| Browsers::global(cx));
-    browsers.update(cx, Browsers::start_if_idle);
+    browsers.update(cx, |browsers, cx| browsers.start_if_idle("a test", cx));
     let running = |cx: &mut VisualTestContext| {
         browsers.read_with(cx, |browsers, _| browsers.status()) == HostStatus::Running
     };
@@ -321,7 +321,7 @@ fn a_sign_in_outlives_the_engine_quitting_and_starting_again(cx: &mut TestAppCon
     connection
         .expect("the engine, running")
         .shutdown(Duration::from_secs(5));
-    browsers.update(cx, Browsers::start_if_idle);
+    browsers.update(cx, |browsers, cx| browsers.start_if_idle("a test", cx));
     wait_for_title(cx, &view, "session+cookie+storage");
     finish(cx, scratch);
 }

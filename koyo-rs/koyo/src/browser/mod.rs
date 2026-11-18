@@ -62,10 +62,11 @@ pub use site::{FADE as SITE_BUTTONS_FADE, buttons as site_buttons};
 pub(crate) use tabs::page_brought_back;
 pub use view::{BrowserEvent, BrowserView, Controls, Visit};
 
-/// Starts the engine, so the first page opens as quickly as the next.
-pub fn warm_up(cx: &mut App) {
+/// Whether the engine is idle, not asked for yet.
+#[cfg(test)]
+pub fn engine_idle(cx: &mut App) -> bool {
     let browsers = host::Browsers::global(cx);
-    browsers.update(cx, host::Browsers::start_if_idle);
+    browsers.read(cx).status() == host::HostStatus::Idle
 }
 
 /// Forgets every profile's browsing data, the open pages loading again afresh; and the pages
@@ -122,8 +123,8 @@ actions!(
 /// The edits a page takes while it has focus, and the keys the address bar and the find bar
 /// share with it; and where `DevTools` open, picked in settings. ⌘L isn't among them: it's the
 /// window's, heard wherever the keyboard is (`launcher::OpenAddress`).
-pub fn init(cx: &mut App) {
-    profiles::init(cx);
+pub fn init(cx: &mut App, may: crate::blocking::Blocking<'_>) {
+    profiles::init(cx, may);
     cx.on_action(|SetDevtoolsDock(dock): &SetDevtoolsDock, cx| {
         crate::settings::update(cx, |settings| settings.devtools.dock = *dock);
     });

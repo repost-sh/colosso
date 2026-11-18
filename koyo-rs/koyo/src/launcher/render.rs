@@ -10,7 +10,7 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, Keystroke,
+    AnyElement, App, Context, FontWeight, InteractiveElement as _, IntoElement, Keystroke,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
 };
 
@@ -131,7 +131,7 @@ impl Launcher {
             .px(px(10.))
             .gap(px(10.))
             .rounded(px(8.))
-            .child(glyph(row, p))
+            .child(glyph(row, p, cx))
             .child(text(row, p))
             .children(
                 row.hint
@@ -165,14 +165,20 @@ impl Launcher {
     }
 }
 
-/// A row's icon: the page's own, or the kind's.
-fn glyph(row: &Row, p: Palette) -> AnyElement {
-    match &row.glyph {
-        Glyph::Image(image) => img(image.clone())
-            .size(px(GLYPH))
-            .flex_shrink_0()
-            .into_any_element(),
-        Glyph::Icon(name) => icon(*name, GLYPH)
+/// A row's icon: the page's own, its site's once read, or the kind's.
+fn glyph(row: &Row, p: Palette, cx: &App) -> AnyElement {
+    let image = match &row.glyph {
+        Glyph::Image(image) => Some(image.clone()),
+        Glyph::Site(url) => crate::history::icon(url, cx),
+        Glyph::Icon(_) => None,
+    };
+    let name = match &row.glyph {
+        Glyph::Icon(name) => *name,
+        Glyph::Image(_) | Glyph::Site(_) => IconName::Globe,
+    };
+    match image {
+        Some(image) => img(image).size(px(GLYPH)).flex_shrink_0().into_any_element(),
+        None => icon(name, GLYPH)
             .text_color(p.muted)
             .flex_shrink_0()
             .into_any_element(),

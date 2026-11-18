@@ -1,15 +1,17 @@
 use std::ffi::OsString;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use crate::blocking::{self, Calls, DEBT};
 use crate::cli::{Command, Mode, Request, USAGE, parse};
 use crate::failure::Failure;
 use crate::files::{Source, checkout_root, listed_by_git, named};
-use crate::imports::{self, LIST};
+use crate::imports::{self, Graph, LIST};
 use crate::pool::map_in_order;
 use crate::process::{FileReport, process};
 use crate::report::{counted, write_findings, write_fix_summary};
+use crate::shipped;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Exit {
@@ -59,8 +61,21 @@ fn execute(
         Command::Everything => {
             let root = checkout_root()?;
             let (mut reports, mut failures) = process_all(&listed_by_git(&root)?, Mode::Check)?;
-            match imports::check(&root) {
-                Ok(found) => reports.extend(found),
+            let checks = shipped_build(&root).map(|(graph, calls)| {
+                [
+                    imports::check(&root, &graph),
+                    blocking::check(&root, &calls),
+                ]
+            });
+            match checks {
+                Ok(checks) => {
+                    for check in checks {
+                        match check {
+                            Ok(found) => reports.extend(found),
+                            Err(failure) => failures.push(failure),
+                        }
+                    }
+                }
                 Err(failure) => failures.push(failure),
             }
             reports.sort_by(|left, right| left.path.cmp(&right.path));
@@ -68,12 +83,22 @@ fn execute(
         }
         Command::Comments { mode, paths } => comments(mode, &paths, out)?,
         Command::Prune => {
-            let (pruned, reports) = imports::prune(&checkout_root()?)?;
+            let root = checkout_root()?;
+            let (graph, calls) = shipped_build(&root)?;
+            let (pruned, mut reports) = imports::prune(&root, &graph)?;
             writeln!(out, "Pruned {} from {LIST}.", counted(pruned, "edge"))?;
+            let (lowered, debt) = blocking::prune(&root, &calls)?;
+            if lowered > 0 {
+                writeln!(out, "Lowered {} of {DEBT}.", counted(lowered, "line"))?;
+            }
+            reports.extend(debt);
+            reports.sort_by(|left, right| left.path.cmp(&right.path));
             (reports, Vec::new())
         }
         Command::Stats => {
-            imports::stats(&checkout_root()?, out)?;
+            let (graph, calls) = shipped_build(&checkout_root()?)?;
+            imports::stats(&graph, out)?;
+            calls.write_stats(out)?;
             return Ok(Exit::Clean);
         }
     };
@@ -82,6 +107,19 @@ fn execute(
         writeln!(err, "koyo-hygiene: {failure}")?;
     }
     Ok(exit_for(&reports, failures.len()))
+}
+
+/// The koyo crate's shipped build at `root`, walked once for the two checks that read it: its
+/// import graph and its blocking calls.
+fn shipped_build(root: &Path) -> Result<(Graph, Calls), Failure> {
+    let reads = shipped::walk(root, |file, text, code| {
+        (
+            imports::read(file, text, code),
+            blocking::read(file, text, code),
+        )
+    })?;
+    let (imports, calls): (Vec<_>, Vec<_>) = reads.into_iter().unzip();
+    Ok((imports::graph(imports), Calls::of(calls)))
 }
 
 fn comments(
