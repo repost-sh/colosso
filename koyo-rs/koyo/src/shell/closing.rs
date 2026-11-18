@@ -9,18 +9,18 @@ use gpui_kit::{App, Context, Entity, Window};
 use super::Shell;
 use crate::browser::{BrowserView, Dock};
 use crate::files::{self, FileEditor, Then};
-use crate::model::{ClosedFrom, ClosedTab, Spot, Tab};
+use crate::model::{ClosedFrom, ClosedTab, Pane, Spot, Tab};
 
 impl Shell {
     /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
     /// file has unsaved edits or its terminal runs something. Its terminal ends.
     pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let pane = self.workspace.pane(id);
-        let editors = (pane.and_then(|pane| pane.file.as_ref()))
+        let editors = (pane.and_then(|pane| pane.file()))
             .and_then(|file| file.read(cx).unsaved().cloned())
             .into_iter()
             .collect();
-        let terminals = pane.and_then(|pane| pane.terminal).into_iter().collect();
+        let terminals = pane.and_then(Pane::terminal).into_iter().collect();
         let typing = self.pane_with_keyboard(window, cx) == Some(id);
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             shell.close_pane_now(id, cx);
@@ -67,7 +67,7 @@ impl Shell {
         };
         let editors = tab.unsaved(cx);
         let terminals = (tab.panes().into_iter())
-            .filter_map(|pane| pane.terminal)
+            .filter_map(Pane::terminal)
             .collect();
         let shown = self.workspace.shown_checkout_tab() == Some(at);
         let typing = shown && self.pane_with_keyboard(window, cx).is_some();
@@ -114,7 +114,7 @@ impl Shell {
         let editors = (unit.tabs.iter()).flat_map(|tab| tab.unsaved(cx)).collect();
         let terminals: Vec<u64> = (unit.tabs.iter())
             .flat_map(Tab::panes)
-            .filter_map(|pane| pane.terminal)
+            .filter_map(Pane::terminal)
             .collect();
         let worktree = worktree.to_owned();
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
@@ -161,23 +161,9 @@ impl Shell {
     /// the detached `DevTools` of its pages wherever they are, keeping it to open again.
     pub(crate) fn close_tab_now(&mut self, at: (usize, usize, usize), cx: &mut Context<Self>) {
         let (project, branch, _) = at;
-        let Some(tab) = self.workspace.tab_mut(at) else {
+        let Some(tab) = self.workspace.tab(at) else {
             return;
         };
-        let files = (tab.panes().into_iter())
-            .filter_map(|pane| Some((pane.id, pane.file.as_ref()?.read(cx).path.clone())))
-            .collect();
-        let changes = (tab.panes().into_iter())
-            .filter(|pane| pane.changes.is_some())
-            .map(|pane| pane.id)
-            .collect();
-        let devices = (tab.panes().into_iter())
-            .filter_map(|pane| Some((pane.id, pane.device_view()?.read(cx).chosen()?.clone())))
-            .collect();
-        let addresses = (tab.panes().into_iter())
-            .filter(|pane| !pane.is_inspector())
-            .filter_map(|pane| Some((pane.id, pane.address()?.to_owned())))
-            .collect();
         let panes: Vec<_> = tab
             .panes()
             .into_iter()
@@ -191,15 +177,8 @@ impl Shell {
         if let Some(now) = panes.iter().find_map(|(id, _)| unit.tab_with(*id))
             && let Some(tab) = self.workspace.close_tab(project, branch, now)
         {
-            self.workspace.remember_closed(ClosedTab {
-                from,
-                at: now,
-                tab,
-                addresses,
-                files,
-                changes,
-                devices,
-            });
+            let closed = ClosedTab { from, at: now, tab };
+            self.workspace.remember_closed(closed, cx);
         }
         cx.notify();
     }

@@ -214,7 +214,7 @@ fn unsaved(
         .ok_or_else(|| ControlError::not_found("The pane's tab went away."))?;
     let files = (tab.panes().into_iter())
         .filter(|shown| whole_tab || shown.id == pane)
-        .filter_map(|shown| shown.file.as_ref())
+        .filter_map(|shown| shown.file())
         .filter(|file| file.read(cx).is_dirty())
         .map(|file| file.read(cx).path.display().to_string())
         .collect();

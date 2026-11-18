@@ -161,10 +161,11 @@ pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let root = checkout()?;
     let found = (drawn.cx).update(|cx| {
         shell.update(cx, |shell, cx| {
-            let tabs = &mut shell.workspace.branch_mut()?.tabs;
-            let chat = (tabs.iter_mut()).find(|tab| tab.first().kind == PaneKind::Chat)?;
+            let tabs = &shell.workspace.branch()?.tabs;
+            let chat = (tabs.iter()).find(|tab| tab.first().kind() == PaneKind::Chat)?;
             if let Tab::Single(pane) = chat {
-                pane.chat = Some(ThreadId("0002".into()));
+                let pane = pane.id;
+                shell.workspace.set_chat(pane, ThreadId("0002".into()));
             }
             cx.notify();
             Some(())
@@ -181,7 +182,7 @@ pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         settle(drawn)?;
         let says = (drawn.cx).read(|cx| {
             let shell = shell.read(cx);
-            let chat = |tab: &&Tab| tab.first().kind == PaneKind::Chat;
+            let chat = |tab: &&Tab| tab.first().kind() == PaneKind::Chat;
             let tab = shell.workspace.branch()?.tabs.iter().find(chat)?;
             Some(shell.tab_activity(tab, cx))
         });

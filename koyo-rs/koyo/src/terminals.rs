@@ -18,7 +18,7 @@ use gpui_kit::{
 use koyo_term::{LinkTarget, Look, Source, TermClient, TerminalEvent, TerminalView};
 use koyo_term_control::{DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir, Theme};
 
-use crate::model::{Pane, Workspace};
+use crate::model::Workspace;
 use crate::settings;
 use crate::shell::Shell;
 use crate::theme::{self, Palette};
@@ -307,34 +307,17 @@ impl Shell {
         Some(view)
     }
 
-    /// Makes the views of the shown tab's terminal panes, so the panes draw them.
-    pub fn make_shown_terminals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let ids: Vec<u64> = (self.workspace.tab_shown())
-            .map(|tab| {
-                tab.panes()
-                    .iter()
-                    .filter_map(|pane| pane.terminal)
-                    .collect()
-            })
-            .unwrap_or_default();
-        for id in ids {
-            self.terminal_view(id, window, cx);
-        }
-    }
-
-    /// What `pane` shows: its chat or its terminal when its view is made, else what
-    /// `crate::pane` draws for its kind.
-    pub fn pane_content(&self, pane: &Pane, p: Palette, cx: &mut Context<Self>) -> AnyElement {
-        if let Some(chat) = self.chat_tabs.view(pane.id) {
-            return chat.clone().into_any_element();
-        }
-        let Some((id, view)) =
-            (pane.terminal).and_then(|id| Some((id, &self.terminals.views.get(&id)?.responsive)))
-        else {
-            return crate::pane::pane(pane, p);
-        };
-        let view = self.beside_panel(id, view.clone().into_any_element(), p, cx);
-        div()
+    /// What terminal `id`'s pane shows once its view is made: the view under its bar, beside
+    /// its activity.
+    pub(crate) fn terminal_pane(
+        &self,
+        id: u64,
+        p: Palette,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let view = self.terminals.views.get(&id)?.responsive.clone();
+        let view = self.beside_panel(id, view.into_any_element(), p, cx);
+        let pane = div()
             .size_full()
             .flex()
             .flex_col()
@@ -343,13 +326,14 @@ impl Shell {
             }))
             .children(self.terminal_bar(id, p, cx))
             .child(div().flex_1().min_h_0().child(view))
-            .into_any_element()
+            .into_any_element();
+        Some(pane)
     }
 
     /// The shown tab's first terminal pane: its terminal's id and view, if it's made.
     fn shown(&self) -> Option<(u64, Option<Entity<TerminalView>>)> {
         let tab = self.workspace.tab_shown()?;
-        let id = tab.panes().iter().find_map(|pane| pane.terminal)?;
+        let id = tab.panes().iter().find_map(|pane| pane.terminal())?;
         Some((id, self.terminals.view(id)))
     }
 

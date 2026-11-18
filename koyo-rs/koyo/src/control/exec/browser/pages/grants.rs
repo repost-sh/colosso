@@ -17,7 +17,8 @@ use super::super::super::super::gate;
 use super::super::super::Caller;
 use super::asks;
 use crate::browser::agent::Actor;
-use crate::browser::{BrowserView, profiles};
+use crate::browser::profiles::{self, By};
+use crate::browser::BrowserView;
 use crate::model::{Spot, Tab};
 use crate::shell::Shell;
 
@@ -301,7 +302,7 @@ pub(crate) fn prune(shell: &Shell, cx: &mut App) {
         .flat_map(|project| &project.branches)
         .flat_map(|unit| &unit.tabs)
         .flat_map(Tab::panes)
-        .filter(|pane| separate && !pane.by_agent);
+        .filter(|pane| separate && pane.by() == By::Person);
     let theirs = (workspace.pinned().iter().map(|pinned| &pinned.tab))
         .chain(loose)
         .flat_map(Tab::panes)

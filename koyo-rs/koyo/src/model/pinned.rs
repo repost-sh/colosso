@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use gpui_kit::SharedString;
 
-use super::{PaneKind, Tab, Unloaded, Workspace};
+use super::{Content, Pane, Tab, Unloaded, Workspace};
 
 /// A pinned page.
 #[derive(Clone, Debug)]
@@ -88,7 +88,7 @@ impl Workspace {
     /// Whether the tab at `at`, as `(project, branch, tab)`, is one a pin takes: its single pane
     /// a page. Its page's `DevTools` in a tab of their own aren't, which the shell tells.
     pub fn is_page_tab(&self, at: (usize, usize, usize)) -> bool {
-        matches!(self.tab(at), Some(Tab::Single(pane)) if pane.kind == PaneKind::Browser)
+        matches!(self.tab(at), Some(Tab::Single(Pane { content: Content::Browser(_), .. })))
     }
 
     /// Pins the tab at `at`, as `(project, branch, tab)`, at the address `home`, after the pages
@@ -181,7 +181,9 @@ impl Workspace {
         };
         let mut page = tab.first().clone();
         page.title = title;
-        page.unload(rested);
+        if let Content::Browser(browser) = &mut page.content {
+            browser.unload(rested);
+        }
         page.shown_at = 0;
         *tab = Tab::Single(page);
         true

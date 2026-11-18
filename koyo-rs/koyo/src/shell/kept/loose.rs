@@ -9,6 +9,7 @@ use gpui_kit::Context;
 use serde::{Deserialize, Serialize};
 
 use crate::browser;
+use crate::browser::profiles::By;
 use crate::model::{Loose, Tab};
 use crate::settings::{self, Layout};
 use crate::shell::Shell;
@@ -76,7 +77,7 @@ impl Shell {
         for kept in spaces {
             let pages = (kept.tabs.iter())
                 .map(|tab| Loose {
-                    tab: Tab::Single(browser::page_brought_back(&tab.url, &tab.title, cx)),
+                    tab: Tab::Single(browser::page_brought_back(&tab.url, &tab.title, By::Person, cx)),
                     project: tab.project.clone(),
                 })
                 .collect();

@@ -166,7 +166,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Option<u64> {
         if let Some(id) = self.terminals.tab_of(handle) {
-            let (at, pane) = self.workspace.find_pane(|pane| pane.terminal == Some(id))?;
+            let (at, pane) = self.workspace.find_pane(|pane| pane.terminal() == Some(id))?;
             self.workspace.select_tab(at.0, at.1, at.2);
             cx.notify();
             return Some(pane);
@@ -187,7 +187,7 @@ impl Shell {
     /// Where the tab showing terminal `handle` is, as `(project, branch, tab)`, if one does.
     pub(crate) fn terminal_tab(&self, handle: &Handle) -> Option<(usize, usize, usize)> {
         let id = self.terminals.tab_of(handle)?;
-        let shown = self.workspace.find_pane(|pane| pane.terminal == Some(id));
+        let shown = self.workspace.find_pane(|pane| pane.terminal() == Some(id));
         shown.map(|(at, _)| at)
     }
 

@@ -120,6 +120,7 @@ fn a_pinned_page_closed_stays_pinned_and_opens_where_it_was_once_picked_again() 
     let closed = |address: &str| Unloaded {
         address: address.into(),
         favicon: None,
+        restored: true,
     };
     assert!(workspace.close_pinned_page(0, "a".into(), closed("https://a.example/now")));
     assert_eq!(pinned(&workspace), ["a", "b"]);

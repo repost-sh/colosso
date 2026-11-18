@@ -9,9 +9,11 @@ use koyo_term_control::{Actor, ActorKind, Exit, Handle};
 use super::{
     at, checkout, file, launch, main_with, page, read_file, split, tabs_of, titles, written,
 };
-use crate::model::{SplitAxis, Tab};
+use crate::model::{Content, Editor, EditorFile, SplitAxis, Tab};
 use crate::shell::kept::{Kept, KeptPane, KeptProject, KeptTree};
-use crate::test_support::{draw, git, open_page, repo, select, shell_with, terminal_listed};
+use crate::test_support::{
+    draw, git, open_page, repo, select, shell_with, terminal_listed, terminals_listed,
+};
 
 #[gpui_kit::test]
 fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppContext) {
@@ -93,9 +95,12 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
             let unit = shell.read(cx).workspace.branch().expect("a checkout");
             let pane = unit.tabs[tab].first();
             (
-                pane.file.is_some(),
-                pane.changes.is_some(),
-                pane.unopened.is_some(),
+                pane.file().is_some(),
+                pane.changes().is_some(),
+                matches!(
+                    pane.content,
+                    Content::Editor(Editor::File(EditorFile::Unopened(_)) | Editor::Changes(None))
+                ),
             )
         })
     };
@@ -153,7 +158,7 @@ fn a_file_or_the_diffs_brought_back_is_found_rather_than_opened_again(cx: &mut T
     assert_eq!(tabs_of(&shell, &root, cx), (before.clone(), 1));
     let opened = cx.read(|cx| {
         let pane = shell.read(cx).workspace.tab_shown().map(Tab::first);
-        pane.is_some_and(|pane| pane.file.is_some() && pane.unopened.is_none())
+        pane.is_some_and(|pane| pane.file().is_some())
     });
     assert!(opened, "the file it was brought back for");
 
@@ -168,7 +173,7 @@ fn a_file_or_the_diffs_brought_back_is_found_rather_than_opened_again(cx: &mut T
     assert_eq!(tabs_of(&shell, &root, cx), (before, 2));
     let diffs = cx.read(|cx| {
         let pane = shell.read(cx).workspace.tab_shown().map(Tab::first);
-        pane.is_some_and(|pane| pane.changes.is_some())
+        pane.is_some_and(|pane| pane.changes().is_some())
     });
     assert!(
         diffs,
@@ -285,7 +290,7 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
         assert_eq!(split.axis, SplitAxis::Row);
         assert!((split.ratio - 0.25).abs() < f32::EPSILON);
         assert!(
-            split.second.first().chat.is_none(),
+            split.second.first().chat().is_none(),
             "the unsent chat, its tab kept"
         );
     });
@@ -332,13 +337,7 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
         "where they were, until the daemon says"
     );
 
-    shell.update(cx, |shell, cx| {
-        let listed = vec![
-            terminal_listed("term_a", "zsh", &root),
-            terminal_listed("term_new", "build", &root),
-        ];
-        shell.take_terminals(std::slice::from_ref(&root), listed, cx);
-    });
+    terminals_listed(&shell, &root, &[("term_a", "zsh"), ("term_new", "build")], cx);
     cx.run_until_parked();
     assert_eq!(
         tabs_of(&shell, &root, cx).0,
@@ -348,7 +347,7 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
     let shows = cx.read(|cx| {
         let shell = shell.read(cx);
         let pane = shell.workspace.branch().unwrap().tabs[0].first();
-        let kept = shell.terminals.kept(pane.terminal.unwrap());
+        let kept = shell.terminals.kept(pane.terminal().unwrap());
         kept.map(|(handle, name)| (handle.0.clone(), name.to_owned()))
     });
     assert_eq!(shows, Some(("term_a".to_owned(), "zsh".to_owned())));
@@ -404,7 +403,7 @@ fn a_shell_a_daemon_restart_ended_runs_again_in_the_pane_it_had(cx: &mut TestApp
     let runs_again = cx.read(|cx| {
         let shell = shell.read(cx);
         let pane = shell.workspace.branch().unwrap().tabs[0].first();
-        shell.terminals.kept(pane.terminal.unwrap()).is_none()
+        shell.terminals.kept(pane.terminal().unwrap()).is_none()
     });
     assert!(runs_again, "a shell run again, not the one that ended");
 }

@@ -7,9 +7,11 @@ use koyo_app_control::{ErrorCode, Scope};
 use serde_json::{Value, json};
 
 use super::{allow, call, controlled, external, op, read_shell, send, taken, terminal};
+use crate::browser::profiles::By;
 use crate::files::At;
 use crate::files::tests::support::{editing, typed};
-use crate::test_support::{draw, repo, select};
+use crate::model::{Browser, Content, Pane};
+use crate::test_support::{draw, repo, select, terminals_listed};
 
 /// The kinds of the selected worktree's tabs' panes, the shown tab's in brackets.
 fn shown_tabs(listed: &Value) -> Vec<String> {
@@ -82,6 +84,58 @@ fn tabs_open_select_move_close_and_reopen(cx: &mut TestAppContext) {
     assert_eq!(refused.code, ErrorCode::NotFound, "nothing closed is left");
     let all = call(&agent, "tab_list", json!({ "all": true }), cx).unwrap();
     assert_eq!(all["worktrees"].as_array().unwrap().len(), 1);
+}
+
+/// Each kind of pane as `tab_list` lists it: what it is, and what it shows: a page's address, a
+/// file's path whether it's open or waits for its tab to be shown, a terminal's handle, and the
+/// diffs' pane as the changes.
+#[gpui_kit::test]
+fn tab_list_says_what_each_kind_of_pane_shows(cx: &mut TestAppContext) {
+    let root = repo(
+        "control-tabs-kinds",
+        &[("README.md", "hi\n"), ("notes.md", "notes\n")],
+    );
+    let rig = controlled("control-tabs-kinds", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let waiting = Pane::of_path(root.join("notes.md"));
+    rig.shell.update(cx, |shell, _| {
+        shell.workspace.push_tab(crate::model::Tab::Single(waiting));
+        shell.workspace.new_tab(crate::model::PaneKind::Chat);
+    });
+    terminals_listed(&rig.shell, &root, &[("term_kinds", "zsh")], cx);
+    let agent = terminal("term_1");
+    let opened = [
+        json!({ "kind": "browser", "url": "https://example.com/" }),
+        json!({ "kind": "editor", "file": "README.md" }),
+        json!({ "kind": "changes" }),
+        json!({ "kind": "desktop" }),
+        json!({ "kind": "device" }),
+    ];
+    for spec in opened {
+        call(&agent, "tab_open", spec, cx).unwrap();
+    }
+    let listed = call(&agent, "tab_list", json!({}), cx).unwrap();
+    let mut said: Vec<Value> = (listed["worktrees"][0]["tabs"].as_array().unwrap().iter())
+        .map(|tab| {
+            let pane = &tab["panes"][0];
+            let shows = ["kind", "url", "file", "unsaved", "terminal"];
+            Value::Object(shows.iter().map(|key| ((*key).to_owned(), pane[key].clone())).collect())
+        })
+        .collect();
+    let pane = |kind: &str| json!({ "kind": kind, "url": null, "file": null, "unsaved": null, "terminal": null });
+    let mut expected = vec![
+        json!({ "kind": "editor", "url": null, "file": root.join("notes.md"), "unsaved": null, "terminal": null }),
+        pane("chat"),
+        json!({ "kind": "terminal", "url": null, "file": null, "unsaved": null, "terminal": "term_kinds" }),
+        json!({ "kind": "browser", "url": "https://example.com/", "file": null, "unsaved": null, "terminal": null }),
+        json!({ "kind": "editor", "url": null, "file": root.join("README.md"), "unsaved": false, "terminal": null }),
+        pane("changes"),
+        pane("desktop"),
+        pane("device"),
+    ];
+    said.sort_by_key(Value::to_string);
+    expected.sort_by_key(Value::to_string);
+    assert_eq!(said, expected);
 }
 
 #[gpui_kit::test]
@@ -221,10 +275,15 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
     let unloaded = crate::model::Unloaded {
         address: "https://example.com/".into(),
         favicon: None,
+        restored: true,
     };
     let pane = rig.shell.update(cx, |shell, cx| {
         shell.workspace.new_tab(crate::model::PaneKind::Editor);
-        let pane = crate::model::Pane::unloaded(unloaded, "Example".into());
+        let content = Content::Browser(Browser::waiting(unloaded, By::Person));
+        let pane = Pane {
+            title: "Example".into(),
+            ..Pane::of(content)
+        };
         let id = pane.id;
         let unit = shell.workspace.branch_mut().unwrap();
         unit.tabs.push(crate::model::Tab::Single(pane));

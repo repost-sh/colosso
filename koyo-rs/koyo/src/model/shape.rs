@@ -24,7 +24,7 @@ impl Workspace {
         let closed = self.closed.iter().map(|closed| (true, &closed.tab));
         for (is_closed, tab) in open.chain(closed) {
             is_closed.hash(&mut shape);
-            tab.each_pane(&mut |pane| (pane.id, pane.terminal, &pane.chat).hash(&mut shape));
+            tab.each_pane(&mut |pane| (pane.id, pane.terminal(), pane.chat()).hash(&mut shape));
         }
         shape.finish()
     }

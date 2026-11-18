@@ -1,12 +1,12 @@
 //! Tabs closed lately, to bring back with ⌘⇧T, the newest first: each where it was, on its
 //! checkout at its place or among its space's loose pages at theirs, its panes split as they
-//! were, a page pane at the address it showed, a file pane on the file it showed, the diffs'
-//! pane on the checkout's diffs and a device's pane on its device.
+//! were, each holding what it showed (`Content::let_go`).
 
 use std::path::PathBuf;
 
+use gpui_kit::App;
+
 use super::{Spot, Tab, Workspace};
-use crate::devices::Chosen;
 
 /// How many closed tabs are kept.
 pub const KEPT: usize = 25;
@@ -20,32 +20,21 @@ pub enum ClosedFrom {
     Loose { space: u64, project: PathBuf },
 }
 
-/// A tab as it was when it closed. Its pages' views are let go, so nothing of them runs on.
+/// A tab as it was when it closed. Its panes' views are let go, so nothing of them runs on.
 #[derive(Clone, Debug)]
 pub struct ClosedTab {
     pub from: ClosedFrom,
     /// Where it was among the checkout's tabs, or the space's loose pages.
     pub at: usize,
     pub tab: Tab,
-    /// The address each page showed, by its pane's id.
-    pub addresses: Vec<(u64, String)>,
-    /// The file each file pane showed, by its pane's id.
-    pub files: Vec<(u64, PathBuf)>,
-    /// The panes that showed the checkout's diffs, by their ids.
-    pub changes: Vec<u64>,
-    /// The device each device's pane showed, by its pane's id; a picker's has none.
-    pub devices: Vec<(u64, Chosen)>,
 }
 
 impl Workspace {
-    /// Keeps `closed` to bring back, letting the oldest go past [`KEPT`]. Its pages, its
-    /// devices' views and its files are let go: what a file had unsaved is gone with it, and
-    /// a device's host ends.
-    pub fn remember_closed(&mut self, mut closed: ClosedTab) {
+    /// Keeps `closed` to bring back, letting the oldest go past [`KEPT`]. Its panes' views are
+    /// let go: what a file had unsaved is gone with it, and a device's host ends.
+    pub fn remember_closed(&mut self, mut closed: ClosedTab, cx: &App) {
         for pane in closed.tab.panes_mut() {
-            pane.page = None;
-            pane.file = None;
-            pane.changes = None;
+            pane.content.let_go(cx);
         }
         self.closed.push(closed);
         if self.closed.len() > KEPT {

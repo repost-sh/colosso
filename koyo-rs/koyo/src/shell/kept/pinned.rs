@@ -15,6 +15,7 @@ use serde_json::{Map, Value, json};
 
 use super::SAVE_DELAY;
 use crate::browser;
+use crate::browser::profiles::By;
 use crate::kept_file::{self, KeptFile};
 use crate::model::{Pinned, Tab};
 use crate::shell::Shell;
@@ -193,7 +194,7 @@ impl Shell {
     pub(super) fn restore_pinned(&mut self, cx: &mut Context<Self>) {
         let (kept, workspace) = (&self.kept.pins.kept, &mut self.workspace);
         for (place, tab) in kept.tabs.iter().enumerate() {
-            let pane = browser::page_brought_back(&tab.url, &tab.title, cx);
+            let pane = browser::page_brought_back(&tab.url, &tab.title, By::Person, cx);
             let pinned = Pinned {
                 tab: Tab::Single(pane),
                 home: tab.pinned_url.clone(),

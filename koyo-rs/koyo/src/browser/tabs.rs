@@ -10,50 +10,54 @@ use gpui_kit::{App, Context, Window};
 use super::profiles::By;
 use super::toolbar::tab_title;
 use crate::history;
-use crate::model::{Pane, Unloaded};
+use crate::model::{Browser, Content, Pane, Unloaded};
 use crate::shell::Shell;
 
-/// The pane a page the window kept comes back as: titled as it was, with its site's icon if
-/// one is kept, and no page until its tab is shown.
-pub(crate) fn page_brought_back(url: &str, title: &str, cx: &mut App) -> Pane {
+/// The pane a page the window kept comes back as, `by`'s: titled as it was, with its site's
+/// icon if one is kept, and no page until its tab is shown.
+pub(crate) fn page_brought_back(url: &str, title: &str, by: By, cx: &mut App) -> Pane {
     let unloaded = Unloaded {
         favicon: history::icon(url, cx),
         address: url.to_owned(),
+        restored: true,
     };
-    Pane::unloaded(unloaded, tab_title(title, url).into())
+    Pane {
+        title: tab_title(title, url).into(),
+        ..Pane::of(Content::Browser(Browser::waiting(unloaded, by)))
+    }
 }
 
 impl Shell {
-    /// Makes the pages the shown tab's browser panes don't have yet, at the addresses they
-    /// kept, so the panes draw them, an agent's page an agent's again. Each opens its page once
-    /// laid out; its first load is no new visit, as it was visited before.
-    pub fn make_shown_browsers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let workspace = &self.workspace;
-        let missing: Vec<(u64, String, By)> = (workspace.tab_shown())
-            .map(|tab| {
-                (tab.panes().into_iter())
-                    .filter_map(|pane| {
-                        Some((pane.id, pane.unloaded_address()?.to_owned(), pane.by()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    /// Makes the pages `missing` of the shown tab's browser panes, by their panes, at the
+    /// addresses they kept and whose they were, so the panes draw them (`Shell::make_shown`),
+    /// an agent's page an agent's again. Each opens its page once laid out; its first load is
+    /// no new visit when it was visited before.
+    pub(crate) fn make_pages(
+        &mut self,
+        missing: Vec<(u64, Unloaded, By)>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if missing.is_empty() {
             return;
         }
+        let workspace = &self.workspace;
         let apart = workspace.shown_apart_project().map(Path::to_owned);
         let selected = || Some(workspace.project()?.path.clone());
         let Some(project) = apart.or_else(selected) else {
             return;
         };
-        for (id, address, by) in missing {
-            let view = self.browser_view(address, &project, window, cx);
+        for (id, page, by) in missing {
+            let view = self.browser_view(page.address, &project, window, cx);
             view.update(cx, |view, _| {
-                view.mark_restored();
+                if page.restored {
+                    view.mark_restored();
+                }
                 view.made_by(by);
             });
-            if let Some(pane) = self.workspace.pane_mut(id) {
-                pane.set_view(view, cx);
+            let pane = self.workspace.pane_mut(id);
+            if let Some(Content::Browser(browser)) = pane.map(|pane| &mut pane.content) {
+                browser.show(view, cx);
             }
         }
     }

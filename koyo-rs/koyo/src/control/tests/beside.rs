@@ -13,7 +13,7 @@ use serde_json::json;
 use super::shown::{show_what_agents_open, shown};
 use super::{Caller, Rig, allow, call, chat, controlled, external, read_shell, terminal};
 use crate::model::PaneKind;
-use crate::test_support::{repo, select, terminal_listed};
+use crate::test_support::{repo, select, terminals_listed};
 
 /// The person's project and the agents', each with its main checkout; the window shows the
 /// person's, at the chat they're reading.
@@ -44,7 +44,7 @@ fn tabs(rig: &Rig, root: &Path, cx: &TestAppContext) -> Vec<String> {
         (unit.tabs.iter().enumerate())
             .map(|(at, tab)| {
                 let pane = tab.first();
-                let name = match (&pane.chat, pane.kind) {
+                let name = match (pane.chat(), pane.kind()) {
                     (Some(chat), _) => chat.0.clone(),
                     (None, PaneKind::Desktop) => "desktop".to_owned(),
                     (None, _) => pane.title.to_string(),
@@ -75,7 +75,7 @@ fn desktop_open(caller: &Caller, cx: &mut TestAppContext) {
 /// Closes the desktop's tab, as the person does.
 fn close_desktop(rig: &Rig, cx: &mut TestAppContext) {
     rig.shell.update(cx, |shell, cx| {
-        let open = (shell.workspace).find_pane(|pane| pane.kind == PaneKind::Desktop);
+        let open = (shell.workspace).find_pane(|pane| pane.kind() == PaneKind::Desktop);
         let (_, pane) = open.expect("the desktop's tab");
         shell.close_pane_now(pane, cx);
     });
@@ -116,10 +116,7 @@ fn the_desktops_tab_opens_after_the_tab_of_the_chat_that_asked_not_where_the_per
 fn an_agent_in_a_terminal_gets_the_desktops_tab_after_its_terminals(cx: &mut TestAppContext) {
     let (rig, mine, theirs) = rig("control-beside-terminal", cx);
     chat_tab(&rig, &theirs, "first", cx);
-    rig.shell.update(cx, |shell, cx| {
-        let listed = vec![terminal_listed("term_9", "agent", &theirs)];
-        shell.take_terminals(std::slice::from_ref(&theirs), listed, cx);
-    });
+    terminals_listed(&rig.shell, &theirs, &[("term_9", "agent")], cx);
     cx.run_until_parked();
     chat_tab(&rig, &theirs, "last", cx);
     select(&rig.shell, &mine, cx);

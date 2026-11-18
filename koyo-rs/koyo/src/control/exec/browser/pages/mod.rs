@@ -27,7 +27,8 @@ pub(super) use self::grants::still_open;
 pub(crate) use self::listing::list;
 pub(super) use self::listing::{Found, find};
 use super::super::{Caller, main_shell};
-use crate::browser::{BrowserView, profiles};
+use crate::browser::profiles::{self, By};
+use crate::browser::BrowserView;
 use crate::model::Spot;
 
 /// What a call was let use a page on.
@@ -86,7 +87,7 @@ impl Page {
         let spot = workspace.and_then(|workspace| workspace.spot_of(self.pane));
         let opened_by_person = || {
             let pane = workspace.and_then(|workspace| workspace.pane(self.pane));
-            pane.is_some_and(|pane| !pane.by_agent)
+            pane.is_some_and(|pane| pane.by() == By::Person)
         };
         let kind = match spot {
             Some(Spot::Pinned) => "pinned",

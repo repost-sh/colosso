@@ -1,7 +1,7 @@
 use koyo_agent::protocol::ids::ThreadId;
 
 use crate::model::tests::{chat, workspace};
-use crate::model::{ClosedFrom, ClosedTab, Pane, PaneKind, SplitAxis, Tab, Workspace};
+use crate::model::{ClosedFrom, ClosedTab, Content, Pane, PaneKind, SplitAxis, Tab, Workspace};
 
 fn give_the_first_pane(workspace: &mut Workspace, give: impl FnOnce(&mut Pane)) {
     let tab = workspace.tab_shown_mut().unwrap();
@@ -45,28 +45,28 @@ fn a_pane_given_a_terminal_or_a_chat_thread_changes_the_tabs() {
     workspace.new_tab(PaneKind::Chat);
     let before = workspace.tabs_shape();
 
-    give_the_first_pane(&mut workspace, |pane| pane.chat = Some(ThreadId("thread".into())));
-    let with_thread = workspace.tabs_shape();
-    assert_ne!(with_thread, before);
+    give_the_first_pane(&mut workspace, |pane| {
+        pane.content = Content::Chat(Some(ThreadId("thread".into())));
+    });
+    assert_ne!(workspace.tabs_shape(), before);
 
-    give_the_first_pane(&mut workspace, |pane| pane.terminal = Some(7));
-    assert_ne!(workspace.tabs_shape(), with_thread);
+    workspace.new_tab(PaneKind::Terminal);
+    let without_terminal = workspace.tabs_shape();
+    give_the_first_pane(&mut workspace, |pane| pane.content = Content::Terminal(Some(7)));
+    assert_ne!(workspace.tabs_shape(), without_terminal);
 }
 
-#[test]
-fn a_closed_tab_is_still_among_the_tabs() {
+#[gpui_kit::test]
+fn a_closed_tab_is_still_among_the_tabs(cx: &mut gpui_kit::TestAppContext) {
     let mut workspace = workspace(&[]);
     let before = workspace.tabs_shape();
     workspace.new_tab(PaneKind::Chat);
     let tab = workspace.close_tab(0, 0, 0).unwrap();
-    workspace.remember_closed(ClosedTab {
+    let closed = ClosedTab {
         from: ClosedFrom::Checkout("/src/app".into()),
         at: 0,
         tab,
-        addresses: Vec::new(),
-        files: Vec::new(),
-        changes: Vec::new(),
-        devices: Vec::new(),
-    });
+    };
+    cx.update(|cx| workspace.remember_closed(closed, cx));
     assert_ne!(workspace.tabs_shape(), before);
 }

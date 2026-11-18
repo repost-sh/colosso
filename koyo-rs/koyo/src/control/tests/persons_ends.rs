@@ -69,7 +69,7 @@ fn consent_ends_as_the_page_moves_closes_or_is_pinned_elsewhere(cx: &mut TestApp
     cx.update_window(window, |_, window, cx| {
         rig.shell.update(cx, |shell, cx| {
             assert!(shell.show_tab_holding(page, cx));
-            shell.make_shown_browsers(window, cx);
+            shell.make_shown(window, cx);
         });
     })
     .unwrap();

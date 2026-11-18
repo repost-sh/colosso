@@ -7,9 +7,8 @@ use std::sync::mpsc::Receiver;
 use gpui_kit::TestAppContext;
 use koyo_device_wire::ToHost;
 
-use super::super::view::Chosen;
 use super::screen;
-use crate::test_support::{draw, on_screen, repo, select, shell_with};
+use crate::test_support::{draw, iphone, on_screen, repo, select, shell_with};
 
 /// Whether the host was last told the device is seen, of what it's been told since it was last
 /// asked.
@@ -27,13 +26,7 @@ fn the_host_is_told_the_device_isnt_seen_while_its_window_is_unseen(cx: &mut Tes
     let root = repo("device-sight", &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
-    let phone = Chosen {
-        udid: "PHONE".into(),
-        name: "iPhone 17 Pro".into(),
-        ipad: false,
-        phone: false,
-    };
-    shell.update(cx, |shell, cx| shell.device_pane(Some(phone), true, cx));
+    shell.update(cx, |shell, cx| shell.device_pane(Some(iphone("PHONE")), true, cx));
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("its tab");
     let link = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
     let told = link.update(cx, |link, cx| link.stand_in(screen(), cx));

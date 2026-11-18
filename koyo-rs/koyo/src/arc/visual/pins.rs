@@ -17,7 +17,8 @@ use super::acts::{Part, drag, save_with, settle};
 use super::headers::away;
 use super::web_page;
 use crate::arc::hover::Hovered;
-use crate::model::{Pane, Tab, Unloaded};
+use crate::browser::profiles::By;
+use crate::model::{Browser, Content, Pane, Tab, Unloaded};
 use crate::settings;
 use crate::visual::{Drawn, Result, checkout, noted};
 
@@ -198,8 +199,12 @@ fn pin_by_drop(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
                 let unloaded = Unloaded {
                     address: address.into(),
                     favicon: (at == 0).then(|| icon.clone()),
+                    restored: true,
                 };
-                let pane = Pane::unloaded(unloaded, title.into());
+                let pane = Pane {
+                    title: title.into(),
+                    ..Pane::of(Content::Browser(Browser::waiting(unloaded, By::Person)))
+                };
                 let key = pane.id;
                 shell.workspace.push_tab(Tab::Single(pane));
                 shell.pin_tab_of(key, cx);

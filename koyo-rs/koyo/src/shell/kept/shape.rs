@@ -12,7 +12,8 @@ use koyo_term_control::Handle;
 use serde::{Deserialize, Serialize};
 
 use crate::browser;
-use crate::model::{Pane, PaneKind, Split, SplitAxis, Tab, Unopened};
+use crate::browser::profiles::By;
+use crate::model::{Content, Editor, Pane, PaneKind, Split, SplitAxis, Tab};
 use crate::shell::Shell;
 
 /// What a pane showed.
@@ -20,8 +21,8 @@ use crate::shell::Shell;
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum KeptPane {
     /// A page, at the address it showed, titled as it was until it says otherwise, and
-    /// whether it's an agent's (`Pane::by_agent`), said only when it is: one kept before that
-    /// was kept is the person's. A new tab's start page has no address.
+    /// whether it's an agent's (`Pane::by`), said only when it is: one kept before that was
+    /// kept is the person's. A new tab's start page has no address.
     Page {
         url: String,
         #[serde(default)]
@@ -106,32 +107,32 @@ impl Shell {
     /// when the window comes back; nor a terminal the daemon doesn't run yet, which has no
     /// handle to find it by.
     fn kept_pane(&self, pane: &Pane, cx: &App) -> Option<KeptPane> {
-        match pane.kind {
-            PaneKind::Browser if pane.is_inspector() => None,
-            PaneKind::Browser => Some(KeptPane::Page {
-                url: pane.address()?.to_owned(),
+        match &pane.content {
+            Content::Browser(browser) if browser.is_inspector() => None,
+            Content::Browser(browser) => Some(KeptPane::Page {
+                url: browser.address()?.to_owned(),
                 title: pane.title.to_string(),
-                by_agent: pane.by_agent,
+                by_agent: browser.by == By::Agent,
             }),
-            PaneKind::Terminal => {
-                let (handle, name) = self.terminals.kept(pane.terminal?)?;
+            Content::Terminal(id) => {
+                let (handle, name) = self.terminals.kept((*id)?)?;
                 Some(KeptPane::Terminal {
                     handle: handle.clone(),
                     name: name.to_owned(),
                 })
             }
-            PaneKind::Chat => Some(match &pane.chat {
+            Content::Chat(thread) => Some(match thread {
                 Some(thread) => KeptPane::Chat {
                     thread: thread.clone(),
                     title: pane.title.to_string(),
                 },
                 None => KeptPane::NewChat,
             }),
-            PaneKind::Editor if pane.shows_changes() => Some(KeptPane::Changes),
-            PaneKind::Editor => (pane.file_path(cx)).map(|path| KeptPane::File { path }),
-            PaneKind::Desktop => None,
-            PaneKind::Device => {
-                let chosen = pane.device_view()?.read(cx).chosen()?.clone();
+            Content::Editor(Editor::Changes(_)) => Some(KeptPane::Changes),
+            Content::Editor(Editor::File(file)) => Some(KeptPane::File { path: file.path(cx) }),
+            Content::Editor(Editor::Untitled) | Content::Desktop(_) => None,
+            Content::Device(device) => {
+                let chosen = device.chosen(cx)?;
                 Some(KeptPane::Device {
                     udid: chosen.udid,
                     name: chosen.name,
@@ -179,30 +180,27 @@ impl Shell {
                 title,
                 by_agent,
             } => {
-                let mut pane = browser::page_brought_back(url, title, cx);
-                pane.by_agent = *by_agent;
-                Some(pane)
+                let by = if *by_agent { By::Agent } else { By::Person };
+                Some(browser::page_brought_back(url, title, by, cx))
             }
             KeptPane::Terminal { handle, name } => {
-                let mut pane = Pane::new(PaneKind::Terminal);
-                pane.terminal = Some(self.terminals.bring_back(handle.clone(), name.clone()));
-                pane.title = name.clone().into();
-                Some(pane)
+                let id = self.terminals.bring_back(handle.clone(), name.clone());
+                Some(Pane {
+                    title: name.clone().into(),
+                    ..Pane::of(Content::Terminal(Some(id)))
+                })
             }
             KeptPane::Chat { thread, title } => {
                 self.chat_tabs.bring_back(thread);
-                let mut pane = Pane::new(PaneKind::Chat);
-                pane.chat = Some(thread.clone());
+                let mut pane = Pane::of(Content::Chat(Some(thread.clone())));
                 if !title.is_empty() {
                     pane.title = title.clone().into();
                 }
                 Some(pane)
             }
             KeptPane::NewChat => Some(Pane::new(PaneKind::Chat)),
-            KeptPane::File { path } => path
-                .exists()
-                .then(|| Pane::unopened(Unopened::File(path.clone()))),
-            KeptPane::Changes => Some(Pane::unopened(Unopened::Changes)),
+            KeptPane::File { path } => path.exists().then(|| Pane::of_path(path.clone())),
+            KeptPane::Changes => Some(Pane::of_changes(None)),
             KeptPane::Device { udid, name, ipad, phone } => {
                 let chosen = crate::devices::Chosen {
                     udid: udid.clone(),

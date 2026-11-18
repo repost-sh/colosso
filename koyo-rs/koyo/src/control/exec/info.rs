@@ -8,8 +8,7 @@ use koyo_app_control::ops::shared::{
 use koyo_git::Head;
 
 use super::select::{self, TabAt};
-use crate::files::FilePane;
-use crate::model::{self, BranchUnit, Pane, SplitAxis, Tab};
+use crate::model::{BranchUnit, Content, Editor, EditorFile, Pane, SplitAxis, Tab};
 use crate::shell::Shell;
 
 /// Project `at` as `project_list` lists it.
@@ -59,35 +58,51 @@ pub(crate) fn worktree_at(
     Some(worktree(shell, unit, selected))
 }
 
-/// Pane `pane`, the one with the keyboard when `focused`.
+/// Pane `pane`, the one with the keyboard when `focused`: what it is, and what it shows, a
+/// page's address, a file's path whether it's open or waits for its tab to be shown and
+/// whether it has unsaved edits once open, a terminal's handle.
 pub(crate) fn pane(shell: &Shell, pane: &Pane, focused: bool, cx: &App) -> PaneInfo {
-    let kind = match pane.kind {
-        model::PaneKind::Chat => PaneKind::Chat,
-        model::PaneKind::Terminal => PaneKind::Terminal,
-        model::PaneKind::Browser => PaneKind::Browser,
-        model::PaneKind::Editor if pane.shows_changes() => PaneKind::Changes,
-        model::PaneKind::Editor => PaneKind::Editor,
-        model::PaneKind::Desktop => PaneKind::Desktop,
-        model::PaneKind::Device => PaneKind::Device,
-    };
-    let file = pane.file.as_ref().map(|file| file.read(cx));
-    let terminal = pane.terminal.and_then(|id| {
-        let shown = shell.terminals.view(id);
-        let handle = shown
-            .as_ref()
-            .and_then(|view| view.read(cx).handle().cloned());
-        handle.or_else(|| shell.terminals.handle(id).cloned())
-    });
-    PaneInfo {
+    let of = |kind| PaneInfo {
         pane: pane.id,
         kind,
         title: pane.title.to_string(),
-        url: pane.address().map(str::to_owned),
-        file: (pane.file_path(cx)).map(|path| path.display().to_string()),
-        unsaved: file.map(FilePane::is_dirty),
-        terminal: terminal.map(|handle| handle.to_string()),
+        url: None,
+        file: None,
+        unsaved: None,
+        terminal: None,
         focused,
+    };
+    match &pane.content {
+        Content::Chat(_) => of(PaneKind::Chat),
+        Content::Terminal(id) => PaneInfo {
+            terminal: id.and_then(|id| terminal_handle(shell, id, cx)),
+            ..of(PaneKind::Terminal)
+        },
+        Content::Browser(browser) => PaneInfo {
+            url: browser.address().map(str::to_owned),
+            ..of(PaneKind::Browser)
+        },
+        Content::Editor(Editor::Untitled) => of(PaneKind::Editor),
+        Content::Editor(Editor::File(file)) => PaneInfo {
+            file: Some(file.path(cx).display().to_string()),
+            unsaved: match file {
+                EditorFile::Open(file) => Some(file.read(cx).is_dirty()),
+                EditorFile::Unopened(_) => None,
+            },
+            ..of(PaneKind::Editor)
+        },
+        Content::Editor(Editor::Changes(_)) => of(PaneKind::Changes),
+        Content::Desktop(_) => of(PaneKind::Desktop),
+        Content::Device(_) => of(PaneKind::Device),
     }
+}
+
+/// Terminal `id`'s handle in the daemon: its view's, once it's made, else the one it was
+/// brought back or opened with.
+fn terminal_handle(shell: &Shell, id: u64, cx: &App) -> Option<String> {
+    let shown = shell.terminals.view(id);
+    let handle = shown.as_ref().and_then(|view| view.read(cx).handle().cloned());
+    handle.or_else(|| shell.terminals.handle(id).cloned()).map(|handle| handle.to_string())
 }
 
 /// `value` as its shortest decimal, as a person would write it: 0.3, not the

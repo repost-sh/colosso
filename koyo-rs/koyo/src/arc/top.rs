@@ -21,7 +21,7 @@ use super::Look;
 use super::actions::{PageBack, PageForward, PageReload};
 use crate::browser::{BrowserView, Controls};
 use crate::launcher::OpenAddress;
-use crate::model::PaneKind;
+use crate::model::{Content, Pane};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};
 use crate::shell::{Shell, action_button};
@@ -168,15 +168,15 @@ pub(super) fn said(
         return ("No tab open".into(), true);
     };
     let pane = tab.current();
-    match pane.kind {
-        PaneKind::Browser => {
+    match &pane.content {
+        Content::Browser(browser) => {
             let showing = shown.and_then(|page| shell.workspace.pane(shell.pane_showing(page)?));
-            address_said(showing.unwrap_or(pane).address().unwrap_or_default())
+            address_said(showing.map_or(browser.address(), Pane::address).unwrap_or_default())
         }
-        PaneKind::Terminal | PaneKind::Chat | PaneKind::Desktop | PaneKind::Device => {
+        Content::Terminal(_) | Content::Chat(_) | Content::Desktop(_) | Content::Device(_) => {
             (pane.title.clone(), false)
         }
-        PaneKind::Editor => ("File".into(), false),
+        Content::Editor(_) => ("File".into(), false),
     }
 }
 

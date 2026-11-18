@@ -14,7 +14,7 @@ use super::{At, FileEditor, FilesPanel, Place};
 use crate::checkout::{Checkout, Document};
 use crate::go_to_file;
 use crate::language::{self, Found};
-use crate::model::{Pane, Tab};
+use crate::model::{Content, Editor, EditorFile, Pane, Tab};
 use crate::navigation::Route;
 use crate::right_panel::View;
 use crate::settings;
@@ -97,7 +97,7 @@ impl Shell {
                 Some(id) => self.replace_pane_file(id, &file, cx),
                 None => self
                     .workspace
-                    .open_beside_shown(Tab::Single(Pane::file(file.clone(), cx))),
+                    .open_beside_shown(Tab::Single(Pane::of_file(file.clone(), cx))),
             }
             file
         };
@@ -147,7 +147,7 @@ impl Shell {
     fn preview_pane(&self, cx: &App) -> Option<u64> {
         let unit = self.workspace.branch()?;
         unit.tabs.iter().flat_map(Tab::panes).find_map(|pane| {
-            let file = pane.file.as_ref()?;
+            let file = pane.file()?;
             file.read(cx).is_preview().then_some(pane.id)
         })
     }
@@ -162,7 +162,9 @@ impl Shell {
         let Some(pane) = unit.pane_mut(id) else {
             return;
         };
-        pane.set_file(file.clone());
+        if let Content::Editor(editor) = &mut pane.content {
+            *editor = Editor::File(EditorFile::Open(file.clone()));
+        }
         pane.title = title.into();
         let shown = unit.tab_with(id).unwrap_or(unit.active_tab);
         if let Some((project, branch, _)) = self.workspace.shown_tab() {
@@ -319,7 +321,7 @@ impl Shell {
     pub fn forget_files(&mut self, root: &Path, cx: &mut Context<Self>) {
         loop {
             let found = self.workspace.find_pane(|pane| {
-                (pane.file.as_ref()).is_some_and(|file| file.read(cx).path.starts_with(root))
+                (pane.file()).is_some_and(|file| file.read(cx).path.starts_with(root))
             });
             let Some((at, _)) = found else {
                 return;

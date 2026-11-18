@@ -167,7 +167,7 @@ pub(crate) fn tabs(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
             .map(|(at, tab)| {
                 let panes: Vec<String> = (tab.panes().into_iter())
                     .map(|pane| {
-                        let file = pane.file.as_ref().map(|file| file.read(cx));
+                        let file = pane.file().map(|file| file.read(cx));
                         let preview = if file.is_some_and(FilePane::is_preview) {
                             "*"
                         } else {

@@ -216,7 +216,7 @@ impl Shell {
         in_hand: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (id, bar) = (pane.id, pane.bar());
+        let (id, bar) = (pane.id, pane.bar(cx));
         part(p, theme::card::islands(cx))
             .debug_selector(move || format!("pane-{id}"))
             .size_full()

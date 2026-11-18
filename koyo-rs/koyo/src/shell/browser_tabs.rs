@@ -354,7 +354,7 @@ mod tests {
             let Tab::Single(pane) = &unit.tabs[0] else {
                 panic!("a single pane");
             };
-            assert_eq!(pane.kind, PaneKind::Browser);
+            assert_eq!(pane.kind(), PaneKind::Browser);
             let view = pane.view().expect("the pane shows a browser view");
             assert!(view.read(cx).is_start_page());
         });
@@ -423,7 +423,7 @@ mod tests {
         shell.read_with(cx, |shell, _| {
             let unit = shell.workspace.branch().expect("a checkout is selected");
             assert_eq!(unit.tabs.len(), 1, "the row picked opened a tab");
-            assert!(matches!(&unit.tabs[0], Tab::Single(pane) if pane.kind == PaneKind::Chat));
+            assert!(matches!(&unit.tabs[0], Tab::Single(pane) if pane.kind() == PaneKind::Chat));
         });
     }
 }

@@ -12,7 +12,7 @@ impl Shell {
     /// space; and it takes the keyboard, its file if it shows one.
     pub(super) fn show_visited(&mut self, key: u64, cx: &mut Context<Self>) {
         let tab = self.workspace.tab_holding(key);
-        let file = tab.and_then(|tab| tab.panes().into_iter().find(|pane| pane.file.is_some()));
+        let file = tab.and_then(|tab| tab.panes().into_iter().find(|pane| pane.file().is_some()));
         if let Some(file) = file.map(|pane| pane.id) {
             self.workspace.enter_pane(file);
         }

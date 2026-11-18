@@ -1,14 +1,14 @@
-//! Tab contents: a file opened from the file tree in its editor, and placeholders for what
-//! each other pane kind will roughly look like.
+//! Tab contents: each pane's chat, terminal, page, file, diffs, the agent desktop or a device,
+//! and placeholders for what a pane shows until its view is made.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, Div, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    Stateful, Styled as _, div, px,
+    AnyElement, Context, Div, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, Stateful, Styled as _, div, px,
 };
 
-use crate::model::{Pane, PaneKind};
-use crate::shell::icon;
+use crate::model::{Content, Editor, EditorFile, Pane};
+use crate::shell::{Shell, icon};
 use crate::theme::Palette;
 
 /// How wide a tab's close button draws its X.
@@ -57,26 +57,39 @@ pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
         .hover(|style| style.bg(p.hover))
 }
 
-/// What a pane shows: its chat, terminal, page, file or the checkout's diffs.
-pub fn pane(pane: &Pane, p: Palette) -> AnyElement {
-    match pane.kind {
-        PaneKind::Chat => div().size_full().into_any_element(),
-        PaneKind::Terminal => terminal(p),
-        PaneKind::Browser => browser(pane),
-        PaneKind::Editor => match (&pane.file, &pane.changes) {
-            (Some(file), _) => file.clone().into_any_element(),
-            (None, Some(changes)) => changes.clone().into_any_element(),
-            (None, None) => editor(pane, p),
-        },
-        PaneKind::Desktop => (pane.desktop_view().cloned()).map_or_else(
-            || gpui_kit::Empty.into_any_element(),
-            IntoElement::into_any_element,
-        ),
-        PaneKind::Device => (pane.device_view().cloned()).map_or_else(
-            || gpui_kit::Empty.into_any_element(),
-            IntoElement::into_any_element,
-        ),
+impl Shell {
+    /// What `pane` shows: its chat's, its terminal's, its page's, the agent desktop's or a
+    /// device's view, its file or the checkout's diffs, once made (`Shell::make_shown`); until
+    /// then, what stands in for it.
+    pub fn pane_content(&self, pane: &Pane, p: Palette, cx: &mut Context<Self>) -> AnyElement {
+        match &pane.content {
+            Content::Chat(_) => (self.chat_tabs.view(pane.id)).map_or_else(
+                || div().size_full().into_any_element(),
+                |chat| chat.clone().into_any_element(),
+            ),
+            Content::Terminal(id) => {
+                (id.and_then(|id| self.terminal_pane(id, p, cx))).unwrap_or_else(|| terminal(p))
+            }
+            Content::Browser(browser) => view_or_empty(browser.view()),
+            Content::Editor(Editor::File(EditorFile::Open(file))) => {
+                file.clone().into_any_element()
+            }
+            Content::Editor(Editor::Changes(Some(changes))) => changes.clone().into_any_element(),
+            Content::Editor(
+                Editor::Untitled | Editor::File(EditorFile::Unopened(_)) | Editor::Changes(None),
+            ) => editor(&pane.title, p),
+            Content::Desktop(view) => view_or_empty(view.as_ref()),
+            Content::Device(device) => view_or_empty(device.view()),
+        }
     }
+}
+
+/// `view`, or nothing while there's none.
+fn view_or_empty<V: Render>(view: Option<&Entity<V>>) -> AnyElement {
+    view.cloned().map_or_else(
+        || gpui_kit::Empty.into_any_element(),
+        IntoElement::into_any_element,
+    )
 }
 
 fn terminal(p: Palette) -> AnyElement {
@@ -101,16 +114,7 @@ fn terminal(p: Palette) -> AnyElement {
         .into_any_element()
 }
 
-/// A browser pane is its page's view, made by the time its tab is shown
-/// (`Shell::make_shown_browsers`).
-fn browser(pane: &Pane) -> AnyElement {
-    (pane.view().cloned()).map_or_else(
-        || gpui_kit::Empty.into_any_element(),
-        IntoElement::into_any_element,
-    )
-}
-
-fn editor(pane: &Pane, p: Palette) -> AnyElement {
+fn editor(title: &SharedString, p: Palette) -> AnyElement {
     let lines = [
         "[workspace]",
         "resolver = \"3\"",
@@ -133,7 +137,7 @@ fn editor(pane: &Pane, p: Palette) -> AnyElement {
                 .border_color(p.hairline)
                 .text_sm()
                 .text_color(p.muted)
-                .child(pane.title.clone()),
+                .child(title.clone()),
         )
         .child(
             div()

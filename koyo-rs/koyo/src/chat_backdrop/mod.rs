@@ -23,7 +23,7 @@ pub use astc::Blocks;
 pub use screens::{look_again, memory};
 pub use watch::init;
 
-use crate::model::{Pane, PaneKind};
+use crate::model::{Content, Editor, Pane};
 use crate::native::liquid;
 use crate::settings::{self, Surface};
 use crate::theme::Palette;
@@ -40,13 +40,13 @@ pub fn backdrop(surface: Surface, key: u64, cx: &App) -> Option<AnyElement> {
 
 /// The backdrop behind what `pane` shows; none behind a page, whose view covers it.
 pub fn behind(pane: &Pane, cx: &App) -> Option<AnyElement> {
-    let surface = match pane.kind {
-        PaneKind::Browser => return None,
-        PaneKind::Chat => Surface::Chat,
-        PaneKind::Terminal => Surface::Terminal,
-        PaneKind::Editor if pane.shows_changes() => Surface::Diff,
-        PaneKind::Editor => Surface::Files,
-        PaneKind::Desktop | PaneKind::Device => Surface::Devices,
+    let surface = match &pane.content {
+        Content::Browser(_) => return None,
+        Content::Chat(_) => Surface::Chat,
+        Content::Terminal(_) => Surface::Terminal,
+        Content::Editor(Editor::Changes(_)) => Surface::Diff,
+        Content::Editor(Editor::Untitled | Editor::File(_)) => Surface::Files,
+        Content::Desktop(_) | Content::Device(_) => Surface::Devices,
     };
     backdrop(surface, pane.id, cx)
 }

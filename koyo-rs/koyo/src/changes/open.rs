@@ -5,7 +5,7 @@
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 
 use super::{ChangesEvent, ChangesPanel, ChangesTab};
-use crate::model::{Pane, Tab};
+use crate::model::{Content, Editor, Pane, Tab};
 use crate::navigation::Route;
 use crate::shell::Shell;
 
@@ -37,7 +37,7 @@ impl Shell {
         } else {
             let changes = cx.new(|_| ChangesTab::new(panel.clone()));
             self.workspace
-                .open_beside_shown(Tab::Single(Pane::changes(changes)));
+                .open_beside_shown(Tab::Single(Pane::of_changes(Some(changes))));
         }
         self.navigate(Route::Workspace, cx);
         cx.notify();
@@ -67,7 +67,9 @@ impl Shell {
             .into_iter()
             .filter(|pane| ids.contains(&pane.id))
         {
-            pane.set_changes(cx.new(|_| ChangesTab::new(panel.clone())));
+            if let Content::Editor(editor) = &mut pane.content {
+                *editor = Editor::Changes(Some(cx.new(|_| ChangesTab::new(panel.clone()))));
+            }
         }
     }
 }

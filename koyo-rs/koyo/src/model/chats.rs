@@ -5,32 +5,38 @@ use std::path::Path;
 
 use koyo_agent::protocol::ids::ThreadId;
 
-use super::{BranchUnit, Pane, PaneKind, Tab, Workspace};
+use super::{BranchUnit, Content, Pane, Tab, Workspace};
+
+impl Tab {
+    /// Its chat panes' ids and the threads they show, if they have one yet, left to right.
+    pub fn chat_panes(&self) -> impl Iterator<Item = (u64, Option<&ThreadId>)> {
+        self.panes().into_iter().filter_map(|pane| match &pane.content {
+            Content::Chat(thread) => Some((pane.id, thread.as_ref())),
+            _ => None,
+        })
+    }
+}
 
 impl Workspace {
     /// Adds a tab for thread `id` on the checkout at `worktree`, shown when `select`: its pane,
     /// unless no such checkout is listed. Its title comes from `retitle_chats`.
     pub fn add_chat_tab(&mut self, worktree: &Path, id: ThreadId, select: bool) -> Option<u64> {
-        let pane = Pane {
-            chat: Some(id),
-            ..Pane::new(PaneKind::Chat)
-        };
-        self.add_pane_tab(worktree, pane, select)
+        self.add_pane_tab(worktree, Pane::of(Content::Chat(Some(id))), select)
     }
 
     /// Every chat pane's id and the thread it shows, if it has one yet, split or not.
     pub fn chat_panes(&self) -> impl Iterator<Item = (u64, Option<&ThreadId>)> {
         (self.projects.iter())
             .flat_map(|project| &project.branches)
-            .flat_map(|unit| unit.tabs.iter().flat_map(Tab::panes))
-            .filter(|pane| pane.kind == PaneKind::Chat)
-            .map(|pane| (pane.id, pane.chat.as_ref()))
+            .flat_map(|unit| unit.tabs.iter().flat_map(Tab::chat_panes))
     }
 
     /// Pane `pane` shows thread `id` from now on.
     pub fn set_chat(&mut self, pane: u64, id: ThreadId) {
-        if let Some(shown) = self.units_mut().find_map(|unit| unit.pane_mut(pane)) {
-            shown.chat = Some(id);
+        if let Some(shown) = self.units_mut().find_map(|unit| unit.pane_mut(pane))
+            && let Content::Chat(thread) = &mut shown.content
+        {
+            *thread = Some(id);
         }
     }
 
@@ -38,7 +44,7 @@ impl Workspace {
     pub fn close_chat_panes(&mut self, id: &ThreadId) {
         for unit in self.units_mut() {
             let panes: Vec<u64> = (unit.tabs.iter().flat_map(Tab::panes))
-                .filter(|pane| pane.chat.as_ref() == Some(id))
+                .filter(|pane| pane.chat() == Some(id))
                 .map(|pane| pane.id)
                 .collect();
             for pane in panes {
@@ -52,7 +58,7 @@ impl Workspace {
         let panes =
             (self.units_mut()).flat_map(|unit| unit.tabs.iter_mut().flat_map(Tab::panes_mut));
         for pane in panes {
-            let title = pane.chat.as_ref().and_then(&title_of);
+            let title = pane.chat().and_then(&title_of);
             if let Some(title) = title.filter(|title| *title != pane.title.as_ref()) {
                 pane.title = title.to_owned().into();
             }
@@ -106,7 +112,7 @@ mod tests {
         let unit = workspace.branch().unwrap();
         assert_eq!(unit.tabs.len(), 2);
         assert_eq!(unit.active_tab, 0);
-        assert_eq!(unit.tabs[1].first().chat, Some(thread("t")));
+        assert_eq!(unit.tabs[1].first().chat(), Some(&thread("t")));
         assert!(
             workspace
                 .add_chat_tab("/src/gone".as_ref(), thread("u"), false)
@@ -142,7 +148,7 @@ mod tests {
             let panes = workspace.branch().unwrap().tabs[0].panes();
             panes
                 .iter()
-                .find(|pane| pane.chat.is_some())
+                .find(|pane| pane.chat().is_some())
                 .unwrap()
                 .title
                 .clone()
