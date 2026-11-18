@@ -186,7 +186,7 @@ pub(crate) struct Readied {
 }
 
 /// Starts the host in the app's own process up to what the main thread must do, on the thread
-/// `embedded::start` runs on, the old profiles having been `cleared` already: the same hello as
+/// `embedded::start` runs on, which took `cleared` to clear the old profiles: the same hello as
 /// a host process's, then CEF loaded from the engine and its root cache readied. What goes
 /// wrong once the app is heard is said on the socket, as a host process would say it.
 pub(crate) fn ready_embedded(
@@ -206,15 +206,13 @@ pub(crate) fn ready_embedded(
         let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
         steps.time("root", || root(&profiles))
     })();
-    match readied {
-        Ok(root) => Ok(Readied {
-            reader,
-            root,
-            steps,
-            posted: Instant::now(),
-        }),
-        Err(message) => Err(said(message)),
-    }
+    let root = readied.map_err(said)?;
+    Ok(Readied {
+        reader,
+        root,
+        steps,
+        posted: Instant::now(),
+    })
 }
 
 /// The rest of the host's start in the app's own process, on its main thread: CEF started with

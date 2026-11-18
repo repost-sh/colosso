@@ -251,7 +251,8 @@ impl Shell {
             });
             return;
         }
-        let theirs = Some(tab.current()).filter(|pane| pane.file().is_none() || pane.entered_at > 0);
+        let theirs =
+            Some(tab.current()).filter(|pane| pane.file().is_none() || pane.entered_at > 0);
         let mut panes: Vec<_> = (tab.panes().into_iter())
             .filter_map(|pane| Some((takes_keys_after(pane.kind())?, pane)))
             .collect();

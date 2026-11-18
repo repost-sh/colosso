@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use gpui_kit::{Action, point};
 
-use crate::gradient::GradientTheme;
 use crate::browser::profiles::By;
+use crate::gradient::GradientTheme;
 use crate::model::{Browser, Content, Pane, PaneKind, Tab, Unloaded};
 use crate::settings::{self, Layout};
 use crate::shell::Shell;

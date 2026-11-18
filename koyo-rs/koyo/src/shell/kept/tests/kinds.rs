@@ -9,35 +9,34 @@ use koyo_term_control::Handle;
 
 use super::{file, launch, main_with, page, written};
 use crate::browser::Dock;
-use crate::model::PaneKind;
+use crate::model::{Pane, PaneKind};
 use crate::shell::kept::{KeptPane, KeptTree};
 use crate::test_support::{draw, repo, select, shell_with, terminals_listed};
 
 #[gpui_kit::test]
 fn each_kind_of_pane_is_kept_as_what_it_shows_and_comes_back_so(cx: &mut TestAppContext) {
     let root = repo("kept-window-kinds", &[("README.md", "hi\n")]);
-    let pane = |kept: KeptPane| KeptTree::Pane(kept);
     let tabs = [
         page("https://example.com/", "Example"),
-        pane(KeptPane::Page {
+        KeptTree::Pane(KeptPane::Page {
             url: "https://agent.example/".into(),
             title: "Agent".into(),
             by_agent: true,
         }),
-        pane(KeptPane::Terminal {
+        KeptTree::Pane(KeptPane::Terminal {
             handle: Handle("term_kinds".into()),
             name: "zsh".into(),
         }),
-        pane(KeptPane::Chat {
+        KeptTree::Pane(KeptPane::Chat {
             thread: ThreadId("0001".into()),
             title: "Plan".into(),
         }),
-        pane(KeptPane::NewChat),
-        pane(KeptPane::File {
+        KeptTree::Pane(KeptPane::NewChat),
+        KeptTree::Pane(KeptPane::File {
             path: root.join("README.md"),
         }),
-        pane(KeptPane::Changes),
-        pane(KeptPane::Device {
+        KeptTree::Pane(KeptPane::Changes),
+        KeptTree::Pane(KeptPane::Device {
             udid: "UDID-KINDS".into(),
             name: "iPhone 17 Pro".into(),
             ipad: false,
@@ -106,7 +105,7 @@ fn a_file_and_the_diffs_not_shown_since_they_came_back_are_kept_as_they_were(
     draw(window, cx);
     let waiting = cx.read(|cx| {
         let unit = shell.read(cx).workspace.branch().expect("the checkout");
-        let opened = |pane: &crate::model::Pane| pane.file().is_some() || pane.changes().is_some();
+        let opened = |pane: &Pane| pane.file().is_some() || pane.changes().is_some();
         !(unit.tabs[1..3].iter()).any(|tab| opened(tab.first()))
     });
     assert!(waiting, "neither is opened while its tab isn't shown");

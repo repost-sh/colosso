@@ -2,7 +2,6 @@
 //! crashes or breaks the protocol.
 
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
@@ -253,13 +252,12 @@ fn a_hung_server_exits_once_its_input_closes() {
 }
 
 fn exited_within(server: &mut Child, limit: Duration) -> Option<ExitStatus> {
-    let (_keep_open, ticks) = mpsc::channel::<()>();
     let started = Instant::now();
     while started.elapsed() < limit {
         if let Some(status) = server.try_wait().unwrap() {
             return Some(status);
         }
-        let _ = ticks.recv_timeout(Duration::from_millis(10));
+        std::thread::park_timeout(Duration::from_millis(10));
     }
     server.try_wait().unwrap()
 }

@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::failure::Failure;
 use crate::list_file::{self, Line};
 
-/// The files that still block, by its path in the checkout.
+/// The list of the files that still block, by its path in the checkout.
 pub const FILE: &str = "koyo-rs/blocking-debt.txt";
 
 /// What the list's paths are relative to: the Cargo workspace, as in `hygiene-allow.txt`.

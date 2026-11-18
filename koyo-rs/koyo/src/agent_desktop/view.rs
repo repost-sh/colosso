@@ -16,9 +16,9 @@ use koyo_desk_wire::keys::{self, flags};
 use koyo_desk_wire::link::{Button, DesktopState, Input};
 
 use super::canvas::Canvas;
-use crate::hosted::canvas::Pointed;
 use super::{Desk, State, marks};
 use crate::browser::keys::key_codes;
+use crate::hosted::canvas::Pointed;
 use crate::modal::{Button as Push, Tone};
 use crate::theme;
 

@@ -2,19 +2,6 @@ use crate::shipped::{Code, Kind, Token};
 
 use super::names::Names;
 
-/// The `Path` methods that ask the file system, and so block the thread they run on.
-const PROBES: [&str; 9] = [
-    "canonicalize",
-    "exists",
-    "is_dir",
-    "is_file",
-    "metadata",
-    "read_dir",
-    "read_link",
-    "symlink_metadata",
-    "try_exists",
-];
-
 /// The functions of `koyo/src/blocking.rs` that lend a `Blocking` to the closure handed them.
 const MAKERS: [&str; 5] = ["spawn", "thread", "on_quit", "at_launch", "in_test"];
 
@@ -194,7 +181,9 @@ pub fn blocks(path: &[String]) -> bool {
         | ["std", "thread", "park" | "park_timeout"]
         | [.., "Child", "wait" | "try_wait"]
         | [.., "block_on" | "block_with_timeout"] => true,
-        [.., "Path" | "PathBuf", probe] => PROBES.contains(probe),
+        [.., "Path" | "PathBuf", probe] => METHODS
+            .iter()
+            .any(|(method, receiver, _)| method == probe && matches!(receiver, Receiver::Path)),
         _ => false,
     }
 }
@@ -256,18 +245,11 @@ fn typed_receiver(code: &Code<'_>, names: &Names, dot: usize) -> Option<String> 
 /// Whether the receiver before the `.` at `dot` is named for an executor, as `executor` or
 /// `cx.background_executor()`.
 fn named_executor(tokens: &[Token<'_>], dot: usize) -> bool {
-    let mut at = dot.checked_sub(1);
-    if at
+    let kind_at = |at: usize| tokens.get(at).map(|token| token.kind);
+    let called = (dot.checked_sub(2))
+        .is_some_and(|open| kind_at(open) == Some("(") && kind_at(open + 1) == Some(")"));
+    (dot.checked_sub(if called { 3 } else { 1 }))
         .and_then(|at| tokens.get(at))
-        .is_some_and(|token| token.kind == ")")
-        && at
-            .and_then(|at| at.checked_sub(1))
-            .and_then(|at| tokens.get(at))
-            .is_some_and(|token| token.kind == "(")
-    {
-        at = at.and_then(|at| at.checked_sub(2));
-    }
-    at.and_then(|at| tokens.get(at))
         .is_some_and(|token| named(token) && token.text.ends_with("executor"))
 }
 

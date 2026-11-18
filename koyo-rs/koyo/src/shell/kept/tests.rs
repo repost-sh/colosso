@@ -8,11 +8,6 @@ use gpui_kit::{AppContext as _, Entity, TestAppContext};
 
 use super::{Kept, KeptCheckout, KeptPane, KeptProject, KeptTree, SAVE_DELAY};
 use crate::blocking::in_test;
-
-/// What the window's file at `path` holds, as a launch reads it.
-pub(super) fn read_file(path: &Path) -> Kept {
-    in_test(|may| super::read_file(path, may))
-}
 use crate::model::{Edge, PaneKind, SplitAxis};
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
@@ -22,6 +17,11 @@ mod back;
 mod kinds;
 mod loose;
 mod pinned;
+
+/// What the window's file at `path` holds, as a launch reads it.
+pub(super) fn read_file(path: &Path) -> Kept {
+    in_test(|may| super::read_file(path, may))
+}
 
 fn page(url: &str, title: &str) -> KeptTree {
     KeptTree::Pane(KeptPane::Page {
@@ -187,8 +187,7 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_nothing() {
     };
     let path = file("kept-window-file", &kept);
     assert_eq!(read_file(&path), kept);
-    let json: Option<serde_json::Value> = in_test(|may| crate::kept_file::read(&path, may));
-    let json = json.unwrap();
+    let json: serde_json::Value = in_test(|may| crate::kept_file::read(&path, may)).unwrap();
     assert_eq!(json["projects"][0]["checkout"], "/src/app-feature");
     let tabs = &json["checkouts"][0]["tabs"];
     assert_eq!(tabs[0]["kind"], "page");
@@ -448,9 +447,9 @@ fn a_device_s_tab_brought_back_starts_nothing_until_asked(cx: &mut TestAppContex
 #[test]
 fn the_pages_a_window_brings_back_are_each_checkouts_each_spaces_and_the_pinned_ones() {
     let root = Path::new("/work/app");
-    let terminal = KeptTree::Pane(KeptPane::NewChat);
+    let chat = KeptTree::Pane(KeptPane::NewChat);
     let tabs = [
-        split(SplitAxis::Row, 0.5, page("https://a.example/", "A"), terminal),
+        split(SplitAxis::Row, 0.5, page("https://a.example/", "A"), chat),
         page("", "New Tab"),
         page("https://b.example/", "B"),
     ];

@@ -12,7 +12,7 @@ unsafe extern "C" {
     fn CFRunLoopPerformBlock(run_loop: sys::Ref, mode: sys::Ref, block: &block2::Block<dyn Fn()>);
 }
 
-/// The app's hello in `protocol`, naming `surfaces`.
+/// The app's hello in `protocol`, naming `codes.koyo.desk.test` for its frames.
 fn apps_hello(protocol: u32) -> ToHost {
     ToHost::Hello {
         protocol,

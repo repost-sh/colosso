@@ -28,10 +28,10 @@ pub(crate) fn page_brought_back(url: &str, title: &str, by: By, cx: &mut App) ->
 }
 
 impl Shell {
-    /// Makes the pages `missing` of the shown tab's browser panes, by their panes, at the
-    /// addresses they kept and whose they were, so the panes draw them (`Shell::make_shown`),
-    /// an agent's page an agent's again. Each opens its page once laid out; its first load is
-    /// no new visit when it was visited before.
+    /// Makes the pages the shown tab's browser panes in `missing` lack, each at the address its
+    /// pane kept and as whose it was, so the panes draw them (`Shell::make_shown`), an agent's
+    /// page an agent's again. Each opens its page once laid out; its first load is no new visit
+    /// when it was visited before.
     pub(crate) fn make_pages(
         &mut self,
         missing: Vec<(u64, Unloaded, By)>,

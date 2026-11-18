@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::answers;
 use crate::blocking::in_test;
+use crate::test_support::scratch;
 
 fn move_data_folder(
     former: &Path,
@@ -25,7 +26,6 @@ fn move_newest(
 ) -> io::Result<Option<PathBuf>> {
     in_test(|may| super::move_newest(base, runs, stop, may))
 }
-use crate::test_support::scratch;
 
 #[test]
 fn colossos_data_moves_once_its_daemon_has_stopped() {

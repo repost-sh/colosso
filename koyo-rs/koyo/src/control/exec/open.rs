@@ -414,10 +414,7 @@ fn shown_file(shell: &Shell, path: &Path, cx: &App) -> Option<u64> {
     let unit = shell.workspace.branch()?;
     let mut panes = unit.tabs.iter().flat_map(Tab::panes);
     panes
-        .find(|pane| {
-            pane.file()
-                .is_some_and(|file| file.read(cx).path == path)
-        })
+        .find(|pane| pane.file().is_some_and(|file| file.read(cx).path == path))
         .map(|pane| pane.id)
 }
 

@@ -27,8 +27,8 @@ pub(super) use self::grants::still_open;
 pub(crate) use self::listing::list;
 pub(super) use self::listing::{Found, find};
 use super::super::{Caller, main_shell};
-use crate::browser::profiles::{self, By};
 use crate::browser::BrowserView;
+use crate::browser::profiles::{self, By};
 use crate::model::Spot;
 
 /// What a call was let use a page on.

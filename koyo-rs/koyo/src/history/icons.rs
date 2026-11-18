@@ -136,8 +136,9 @@ pub fn icon(url: &str, cx: &App) -> Option<Arc<Image>> {
             cx.update_global::<Icons, _>(|icons, _| icons.by_host.get_mut().insert(host, landed));
         } else {
             cx.update(|cx| {
-                let icons = cx.try_global::<Icons>();
-                icons.map(|icons| icons.by_host.borrow_mut().insert(host, landed));
+                if let Some(icons) = cx.try_global::<Icons>() {
+                    icons.by_host.borrow_mut().insert(host, landed);
+                }
             });
         }
     })

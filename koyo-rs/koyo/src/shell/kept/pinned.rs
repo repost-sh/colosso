@@ -14,9 +14,9 @@ use gpui_kit::Context;
 use serde_json::{Map, Value, json};
 
 use super::SAVE_DELAY;
+use crate::blocking::Blocking;
 use crate::browser;
 use crate::browser::profiles::By;
-use crate::blocking::Blocking;
 use crate::kept_file::{self, KeptFile};
 use crate::model::{Pinned, Tab};
 use crate::shell::Shell;
