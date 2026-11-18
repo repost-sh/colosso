@@ -10,6 +10,9 @@
 # <pid> is the test Koyo `koyo-verify confirm` accepted, freshly launched. Each scene is a row
 # in .superpowers/perf/<stamp>-<label>-<scene>.tsv. Ends with `koyo-verify stop`. KOYO_VERIFY names
 # another helper, such as one whose bundle is an older build, for a before/after.
+#
+# A step the app takes more than 10 s to answer is a stall: the app is sampled for 5 s while it
+# lasts, into .superpowers/perf/<stamp>-<label>-stall.sample.txt, and the run stops there.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 cd "$here/../../../.."
@@ -17,21 +20,35 @@ B=${KOYO_VERIFY:-$here/koyo-verify}
 [ $# -ge 2 ] || { echo "usage: perf-run <pid> <label> [seconds]" >&2; exit 2; }
 pid=$1 label=$2 seconds=${3:-60}
 fixture="$PWD/.superpowers/v/fixture/focus.html"
+stall="$PWD/.superpowers/perf/$(date +%Y%m%d-%H%M%S)-$label-stall.sample.txt"
 
 total() { script/perf-sample "$pid" "$1" "$label-$2" | awk '$2 == "total" { print }'; }
+
+app() {
+  (sleep 10 && sample "$pid" 5 -file "$stall" >/dev/null 2>&1) &
+  watch=$!
+  answered=0
+  $B app "$@" >/dev/null || answered=$?
+  kill "$watch" 2>/dev/null || true
+  wait "$watch" 2>/dev/null || true
+  if [ "$answered" -ne 0 ]; then
+    [ -f "$stall" ] && echo "perf-run $label: the app stalled on $1; sampled into $stall" >&2
+    exit "$answered"
+  fi
+}
 
 $B run "perf-$label" >/dev/null
 sleep 10
 total "$seconds" launch
 
-$B app tab_open '{"kind":"terminal","command":"/bin/zsh -f","select":true}' >/dev/null
-$B app tab_open "{\"kind\":\"browser\",\"url\":\"file://$fixture\",\"select\":true}" >/dev/null
-$B app chat_create '{"text":"hello","select":true}' >/dev/null
+app tab_open '{"kind":"terminal","command":"/bin/zsh -f","select":true}'
+app tab_open "{\"kind\":\"browser\",\"url\":\"file://$fixture\",\"select\":true}"
+app chat_create '{"text":"hello","select":true}'
 sleep 15
 total "$seconds" idle
 
-$B app layout_set '{"rightPanel":"changes"}' >/dev/null
-$B app tab_open '{"kind":"terminal","command":"/bin/sh -c \"while :; do date; sleep 0.02; done\"","select":true}' >/dev/null
+app layout_set '{"rightPanel":"changes"}'
+app tab_open '{"kind":"terminal","command":"/bin/sh -c \"while :; do date; sleep 0.02; done\"","select":true}'
 sleep 5
 total "$seconds" term
 
