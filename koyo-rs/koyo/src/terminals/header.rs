@@ -17,7 +17,7 @@ use koyo_term_control::{Handle, RequestBody, Status};
 
 use super::responsive::ResponsiveTerminal;
 use super::states::{State, most_urgent, waits};
-use crate::model::Tab;
+use crate::model::{Pane, Tab};
 use crate::pane;
 use crate::responsive::bar::toggle_button;
 use crate::shell::{Shell, ellipsized};
@@ -61,7 +61,7 @@ impl Shell {
     /// What `tab`'s terminals are doing, those the daemon has told of.
     fn tab_terminal_statuses(&self, tab: &Tab) -> impl Iterator<Item = Status> {
         (tab.panes().into_iter())
-            .filter_map(|pane| pane.terminal)
+            .filter_map(Pane::terminal)
             .filter_map(|id| self.terminal_state(id))
             .map(|state| state.status)
     }

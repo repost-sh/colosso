@@ -24,7 +24,8 @@ use std::time::Duration;
 use gpui_kit::{Action, point};
 
 use crate::gradient::GradientTheme;
-use crate::model::{Pane, PaneKind, Tab, Unloaded};
+use crate::browser::profiles::By;
+use crate::model::{Browser, Content, Pane, PaneKind, Tab, Unloaded};
 use crate::settings::{self, Layout};
 use crate::shell::Shell;
 use crate::shell::ToggleRightPanel;
@@ -60,8 +61,13 @@ fn web_page(address: &str, title: &str) -> Tab {
     let unloaded = Unloaded {
         address: address.into(),
         favicon: None,
+        restored: true,
     };
-    Tab::Single(Pane::unloaded(unloaded, title.to_owned().into()))
+    let content = Content::Browser(Browser::waiting(unloaded, By::Person));
+    Tab::Single(Pane {
+        title: title.to_owned().into(),
+        ..Pane::of(content)
+    })
 }
 
 /// A tab of `kind`, titled `title`.

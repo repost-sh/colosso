@@ -16,7 +16,7 @@ use super::Shell;
 use super::elements::{ellipsized, icon, pane_close_button};
 use super::tab_list::title_with_end;
 use crate::files::{FilePane, file_icon};
-use crate::model::{Pane, Tab};
+use crate::model::{Content, Editor, Pane, Tab};
 use crate::pane::{CLOSE, ROW_GLYPH, row_sized};
 use crate::theme::Palette;
 
@@ -42,15 +42,18 @@ pub struct Face {
 
 impl Face {
     pub fn of(pane: &Pane, cx: &App) -> Self {
-        let file = pane.file.as_ref().map(|file| file.read(cx));
+        let file = pane.file().map(|file| file.read(cx));
         Face {
             id: pane.id,
-            icon: if file.is_some() || pane.unopened_file().is_some() {
-                file_icon(&pane.title)
-            } else if pane.shows_changes() {
-                IconName::FileDiff
-            } else {
-                pane.kind.icon()
+            icon: match &pane.content {
+                Content::Editor(Editor::File(_)) => file_icon(&pane.title),
+                Content::Editor(Editor::Changes(_)) => IconName::FileDiff,
+                Content::Editor(Editor::Untitled)
+                | Content::Chat(_)
+                | Content::Terminal(_)
+                | Content::Browser(_)
+                | Content::Desktop(_)
+                | Content::Device(_) => pane.kind().icon(),
             },
             favicon: pane.favicon(),
             title: pane.title.clone(),
@@ -175,4 +178,62 @@ fn split_halves(faces: &[Face], p: Palette, cx: &mut Context<Shell>) -> Div {
         .items_center()
         .gap(px(10.))
         .children(parts)
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::TestAppContext;
+    use gpui_kit::assets::IconName;
+
+    use super::Face;
+    use crate::files::tests::support::{editing, typed, with_shell};
+    use crate::files::{At, Place};
+    use crate::model::{Pane, PaneKind};
+    use crate::test_support::{repo, select, shell_with};
+
+    /// A tab shows the icon of what its pane shows: a file's own, the diffs', else its kind's,
+    /// whether the file or the diffs are open yet or wait for the tab to be shown.
+    #[gpui_kit::test]
+    fn a_tab_shows_the_icon_of_what_its_pane_shows(cx: &mut TestAppContext) {
+        let icon = |pane: Pane, cx: &mut TestAppContext| cx.update(|cx| Face::of(&pane, cx).icon);
+        let file = Pane::of_path("/src/app/src/main.rs".into());
+        assert_eq!(icon(file, cx), IconName::FileCode);
+        let changes = Pane::of_changes(None);
+        assert_eq!(icon(changes, cx), IconName::FileDiff);
+        let kinds = PaneKind::ALL.map(|kind| icon(Pane::new(kind), cx));
+        let icons = [
+            IconName::MessageSquare,
+            IconName::SquareTerminal,
+            IconName::Globe,
+            IconName::FileCode,
+            IconName::Bot,
+            IconName::Smartphone,
+        ];
+        assert_eq!(kinds, icons, "chat, terminal, page, editor, desktop, device");
+    }
+
+    /// An open file's tab shows its icon, and says whether it's the preview and whether it
+    /// has unsaved edits.
+    #[gpui_kit::test]
+    fn a_files_tab_says_whether_its_the_preview_and_unsaved(cx: &mut TestAppContext) {
+        let root = repo("tab-face-file", &[("README.md", "hi\n")]);
+        let (window, shell) = shell_with(&[&root], cx);
+        select(&shell, &root, cx);
+        let face = |cx: &mut TestAppContext| {
+            cx.read(|cx| {
+                let shell = shell.read(cx);
+                let pane = shell.workspace.tab_shown().expect("the file's tab").first();
+                let face = Face::of(pane, cx);
+                (face.icon, face.preview, face.dirty)
+            })
+        };
+        with_shell(window, &shell, cx, |shell, window, cx| {
+            shell.preview_file(Place::file("README.md"), window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(face(cx), (IconName::FileText, true, false), "previewed");
+        let (_, editor, _) = editing(window, &shell, "README.md", At::Bytes(0..0), cx);
+        typed(window, &editor, "x", cx);
+        assert_eq!(face(cx), (IconName::FileText, false, true), "kept, and typed in");
+    }
 }

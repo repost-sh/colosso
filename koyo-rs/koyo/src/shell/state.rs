@@ -5,7 +5,7 @@
 use gpui_kit::{App, AppContext as _, Context, SharedString};
 
 use super::{Place, Shell};
-use crate::model::{Pane, PaneKind};
+use crate::model::{Content, Pane, PaneKind};
 use crate::navigation::Route;
 use crate::settings_view::SettingsPage;
 
@@ -84,9 +84,10 @@ impl Shell {
 
     /// [`Self::desktop_pane`], a new one's tab at `place`.
     pub(crate) fn desktop_pane_at(&mut self, place: Place, cx: &mut Context<Self>) -> Option<u64> {
-        let open = (self.workspace).find_pane(|pane| pane.kind == PaneKind::Desktop);
+        let open = (self.workspace).find_pane(|pane| pane.kind() == PaneKind::Desktop);
         let make = |_: &mut Self, cx: &mut Context<Self>| {
-            Pane::desktop(cx.new(crate::agent_desktop::DeskView::new))
+            let view = cx.new(crate::agent_desktop::DeskView::new);
+            Pane::of(Content::Desktop(Some(view)))
         };
         self.one_pane(open, place, make, cx)
     }

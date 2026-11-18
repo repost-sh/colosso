@@ -1,4 +1,5 @@
 use super::*;
+use crate::browser::profiles::By;
 
 fn worktree(path: &str, branch: &str) -> Worktree {
     Worktree {
@@ -42,8 +43,13 @@ pub(crate) fn page(address: &str) -> Tab {
     let unloaded = Unloaded {
         address: address.into(),
         favicon: None,
+        restored: true,
     };
-    Tab::Single(Pane::unloaded(unloaded, address.to_owned().into()))
+    let content = Content::Browser(Browser::waiting(unloaded, By::Person));
+    Tab::Single(Pane {
+        title: address.to_owned().into(),
+        ..Pane::of(content)
+    })
 }
 
 /// One project with its main checkout and a worktree, the main one's tabs a chat and the pages
@@ -108,8 +114,8 @@ fn closing_the_last_active_tab_activates_its_left_neighbour() {
     assert_eq!(workspace.branch().unwrap().active_tab, 1);
 }
 
-#[test]
-fn a_closed_tab_comes_back_where_it_was_and_shows() {
+#[gpui_kit::test]
+fn a_closed_tab_comes_back_where_it_was_and_shows(cx: &mut gpui_kit::TestAppContext) {
     let mut workspace = unit_with_tabs(3, 0);
     let ids = |workspace: &Workspace| {
         let tabs = &workspace.branch().unwrap().tabs;
@@ -117,15 +123,12 @@ fn a_closed_tab_comes_back_where_it_was_and_shows() {
     };
     let before = ids(&workspace);
     let tab = workspace.close_tab(0, 0, 1).unwrap();
-    workspace.remember_closed(ClosedTab {
+    let closed = ClosedTab {
         from: ClosedFrom::Checkout("/src/app".into()),
         at: 1,
         tab,
-        addresses: Vec::new(),
-        files: Vec::new(),
-        changes: Vec::new(),
-        devices: Vec::new(),
-    });
+    };
+    cx.update(|cx| workspace.remember_closed(closed, cx));
     let (closed, at) = workspace.take_closed(|_| true).unwrap();
     assert_eq!(at, Spot::Checkout(0, 0, 1));
     workspace.restore_tab((0, 0, 1), closed.tab);
@@ -137,28 +140,25 @@ fn a_closed_tab_comes_back_where_it_was_and_shows() {
     );
 }
 
-#[test]
-fn closed_tabs_of_a_checkout_gone_since_are_let_go() {
+#[gpui_kit::test]
+fn closed_tabs_of_a_checkout_gone_since_are_let_go(cx: &mut gpui_kit::TestAppContext) {
     let mut workspace = unit_with_tabs(2, 0);
     for (checkout, at) in [("/src/app", 0), ("/work/gone", 0)] {
         let tab = workspace.close_tab(0, 0, 0).unwrap();
-        workspace.remember_closed(ClosedTab {
+        let closed = ClosedTab {
             from: ClosedFrom::Checkout(checkout.into()),
             at,
             tab,
-            addresses: Vec::new(),
-            files: Vec::new(),
-            changes: Vec::new(),
-            devices: Vec::new(),
-        });
+        };
+        cx.update(|cx| workspace.remember_closed(closed, cx));
     }
     let (_, at) = workspace.take_closed(|_| true).unwrap();
     assert_eq!(at, Spot::Checkout(0, 0, 0));
     assert!(workspace.take_closed(|_| true).is_none());
 }
 
-#[test]
-fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves_it() {
+#[gpui_kit::test]
+fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves_it(cx: &mut gpui_kit::TestAppContext) {
     let mut workspace = unit_with_tabs(1, 0);
     let tab = workspace.branch().unwrap().tabs[0].clone();
     let loose = ClosedFrom::Loose {
@@ -166,15 +166,12 @@ fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves
         project: "/src/app".into(),
     };
     for from in [ClosedFrom::Checkout("/src/app".into()), loose.clone()] {
-        workspace.remember_closed(ClosedTab {
+        let closed = ClosedTab {
             from,
             at: 0,
             tab: tab.clone(),
-            addresses: Vec::new(),
-            files: Vec::new(),
-            changes: Vec::new(),
-            devices: Vec::new(),
-        });
+        };
+        cx.update(|cx| workspace.remember_closed(closed, cx));
     }
     let checkout = |from: &ClosedFrom| matches!(from, ClosedFrom::Checkout(_));
     let (_, back) = workspace.take_closed(checkout).unwrap();
@@ -184,20 +181,17 @@ fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves
     assert_eq!((closed.from, back), (loose, Spot::Loose(7)));
 }
 
-#[test]
-fn only_the_newest_closed_tabs_are_kept() {
+#[gpui_kit::test]
+fn only_the_newest_closed_tabs_are_kept(cx: &mut gpui_kit::TestAppContext) {
     let mut workspace = unit_with_tabs(1, 0);
     let tab = workspace.branch().unwrap().tabs[0].clone();
     for at in 0..closed::KEPT + 5 {
-        workspace.remember_closed(ClosedTab {
+        let closed = ClosedTab {
             from: ClosedFrom::Checkout("/src/app".into()),
             at,
             tab: tab.clone(),
-            addresses: Vec::new(),
-            files: Vec::new(),
-            changes: Vec::new(),
-            devices: Vec::new(),
-        });
+        };
+        cx.update(|cx| workspace.remember_closed(closed, cx));
     }
     let mut kept = 0;
     while workspace.take_closed(|_| true).is_some() {
@@ -390,4 +384,45 @@ fn a_workspace_without_projects_has_nothing_selected() {
     let mut workspace = Workspace::default();
     workspace.new_tab(PaneKind::Chat);
     assert!(workspace.branch().is_none());
+}
+
+#[test]
+fn a_pane_is_the_persons_unless_it_is_a_page_an_agent_opened() {
+    for kind in PaneKind::ALL {
+        assert_eq!(Pane::new(kind).by(), By::Person, "{kind:?}");
+    }
+    let waiting = [Pane::of_path("/src/app/README.md".into()), Pane::of_changes(None)];
+    for pane in waiting {
+        assert_eq!(pane.by(), By::Person);
+    }
+    let unloaded = Unloaded {
+        address: "https://agent.example/".into(),
+        favicon: None,
+        restored: true,
+    };
+    let agents = Pane::of(Content::Browser(Browser::waiting(unloaded, By::Agent)));
+    assert_eq!(agents.by(), By::Agent);
+}
+
+#[test]
+fn a_tab_shows_a_page_when_a_pane_of_it_is_a_browsers() {
+    assert!(page("https://example.com/").shows_page());
+    assert!(Tab::Single(Pane::new(PaneKind::Browser)).shows_page(), "the start page");
+    let beside = Tab::split(SplitAxis::Row, chat("Plan"), page("https://example.com/"));
+    assert!(beside.shows_page(), "beside a chat");
+    for kind in PaneKind::ALL.into_iter().filter(|kind| *kind != PaneKind::Browser) {
+        assert!(!Tab::Single(Pane::new(kind)).shows_page(), "{kind:?}");
+    }
+    assert!(!Tab::Single(Pane::of_changes(None)).shows_page());
+}
+
+#[test]
+fn a_pane_waiting_to_open_is_titled_as_what_it_opens() {
+    let file = Pane::of_path("/src/app/src/main.rs".into());
+    assert_eq!(
+        (file.kind(), file.title.as_ref()),
+        (PaneKind::Editor, "main.rs")
+    );
+    let changes = Pane::of_changes(None);
+    assert_eq!((changes.kind(), changes.title.as_ref()), (PaneKind::Editor, "Changes"));
 }

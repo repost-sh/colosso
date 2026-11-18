@@ -8,6 +8,7 @@ use gpui_kit::{App, Context, SharedString};
 
 use super::Shell;
 use crate::browser;
+use crate::browser::profiles::By;
 use crate::model::{Pane, Unloaded};
 
 impl Shell {
@@ -110,10 +111,11 @@ impl Shell {
         let (title, favicon) = if page.address() == Some(address.as_str()) {
             (page.title.clone(), page.favicon())
         } else {
-            let rested = browser::page_brought_back(&address, "", cx);
+            let rested = browser::page_brought_back(&address, "", By::Person, cx);
             (rested.title.clone(), rested.favicon())
         };
-        (title, Unloaded { address, favicon })
+        let restored = true;
+        (title, Unloaded { address, favicon, restored })
     }
 
     /// Whether the pinned page known by `key` has something to close: a page open, or, brought

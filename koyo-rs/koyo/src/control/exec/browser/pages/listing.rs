@@ -17,7 +17,8 @@ use super::super::super::{Caller, main_shell, output, window_closed};
 use super::super::page;
 use super::super::refusals;
 use super::{Admission, Page, Persons, grants};
-use crate::browser::{BrowserView, agent, profiles};
+use crate::browser::profiles::{self, By};
+use crate::browser::{BrowserView, agent};
 use crate::model::{Spot, Tab};
 
 /// Whose a browser pane is.
@@ -203,7 +204,7 @@ fn add_checkouts(
         return;
     };
     let persons: Vec<u64> = (tab.panes().into_iter())
-        .filter(|pane| !pane.by_agent)
+        .filter(|pane| pane.by() == By::Person)
         .map(|pane| pane.id)
         .collect();
     for listed in &mut pages[from..] {

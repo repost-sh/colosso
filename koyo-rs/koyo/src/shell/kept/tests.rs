@@ -10,9 +10,10 @@ use super::{Kept, KeptCheckout, KeptPane, KeptProject, KeptTree, SAVE_DELAY, rea
 use crate::model::{Edge, PaneKind, SplitAxis};
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
-use crate::test_support::{draw, open_page, repo, scratch, select, shell_with};
+use crate::test_support::{draw, iphone, open_page, repo, scratch, select, shell_with};
 
 mod back;
+mod kinds;
 mod loose;
 mod pinned;
 
@@ -374,14 +375,8 @@ fn a_device_s_tab_is_kept_by_its_device_and_the_picker_s_isnt(cx: &mut TestAppCo
     let (window, shell) = shell_with(&[&root], cx);
     launch(&shell, &path, &[&root], cx);
     select(&shell, &root, cx);
-    let chosen = crate::devices::Chosen {
-        udid: "UDID-K".into(),
-        name: "iPhone 17 Pro".into(),
-        ipad: false,
-        phone: false,
-    };
     shell.update(cx, |shell, cx| {
-        shell.device_pane(Some(chosen), true, cx);
+        shell.device_pane(Some(iphone("UDID-K")), true, cx);
         shell.device_pane(None, true, cx);
     });
     let device = KeptTree::Pane(KeptPane::Device {

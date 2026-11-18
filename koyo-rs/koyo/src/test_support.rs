@@ -28,6 +28,11 @@ use crate::settings::{self, Layout};
 #[cfg(test)]
 use crate::shell::Shell;
 
+#[cfg(test)]
+mod panes;
+#[cfg(test)]
+pub use panes::{iphone, terminals_listed};
+
 /// A folder for one test under the target folder, empty.
 #[cfg(test)]
 pub fn scratch(name: &str) -> PathBuf {

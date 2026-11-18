@@ -3,6 +3,7 @@
 
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, Focusable as _, TestAppContext};
 
+use crate::files::tests::with_shell;
 use crate::keyboard::{self, Holder, Part};
 use crate::model::PaneKind;
 use crate::settings::Layout;
@@ -10,6 +11,8 @@ use crate::shell::{CloseTab, Shell};
 use crate::test_support::{
     draw, keyboard_at_window, open_page, press_prompt, repo, select, shell_with,
 };
+
+mod kinds;
 
 /// A shell over a checkout of its own, selected.
 fn shell(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
@@ -40,6 +43,13 @@ fn typing_in(
         shell.read(cx).pane_with_keyboard(window, cx)
     });
     pane.unwrap()
+}
+
+/// Asks for pane `pane`, as the launcher does.
+fn ask_for(window: AnyWindowHandle, shell: &Entity<Shell>, pane: u64, cx: &mut TestAppContext) {
+    with_shell(window, shell, cx, |shell, window, cx| {
+        shell.focus_pane(pane, keyboard::Intent::Launcher, window, cx);
+    });
 }
 
 /// A page's tab, opened at an address as the launcher opens one: its pane, with the keyboard.
@@ -98,10 +108,7 @@ fn moving_to_a_chat_never_puts_the_keyboard_in_its_prompt(cx: &mut TestAppContex
         "the other chat is shown"
     );
     at_window("switched to with ⌃⇥", cx);
-    (cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.focus_pane(first, keyboard::Intent::Launcher, window, cx));
-    }))
-    .unwrap();
+    ask_for(window, &shell, first, cx);
     at_window("asked for by its pane", cx);
     press_prompt(window, cx);
     cx.simulate_keystrokes(window, "cmd-,");
@@ -281,7 +288,7 @@ fn the_keyboard_comes_back_to_the_file_the_person_was_in_not_to_the_chat_beside_
     let typing = cx.update_window(window, |_, window, cx| {
         let shell = shell.read(cx);
         let pane = shell.workspace.branch().and_then(|unit| unit.pane(file));
-        pane.and_then(|pane| pane.file.clone())
+        pane.and_then(|pane| pane.file().cloned())
             .is_some_and(|file| file.read(cx).has_focus(window, cx))
     });
     assert!(typing.unwrap(), "its editor has the keyboard");
@@ -314,10 +321,7 @@ fn a_pane_closed_with_the_keyboard_in_it_hands_it_to_the_pane_left_beside_it(
 ) {
     let (window, shell) = shell("keys-close-pane", cx);
     let (left, right) = two_pages_beside(window, &shell, cx);
-    (cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.focus_pane(right, keyboard::Intent::Launcher, window, cx));
-    }))
-    .unwrap();
+    ask_for(window, &shell, right, cx);
     assert_eq!(typing_in(window, &shell, cx), Some(right));
     (cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| shell.close_pane(right, window, cx));

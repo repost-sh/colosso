@@ -77,7 +77,7 @@ impl Here {
                     .and_then(|view| Some(view.read(cx).chosen()?.udid.clone()));
                 Some(OpenTab {
                     pane: pane.id,
-                    kind: pane.kind,
+                    kind: pane.kind(),
                     title,
                     url,
                     device,

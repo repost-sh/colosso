@@ -16,7 +16,7 @@ use crate::shell::{Place, Shell};
 pub(crate) fn own_tab(shell: &Shell, caller: &Caller) -> Option<TabAt> {
     match &caller.chat {
         Some(chat) => (shell.workspace)
-            .find_pane(|pane| pane.chat.as_ref().is_some_and(|id| id.0 == *chat))
+            .find_pane(|pane| pane.chat().is_some_and(|id| id.0 == *chat))
             .map(|(at, _)| at),
         None => shell.terminal_tab(&Handle(caller.terminal.clone()?)),
     }

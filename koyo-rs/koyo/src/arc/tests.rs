@@ -13,7 +13,8 @@ use super::clear::Clear;
 use super::delete_space::DeleteSpace;
 use crate::files::tests::{dialog, tabs};
 use crate::launcher::Launcher;
-use crate::model::{Edge, Pane, PaneKind, Tab, Unloaded};
+use crate::browser::profiles::By;
+use crate::model::{Browser, Content, Edge, Pane, PaneKind, Tab, Unloaded};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};
 use crate::settings_view::SettingsPage;
@@ -195,13 +196,15 @@ pub(super) fn said(shell: &Entity<Shell>, cx: &TestAppContext) -> String {
 fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
     let (window, shell, _) = arc_shell(&["arc-address"], cx);
     assert_eq!(said(&shell, cx), "No tab open");
-    let page = Pane::unloaded(
-        Unloaded {
-            address: "https://www.example.com/docs?page=2".into(),
-            favicon: None,
-        },
-        "Example".into(),
-    );
+    let unloaded = Unloaded {
+        address: "https://www.example.com/docs?page=2".into(),
+        favicon: None,
+        restored: true,
+    };
+    let page = Pane {
+        title: "Example".into(),
+        ..Pane::of(Content::Browser(Browser::waiting(unloaded, By::Person)))
+    };
     let shown = [
         (Tab::Single(page), "example.com"),
         (chat("Plan the release"), "Plan the release"),
@@ -338,9 +341,11 @@ fn tell(shell: &Entity<Shell>, summary: ThreadSummary, cx: &mut TestAppContext) 
 /// chat seen: its pane.
 fn unseen_chat(shell: &Entity<Shell>, cx: &mut TestAppContext) -> u64 {
     shell.update(cx, |shell, cx| {
-        let mut pane = Pane::new(PaneKind::Chat);
-        pane.title = "A chat".into();
-        pane.chat = Some(koyo_agent::protocol::ids::ThreadId("0001".into()));
+        let thread = koyo_agent::protocol::ids::ThreadId("0001".into());
+        let pane = Pane {
+            title: "A chat".into(),
+            ..Pane::of(Content::Chat(Some(thread)))
+        };
         let id = pane.id;
         shell.workspace.push_tab(Tab::Single(pane));
         shell.workspace.push_tab(chat("another"));

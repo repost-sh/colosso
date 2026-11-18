@@ -70,7 +70,7 @@ pub(crate) fn save(input: &FileSaveInput, cx: &mut App) -> Result<Exec, ControlE
                 let pane = (shell.workspace.tab(at))
                     .and_then(|tab| tab.panes().into_iter().find(|pane| pane.id == id))
                     .ok_or_else(|| ControlError::not_found(format!("No pane {id} is open.")))?;
-                let file = pane.file.clone().ok_or_else(|| {
+                let file = pane.file().cloned().ok_or_else(|| {
                     ControlError::invalid_input(format!("Pane {id} shows no file to save."))
                 })?;
                 vec![file]

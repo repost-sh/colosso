@@ -1,6 +1,6 @@
 //! Device tabs (`docs/devices.md` 8): one view per pane, as a browser's pages are, and one tab
 //! per device: choosing a device that's open shows its tab. The tab's title is the device's
-//! name, kept in step as a page's title is.
+//! name, kept in step as a page's title is, and its pane's header has the device's bar.
 
 use gpui_kit::{AppContext as _, Context, Entity};
 
@@ -26,12 +26,10 @@ impl Shell {
         let Some((at, id)) = self.workspace.find_pane(|pane| pane.device_view() == Some(view)) else {
             return;
         };
-        let bar = view.read(cx).bar();
         if let Some(pane) = (self.workspace.tab_mut(at))
             .and_then(|tab| tab.panes_mut().into_iter().find(|pane| pane.id == id))
         {
             pane.title = title.clone().into();
-            pane.set_bar(bar);
             cx.notify();
         }
     }

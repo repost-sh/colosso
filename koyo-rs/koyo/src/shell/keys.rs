@@ -22,7 +22,7 @@ use super::Shell;
 use crate::files::FilePane;
 use crate::browser::BrowserView;
 use crate::keyboard::{self, Cause, Intent, Part, Surface};
-use crate::model::{Pane, PaneKind, Spot};
+use crate::model::{Content, Editor, EditorFile, Pane, PaneKind, Spot};
 use crate::navigation::Route;
 
 /// What's still to happen to the keyboard, between what the person did and the frame that
@@ -79,14 +79,10 @@ impl Shell {
         self.workspace.enter_pane(id);
         self.navigate(Route::Workspace, cx);
         self.follow_selection(window, cx);
-        self.make_shown_browsers(window, cx);
-        self.make_shown_chats(window, cx);
-        let terminal = self.workspace.pane(id).and_then(|pane| pane.terminal);
-        if let Some(terminal) = terminal {
-            self.terminal_view(terminal, window, cx);
-        }
+        self.make_shown(window, cx);
+        let terminal = self.workspace.pane(id).and_then(Pane::terminal);
         let keys = (self.workspace.pane(id))
-            .filter(|pane| pane.kind != PaneKind::Chat)
+            .filter(|pane| pane.kind() != PaneKind::Chat)
             .and_then(|pane| Some((self.keys_of(pane, cx)?, surface_of(pane, cx))));
         let asked = Cause::Intent(intent);
         match keys {
@@ -137,17 +133,22 @@ impl Shell {
     }
 
     /// What takes the keyboard for `pane`: its chat's, its terminal's or its page's view, once
-    /// that's made, the agent desktop's, or its file.
+    /// that's made, the agent desktop's or a device's, or its file once it's open.
     fn keys_of(&self, pane: &Pane, cx: &App) -> Option<Keys> {
-        let chat = (self.chat_tabs.view(pane.id)).map(|view| view.focus_handle(cx));
-        let terminal = || Some(self.terminals.view(pane.terminal?)?.focus_handle(cx));
-        let browser = || pane.view().map(|view| view.focus_handle(cx));
-        let desktop = || Some(pane.desktop_view()?.read(cx).focus_handle().clone());
-        let device = || Some(pane.device_view()?.read(cx).focus_handle().clone());
-        let view = (chat.or_else(terminal).or_else(browser))
-            .or_else(desktop)
-            .or_else(device);
-        (view.map(Keys::View)).or_else(|| pane.file.clone().map(Keys::File))
+        let view = match &pane.content {
+            Content::Chat(_) => self.chat_tabs.view(pane.id)?.focus_handle(cx),
+            Content::Terminal(id) => self.terminals.view((*id)?)?.focus_handle(cx),
+            Content::Browser(browser) => browser.view()?.focus_handle(cx),
+            Content::Desktop(view) => view.as_ref()?.read(cx).focus_handle().clone(),
+            Content::Device(device) => device.view()?.read(cx).focus_handle().clone(),
+            Content::Editor(Editor::File(EditorFile::Open(file))) => {
+                return Some(Keys::File(file.clone()));
+            }
+            Content::Editor(
+                Editor::Untitled | Editor::File(EditorFile::Unopened(_)) | Editor::Changes(_),
+            ) => return None,
+        };
+        Some(Keys::View(view))
     }
 
     /// The pane of the shown tab the person is in: the one with the keyboard, or, while the
@@ -250,19 +251,18 @@ impl Shell {
             });
             return;
         }
-        let theirs = Some(tab.current()).filter(|pane| pane.file.is_none() || pane.entered_at > 0);
-        let panes = tab.panes();
-        let of = |kind: PaneKind| panes.iter().copied().filter(move |pane| pane.kind == kind);
+        let theirs = Some(tab.current()).filter(|pane| pane.file().is_none() || pane.entered_at > 0);
+        let mut panes: Vec<_> = (tab.panes().into_iter())
+            .filter_map(|pane| Some((takes_keys_after(pane.kind())?, pane)))
+            .collect();
+        panes.sort_by_key(|(after, _)| *after);
         let Some((pane, keys)) = (theirs.into_iter())
-            .chain(of(PaneKind::Terminal))
-            .chain(of(PaneKind::Chat))
-            .chain(of(PaneKind::Browser))
-            .chain(of(PaneKind::Device))
+            .chain(panes.into_iter().map(|(_, pane)| pane))
             .find_map(|pane| Some((pane, self.keys_of(pane, cx)?)))
         else {
             return;
         };
-        if pane.kind == PaneKind::Chat && !prompt {
+        if pane.kind() == PaneKind::Chat && !prompt {
             return;
         }
         let (id, surface) = (pane.id, surface_of(pane, cx));
@@ -297,6 +297,20 @@ impl Shell {
             }
             _ => {}
         }
+    }
+}
+
+/// Where a pane of `kind` comes among a tab's panes when the tab shown hands the keyboard to
+/// the first that takes it, the pane the person was in aside (`Shell::tab_takes_keys`): its
+/// terminals first, then its chats, its pages and its devices. A file, the diffs and the agent
+/// desktop take it only as the pane the person was in.
+fn takes_keys_after(kind: PaneKind) -> Option<u8> {
+    match kind {
+        PaneKind::Terminal => Some(0),
+        PaneKind::Chat => Some(1),
+        PaneKind::Browser => Some(2),
+        PaneKind::Device => Some(3),
+        PaneKind::Editor | PaneKind::Desktop => None,
     }
 }
 

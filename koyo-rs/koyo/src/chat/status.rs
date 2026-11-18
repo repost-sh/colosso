@@ -169,7 +169,7 @@ impl Shell {
         cx: &'a App,
     ) -> impl Iterator<Item = &'a ThreadSummary> {
         let chats = self.chat_tabs.chats.read(cx);
-        (tab.panes().into_iter()).filter_map(move |pane| chats.summary(pane.chat.as_ref()?))
+        (tab.panes().into_iter()).filter_map(move |pane| chats.summary(pane.chat()?))
     }
 
     /// The marks of `tab`'s chats, those with something to show.
@@ -248,7 +248,7 @@ impl Shell {
     /// Asks the chats `tab` shows to stop whatever they're running.
     pub fn stop_chats_in(&self, tab: &Tab, cx: &mut App) {
         let threads: Vec<ThreadId> = (tab.panes().into_iter())
-            .filter_map(|pane| pane.chat.clone())
+            .filter_map(|pane| pane.chat().cloned())
             .collect();
         if threads.is_empty() {
             return;

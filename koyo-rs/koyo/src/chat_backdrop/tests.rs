@@ -19,7 +19,8 @@ use super::texture::Texture;
 use crate::budget::wakes_a_minute;
 use crate::chat_backdrop::layout::Scaling;
 use crate::chat_backdrop::wallpaper::Wallpaper;
-use crate::settings::{ChatBackdrop, Quality};
+use crate::model::{Pane, PaneKind};
+use crate::settings::{ChatBackdrop, Quality, Surface};
 use crate::test_support::{Blank, in_window, on_screen, scratch};
 use crate::viewer::bitmap::Canvas;
 
@@ -411,4 +412,35 @@ fn a_picture_no_chat_shows_is_let_go_a_while_on(cx: &mut TestAppContext) {
     cx.executor().advance_clock(Duration::from_secs(1));
     cx.run_until_parked();
     assert!(!shown(cx), "let go");
+}
+
+/// Behind each kind of pane, the backdrop of what it shows, as that one's switch in Settings
+/// has it: the diffs' behind the diffs' pane, the files' behind a file's, the devices' behind
+/// the agent desktop's and a device's, and none behind a page, whose view covers it.
+#[gpui_kit::test]
+fn each_kind_of_pane_has_the_backdrop_of_what_it_shows(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let panes = [
+        ("a chat", Pane::new(PaneKind::Chat), Some(Surface::Chat)),
+        ("a terminal", Pane::new(PaneKind::Terminal), Some(Surface::Terminal)),
+        ("the diffs", Pane::of_changes(None), Some(Surface::Diff)),
+        ("a file", Pane::of_path("/src/app/README.md".into()), Some(Surface::Files)),
+        ("untitled", Pane::new(PaneKind::Editor), Some(Surface::Files)),
+        ("the desktop", Pane::new(PaneKind::Desktop), Some(Surface::Devices)),
+        ("a device", Pane::new(PaneKind::Device), Some(Surface::Devices)),
+        ("a page", Pane::new(PaneKind::Browser), None),
+    ];
+    for surface in Surface::ALL {
+        cx.update(|cx| {
+            crate::settings::update(cx, |settings| {
+                for each in Surface::ALL {
+                    *settings.chat_backdrop.surfaces.switch(each) = each == surface;
+                }
+            });
+        });
+        for (name, pane, behind) in &panes {
+            let shown = cx.update(|cx| super::behind(pane, cx).is_some());
+            assert_eq!(shown, *behind == Some(surface), "{name}, only {surface:?} on");
+        }
+    }
 }

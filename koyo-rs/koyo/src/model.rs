@@ -10,22 +10,24 @@ use koyo_git::{Head, Worktree};
 
 mod chats;
 mod closed;
+mod content;
 mod entered;
 mod loose;
 mod moves;
+mod page;
 mod pane;
 mod pinned;
 mod shape;
 mod tab;
 mod terminals;
-mod unopened;
 mod visits;
 pub use closed::{ClosedFrom, ClosedTab};
+pub use content::{Content, Device, Editor, EditorFile};
 pub use loose::Loose;
-pub use pane::{Pane, Unloaded};
+pub use page::{Browser, Unloaded};
+pub use pane::Pane;
 pub use pinned::Pinned;
 pub use tab::{Edge, SPLIT_MIN, Split, SplitAxis, Tab};
-pub use unopened::Unopened;
 pub use visits::{Located, Spot, Visited};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +43,17 @@ pub enum PaneKind {
 }
 
 impl PaneKind {
+    /// Every kind, as declared.
+    #[cfg(test)]
+    pub const ALL: [PaneKind; 6] = [
+        PaneKind::Chat,
+        PaneKind::Terminal,
+        PaneKind::Browser,
+        PaneKind::Editor,
+        PaneKind::Desktop,
+        PaneKind::Device,
+    ];
+
     pub(crate) fn new_tab_title(self) -> &'static str {
         match self {
             PaneKind::Chat => "New chat",

@@ -52,6 +52,7 @@ mod state;
 mod switcher;
 mod tab_face;
 mod tab_list;
+mod unmade;
 mod visits;
 
 pub use actions::{
@@ -166,7 +167,7 @@ impl Shell {
                 this.follow_space(cx);
                 this.let_go_of_what_is_gone(cx);
                 this.follow_selection(window, cx);
-                this.make_shown_editors(window, cx);
+                this.make_shown(window, cx);
                 this.keep_window(cx);
                 this.tell_arc_top(cx);
                 let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
@@ -379,9 +380,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        self.make_shown_terminals(window, cx);
-        self.make_shown_chats(window, cx);
-        self.make_shown_browsers(window, cx);
+        self.make_shown(window, cx);
         self.tab_takes_keys(window, cx);
         let workspace = &self.workspace;
         let islands = theme::card::islands(cx);

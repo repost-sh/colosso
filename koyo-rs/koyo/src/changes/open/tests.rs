@@ -11,7 +11,7 @@ use crate::checkout::Checkout;
 use crate::files::tests::{tabs, with_shell};
 use crate::right_panel::ToggleChanges;
 use crate::shell::Shell;
-use crate::test_support::{repo, select, shell_with, write};
+use crate::test_support::{draw, repo, select, shell_with, write};
 
 /// Lets the checkout behind `panel` read until it's `done`, waiting for its project
 /// between looks.
@@ -48,6 +48,13 @@ fn press_in_list(
     .unwrap();
     cx.simulate_keystrokes(window, keys);
     cx.run_until_parked();
+}
+
+/// Whether the window draws the diffs, once it's drawn again.
+fn drawn(window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
+    draw(window, cx);
+    let mut window = gpui_kit::VisualTestContext::from_window(window, cx);
+    window.debug_bounds("changes-diffs").is_some()
 }
 
 /// How many of the tabs show the diffs.
@@ -100,20 +107,29 @@ fn a_file_picked_in_the_list_shows_the_one_changes_tab_which_comes_back_once_clo
     press_in_list(window, &panel, "j", cx);
     assert_eq!(tabs(&shell, cx), opened, "shown again, not opened again");
 
+    assert!(drawn(window, cx), "the tab shown draws the diffs");
+    let diffs = cx.read(|cx| {
+        let tab = shell.read(cx).workspace.tab_shown().unwrap();
+        let pane = tab.panes().into_iter().find_map(|pane| pane.changes().cloned());
+        pane.expect("the diffs' pane").downgrade()
+    });
     with_shell(window, &shell, cx, |shell, window, cx| {
         let at = shell.workspace.shown_tab().unwrap();
         shell.close_tab_at(at, window, cx);
     });
     cx.run_until_parked();
     assert_eq!(diffs_tabs(&shell, cx), 0);
+    draw(window, cx);
+    assert!(diffs.upgrade().is_none(), "the tab closed lets its diffs go");
     cx.simulate_keystrokes(window, "cmd-shift-t");
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), opened);
     let showing = cx.read(|cx| {
         let unit = shell.read(cx).workspace.branch().unwrap();
         let tab = &unit.tabs[unit.active_tab];
-        tab.panes().iter().any(|pane| pane.changes.is_some())
+        tab.panes().iter().any(|pane| pane.changes().is_some())
     });
     assert!(showing, "the tab back shows the diffs");
+    assert!(drawn(window, cx), "and draws them");
     let _ = std::fs::remove_dir_all(root);
 }

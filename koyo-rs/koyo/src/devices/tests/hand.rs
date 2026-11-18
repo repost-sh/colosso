@@ -11,9 +11,9 @@ use gpui_kit::{
 use koyo_device_wire::{Button, Input, ToHost};
 
 use super::super::link::Link;
-use super::super::view::{Chosen, DeviceView};
+use super::super::view::DeviceView;
 use super::screen;
-use crate::test_support::{draw, repo, select, shell_with};
+use crate::test_support::{draw, iphone, repo, select, shell_with};
 
 struct Tab {
     window: AnyWindowHandle,
@@ -26,13 +26,7 @@ fn tab(name: &str, cx: &mut TestAppContext) -> Tab {
     let root = repo(name, &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
-    let chosen = Chosen {
-        udid: "UDID-HAND".into(),
-        name: "iPhone 17 Pro".into(),
-        ipad: false,
-        phone: false,
-    };
-    shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
+    shell.update(cx, |shell, cx| shell.device_pane(Some(iphone("UDID-HAND")), true, cx));
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the device's tab");
     let link: Entity<Link> = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
     let told = link.update(cx, |link, cx| link.stand_in(screen(), cx));

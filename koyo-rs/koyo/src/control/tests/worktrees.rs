@@ -44,7 +44,7 @@ fn a_worktree_is_made_listed_and_selected(cx: &mut TestAppContext) {
         let unit = shell.workspace.branch().unwrap();
         assert_eq!(unit.worktree.path, path, "the new worktree is selected");
         assert_eq!(unit.tabs.len(), 1, "with a chat open on it");
-        assert_eq!(unit.tabs[0].first().kind, PaneKind::Chat);
+        assert_eq!(unit.tabs[0].first().kind(), PaneKind::Chat);
     });
     let listed = call(&agent, "worktree_branches", json!({}), cx).unwrap();
     assert_eq!(listed["defaultBase"], json!("main"));

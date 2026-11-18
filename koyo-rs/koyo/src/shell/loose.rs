@@ -7,7 +7,7 @@
 use gpui_kit::{App, Context, Window};
 
 use super::Shell;
-use crate::model::{ClosedFrom, ClosedTab, Loose, Pane};
+use crate::model::{ClosedFrom, ClosedTab, Loose};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};
 
@@ -42,18 +42,10 @@ impl Shell {
         let Some(at) = self.workspace.loose_at(key) else {
             return;
         };
-        let address = self.workspace.pane(key).and_then(Pane::address).map(str::to_owned);
         let space = self.workspace.space_shown();
         if let Some(Loose { tab, project }) = self.workspace.close_loose(at) {
-            self.workspace.remember_closed(ClosedTab {
-                from: ClosedFrom::Loose { space, project },
-                at,
-                tab,
-                addresses: address.map(|address| vec![(key, address)]).unwrap_or_default(),
-                files: Vec::new(),
-                changes: Vec::new(),
-                devices: Vec::new(),
-            });
+            let from = ClosedFrom::Loose { space, project };
+            self.workspace.remember_closed(ClosedTab { from, at, tab }, cx);
         }
         cx.notify();
     }

@@ -1,7 +1,7 @@
-//! A pane: what one side of a tab shows, by its kind. A page, or the address it opens once its
-//! tab is shown; a file or the checkout's diffs; a terminal or a chat, by what knows them; the
-//! agent desktop's view, or a device's.
+//! A pane: what one side of a tab shows (`Content`), and the questions asked of any pane about
+//! what only some kinds have, each `None` for the others.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock};
 
@@ -9,11 +9,13 @@ use gpui_kit::{AnyView, App, Entity, Image, ImageFormat, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 
 use super::PaneKind;
-use crate::agent_desktop::DeskView;
+use super::content::{Content, Device, Editor, EditorFile};
+use super::page::Browser;
 use crate::browser::BrowserView;
+use crate::browser::profiles::By;
 use crate::changes::ChangesTab;
 use crate::devices::DeviceView;
-use crate::files::FilePane;
+use crate::files::{FilePane, file_name};
 
 /// Ids for panes, never reused while the app runs.
 static NEXT_PANE: AtomicU64 = AtomicU64::new(1);
@@ -27,72 +29,53 @@ static CLAUDE: LazyLock<Arc<Image>> = LazyLock::new(|| {
 pub struct Pane {
     /// Which pane this is, wherever it moves.
     pub id: u64,
-    pub kind: PaneKind,
     pub title: SharedString,
-    /// A browser pane's page, or what it opens once its tab is shown (`view`, `set_view`);
-    /// the agent desktop's view in a pane of that kind (`desktop`), a device's in a device's
-    /// pane (`device`).
-    pub(super) page: Option<Page>,
-    /// The file an editor pane shows, once the shell has opened one in it.
-    pub file: Option<Entity<FilePane>>,
-    /// The checkout's diffs, when it's an editor pane showing them rather than a file.
-    pub changes: Option<Entity<ChangesTab>>,
-    /// What an editor pane brought back with the window shows once its tab is (`unopened.rs`).
-    /// Boxed, as few panes have one.
-    pub unopened: Option<Box<super::Unopened>>,
     /// The workspace's turn when its tab was last shown, later turns higher: ⌃⇥ lists the
     /// latest first.
     pub shown_at: u64,
     /// When the person was last in it, later higher, and 0 until they have been
     /// (`Workspace::enter_pane`): of a tab's panes, the one they're in (`Tab::current`).
     pub entered_at: u64,
-    /// A terminal pane's terminal, by the number `crate::terminals` knows it by.
-    pub terminal: Option<u64>,
-    /// The thread a chat pane shows: a new chat has none until its first send.
-    pub chat: Option<ThreadId>,
-    /// Whether a browser pane's page is an agent's: opened by an agent's tool, or by such a
-    /// page (`browser/profiles.rs` `By`). It's kept with the window, and its page made again
-    /// so (`BrowserView::made_by`).
-    pub by_agent: bool,
+    pub content: Content,
 }
 
 impl Pane {
     /// An empty pane of `kind`, titled as a new tab of it.
     pub fn new(kind: PaneKind) -> Self {
+        Pane::of(Content::empty(kind))
+    }
+
+    /// A pane showing `content`, titled as a new tab of its kind: `Pane { title, ..Pane::of(..) }`
+    /// titles it otherwise.
+    pub(crate) fn of(content: Content) -> Self {
         Pane {
             id: NEXT_PANE.fetch_add(1, Ordering::Relaxed),
-            kind,
-            title: kind.new_tab_title().into(),
-            page: None,
-            file: None,
-            changes: None,
-            unopened: None,
+            title: content.kind().new_tab_title().into(),
             shown_at: 0,
             entered_at: 0,
-            terminal: None,
-            chat: None,
-            by_agent: false,
+            content,
         }
     }
 
-    /// A pane showing the agent desktop.
-    pub fn desktop(view: Entity<DeskView>) -> Self {
-        Pane {
-            page: Some(Page::Desktop(view)),
-            ..Pane::new(PaneKind::Desktop)
+    /// What it shows: a chat, a terminal, a page, a file or the diffs, the agent desktop or a
+    /// device.
+    pub fn kind(&self) -> PaneKind {
+        self.content.kind()
+    }
+
+    /// A terminal pane's terminal, by the number `crate::terminals` knows it by.
+    pub fn terminal(&self) -> Option<u64> {
+        match &self.content {
+            Content::Terminal(id) => *id,
+            _ => None,
         }
     }
 
-    /// The pane shows the agent desktop through `view` from now on.
-    pub fn set_desktop(&mut self, view: Entity<DeskView>) {
-        self.page = Some(Page::Desktop(view));
-    }
-
-    /// The agent desktop's view, in a pane of that kind.
-    pub fn desktop_view(&self) -> Option<&Entity<DeskView>> {
-        match &self.page {
-            Some(Page::Desktop(view)) => Some(view),
-            Some(Page::Made(_) | Page::Device(_) | Page::Unloaded(_)) | None => None,
+    /// The thread a chat pane shows: a new chat has none until its first send.
+    pub fn chat(&self) -> Option<&ThreadId> {
+        match &self.content {
+            Content::Chat(thread) => thread.as_ref(),
+            _ => None,
         }
     }
 
@@ -101,222 +84,139 @@ impl Pane {
     pub fn device(view: Entity<DeviceView>, cx: &App) -> Self {
         Pane {
             title: view.read(cx).title().into(),
-            page: Some(Page::Device(Box::new(Device::of(view, cx)))),
-            ..Pane::new(PaneKind::Device)
+            ..Pane::of(Content::Device(Device::Made(view)))
         }
     }
 
-    /// The pane shows `view` from now on, titled as it calls itself.
-    pub fn set_device(&mut self, view: Entity<DeviceView>, cx: &App) {
-        self.title = view.read(cx).title().into();
-        self.page = Some(Page::Device(Box::new(Device::of(view, cx))));
-    }
-
-    /// A device's view, in a pane of that kind.
+    /// A device's view, in a pane of that kind once it's made.
     pub fn device_view(&self) -> Option<&Entity<DeviceView>> {
-        match &self.page {
-            Some(Page::Device(device)) => Some(&device.view),
-            Some(Page::Made(_) | Page::Desktop(_) | Page::Unloaded(_)) | None => None,
+        match &self.content {
+            Content::Device(device) => device.view(),
+            _ => None,
         }
     }
 
-    /// What the pane's content adds to its header: a device's standing and buttons, as the
-    /// view last said ([`Pane::set_bar`]).
-    pub fn bar(&self) -> Option<AnyView> {
-        match &self.page {
-            Some(Page::Device(device)) => device.bar.clone(),
-            Some(Page::Made(_) | Page::Desktop(_) | Page::Unloaded(_)) | None => None,
-        }
-    }
-
-    /// A device's pane has `bar` in its header from now on; no other kind keeps one.
-    pub fn set_bar(&mut self, bar: Option<AnyView>) {
-        if let Some(Page::Device(device)) = &mut self.page {
-            device.bar = bar;
-        }
+    /// What the pane's content adds to its header: a device's standing and buttons, as its
+    /// view says.
+    pub fn bar(&self, cx: &App) -> Option<AnyView> {
+        self.device_view()?.read(cx).bar()
     }
 
     /// A browser pane showing `view`, titled as the view calls itself, an agent's when its
     /// page is.
     pub fn browser(view: Entity<BrowserView>, cx: &App) -> Self {
-        let shown = view.read(cx);
         Pane {
-            title: shown.title().into(),
-            by_agent: shown.by() == crate::browser::profiles::By::Agent,
-            page: Some(Page::Made(Box::new(Made::of(view, cx)))),
-            ..Pane::new(PaneKind::Browser)
+            title: view.read(cx).title().into(),
+            ..Pane::of(Content::Browser(Browser::made(view, cx)))
         }
     }
 
-    /// Who opened a browser pane's page: an agent, when it's an agent's (`by_agent`).
-    pub fn by(&self) -> crate::browser::profiles::By {
-        use crate::browser::profiles::By;
-        if self.by_agent { By::Agent } else { By::Person }
+    fn page(&self) -> Option<&Browser> {
+        match &self.content {
+            Content::Browser(browser) => Some(browser),
+            _ => None,
+        }
     }
 
-    /// A browser pane with no view yet, titled `title`, that opens `unloaded`'s address once
-    /// its tab is shown.
-    pub fn unloaded(unloaded: Unloaded, title: SharedString) -> Self {
-        Pane {
-            title,
-            page: Some(Page::Unloaded(Box::new(unloaded))),
-            ..Pane::new(PaneKind::Browser)
-        }
+    /// Who opened a browser pane's page: an agent, when it's an agent's; every other pane is
+    /// the person's.
+    pub fn by(&self) -> By {
+        self.page().map_or(By::Person, |browser| browser.by)
     }
 
     /// The page a browser pane shows, once it's made.
     pub fn view(&self) -> Option<&Entity<BrowserView>> {
-        match &self.page {
-            Some(Page::Made(made)) => Some(&made.view),
-            Some(Page::Unloaded(_) | Page::Desktop(_) | Page::Device(_)) | None => None,
-        }
+        self.page()?.view()
     }
 
     /// The page the window's own controls act on for a browser pane: its own, or the one its
     /// `DevTools` inspect (`Shell::shown_page`).
     pub fn steered_page(&self) -> Option<&Entity<BrowserView>> {
-        match &self.page {
-            Some(Page::Made(made)) => Some(made.inspected.as_ref().unwrap_or(&made.view)),
-            Some(Page::Unloaded(_) | Page::Desktop(_) | Page::Device(_)) | None => None,
-        }
-    }
-
-    /// The pane shows `view` from now on, and no longer holds an address to open.
-    pub fn set_view(&mut self, view: Entity<BrowserView>, cx: &App) {
-        self.page = Some(Page::Made(Box::new(Made::of(view, cx))));
+        self.page()?.steered_page()
     }
 
     /// A browser pane's title, address and icon follow its page's (`BrowserEvent::Changed`):
     /// whether any of them changed.
     pub fn follow_page(&mut self, cx: &App) -> bool {
-        let Some(Page::Made(made)) = &mut self.page else {
-            return false;
-        };
-        let now = Made::of(made.view.clone(), cx);
-        let title = now.view.read(cx).title();
-        if **made == now && *self.title == *title {
-            return false;
+        match &mut self.content {
+            Content::Browser(browser) => browser.follow(&mut self.title, cx),
+            _ => false,
         }
-        (**made, self.title) = (now, title.into());
-        true
-    }
-
-    /// A browser pane's page is closed: it holds what it opens once its tab is shown again, as
-    /// a pinned page does once it's closed (`docs/arc-sidebar.md` 11).
-    pub fn unload(&mut self, unloaded: Unloaded) {
-        self.page = Some(Page::Unloaded(Box::new(unloaded)));
     }
 
     /// The address a browser pane with no view opens once its tab is shown.
     pub fn unloaded_address(&self) -> Option<&str> {
-        match &self.page {
-            Some(Page::Unloaded(unloaded)) => Some(&unloaded.address),
-            Some(Page::Made(_) | Page::Desktop(_) | Page::Device(_)) | None => None,
-        }
+        self.page()?.unloaded_address()
     }
 
     /// The address a browser pane shows, or opens once its tab is shown; `None` for another
     /// kind.
     pub fn address(&self) -> Option<&str> {
-        match &self.page {
-            Some(Page::Made(made)) => Some(&made.address),
-            Some(Page::Unloaded(unloaded)) => Some(&unloaded.address),
-            Some(Page::Desktop(_) | Page::Device(_)) | None => None,
-        }
+        self.page()?.address()
     }
 
     /// Whether it's a browser pane showing another page's `DevTools`.
     pub fn is_inspector(&self) -> bool {
-        matches!(&self.page, Some(Page::Made(made)) if made.inspected.is_some())
+        self.page().is_some_and(Browser::is_inspector)
     }
 
     /// The image a pane's tab shows for its icon: a browser pane's site's, its page's or the
     /// one kept for its address while it has no view; a chat's, Claude's logo in its colour.
     pub fn favicon(&self) -> Option<Arc<Image>> {
-        match &self.page {
-            Some(Page::Made(made)) => made.favicon.clone(),
-            Some(Page::Unloaded(unloaded)) => unloaded.favicon.clone(),
-            Some(Page::Desktop(_) | Page::Device(_)) => None,
-            None => (self.kind == PaneKind::Chat).then(|| Arc::clone(&CLAUDE)),
+        match &self.content {
+            Content::Browser(browser) => browser.favicon(),
+            Content::Chat(_) => Some(Arc::clone(&CLAUDE)),
+            Content::Terminal(_)
+            | Content::Editor(_)
+            | Content::Desktop(_)
+            | Content::Device(_) => None,
         }
     }
 
     /// An editor pane showing `file`, titled with its name.
-    pub fn file(file: Entity<FilePane>, cx: &App) -> Self {
+    pub fn of_file(file: Entity<FilePane>, cx: &App) -> Self {
         Pane {
             title: file.read(cx).name().into(),
-            file: Some(file),
-            ..Pane::new(PaneKind::Editor)
+            ..Pane::of(Content::Editor(Editor::File(EditorFile::Open(file))))
         }
     }
 
-    /// An editor pane showing the checkout's diffs, titled for them.
-    pub fn changes(changes: Entity<ChangesTab>) -> Self {
+    /// An editor pane that opens the file at `path` once its tab is shown, titled with its
+    /// name as it will be then.
+    pub fn of_path(path: PathBuf) -> Self {
+        Pane {
+            title: file_name(&path).into(),
+            ..Pane::of(Content::Editor(Editor::File(EditorFile::Unopened(path))))
+        }
+    }
+
+    /// The file an editor pane shows, once the shell has opened one in it.
+    pub fn file(&self) -> Option<&Entity<FilePane>> {
+        match &self.content {
+            Content::Editor(Editor::File(EditorFile::Open(file))) => Some(file),
+            _ => None,
+        }
+    }
+
+    /// An editor pane showing the checkout's diffs, titled for them; with none, it shows them
+    /// once its tab is shown.
+    pub fn of_changes(changes: Option<Entity<ChangesTab>>) -> Self {
         Pane {
             title: "Changes".into(),
-            changes: Some(changes),
-            ..Pane::new(PaneKind::Editor)
+            ..Pane::of(Content::Editor(Editor::Changes(changes)))
         }
     }
-}
 
-/// A device's view, and its bar for the pane's header.
-#[derive(Clone, Debug)]
-pub(super) struct Device {
-    view: Entity<DeviceView>,
-    bar: Option<AnyView>,
-}
-
-impl Device {
-    fn of(view: Entity<DeviceView>, cx: &App) -> Self {
-        let bar = view.read(cx).bar();
-        Device { view, bar }
-    }
-}
-
-/// A browser pane's page, made, and what its tab shows of it beside the title, as the view
-/// last said (`Pane::follow_page`): its address (`BrowserView::address`) and its icon.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct Made {
-    view: Entity<BrowserView>,
-    /// The page the view's `DevTools` inspect, when it's theirs.
-    inspected: Option<Entity<BrowserView>>,
-    address: String,
-    favicon: Option<Arc<Image>>,
-}
-
-impl Made {
-    fn of(view: Entity<BrowserView>, cx: &App) -> Self {
-        let page = view.read(cx);
-        let (inspected, address, favicon) =
-            (page.inspected().cloned(), page.address(), page.favicon());
-        Made {
-            view,
-            inspected,
-            address,
-            favicon,
+    /// The checkout's diffs, when it's an editor pane showing them rather than a file.
+    pub fn changes(&self) -> Option<&Entity<ChangesTab>> {
+        match &self.content {
+            Content::Editor(Editor::Changes(changes)) => changes.as_ref(),
+            _ => None,
         }
     }
-}
 
-/// A browser pane's page: made, or what it opens once its tab is shown, never both. Or, in
-/// the agent desktop's pane, its view; in a device's pane, the device's view.
-#[derive(Clone, Debug)]
-pub(super) enum Page {
-    /// Boxed, as it keeps a pane small.
-    Made(Box<Made>),
-    Desktop(Entity<DeskView>),
-    /// Boxed, as few panes are a device's.
-    Device(Box<Device>),
-    /// A tab brought back at launch, its page made when the tab is first shown
-    /// (`docs/browser.md` 5). Boxed, as few panes have one.
-    Unloaded(Box<Unloaded>),
-}
-
-/// What a browser pane with no view yet opens once its tab is shown.
-#[derive(Clone, Debug)]
-pub struct Unloaded {
-    pub address: String,
-    /// The icon kept for the address's site, shown on the tab meanwhile.
-    pub favicon: Option<Arc<Image>>,
+    /// Whether it shows its checkout's diffs, or will once its tab is shown.
+    pub fn shows_changes(&self) -> bool {
+        matches!(self.content, Content::Editor(Editor::Changes(_)))
+    }
 }

@@ -21,7 +21,7 @@ use crate::browser::Responsive;
 use crate::browser::agent::{self, SetBy};
 use crate::browser::profiles::By;
 use crate::files::{At, Place};
-use crate::model::{self, Pane, Tab};
+use crate::model::{self, Content, Pane, Tab};
 use crate::navigation::Route;
 use crate::shell::Shell;
 
@@ -128,13 +128,11 @@ pub(crate) fn page_mode(
 /// (`docs/browser.md` 15.7), so it's no page of the person's to ask them for, and the pages it
 /// opens are an agent's too.
 pub(crate) fn agents_page_made(shell: &mut Shell, pane: u64, cx: &mut Context<Shell>) {
-    let Some(made) = shell.workspace.pane_mut(pane) else {
+    let Some(Content::Browser(made)) = shell.workspace.pane_mut(pane).map(|pane| &mut pane.content)
+    else {
         return;
     };
-    if made.kind != model::PaneKind::Browser {
-        return;
-    }
-    made.by_agent = true;
+    made.by = By::Agent;
     if let Some(view) = made.view().cloned() {
         view.update(cx, |view, _| view.made_by(By::Agent));
     }
@@ -275,7 +273,7 @@ fn open(
                     let terminal = (shell.workspace.find_pane(|found| found.id == pane)).and_then(
                         |((project, branch, _), _)| {
                             let unit = &shell.workspace.projects[project].branches[branch];
-                            unit.pane(pane)?.terminal
+                            unit.pane(pane)?.terminal()
                         },
                     );
                     if let Some(terminal) = terminal {
@@ -417,8 +415,7 @@ fn shown_file(shell: &Shell, path: &Path, cx: &App) -> Option<u64> {
     let mut panes = unit.tabs.iter().flat_map(Tab::panes);
     panes
         .find(|pane| {
-            pane.file
-                .as_ref()
+            pane.file()
                 .is_some_and(|file| file.read(cx).path == path)
         })
         .map(|pane| pane.id)

@@ -55,6 +55,7 @@ impl ChangesPanel {
                 .into_any_element()
         });
         div()
+            .debug_selector(|| "changes-diffs".to_owned())
             .size_full()
             .flex()
             .flex_col()

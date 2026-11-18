@@ -118,6 +118,7 @@ fn a_tab_keeps_its_place_as_it_moves_and_leaves_once_closed() {
     let closed = Unloaded {
         address: "b".into(),
         favicon: None,
+        restored: true,
     };
     assert!(workspace.close_pinned_page(0, "b".into(), closed));
     assert_eq!(latest(&workspace, 5), ["New chat", "a"]);

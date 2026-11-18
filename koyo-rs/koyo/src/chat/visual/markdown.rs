@@ -168,7 +168,7 @@ impl Check {
                 let shell = self.drawn.shell.read(cx);
                 let (_, pane) = shell
                     .workspace
-                    .find_pane(|pane| pane.chat.as_ref() == Some(id))?;
+                    .find_pane(|pane| pane.chat() == Some(id))?;
                 shell.chat_tabs.view(pane).cloned()
             })
             .ok_or_else(|| "the chat has no tab".into())

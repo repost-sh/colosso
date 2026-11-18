@@ -23,16 +23,22 @@ pub(crate) fn terminal_shown(
     root: &Path,
     cx: &mut TestAppContext,
 ) -> Entity<TerminalView> {
+    no_daemon(shell, cx);
+    let record = terminal_record("zsh", root.to_str().unwrap(), Status::Idle, "prompt");
+    let id = super::stop::tests::tab(shell, &record, cx);
+    draw(window, cx);
+    shell.read_with(cx, |shell, _| shell.terminals.view(id).unwrap())
+}
+
+/// The shell's terminals have a client of a daemon that never starts, so their views are made
+/// and never attached.
+pub(crate) fn no_daemon(shell: &Entity<Shell>, cx: &mut TestAppContext) {
     let client = TermClient::new(
         TermDir::at(scratch("budget-no-daemon")),
         super::daemon_command(),
     );
     client.shutdown().unwrap();
     shell.update(cx, |shell, _| shell.terminals.client = Some(client));
-    let record = terminal_record("zsh", root.to_str().unwrap(), Status::Idle, "prompt");
-    let id = super::stop::tests::tab(shell, &record, cx);
-    draw(window, cx);
-    shell.read_with(cx, |shell, _| shell.terminals.view(id).unwrap())
 }
 
 /// A frame of a terminal's output leaves the shell alone, beside the open right panel too: the

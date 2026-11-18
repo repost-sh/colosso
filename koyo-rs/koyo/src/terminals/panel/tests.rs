@@ -25,7 +25,7 @@ fn reading_output(
     terminal_shown(window, shell, root, cx);
     let (pane, id) = shell.read_with(cx, |shell, _| {
         let pane = shell.workspace.tab_shown().unwrap().first();
-        (pane.id, pane.terminal.unwrap())
+        (pane.id, pane.terminal().unwrap())
     });
     shell.update(cx, |shell, cx| shell.toggle_activity(id, cx));
     let panel = shell.read_with(cx, |shell, _| shell.terminals.panels[&id].clone());

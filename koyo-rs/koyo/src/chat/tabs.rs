@@ -156,21 +156,18 @@ pub fn heard_at_window(root: Div, cx: &mut Context<Shell>) -> Div {
 }
 
 impl Shell {
-    /// Makes the views the shown tab's chat panes don't have yet, so the panes draw them.
-    pub fn make_shown_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((unit, tab)) = (self.workspace.branch()).zip(self.workspace.tab_shown()) else {
+    /// Makes the views of the shown tab's chat panes `missing`, by their panes and the threads
+    /// they show, so the panes draw them (`Shell::make_shown`), and tells the tab's chats where
+    /// they work.
+    pub(crate) fn make_chats(
+        &mut self,
+        missing: Vec<(u64, Option<ThreadId>)>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(unit) = self.workspace.branch() else {
             return;
         };
-        let mut chats = (tab.panes().into_iter())
-            .filter(|pane| pane.kind == PaneKind::Chat)
-            .peekable();
-        if chats.peek().is_none() {
-            return;
-        }
-        let missing: Vec<(u64, Option<ThreadId>)> = chats
-            .filter(|pane| !self.chat_tabs.views.contains_key(&pane.id))
-            .map(|pane| (pane.id, pane.chat.clone()))
-            .collect();
         if !missing.is_empty() {
             let cwd = unit.worktree.path.clone();
             let project = self.workspace.project().map(|project| project.name.clone());
@@ -202,8 +199,8 @@ impl Shell {
             is_main: unit.is_main(),
             checkout: checkout.clone(),
         };
-        for pane in tab.panes() {
-            let Some(made) = self.chat_tabs.views.get_mut(&pane.id) else {
+        for (pane, _) in tab.chat_panes() {
+            let Some(made) = self.chat_tabs.views.get_mut(&pane) else {
                 continue;
             };
             if made.place.as_ref() != Some(&place) {
@@ -282,7 +279,7 @@ impl Shell {
     pub(crate) fn open_chat(&mut self, id: &ThreadId, cx: &mut Context<Self>) -> Option<u64> {
         if let Some((at, pane)) = self
             .workspace
-            .find_pane(|pane| pane.chat.as_ref() == Some(id))
+            .find_pane(|pane| pane.chat() == Some(id))
         {
             self.pick_tab(at.0, at.1, at.2, cx);
             return Some(pane);

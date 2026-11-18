@@ -6,7 +6,7 @@ use std::path::Path;
 
 use gpui_kit::SharedString;
 
-use super::{Pane, PaneKind, Tab, Workspace};
+use super::{Content, Pane, Tab, Workspace};
 
 impl Workspace {
     /// Adds a tab for terminal `id` on the checkout at `worktree`, shown when `select`: its
@@ -20,8 +20,7 @@ impl Workspace {
     ) -> Option<u64> {
         let pane = Pane {
             title,
-            terminal: Some(id),
-            ..Pane::new(PaneKind::Terminal)
+            ..Pane::of(Content::Terminal(Some(id)))
         };
         self.add_pane_tab(worktree, pane, select)
     }
@@ -50,7 +49,7 @@ impl Workspace {
         self.projects.iter().flat_map(|project| {
             project.branches.iter().flat_map(|unit| {
                 (unit.tabs.iter().flat_map(Tab::panes)).filter_map(move |pane| {
-                    pane.terminal.map(|id| (unit.worktree.path.as_path(), id))
+                    pane.terminal().map(|id| (unit.worktree.path.as_path(), id))
                 })
             })
         })
@@ -60,7 +59,7 @@ impl Workspace {
     pub fn closed_terminals(&self) -> impl Iterator<Item = u64> {
         (self.closed.iter())
             .flat_map(|closed| closed.tab.panes())
-            .filter_map(|pane| pane.terminal)
+            .filter_map(Pane::terminal)
     }
 
     /// Takes terminal `id`'s pane away, out of its split or with its tab, wherever it is.
@@ -71,7 +70,7 @@ impl Workspace {
             .flat_map(|project| &mut project.branches)
         {
             let pane = (unit.tabs.iter().flat_map(Tab::panes))
-                .find(|pane| pane.terminal == Some(id))
+                .find(|pane| pane.terminal() == Some(id))
                 .map(|pane| pane.id);
             if let Some(pane) = pane {
                 unit.close_pane(pane);
@@ -88,7 +87,7 @@ impl Workspace {
             .flat_map(|project| &mut project.branches)
         {
             for pane in unit.tabs.iter_mut().flat_map(Tab::panes_mut) {
-                if pane.terminal == Some(id) {
+                if pane.terminal() == Some(id) {
                     if pane.title == title {
                         return false;
                     }
@@ -105,7 +104,7 @@ impl Workspace {
 mod tests {
     use koyo_git::{Head, Worktree};
 
-    use crate::model::{Edge, Pane, PaneKind, Tab, Workspace};
+    use crate::model::{Content, Edge, Pane, PaneKind, Tab, Workspace};
 
     /// One project with its main checkout, which has one chat tab, shown.
     fn workspace() -> Workspace {
@@ -146,7 +145,7 @@ mod tests {
         assert!(matches!(
             &unit.tabs[..],
             [Tab::Single(Pane {
-                kind: PaneKind::Chat,
+                content: Content::Chat(_),
                 ..
             })]
         ));
@@ -161,6 +160,6 @@ mod tests {
         workspace.add_terminal_tab("/src/app".as_ref(), 2, "zsh".into(), true);
         let unit = workspace.branch().unwrap();
         assert_eq!(unit.active_tab, 1);
-        assert_eq!(unit.tabs[1].panes()[0].terminal, Some(2));
+        assert_eq!(unit.tabs[1].panes()[0].terminal(), Some(2));
     }
 }
