@@ -183,8 +183,8 @@ These call the modules above, or decide seam behaviour in GPUI terms. They are n
 | src/browser/view.rs:212-215 | `observe_window_visibility` sets `window_visible`, which decides page sight. | 4 |
 | src/browser/view.rs:239, 421-439 | `keyboard::page_closed` on release; `focus_address`; `focus_moved` to `entered_page` or `left_page`. | 1 |
 | src/browser/dock.rs:141, 354 | ⌥⌘I out of DevTools: `keyboard::set`; docked tools' size rounded to whole points. | 1 |
-| src/shell.rs:140-146 | Window activation observer: `keyboard::key`. | 1 |
-| src/shell/keys.rs:97-103, 250-278, 295 | `focus_pane`, the tab shown, `keys_follow_route` (each frame): `keyboard::set`, `tab_shown`, `key`. | 1 |
+| src/shell.rs:139-146, 165 | Window activation observer: `keyboard::follow_focus` and `key_state`; GPUI's focus into the shell's root: `follow_focus`. | 1 |
+| src/shell/keys.rs:97-103, 250-278, 285 | `focus_pane`, the tab shown, `keys_follow_route` (each frame): `keyboard::set`, `tab_shown`, `key_state`. | 1 |
 | src/shell/switcher.rs:139, 210 | `window_glass::fill` on the panel; `popup::show`. | 4 |
 | src/shell/rails.rs:144 | `traffic_lights::fade`. | 0 |
 | src/menu/view.rs:58 | `native::window::callout` as a menu window's size changes. | 4 |
@@ -354,8 +354,8 @@ any non-click change, reconciles each changed window and logs one line.
 | `pub fn tab_shown(window: &Window, tab: u64) -> Option<Surface>` | shell/keys.rs:250 |
 | `pub fn entered_page(window: &Window, pane: PaneId)` | browser/view.rs:435 |
 | `pub fn left_page(window: &Window, pane: PaneId, part: Part)` | browser/view.rs:437 |
-| `pub fn key(window: &Window, cx: &mut App)` | shell.rs:141 (activation), shell/keys.rs:295 (each frame) |
-| `pub fn follow_focus(window: &Window, cx: &mut App)` | `key` only |
+| `pub fn key_state(window: &Window)` | shell.rs:141 (activation), shell/keys.rs:285 (each frame) |
+| `pub fn follow_focus(window: &Window, cx: &mut App)` | shell.rs:140 (activation), 165 (GPUI's focus into the shell's root) |
 | `pub fn page_closed(pane: PaneId)` | browser/view.rs:239 |
 | `pub fn opened_over(window: &Window, over: AnyWindowHandle)` | popup.rs:156 |
 | `pub struct DialogOver`, `DialogOver::new(over: AnyWindowHandle) -> DialogOver`, `Drop` | popup.rs:188 |
@@ -545,7 +545,7 @@ Test counts are `grep -cE '#\[(gpui_kit::)?test\]' <file>`.
 | keyboard/tests.rs | 14 | `state.rs` and `lines.rs`, pure. | None. |
 | keyboard/tests/reconciler.rs | 10 | `reconcile.rs`. | `Fake` `AppKit` (tests/fake.rs): a map of first responders and page windows. |
 | keyboard/tests/told.rs | 23 | `hooks.rs`, `state.rs`, `rate.rs`, `lines.rs`, `mod.rs`. | `Fake` `AppKit`; `Fake::moved` stands in for the vendored window's report of each change; `Turns` stands in for the run loop; tests call `hooks::pressed`, `at_key`, `page_leaving` and `page_arrived` by hand where the window or host would. |
-| keyboard/tests/inactive.rs | 1 | A real shell in a GPUI test window, `keyboard::key` and `follow_focus` through frames. | `Fake` `AppKit`; `hooks::page_arrived` by hand. |
+| keyboard/tests/inactive.rs | 2 | A real shell in a GPUI test window, `follow_focus` and `key_state` through frames. | `Fake` `AppKit`; `hooks::page_arrived` by hand. |
 | keyboard/tests/keys.rs (ce2f3c7fc) | 5 | Vendored `responders::Offers`, `hooks::gpui_first`, `reserved`, the real keymap (`crate::init`). | `offered()` re-implements the window's glue at vendor/gpui-fast-macos/src/window.rs:2754-2765 (`again`, else `first(gpui_first)`). The order of offers (AppKit's pass, the router, the page's hand-back) is scripted; the routing in `fast/composition.rs` doesn't run. `Fake` `AppKit` for "a page holds". |
 | keyboard/tests/marks.rs (ce2f3c7fc) | 1 | `crate::marks` through a real shell drawn in a GPUI test window. | None. |
 | shell/keys/tests.rs | 12 | Shell keyboard flows; `keyboard::holder` asserts. | No `AppKit` installed: holders only. |
@@ -596,7 +596,7 @@ swizzles `NSMenu` and adds a local event monitor in the test process. No test go
 | `bounds <name>` | Where `chat-composer`, `browser-address`, `page-<pane>` or `tab-switcher` was drawn, from `crate::marks`. |
 | `state` | First responder class, key, main, seen, app active, number. |
 | `cursor` | The app's cursor and the window's place on screen. |
-| `tick` | Toggles drawing occluded windows ten times a second and counting them as seen (`UNSEEN_COUNTS`). |
+| `tick` | Toggles drawing occluded windows ten times a second and counting them as seen (`sight.rs`, `UNSEEN_COUNTS`), then draws the shell again. |
 | `views` | The view tree. |
 | `layers` | The layer tree under GPUI's view. |
 | `frame <x> <y> <w> <h>` | `setFrame:display:`. |
@@ -629,8 +629,8 @@ which only the log has; tell whether a menu is tracking.
    closes with the keys), the vendored window's four `makeKeyAndOrderFront:`, GPUI opening a
    dialog with `focus: true` (popup.rs:123), the `app_focus` tool (control/exec/app.rs:84-85),
    control/auth.rs:181, chat/tabs.rs:34, and the probe's `activate`, `key` and `front`. The
-   holders hear the others only through GPUI's activation observer (shell.rs:141) and the
-   per-frame `keyboard::key` (shell/keys.rs:295).
+   holders hear the others only through GPUI's activation observer (shell.rs:139-141) and the
+   per-frame `keyboard::key_state` (shell/keys.rs:285).
 6. The first responder has one app-side mover, but the vendored window moves it too
    (window.rs:674 after simple full screen, 1232 at open). `[inferred]` AppKit itself makes a
    hosted `NSSlider` or `NSSwitch` first responder on a click when the control accepts it; the

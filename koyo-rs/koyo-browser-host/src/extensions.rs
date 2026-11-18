@@ -81,6 +81,11 @@ fn patched(patch: &str) -> bool {
         .is_some_and(|list| list.lines().any(|line| line.trim() == patch))
 }
 
+/// Whether an extension's popup is expected or open.
+pub(crate) fn popup_expected() -> bool {
+    popup::expected()
+}
+
 /// Whether extensions have their icons and popups: the host talks to the engine about them.
 pub(crate) fn on() -> bool {
     pipe::is_open()

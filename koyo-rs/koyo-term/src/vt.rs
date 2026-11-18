@@ -1,7 +1,8 @@
 //! The VT thread (`docs/terminals.md` 7.2, step 2): one per terminal view, owning the view's
 //! engine. It restores the engine from the daemon's snapshot, feeds it the output that follows,
 //! turns the view's keys, mouse and wheel into the bytes the program reads, and publishes an
-//! owned frame for the view at most once per display refresh, however fast output arrives.
+//! owned frame for the view at most once per display refresh, however fast output arrives, and
+//! none while the view is out of sight.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -62,6 +63,9 @@ pub enum Command {
         background: Rgb,
     },
     OptionAsAlt(OptionAsAlt),
+    /// Whether a person can see the view. Out of sight, the engine takes the output in as ever
+    /// and no frame is made of it; seen again, one goes out at once.
+    Seen(bool),
 }
 
 /// What the VT thread tells its view.
@@ -113,6 +117,7 @@ impl Vt {
                     snapshot: Vec::new(),
                     offset: 0,
                     dirty: false,
+                    seen: true,
                     last_publish: None,
                     hold_until: None,
                     colors: None,
@@ -146,6 +151,7 @@ struct Thread {
     offset: u64,
     /// The engine changed since the last frame went out.
     dirty: bool,
+    seen: bool,
     last_publish: Option<Instant>,
     /// Synchronized output holds frames back until then.
     hold_until: Option<Instant>,
@@ -182,7 +188,7 @@ impl Thread {
 
     /// When the next frame should go out, if one is due.
     fn next_frame_at(&self) -> Option<Instant> {
-        if !self.dirty || self.engine.is_none() {
+        if !self.dirty || !self.seen || self.engine.is_none() {
             return None;
         }
         let paced = self
@@ -341,6 +347,7 @@ impl Thread {
                 self.dirty = true;
             }
             Command::OptionAsAlt(option) => self.option_as_alt = option,
+            Command::Seen(seen) => self.seen = seen,
             Command::Paste { handle, text } => {
                 if let Err(error) = self.connection.request(RequestBody::Paste { handle, text }) {
                     log::warn!("couldn't paste: {error}");
@@ -417,6 +424,7 @@ fn drive(
         Command::Focus(focused) => engine.encode_focus(focused)?,
         Command::Colors { .. }
         | Command::OptionAsAlt(_)
+        | Command::Seen(_)
         | Command::Copy(_)
         | Command::Paste { .. } => Vec::new(),
     };
@@ -464,3 +472,6 @@ fn wheel(
     engine.scroll(Scroll::Rows(rows));
     Ok(Vec::new())
 }
+
+#[cfg(test)]
+mod tests;

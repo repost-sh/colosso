@@ -4,14 +4,14 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
+use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 
 use super::super::{Chats, ChatsEvent};
 use super::{at, chats_of, summary};
 use crate::shell::Shell;
-use crate::test_support::{draw, repo, select, shell_with};
+use crate::test_support::{draw, in_front, repo, select, shell_with};
 
 struct Chat {
     window: AnyWindowHandle,
@@ -45,8 +45,7 @@ fn shown(name: &str, in_front: bool, cx: &mut TestAppContext) -> Chat {
 
 impl Chat {
     fn front(&self, cx: &mut TestAppContext) {
-        cx.update_window(self.window, |_, window, _| window.activate_window())
-            .unwrap();
+        in_front(self.window, true, cx);
         draw(self.window, cx);
     }
 

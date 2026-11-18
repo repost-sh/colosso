@@ -74,14 +74,11 @@ fn menu(shown: &Shown, pane: PaneId) -> NativeMenu {
 impl BrowserView {
     /// The icons of the page's profile's extensions, as this page shows them; with
     /// `pinned_only`, those pinned to the toolbar.
-    pub(in crate::browser) fn extensions(&self, pinned_only: bool, cx: &mut Context<Self>) -> Vec<Shown> {
-        let (Some(profile), pane) = (self.profile().map(str::to_owned), self.pane) else {
+    pub(in crate::browser) fn extensions(&self, pinned_only: bool, cx: &gpui_kit::App) -> Vec<Shown> {
+        let Some(profile) = self.profile().filter(|_| self.is_open(cx)) else {
             return Vec::new();
         };
-        if !self.is_open(cx) {
-            return Vec::new();
-        }
-        (self.browsers).update(cx, |browsers, _| browsers.extensions.shown(&profile, pane, pinned_only))
+        self.browsers.read(cx).extensions.shown(profile, self.pane, pinned_only)
     }
 
     /// How many icons the page's profile's extensions have; none where the engine doesn't

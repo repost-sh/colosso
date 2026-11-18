@@ -3,6 +3,7 @@
 //! engine runs them and keeps them; this is what the icons are drawn from, and it's gone
 //! with the app.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -32,7 +33,8 @@ pub(super) struct Store {
     lists: HashMap<String, Vec<Extension>>,
     /// What each set its action to, by profile and extension.
     actions: HashMap<(String, String), Actions>,
-    /// The manifests' icons, read and decoded once, by file.
+    /// The manifests' icons, read and decoded once, as the extensions turned on are listed, by
+    /// file.
     files: HashMap<String, Option<Arc<Image>>>,
     /// The icon each extension last set, decoded: by profile, extension, and the page it's
     /// for, none for every page. One set anew takes the place of the one before, so an
@@ -71,15 +73,25 @@ pub(super) struct Shown {
 }
 
 impl Store {
-    /// The engine listed `profile`'s extensions. Actions of those that went are forgotten.
-    pub(super) fn listed(&mut self, profile: String, extensions: Vec<Extension>) {
+    /// The engine listed `profile`'s extensions: the icons of those turned on are read. Actions
+    /// of those that went are forgotten. False when it listed them as it did last, which changes
+    /// nothing.
+    pub(super) fn listed(&mut self, profile: String, extensions: Vec<Extension>) -> bool {
+        if self.lists.get(&profile) == Some(&extensions) {
+            return false;
+        }
         let stays = |of: &String, id: &String| {
             *of != profile || extensions.iter().any(|extension| extension.id == *id)
         };
         self.actions.retain(|(of, id), _| stays(of, id));
         self.set.retain(|(of, id, _), _| stays(of, id));
+        for extension in extensions.iter().filter(|extension| extension.enabled) {
+            let file = &extension.icon_path;
+            self.files.entry(file.clone()).or_insert_with(|| image(file));
+        }
         self.lists.insert(profile, extensions);
         self.changes += 1;
+        true
     }
 
     /// How many times what the engine said changed.
@@ -94,18 +106,31 @@ impl Store {
         self.lists.contains_key(profile)
     }
 
-    /// An extension set its action, for `pane`'s page or for every page.
+    /// An extension set its action, for `pane`'s page or for every page. False when it set it
+    /// as it was, which changes nothing. Its icon is decoded only when it's another.
     pub(super) fn acted(
         &mut self,
         profile: String,
         extension: String,
         pane: Option<PaneId>,
         action: ExtensionAction,
-    ) {
-        let slot = (profile.clone(), extension.clone(), pane);
-        match image(&action.icon) {
-            Some(icon) => drop(self.set.insert(slot, icon)),
-            None => drop(self.set.remove(&slot)),
+    ) -> bool {
+        let key = (profile, extension);
+        let was = (self.actions.get(&key)).and_then(|actions| match pane {
+            Some(pane) => actions.panes.get(&pane),
+            None => Some(&actions.all),
+        });
+        if was == Some(&action) {
+            return false;
+        }
+        let same_icon = was.is_some_and(|was| was.icon == action.icon);
+        let (profile, extension) = key;
+        if !same_icon {
+            let slot = (profile.clone(), extension.clone(), pane);
+            match image(&action.icon) {
+                Some(icon) => drop(self.set.insert(slot, icon)),
+                None => drop(self.set.remove(&slot)),
+            }
         }
         let actions = self.actions.entry((profile, extension)).or_default();
         match pane {
@@ -113,6 +138,7 @@ impl Store {
             None => actions.all = action,
         }
         self.changes += 1;
+        true
     }
 
     /// `pane`'s page is gone, and what was set for it.
@@ -135,7 +161,7 @@ impl Store {
 
     /// The icons of `profile`'s extensions that are turned on, as `pane`'s page shows them:
     /// pinned ones first, each group by name. With `pinned_only`, only those.
-    pub(super) fn shown(&mut self, profile: &str, pane: PaneId, pinned_only: bool) -> Vec<Shown> {
+    pub(super) fn shown(&self, profile: &str, pane: PaneId, pinned_only: bool) -> Vec<Shown> {
         let Some(list) = self.lists.get(profile) else {
             return Vec::new();
         };
@@ -154,19 +180,16 @@ impl Store {
                 self.set.get(&slot(Some(pane))).cloned()
             } else if !resolved.icon.is_empty() {
                 self.set.get(&slot(None)).cloned()
-            } else if extension.icon_path.is_empty() {
-                None
             } else {
-                let file = &extension.icon_path;
-                (self.files.entry(file.clone()).or_insert_with(|| image(file))).clone()
+                self.files.get(&extension.icon_path).cloned().flatten()
             };
             shown.push(Shown {
                 id: extension.id.clone(),
                 name: extension.name.clone(),
-                title: if resolved.title.is_empty() { extension.name.clone() } else { resolved.title },
+                title: if resolved.title.is_empty() { extension.name.clone() } else { resolved.title.clone() },
                 icon,
                 badge: (!resolved.badge_text.is_empty()).then(|| Badge {
-                    text: resolved.badge_text,
+                    text: resolved.badge_text.clone(),
                     color: rgba(&resolved.badge_color),
                     text_color: rgba(&resolved.badge_text_color),
                 }),
@@ -183,23 +206,23 @@ impl Store {
 
 /// What shows for `pane`: each value the page's own where the extension set one, else the
 /// one for every page. An extension that said nothing yet has an enabled action.
-fn resolve(actions: Option<&Actions>, pane: PaneId) -> ExtensionAction {
+fn resolve(actions: Option<&Actions>, pane: PaneId) -> Cow<'_, ExtensionAction> {
     let Some(actions) = actions else {
-        return ExtensionAction { enabled: true, ..ExtensionAction::default() };
+        return Cow::Owned(ExtensionAction { enabled: true, ..ExtensionAction::default() });
     };
     let all = &actions.all;
     let Some(own) = actions.panes.get(&pane) else {
-        return all.clone();
+        return Cow::Borrowed(all);
     };
     let pick = |own: &String, all: &String| if own.is_empty() { all.clone() } else { own.clone() };
-    ExtensionAction {
+    Cow::Owned(ExtensionAction {
         icon: pick(&own.icon, &all.icon),
         title: pick(&own.title, &all.title),
         badge_text: pick(&own.badge_text, &all.badge_text),
         badge_color: pick(&own.badge_color, &all.badge_color),
         badge_text_color: pick(&own.badge_text_color, &all.badge_text_color),
         enabled: own.enabled,
-    }
+    })
 }
 
 /// A colour written `#RRGGBBAA`.
@@ -237,29 +260,36 @@ fn image(source: &str) -> Option<Arc<Image>> {
 }
 
 #[cfg(test)]
+pub(super) fn extension(id: &str, name: &str, pinned: bool, enabled: bool) -> Extension {
+    Extension {
+        id: id.into(),
+        name: name.into(),
+        version: "1".into(),
+        enabled,
+        removable: true,
+        pinned,
+        ..Extension::default()
+    }
+}
+
+#[cfg(test)]
+pub(super) fn set(badge: &str, title: &str, enabled: bool) -> ExtensionAction {
+    ExtensionAction {
+        badge_text: badge.into(),
+        title: title.into(),
+        enabled,
+        ..ExtensionAction::default()
+    }
+}
+
+#[cfg(test)]
+pub(super) fn with_icon(icon: &str) -> ExtensionAction {
+    ExtensionAction { icon: icon.into(), enabled: true, ..ExtensionAction::default() }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    fn extension(id: &str, name: &str, pinned: bool, enabled: bool) -> Extension {
-        Extension {
-            id: id.into(),
-            name: name.into(),
-            version: "1".into(),
-            enabled,
-            removable: true,
-            pinned,
-            ..Extension::default()
-        }
-    }
-
-    fn set(badge: &str, title: &str, enabled: bool) -> ExtensionAction {
-        ExtensionAction {
-            badge_text: badge.into(),
-            title: title.into(),
-            enabled,
-            ..ExtensionAction::default()
-        }
-    }
 
     fn names(shown: &[Shown]) -> Vec<&str> {
         shown.iter().map(|shown| shown.name.as_str()).collect()
@@ -307,28 +337,47 @@ mod tests {
         assert_eq!(back.badge.as_ref().map(|badge| badge.text.as_str()), Some("3"));
     }
 
+    /// A picture of a pixel, as an extension sets its icon to.
+    const PNG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
     #[test]
     fn an_icon_set_anew_takes_the_place_of_the_one_before() {
-        let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-        let with_icon = |icon: &str| ExtensionAction { icon: icon.into(), enabled: true, ..ExtensionAction::default() };
         let mut store = Store::default();
         store.listed("p".into(), vec![extension("a", "Alpha", true, true)]);
         assert!(store.shown("p", 1, false)[0].icon.is_none(), "it has none of its own");
-        store.acted("p".into(), "a".into(), None, with_icon(png));
+        store.acted("p".into(), "a".into(), None, with_icon(PNG));
         let for_all = store.shown("p", 1, false)[0].icon.clone().expect("the one set for all");
-        store.acted("p".into(), "a".into(), Some(7), with_icon(png));
+        store.acted("p".into(), "a".into(), Some(7), with_icon(PNG));
         let for_seven = store.shown("p", 7, false)[0].icon.clone().expect("the one set for the page");
         assert!(!Arc::ptr_eq(&for_all, &for_seven));
         assert!(Arc::ptr_eq(&for_all, store.shown("p", 1, false)[0].icon.as_ref().expect("still")));
         for _ in 0..50 {
-            store.acted("p".into(), "a".into(), Some(7), with_icon(png));
+            store.acted("p".into(), "a".into(), Some(7), with_icon(PNG));
         }
         assert_eq!(store.set.len(), 2);
         store.acted("p".into(), "a".into(), Some(7), with_icon(""));
         assert!(Arc::ptr_eq(&for_all, store.shown("p", 7, false)[0].icon.as_ref().expect("back")));
-        store.acted("p".into(), "a".into(), Some(7), with_icon(png));
+        store.acted("p".into(), "a".into(), Some(7), with_icon(PNG));
         store.pane_closed(7);
         assert_eq!(store.set.len(), 1);
+    }
+
+    #[test]
+    fn the_same_list_or_action_again_changes_nothing() {
+        let mut store = Store::default();
+        assert!(store.listed("p".into(), vec![extension("a", "Alpha", true, true)]));
+        assert!(!store.listed("p".into(), vec![extension("a", "Alpha", true, true)]), "the same list");
+        assert!(store.acted("p".into(), "a".into(), Some(7), with_icon(PNG)));
+        let icon = store.shown("p", 7, false)[0].icon.clone().expect("its icon");
+        let changes = store.changes();
+        assert!(!store.acted("p".into(), "a".into(), Some(7), with_icon(PNG)), "the same action");
+        assert_eq!(store.changes(), changes);
+        let kept = store.shown("p", 7, false)[0].icon.clone().expect("its icon still");
+        assert!(Arc::ptr_eq(&icon, &kept), "the icon isn't decoded again");
+        let badged = ExtensionAction { badge_text: "1".into(), ..with_icon(PNG) };
+        assert!(store.acted("p".into(), "a".into(), Some(7), badged), "a new badge");
+        let kept = store.shown("p", 7, false)[0].icon.clone().expect("its icon with the badge");
+        assert!(Arc::ptr_eq(&icon, &kept), "a new badge on the same icon isn't decoded again");
     }
 
     #[test]
@@ -353,8 +402,7 @@ mod tests {
 
     #[test]
     fn an_icon_is_a_png_an_extension_set_or_a_file_of_its_own() {
-        let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-        assert!(image(&format!("data:image/png;base64,{png}")).is_some());
+        assert!(image(PNG).is_some());
         assert!(image("data:image/png;base64,not base64!").is_none());
         assert!(image("/no/such/icon.png").is_none());
         assert!(image("/etc/hosts").is_none(), "not a picture by its name");

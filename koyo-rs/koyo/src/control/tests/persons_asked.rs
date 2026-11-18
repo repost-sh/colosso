@@ -17,6 +17,7 @@ use super::{
 };
 use crate::control::exec::{DECLINED_FOR, OTHERS_WAIT};
 use crate::control::{ActivityKind, Caller};
+use crate::model::Pane;
 use crate::test_support::{git, repo, select};
 
 /// What the person is told a caller may do with their page once they allow it.
@@ -61,11 +62,11 @@ fn label(rig: &Rig, root: &Path, branch: &str, cx: &TestAppContext) -> String {
 
 /// The project whose checkout pane `pane` is in, by its folder, and the address it shows.
 fn where_it_is(rig: &Rig, pane: u64, cx: &TestAppContext) -> (PathBuf, String) {
-    read_shell(rig, cx, |shell, cx| {
+    read_shell(rig, cx, |shell, _| {
         let workspace = &shell.workspace;
         let ((project, _, _), _) = workspace.find_pane(|found| found.id == pane).unwrap();
-        let address = workspace.pane(pane).and_then(|found| found.address(cx));
-        (workspace.projects[project].path.clone(), address.unwrap())
+        let address = workspace.pane(pane).and_then(Pane::address);
+        (workspace.projects[project].path.clone(), address.unwrap().to_owned())
     })
 }
 

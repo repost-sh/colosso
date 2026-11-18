@@ -71,13 +71,9 @@ impl BrowserView {
         cx.write_to_clipboard(ClipboardItem::new_string(self.page.url.clone()));
         self.link_copied = Some(Instant::now());
         cx.notify();
-        cx.refresh_windows();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(COPIED_FOR).await;
-            let _ = this.update(cx, |_, cx| {
-                cx.notify();
-                cx.refresh_windows();
-            });
+            let _ = this.update(cx, |_, cx| cx.notify());
         })
         .detach();
     }

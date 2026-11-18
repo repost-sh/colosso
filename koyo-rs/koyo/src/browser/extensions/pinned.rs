@@ -17,11 +17,10 @@ use crate::theme;
 /// The icons of the extensions pinned in the profile of `view`'s page, in pin order, each
 /// with its badge: a press runs one's action, its popup hanging from under the icon, and a
 /// right press opens its menu. None for the developer tools, or a page that isn't open.
-pub fn icons(view: &Entity<BrowserView>, cx: &mut App) -> Vec<AnyElement> {
+pub fn icons(view: &Entity<BrowserView>, cx: &App) -> Vec<AnyElement> {
     let p = theme::palette(cx);
-    let shown = view.update(cx, |page, cx| {
-        if page.is_inspector() { Vec::new() } else { page.extensions(true, cx) }
-    });
+    let page = view.read(cx);
+    let shown = if page.is_inspector() { Vec::new() } else { page.extensions(true, cx) };
     let icons = shown.into_iter().enumerate().map(|(index, shown)| {
         let says = shown.title.clone();
         let (pressed, asked) = (shown.id.clone(), shown.clone());

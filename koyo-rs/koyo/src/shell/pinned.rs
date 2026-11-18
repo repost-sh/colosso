@@ -8,15 +8,15 @@ use gpui_kit::{App, Context, SharedString};
 
 use super::Shell;
 use crate::browser;
-use crate::model::Unloaded;
+use crate::model::{Pane, Unloaded};
 
 impl Shell {
     /// Where the checkout's tab holding pane `pane` is, as `(project, branch, tab)`, when that's
     /// its single pane and a page, not a page's `DevTools` in a tab of their own: what the
     /// pinned and the loose pages take from a checkout's list.
-    pub(crate) fn page_tab_of(&self, pane: u64, cx: &App) -> Option<(usize, usize, usize)> {
+    pub(crate) fn page_tab_of(&self, pane: u64) -> Option<(usize, usize, usize)> {
         let (at, _) = self.workspace.find_pane(|found| found.id == pane)?;
-        let tools = (self.workspace.tab(at)).is_some_and(|tab| tab.first().is_inspector(cx));
+        let tools = (self.workspace.tab(at)).is_some_and(|tab| tab.first().is_inspector());
         (self.workspace.is_page_tab(at) && !tools).then_some(at)
     }
 
@@ -25,10 +25,10 @@ impl Shell {
     /// away or a strip shows for. The pinned take a page's tab off a checkout's list and a loose
     /// page's row off theirs; the loose take that tab too, and a pinned page's tile well away
     /// from the others. Not while it's still on the list or the grid it was taken from.
-    pub(crate) fn taken_elsewhere(&self, cx: &App) -> (bool, bool) {
+    pub(crate) fn taken_elsewhere(&self) -> (bool, bool) {
         let off = self.tab_hand.left_list();
         let row = off.is_some_and(|pane| self.workspace.loose_at(pane).is_some());
-        let tab = !row && off.is_some_and(|pane| self.page_tab_of(pane, cx).is_some());
+        let tab = !row && off.is_some_and(|pane| self.page_tab_of(pane).is_some());
         (tab || row, tab || self.pinned_hand.left_grid())
     }
 
@@ -36,12 +36,12 @@ impl Shell {
     /// address its page shows: it goes after those pinned already, and goes on showing if it was
     /// the tab shown. Whether it was one a pin takes.
     pub(crate) fn pin_tab_of(&mut self, pane: u64, cx: &mut Context<Self>) -> bool {
-        let home = (self.workspace.pane(pane)).and_then(|page| page.address(cx));
-        let home = home.unwrap_or_default();
+        let home = (self.workspace.pane(pane)).and_then(Pane::address);
+        let home = home.unwrap_or_default().to_owned();
         let pinned = if let Some(at) = self.workspace.loose_at(pane) {
             self.workspace.pin_loose(at, home)
         } else {
-            let tab = self.page_tab_of(pane, cx);
+            let tab = self.page_tab_of(pane);
             tab.and_then(|at| self.workspace.pin_tab(at, home))
         };
         if pinned.is_some() {
@@ -107,35 +107,35 @@ impl Shell {
     /// the address's, and the icon kept for its site.
     fn rested(&self, at: usize, address: String, cx: &mut App) -> (SharedString, Unloaded) {
         let page = self.workspace.pinned()[at].tab.first();
-        let (title, favicon) = if page.address(cx).as_deref() == Some(address.as_str()) {
-            (page.title.clone(), page.favicon(cx))
+        let (title, favicon) = if page.address() == Some(address.as_str()) {
+            (page.title.clone(), page.favicon())
         } else {
             let rested = browser::page_brought_back(&address, "", cx);
-            (rested.title.clone(), rested.favicon(cx))
+            (rested.title.clone(), rested.favicon())
         };
         (title, Unloaded { address, favicon })
     }
 
     /// Whether the pinned page known by `key` has something to close: a page open, or, brought
     /// back with the window and not opened yet, an address other than the one it's pinned at.
-    pub(crate) fn pinned_is_open(&self, key: u64, cx: &App) -> bool {
+    pub(crate) fn pinned_is_open(&self, key: u64) -> bool {
         self.workspace.pinned_of(key).is_some_and(|pinned| {
             let page = pinned.tab.first();
-            page.view().is_some() || page.address(cx).as_deref() != Some(pinned.home.as_str())
+            page.view().is_some() || page.address() != Some(pinned.home.as_str())
         })
     }
 
     /// The address the pinned page known by `key` shows, when it isn't the one it's pinned at:
     /// what Replace Pinned URL with Current pins it at.
-    pub(crate) fn pinned_strayed(&self, key: u64, cx: &App) -> Option<String> {
+    pub(crate) fn pinned_strayed(&self, key: u64) -> Option<String> {
         let pinned = self.workspace.pinned_of(key)?;
-        let shows = pinned.tab.first().address(cx)?;
-        (!shows.is_empty() && shows != pinned.home).then_some(shows)
+        let shows = pinned.tab.first().address()?;
+        (!shows.is_empty() && shows != pinned.home).then(|| shows.to_owned())
     }
 
     /// The pinned page known by `key` is pinned at the address it shows from now on.
     pub(crate) fn repin_at_current(&mut self, key: u64, cx: &mut Context<Self>) {
-        if let Some(shows) = self.pinned_strayed(key, cx) {
+        if let Some(shows) = self.pinned_strayed(key) {
             self.repin_at(key, shows, cx);
         }
     }

@@ -5,7 +5,7 @@
 use gpui_kit::{App, Entity};
 use serde::{Deserialize, Serialize};
 
-use super::Pane;
+use super::{Pane, PaneKind};
 use crate::files::{FileEditor, FilePane};
 
 /// How a split lays its two sides out. The window's file keeps it by these names
@@ -118,16 +118,31 @@ impl Tab {
         (panes.max_by_key(|pane| pane.entered_at)).unwrap_or_else(|| self.first())
     }
 
-    /// The panes, left to right and top to bottom.
-    pub fn panes(&self) -> Vec<&Pane> {
+    /// Calls `each` on each pane, left to right and top to bottom.
+    pub fn each_pane<'a>(&'a self, each: &mut impl FnMut(&'a Pane)) {
         match self {
-            Tab::Single(pane) => vec![pane],
+            Tab::Single(pane) => each(pane),
             Tab::Split(split) => {
-                let mut panes = split.first.panes();
-                panes.extend(split.second.panes());
-                panes
+                split.first.each_pane(each);
+                split.second.each_pane(each);
             }
         }
+    }
+
+    /// Whether `found` holds of any pane, left to right and top to bottom, looking no further
+    /// than the first.
+    pub fn any_pane(&self, found: &impl Fn(&Pane) -> bool) -> bool {
+        match self {
+            Tab::Single(pane) => found(pane),
+            Tab::Split(split) => split.first.any_pane(found) || split.second.any_pane(found),
+        }
+    }
+
+    /// The panes, left to right and top to bottom.
+    pub fn panes(&self) -> Vec<&Pane> {
+        let mut panes = Vec::new();
+        self.each_pane(&mut |pane| panes.push(pane));
+        panes
     }
 
     pub fn panes_mut(&mut self) -> Vec<&mut Pane> {
@@ -165,8 +180,19 @@ impl Tab {
             .collect()
     }
 
+    /// Whether a pane of it shows terminal `id`.
+    pub fn shows_terminal(&self, id: u64) -> bool {
+        self.any_pane(&|pane| pane.terminal == Some(id))
+    }
+
+    /// Whether a pane of it is a page, which the window shows in a native view over all it
+    /// draws itself but its overlays.
+    pub fn shows_page(&self) -> bool {
+        self.any_pane(&|pane| pane.kind == PaneKind::Browser)
+    }
+
     pub fn has_pane(&self, id: u64) -> bool {
-        self.panes().iter().any(|pane| pane.id == id)
+        self.any_pane(&|pane| pane.id == id)
     }
 
     /// Puts `incoming` at `edge` of the pane `target`, the two sharing its room. False, and

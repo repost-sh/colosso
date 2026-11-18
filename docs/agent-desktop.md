@@ -266,7 +266,8 @@ Koyo started again at once waits for the last one's host to finish.
   ones, so a still desktop costs the app nothing; a still window's frame is sent again every 2 s,
   in case one was lost.
 - Every window is captured for as long as it's there: 60 frames a second at most while a tab
-  draws the desktop or a `desktop_wait` watches, two a second otherwise, and then nothing is sent
+  draws the desktop in a window a person can see or a `desktop_wait` watches, two a second
+  otherwise, and then nothing is sent
   to the app; the frame that came last is sent once somebody looks again (a window that stays as
   it is, as a wallpaper does, sends no other). A window being resized keeps its stream, its
   frames stretched to it, until its size has stood 150 ms. A window on a desktop that isn't showing, captured for no one, is hidden to its

@@ -161,9 +161,7 @@ pub(crate) fn open_agents_page(
     let Some(view) = view else {
         return;
     };
-    let drawn = shell.route(cx) == Route::Workspace
-        && shell.workspace.shown_checkout_tab() == Some(at)
-        && window.is_visible();
+    let drawn = (shell.tab_seen(window, cx)).is_some_and(|tab| tab.has_pane(pane));
     if !drawn {
         view.update(cx, BrowserView::open_out_of_sight);
     }

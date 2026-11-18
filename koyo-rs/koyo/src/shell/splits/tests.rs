@@ -1,13 +1,16 @@
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, TestAppContext,
+    AnyWindowHandle, AppContext as _, CursorStyle, Entity, Modifiers, MouseButton, TestAppContext,
     VisualTestContext, point, px,
 };
 
 use crate::browser::{BrowserView, DOCK_MIN, Dock};
-use crate::model::{PaneKind, SplitAxis, Tab};
+use crate::files::Place;
+use crate::files::tests::{shell_showing, with_shell};
+use crate::model::{Edge, PaneKind, SplitAxis, Tab};
 use crate::settings;
 use crate::shell::Shell;
-use crate::test_support::{draw, repo, select, shell_with};
+use crate::test_support::{center_of, cursor_at, drag, draw, open_page, repo, select, shell_with};
+use crate::theme::card::HANDLE_REACH;
 
 fn selector(name: String) -> &'static str {
     Box::leak(name.into_boxed_str())
@@ -178,22 +181,8 @@ fn devtools_dock_at_every_side_detach_into_a_split_and_close_with_their_page(
 
 /// Drags the docked `DevTools`' divider from its middle by `by`, as a person does.
 fn drag_dock_divider(window: AnyWindowHandle, by: f32, cx: &mut TestAppContext) {
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let divider = vcx
-        .debug_bounds("devtools-divider")
-        .expect("docked DevTools have a divider");
-    let none = Modifiers::default();
-    let from = divider.center();
-    vcx.simulate_mouse_down(from, MouseButton::Left, none);
-    vcx.simulate_mouse_move(
-        from + point(px(0.), px(5. * by.signum())),
-        Some(MouseButton::Left),
-        none,
-    );
-    let to = from + point(px(0.), px(by));
-    vcx.simulate_mouse_move(to, Some(MouseButton::Left), none);
-    vcx.simulate_mouse_up(to, MouseButton::Left, none);
-    draw(window, cx);
+    let from = center_of(window, "devtools-divider", cx);
+    drag(window, from, from + point(px(0.), px(by)), cx);
 }
 
 #[gpui_kit::test]
@@ -262,25 +251,92 @@ fn the_divider_of_a_split_shares_its_room_as_dragged(cx: &mut TestAppContext) {
         shell.workspace.new_tab(PaneKind::Terminal);
         let unit = shell.workspace.branch_mut().unwrap();
         let target = unit.tabs[1].panes()[0].id;
-        assert!(unit.drop_tab(0, target, crate::model::Edge::Bottom));
+        assert!(unit.drop_tab(0, target, Edge::Bottom));
         cx.notify();
         target
     });
     draw(window, cx);
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let divider = vcx.debug_bounds("split-[]").expect("the split's divider");
-    let none = Modifiers::default();
-    vcx.simulate_mouse_down(divider.center(), MouseButton::Left, none);
-    let start = divider.center() + point(px(0.), px(5.));
-    vcx.simulate_mouse_move(start, Some(MouseButton::Left), none);
-    let lower = divider.center() + point(px(0.), px(60.));
-    vcx.simulate_mouse_move(lower, Some(MouseButton::Left), none);
-    vcx.simulate_mouse_up(lower, MouseButton::Left, none);
-    draw(window, cx);
+    let from = center_of(window, "split-[]", cx);
+    drag(window, from, from + point(px(0.), px(60.)), cx);
     shell.update(cx, |shell, _| {
         let unit = shell.workspace.branch_mut().unwrap();
         let split = unit.tabs[0].split_at_mut(&[]).expect("still split");
         assert!(split.ratio > 0.55, "the top grew to {}", split.ratio);
         assert!(unit.tabs[0].has_pane(target));
     });
+}
+
+#[gpui_kit::test]
+fn a_divider_side_by_side_is_picked_up_over_the_panes_either_side_of_it(cx: &mut TestAppContext) {
+    picked_up_either_side("split-reach-row", Edge::Right, false, cx);
+}
+
+#[gpui_kit::test]
+fn a_divider_one_above_the_other_is_picked_up_over_the_panes_either_side_of_it(
+    cx: &mut TestAppContext,
+) {
+    picked_up_either_side("split-reach-column", Edge::Bottom, false, cx);
+}
+
+#[gpui_kit::test]
+fn a_divider_beside_a_page_is_picked_up_over_the_panes_either_side_of_it(cx: &mut TestAppContext) {
+    picked_up_either_side("split-reach-page", Edge::Right, true, cx);
+}
+
+/// A file split at `edge` of another file, or of a `page`, their divider picked up a few points
+/// over each, where the pane or the header over it would take the press otherwise: the resize
+/// cursor shows there, and a drag from there gives the first more of the room. Side by side,
+/// it's picked up by the headers and below them; one above the other, the second's header is
+/// under it.
+fn picked_up_either_side(name: &str, edge: Edge, page: bool, cx: &mut TestAppContext) {
+    let files = [("README.md", "hi\n"), ("src/lib.rs", "pub fn a() {}\n")];
+    let root = repo(name, &files);
+    let (window, shell, _) = shell_showing(&root, cx);
+    if page {
+        open_page(window, &shell, Some("https://example.com/"), cx);
+    } else {
+        with_shell(window, &shell, cx, |shell, window, cx| {
+            shell.view_file(Place::file("src/lib.rs"), window, cx);
+        });
+    }
+    shell.update(cx, |shell, cx| {
+        let unit = shell.workspace.branch_mut().unwrap();
+        let target = unit.tabs[1].panes()[0].id;
+        assert!(unit.drop_tab(0, target, edge));
+        cx.notify();
+    });
+    draw(window, cx);
+    let row = edge == Edge::Right;
+    let (cursor, across) = if row {
+        (CursorStyle::ResizeColumn, point(px(1.), px(0.)))
+    } else {
+        (CursorStyle::ResizeRow, point(px(0.), px(1.)))
+    };
+    let ratio = |cx: &mut TestAppContext| {
+        shell.read_with(cx, |shell, _| match shell.workspace.tab_shown() {
+            Some(Tab::Split(split)) => split.ratio,
+            _ => panic!("the files are split"),
+        })
+    };
+    let reaches = [
+        (-HANDLE_REACH, row),
+        (HANDLE_REACH, row),
+        (-HANDLE_REACH, false),
+        (HANDLE_REACH, false),
+    ];
+    for (reach, by_headers) in reaches {
+        let mut vcx = VisualTestContext::from_window(window, cx);
+        let divider = vcx.debug_bounds("split-[]").expect("the split's divider");
+        let mut at = divider.center() + across * reach;
+        if by_headers {
+            at.y = divider.top() + px(super::HEADER / 2.);
+        }
+        let what = format!("{reach} from the divider, by the headers: {by_headers}");
+        assert_eq!(cursor_at(window, at, cx), cursor, "{what}");
+        let before = ratio(cx);
+        drag(window, at, at + across * 60., cx);
+        let after = ratio(cx);
+        assert!(after > before + 0.02, "{what}: {before} to {after}");
+    }
+    let _ = std::fs::remove_dir_all(root);
 }

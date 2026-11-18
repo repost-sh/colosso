@@ -1,9 +1,44 @@
-use gpui_kit::point;
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gpui_kit::{AppContext as _, TestAppContext, point, px, size};
 
 use super::file::{read, reload};
 use super::migration::migrate;
 use super::*;
+use crate::budget::{settle, wakes_a_minute};
 use crate::gradient::Harmony;
+use crate::test_support::{Blank, in_front, in_window, scratch};
+
+/// Gives a test's settings a file in `folder` to be saved to, as the app's are: its path.
+pub(crate) fn saved_in(folder: &Path, cx: &mut App) -> PathBuf {
+    let file = folder.join(FILE);
+    cx.global_mut::<Store>().path = Some(file.clone());
+    file
+}
+
+/// Counts what the settings' observers hear, for as long as the subscription is kept.
+pub(crate) fn hearing(cx: &mut TestAppContext) -> (Rc<Cell<usize>>, Subscription) {
+    let heard = Rc::new(Cell::new(0));
+    let counting = heard.clone();
+    let observing = cx.update(|cx| observe_app(cx, move |_| counting.set(counting.get() + 1)));
+    (heard, observing)
+}
+
+/// Starts the settings with a file to be saved to in the scratch folder `name`: its path.
+fn started_with_file(name: &str, cx: &mut TestAppContext) -> PathBuf {
+    cx.update(init);
+    cx.update(|cx| saved_in(&scratch(name), cx))
+}
+
+/// Writes `json` to the file at `path` as an edit made outside the app does, dated `secs` after
+/// the epoch, so no two edits share a date.
+fn edit(path: &Path, json: &str, secs: u64) {
+    std::fs::write(path, json).unwrap();
+    let file = std::fs::File::options().write(true).open(path).unwrap();
+    file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(secs))
+        .unwrap();
+}
 
 #[test]
 fn settings_survive_a_round_trip() {
@@ -51,39 +86,105 @@ fn missing_fields_fall_back_to_defaults() {
 }
 
 #[gpui_kit::test]
-fn edits_to_the_file_are_taken_up_while_the_app_runs(cx: &mut gpui_kit::TestAppContext) {
-    let path = crate::test_support::scratch("settings-reload").join(FILE);
-    let store = Store {
-        settings: Settings::default(),
-        path: Some(path.clone()),
-        pending: None,
-        unsaved: false,
-        seen: None,
-    };
-    cx.update(|cx| cx.set_global(store));
-    let mut edited = SystemTime::UNIX_EPOCH;
-    let mut edit = |json: &str| {
-        std::fs::write(&path, json).unwrap();
-        edited += Duration::from_secs(1);
-        let file = std::fs::File::options().write(true).open(&path).unwrap();
-        file.set_modified(edited).unwrap();
-    };
-    let delay = |cx: &mut gpui_kit::TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
-    edit(r#"{ "key_repeat": { "delay_ms": 90 } }"#);
+fn edits_to_the_file_are_taken_up_while_the_app_runs(cx: &mut TestAppContext) {
+    let path = started_with_file("settings-reload", cx);
+    let delay = |cx: &mut TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
+    edit(&path, r#"{ "key_repeat": { "delay_ms": 90 } }"#, 1);
     cx.update(reload);
     assert_eq!(delay(cx), 90);
-    edit(r#"{ "key_repeat": { "delay_ms": 4"#);
+    edit(&path, r#"{ "key_repeat": { "delay_ms": 4"#, 2);
     cx.update(reload);
     assert_eq!(delay(cx), 90);
     cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
-    edit(r#"{ "key_repeat": { "delay_ms": 60 } }"#);
+    edit(&path, r#"{ "key_repeat": { "delay_ms": 60 } }"#, 3);
     cx.update(reload);
     assert_eq!(delay(cx), 120);
 }
 
+/// What the settings' observers hear: a change made in the app, once, and not its save a moment
+/// later, nor the file read again as the app wrote it; nor the file touched outside with every
+/// setting as it was. An edit outside that changes a setting is taken up, and heard once.
+#[gpui_kit::test]
+fn observers_hear_of_a_change_once_and_not_of_its_save(cx: &mut TestAppContext) {
+    let path = started_with_file("settings-heard", cx);
+    let (heard, _observing) = hearing(cx);
+    let delay = |cx: &mut TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
+
+    cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
+    assert_eq!(heard.get(), 1, "the change");
+    settle(cx);
+    assert_eq!(read(&path).unwrap().key_repeat.delay_ms, 120, "saved");
+    assert_eq!(heard.get(), 1, "the save");
+    cx.update(reload);
+    assert_eq!(heard.get(), 1, "the app's own save read again");
+
+    let saved = std::fs::read_to_string(&path).unwrap();
+    edit(&path, &saved, 1);
+    cx.update(reload);
+    assert_eq!(heard.get(), 1, "the file touched, every setting as it was");
+    edit(&path, r#"{ "key_repeat": { "delay_ms": 60 } }"#, 2);
+    cx.update(reload);
+    assert_eq!(delay(cx), 60, "an edit outside is taken up");
+    assert_eq!(heard.get(), 2, "and heard once");
+}
+
+/// The file is looked at for an edit made outside the app only while Koyo is in front, every two
+/// seconds, so one made there is taken up within them; one made while another app is in front is
+/// taken up as Koyo comes back. With no file, nothing looks.
+#[gpui_kit::test]
+fn the_file_is_looked_at_only_while_koyo_is_in_front(cx: &mut TestAppContext) {
+    cx.update(init);
+    let (window, _) = in_window(size(px(400.), px(300.)), cx, |_, cx| cx.new(|_| Blank));
+    let delay = |cx: &mut TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
+    let to_front = |front: bool, cx: &mut TestAppContext| {
+        in_front(window, front, cx);
+        if front {
+            cx.update(came_to_front);
+        }
+    };
+    to_front(true, cx);
+    assert_eq!(wakes_a_minute(cx), 0, "no file to look at");
+
+    let path = cx.update(|cx| saved_in(&scratch("settings-in-front"), cx));
+    to_front(true, cx);
+    edit(&path, r#"{ "key_repeat": { "delay_ms": 90 } }"#, 1);
+    cx.executor().advance_clock(Duration::from_secs(2));
+    cx.run_until_parked();
+    assert_eq!(delay(cx), 90, "an edit made in front, taken up within two seconds");
+    assert_eq!(wakes_a_minute(cx), 30, "looked at every two seconds in front");
+
+    to_front(false, cx);
+    edit(&path, r#"{ "key_repeat": { "delay_ms": 60 } }"#, 2);
+    assert_eq!(wakes_a_minute(cx), 0, "not looked at behind");
+    assert_eq!(delay(cx), 90, "so an edit made behind waits");
+    to_front(true, cx);
+    assert_eq!(delay(cx), 60, "an edit made behind, taken up as Koyo comes in front");
+}
+
+/// A change still settling is written as the app quits, so it's not lost.
+#[gpui_kit::test]
+fn a_change_still_settling_is_saved_as_the_app_quits(cx: &mut TestAppContext) {
+    let path = started_with_file("settings-quit-due", cx);
+    cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
+    cx.quit();
+    assert_eq!(read(&path).unwrap().key_repeat.delay_ms, 120);
+}
+
+/// A save made already is not written again as the app quits: the file stays as it was left,
+/// whoever edited it since.
+#[gpui_kit::test]
+fn a_save_made_is_not_written_again_as_the_app_quits(cx: &mut TestAppContext) {
+    let path = started_with_file("settings-quit-saved", cx);
+    cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
+    settle(cx);
+    std::fs::write(&path, "left as it was").unwrap();
+    cx.quit();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "left as it was");
+}
+
 #[test]
 fn a_file_with_retired_keys_reads_without_them() {
-    let path = crate::test_support::scratch("settings-migrate").join(FILE);
+    let path = scratch("settings-migrate").join(FILE);
     let old = r#"{
         "layout": "Arc",
         "files_width": 280,

@@ -45,12 +45,26 @@ pub(super) const PROMPT_ROOM: f32 = 8.;
 /// How big a picture a message attached shows.
 const ATTACHED_PICTURE: f32 = 160.;
 /// How often the live row's highlight moves: slow enough for the rows it redraws not to matter.
-pub(super) const SHIMMER_FPS: f32 = 20.;
+const SHIMMER_FPS: f32 = 20.;
+
+/// `text` with the highlight going over it while it's `moving`, as what's at work shows: only
+/// while Koyo is in front, as the spinners say a chat works while another app is.
+pub(super) fn shimmer(text: impl Into<SharedString>, moving: bool) -> AnyElement {
+    if moving {
+        ShimmerText::new(text)
+            .max_fps(SHIMMER_FPS)
+            .into_any_element()
+    } else {
+        text.into().into_any_element()
+    }
+}
 
 /// What the list's rows are drawn from.
 pub(super) struct Drawing {
     /// Now, as of this draw of the timeline, for how long what's running took.
     pub(super) now: chrono::DateTime<chrono::Utc>,
+    /// Whether Koyo is in front, the only time the work's highlights move (`beat::is_frontmost`).
+    pub(super) in_front: bool,
     pub(super) thread: Entity<ChatThread>,
     pub(super) catalog: Entity<Catalog>,
     pub(super) timeline: WeakEntity<Timeline>,
@@ -294,7 +308,7 @@ impl Drawing {
         let elapsed = (self.running_since)
             .map(|since| since.elapsed().as_secs())
             .filter(|seconds| *seconds > 0);
-        let label = ShimmerText::new(live_line(item, &self.cwd)).max_fps(SHIMMER_FPS);
+        let label = shimmer(live_line(item, &self.cwd), self.in_front);
         div()
             .flex()
             .items_center()

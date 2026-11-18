@@ -109,11 +109,6 @@ impl Swipe {
     }
 }
 
-/// The sidebar's width, which a space travels to go on to the next.
-fn width(cx: &gpui_kit::App) -> f32 {
-    settings::get(cx).sidebar_width()
-}
-
 /// Whether there's a space before the one shown, and one after.
 fn neighbours(cx: &gpui_kit::App) -> (bool, bool) {
     let settings = settings::get(cx);
@@ -159,7 +154,7 @@ impl Shell {
                 }
                 let (back, forward) = neighbours(cx);
                 let (offset, velocity) = (self.swipe.offset, self.swipe.velocity);
-                match decide(offset, velocity, width(cx), back, forward) {
+                match decide(offset, velocity, self.sidebar_width(cx), back, forward) {
                     0 => self.settle(None, cx),
                     step => {
                         let to = settings::get(cx).space.saturating_add_signed(step);
@@ -196,7 +191,7 @@ impl Shell {
         let moving = (dx / dt).clamp(-MOST_SPEED, MOST_SPEED);
         self.swipe.velocity = 0.6 * moving + 0.4 * self.swipe.velocity;
         let travel = fingers.travel;
-        let width = width(cx);
+        let width = self.sidebar_width(cx);
         let (back, forward) = neighbours(cx);
         let blocked = (travel > 0. && !back) || (travel < 0. && !forward);
         self.swipe.offset = if blocked {
@@ -325,7 +320,7 @@ impl Shell {
     /// it rests. Called as the shell renders, so it moves once a frame, as the display refreshes.
     pub(crate) fn step_swipe(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let now = cx.background_executor().now();
-        let width = width(cx);
+        let width = self.sidebar_width(cx);
         let shown = settings::get(cx).space;
         let Some(settling) = self.swipe.settling.as_mut() else {
             return;

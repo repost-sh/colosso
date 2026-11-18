@@ -199,7 +199,6 @@ impl Shell {
             this.file_pane_event(file, event, &checkout, window, cx);
         })
         .detach();
-        cx.observe(&file, |_, _, cx| cx.notify()).detach();
         file
     }
 

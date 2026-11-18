@@ -20,7 +20,7 @@ use gpui_kit::{
 
 use super::{Shell, ToggleSidebar, action_button, drag_area};
 use crate::navigation::{GoBack, GoForward};
-use crate::settings::{self, Layout};
+use crate::settings::Layout;
 use crate::theme;
 
 /// How the rails move: without overshooting, as a rail can be neither thinner than the gutter
@@ -80,11 +80,10 @@ fn thickness(full: f32, shown: AnimationPhase) -> f32 {
     shown.interpolate(theme::GUTTER, full)
 }
 
-/// How wide the left gutter and the sidebar, left of the chat, are together once they've
-/// settled with the sidebar `open`.
-pub(super) fn left_of_chat(open: bool, cx: &App) -> f32 {
+/// How wide the left gutter and the `sidebar`-wide sidebar, left of the chat, are together once
+/// they've settled with the sidebar `open`.
+pub(super) fn left_of_chat(open: bool, sidebar: f32) -> f32 {
     let shown = AnimationPhase::from(open);
-    let sidebar = settings::get(cx).sidebar_width();
     theme::GUTTER + shown.interpolate(0., sidebar)
 }
 
@@ -154,7 +153,7 @@ impl Shell {
         rail(Edge::Top, theme::TITLE_BAR_HEIGHT, shown.open, || {
             let row = div().flex().items_center().gap_1().pr(px(theme::GUTTER));
             let row = if Self::layout(cx) == Layout::Arc {
-                let width = theme::GUTTER + settings::get(cx).sidebar_width();
+                let width = theme::GUTTER + self.sidebar_width(cx);
                 row.child(
                     div()
                         .w(px(width))
@@ -167,7 +166,7 @@ impl Shell {
                         .child(lights_area(hover))
                         .child(toggle())
                         .child(drag_area("arc-lights-title").flex_1())
-                        .child(crate::arc::controls(self, cx)),
+                        .child(self.arc_top.controls()),
                 )
             } else {
                 row.child(lights_area(hover))

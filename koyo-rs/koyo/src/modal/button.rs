@@ -1,18 +1,22 @@
 //! A dialog's buttons, rounded labels filled by their tone, and the spinner one shows while its
-//! action runs.
+//! action runs, which what else is busy or loading shows too.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{Sizable as _, Size};
+use gpui_kit::component::{Icon, Sizable as _, Size};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, ClickEvent, FontWeight, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
-    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
+    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Transformation, Window, div,
+    percentage, px,
 };
 
-use crate::theme;
+use crate::{beat, theme};
+
+/// How long a spinner's turn takes.
+const TURN: Duration = Duration::from_millis(800);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tone {
@@ -116,11 +120,25 @@ pub fn spinner(color: Hsla) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_center()
-        .child(
-            Spinner::new()
-                .icon(IconName::LoaderCircle)
-                .ease(|delta| delta)
-                .with_size(Size::Small)
-                .color(color),
-        )
+        .child(wheel(Size::Small, color))
+}
+
+/// A circle going round, as gpui-kit's spinner, but at the beat (`crate::beat`) rather than at
+/// every frame the display shows: each beat draws again the view it's in.
+pub fn wheel(size: Size, color: Hsla) -> impl IntoElement {
+    Wheel { size, color }
+}
+
+#[derive(IntoElement)]
+struct Wheel {
+    size: Size,
+    color: Hsla,
+}
+
+impl RenderOnce for Wheel {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let turned = Transformation::rotate(percentage(beat::turn(TURN, window, cx)));
+        let icon = Icon::new(IconName::LoaderCircle).with_size(self.size);
+        div().child(icon.text_color(self.color).transform(turned))
+    }
 }

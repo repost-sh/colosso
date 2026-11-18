@@ -4,10 +4,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use futures::StreamExt as _;
-use gpui_kit::{AppContext as _, Context, FocusHandle, Focusable, RenderImage, SharedString, Task};
+use gpui_kit::{
+    AppContext as _, Context, FocusHandle, Focusable, RenderImage, SharedString, Task, Window,
+};
 
 use super::Kind;
 use super::bitmap::release;
@@ -33,9 +35,9 @@ pub struct Viewer {
     /// The picture as decoded, and the longest side it was asked for at.
     pub(super) picture: Option<Arc<RenderImage>>,
     pub(super) asked_longest: Option<u32>,
-    /// The frame of a moving picture shown, and what moves it on.
+    /// The frame of a moving picture shown, and what moves it on from the frame it's for.
     pub(super) frame: usize,
-    pub(super) animating: Option<Task<()>>,
+    pub(super) animating: Option<(usize, Task<()>)>,
     /// The tiles drawn, of every scale still worth showing, and the scale they're drawn at
     /// now: the zoom's, once it's settled.
     pub(super) tiles: HashMap<TileKey, Arc<RenderImage>>,
@@ -171,7 +173,7 @@ impl Viewer {
                     release(vec![old], cx);
                 }
                 self.frame = 0;
-                self.animate(cx);
+                self.animating = None;
             }
             Out::Drawn(Job::Tile(key), image) => {
                 if !self.asked.remove(&key) {
@@ -244,36 +246,29 @@ impl Viewer {
         }
     }
 
-    /// A moving picture moves on each frame's time, while it's shown.
-    pub(super) fn animate(&mut self, cx: &mut Context<Self>) {
-        let delays: Vec<Duration> = (self.probe.as_ref())
-            .map(|probe| probe.delays.clone())
-            .unwrap_or_default();
-        let frames = self
-            .picture
-            .as_ref()
-            .map_or(0, |picture| picture.frame_count());
-        if delays.len() < 2 || frames != delays.len() {
-            self.animating = None;
+    /// A moving picture moves on to its next frame once the frame drawn has had its time, in a
+    /// window seen: each frame drawn asks for the next, so nothing wakes for one out of sight,
+    /// and drawn again it moves on from the frame it showed.
+    pub(super) fn animate(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let delays = (self.probe.as_ref()).map_or(&[][..], |probe| &probe.delays[..]);
+        let frames = (self.picture.as_ref()).map_or(0, |picture| picture.frame_count());
+        let (from, count) = (self.frame, delays.len());
+        let asked = (self.animating.as_ref()).is_some_and(|(at, _)| *at == from);
+        let Some(delay) = delays.get(from).copied() else {
+            return;
+        };
+        if count < 2 || frames != count || asked || !crate::sight::window_seen(window) {
             return;
         }
-        if self.animating.is_some() {
-            return;
-        }
-        self.animating = Some(cx.spawn(async move |this, cx| {
-            let mut frame = 0;
-            loop {
-                cx.background_executor().timer(delays[frame]).await;
-                frame = (frame + 1) % delays.len();
-                let shown = this.update(cx, |this, cx| {
-                    this.frame = frame;
-                    cx.notify();
-                });
-                if shown.is_err() {
-                    return;
-                }
-            }
-        }));
+        let next = cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(delay).await;
+            let moved = this.update(cx, |this, cx| {
+                this.frame = (from + 1) % count;
+                cx.notify();
+            });
+            moved.ok();
+        });
+        self.animating = Some((from, next));
     }
 
     /// Takes everything drawn out of the GPU's atlas, as the viewer goes.

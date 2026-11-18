@@ -1,18 +1,19 @@
 //! The device's picture as an element (`docs/devices.md` 8): fitted to the pane and centred,
 //! never larger than one of the device's pixels to one of the screen's, its corners rounded as
 //! the device's own screen's are, its frames painted as they come, and the pointer over it
-//! heard. The device counts as drawn while the element is
-//! (`Shown`, in its state): the host keeps the picture current only then, or for an agent.
+//! heard. The device counts as drawn while the element is (`Shown`, in its state), in a window
+//! seen: the host keeps the picture current only then, or for an agent.
 
 use gpui_kit::{
-    App, Bounds, ContentMask, Context, Corners, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
+    App, Bounds, ContentMask, Corners, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
     GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Overflow, Pixels, ScrollEvent, Style, WeakEntity, Window, point, px, relative, size,
+    MouseUpEvent, Overflow, Pixels, ScrollEvent, Style, Window, point, px, relative, size,
 };
 use koyo_device_wire::Size;
 
 use super::link::Link;
 use super::view::DeviceView;
+use crate::sight::Shown;
 
 pub struct Canvas {
     pub view: Entity<DeviceView>,
@@ -25,21 +26,6 @@ pub struct Placed {
     shown: Bounds<Pixels>,
     /// The radius of the screen's corners as shown.
     corner: Pixels,
-}
-
-/// The device drawn in a window, kept by the element for as long as it's drawn.
-pub struct Shown;
-
-impl Shown {
-    fn new(link: WeakEntity<Link>, cx: &mut Context<Self>) -> Self {
-        let me = cx.entity_id();
-        let _ = link.update(cx, |link, _| link.set_shown_by(me, true));
-        cx.on_release(move |_: &mut Self, cx| {
-            let _ = link.update(cx, |link, _| link.set_shown_by(me, false));
-        })
-        .detach();
-        Shown
-    }
 }
 
 /// `screen` (in points) at the largest size that fits `area`, centred, never larger than
@@ -123,7 +109,7 @@ impl Element for Canvas {
         let shown = placed.shown;
         let key = ElementId::NamedInteger("device".into(), self.view.entity_id().as_u64());
         let owner = self.link.downgrade();
-        let _shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
+        let _shown = window.use_keyed_state(key, cx, |window, cx| Shown::new(owner, window, cx));
         let picture = self.link.read(cx).picture.clone();
         let pixels = picture.read(cx).shown.as_ref().map(|shown| shown.pixels.clone());
         if let Some(pixels) = pixels {

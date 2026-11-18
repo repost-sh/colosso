@@ -224,12 +224,16 @@ default (sections 2 and 6). The name stays `chat_backdrop`, in the code and the 
   A change in what's asked (3.1) makes the picture again. **[proposed]** Built so
   (`chat_backdrop/watch.rs`, `screens.rs`, `tick`): a changed wallpaper draws the windows
   again, and each chat on that screen asks for the picture of the new one. A screen no chat
-  had shown is read again when one does.
+  had shown is read again when one does. Nothing is asked while no chat shows the backdrop or
+  nobody can see a window of Koyo's (covered, minimized, on another Space): the watch sleeps
+  until a chat shows it, the Space or the appearance changes, or a window is seen again, which
+  asks at once, and wakes on its own only to let go a picture no chat shows (below).
 - The settings and the appearance are heard as the rest of the app hears them
   (`settings::observe`, `theme::follow_window_appearance`). Built: a change of the backdrop's
-  settings draws the windows again; the appearance, a window moved to another screen and a
-  screen's new size or scale draw them again already (GPUI's own refresh), and each chat
-  then asks for the picture they call for.
+  settings draws again what draws the backdrop, which reads them, as the shell follows the
+  settings; the appearance, a window moved to another screen and a screen's new size or scale
+  draw the windows again already (GPUI's own refresh), and each chat then asks for the picture
+  they call for.
 - **Letting go** (3.1): the same tick lets a screen's picture go once no chat has shown it
   for 30 seconds, not at once, so a chat shown again after a terminal's tab shows its
   backdrop without the card in between. A chat holds its screen's picture through its

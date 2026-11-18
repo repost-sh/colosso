@@ -9,6 +9,7 @@ use gpui_kit::{App, Context, Div, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{ThreadParams, ThreadsRead};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
+use koyo_agent::protocol::requests::RequestKind;
 
 use super::spinner::{self, spinner};
 use super::{Chats, ChatsEvent, logged};
@@ -16,11 +17,6 @@ use crate::model::{Project, Tab};
 use crate::pane::dot;
 use crate::shell::Shell;
 use crate::theme::Palette;
-
-/// Whether the person is at the app, as far as a chat cares.
-pub(super) fn is_frontmost(cx: &App) -> bool {
-    cx.active_window().is_some()
-}
 
 /// How a chat is doing, least urgent first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -92,6 +88,51 @@ impl Chats {
                 cx,
             );
             self.summaries_changed(cx);
+        }
+    }
+}
+
+/// What a chat's tab and its checkout's row draw of it, which the shell hears of as it changes.
+#[derive(PartialEq, Eq)]
+pub(super) struct Shown<'a> {
+    title: &'a str,
+    cwd: &'a str,
+    status: Status,
+    needs: Option<RequestKind>,
+    unread: bool,
+    tab_open: bool,
+    said: Option<&'a str>,
+}
+
+impl<'a> Shown<'a> {
+    pub(super) fn of(summary: &'a ThreadSummary) -> Self {
+        let ThreadSummary {
+            id: _,
+            cwd,
+            title,
+            provider: _,
+            model: _,
+            effort: _,
+            fast: _,
+            permission: _,
+            plan: _,
+            status,
+            needs,
+            background: _,
+            queued: _,
+            unread,
+            tab_open,
+            updated_at: _,
+            said,
+        } = summary;
+        Shown {
+            title,
+            cwd,
+            status: *status,
+            needs: *needs,
+            unread: *unread,
+            tab_open: *tab_open,
+            said: said.as_deref(),
         }
     }
 }

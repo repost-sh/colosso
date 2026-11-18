@@ -10,7 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{App, Context};
+use gpui_kit::Context;
 use serde_json::{Map, Value, json};
 
 use super::SAVE_DELAY;
@@ -210,16 +210,16 @@ impl Shell {
         if self.kept.pins.file.changed() {
             let shell = cx.weak_entity();
             kept_file::write_later(cx, SAVE_DELAY, move |cx| {
-                shell.update(cx, |shell, cx| shell.pinned_due(cx)).ok()?
+                shell.update(cx, |shell, _| shell.pinned_due()).ok()?
             });
         }
     }
 
     /// Where to write the pinned pages as they are now, and their JSON, if a write is due, which
     /// then no longer is, and they aren't what the file holds already.
-    pub(super) fn pinned_due(&mut self, cx: &App) -> Option<(PathBuf, Vec<u8>)> {
+    pub(super) fn pinned_due(&mut self) -> Option<(PathBuf, Vec<u8>)> {
         let path = self.kept.pins.file.take_due()?;
-        let now = self.pinned_now(cx);
+        let now = self.pinned_now();
         if now == self.kept.pins.kept {
             return None;
         }
@@ -229,13 +229,13 @@ impl Shell {
 
     /// What's kept: each pinned page as its pane shows it, with what its entry held that this
     /// build doesn't read, and the entries it couldn't read at all, as they were.
-    fn pinned_now(&self, cx: &App) -> KeptPins {
+    fn pinned_now(&self) -> KeptPins {
         let before = &self.kept.pins.kept;
         let tabs = (self.workspace.pinned().iter())
             .map(|pinned| {
                 let page = pinned.tab.first();
                 KeptPinned {
-                    url: page.address(cx).unwrap_or_default(),
+                    url: page.address().unwrap_or_default().to_owned(),
                     title: page.title.to_string(),
                     pinned_url: pinned.home.clone(),
                     project: pinned.project.clone(),

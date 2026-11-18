@@ -23,7 +23,7 @@ use crate::test_support::{click, draw, open_page};
 fn pinned(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
     cx.read(|cx| {
         (shell.read(cx).workspace.pinned().iter())
-            .map(|pinned| pinned.tab.first().address(cx).unwrap_or_default())
+            .map(|pinned| pinned.tab.first().address().unwrap_or_default().to_owned())
             .collect()
     })
 }
@@ -32,8 +32,8 @@ fn pinned(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
 fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
     cx.read(|cx| {
         let workspace = &shell.read(cx).workspace;
-        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address(cx));
-        (address, workspace.pinned_shown().is_some())
+        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
+        (address.map(str::to_owned), workspace.pinned_shown().is_some())
     })
 }
 
@@ -246,8 +246,7 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
     act(window, NewSpace, cx);
     assert_eq!((space(cx), project(cx)), (2, None));
     still(cx);
-    let said = cx.read(|cx| crate::arc::top::said(shell.read(cx), cx).0.to_string());
-    assert_eq!(said, "example.com");
+    assert_eq!(super::said(&shell, cx), "example.com");
     let steered = cx.read(|cx| (shell.read(cx).shown_page(cx)).map(|page| page.entity_id()));
     assert_eq!(steered, Some(view));
 
@@ -273,7 +272,7 @@ fn a_pinned_page_closed_stays_pinned_and_goes_back_to_where_its_pinned(cx: &mut 
     });
     let pages = ["https://a.example/", "https://b.example/"];
     let keys = pin(window, &shell, &pages, cx);
-    let menu = |key: u64, cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), key, cx));
+    let menu = |key: u64, cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), key));
     let open = |key: u64, cx: &TestAppContext| {
         cx.read(|cx| (shell.read(cx).workspace.pane(key)).is_some_and(|page| page.view().is_some()))
     };

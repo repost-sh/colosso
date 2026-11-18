@@ -83,7 +83,9 @@ engine's helper apps running the browser host's binary, so what the host does in
 - **Run loop.** GPUI runs `[NSApp run]`. CEF is started with `external_message_pump`, and a
   run-loop timer in the common modes runs `cef_do_message_loop_work` when CEF asks, at the
   latest every 1/30 s (`embedded/pump.rs`). CEF is started from that timer, never inside
-  GPUI's frame, and what edits a page is done from it too. `[proven]`
+  GPUI's frame, and what edits a page is done from it too. `[proven]` The 1/30 s holds while a
+  page is on screen or the app waits on the engine; while pages are open and none is, the
+  latest is 1/10 s, and with none, 1 s (`embedded/pump.rs` says why). Not measured live yet.
 - **Started as the app starts** (`browser::warm_up`), from the run loop. Not measured: what `cef_initialize` costs the main thread.
 - **Koyo must run from a bundle that holds the engine.** Run as a bare binary with the engine
   elsewhere (`koyo-rs/target/debug/koyo`), every helper exits at once (GPU process
@@ -390,7 +392,8 @@ own events: a click on a page's button counted by the page, the page's menu open
 click and Inspect picked from it, and drags of the tools' divider, a split's gap and the
 sidebar's edge, both ways, twenty in all, each read back from the views' frames. A window
 there isn't one `AppKit` takes to be visible, so the harness's `tick` has it drawn and counted
-as seen (`view/sight.rs`, `UNSEEN_COUNTS`).
+as seen (`koyo/src/sight.rs`, `UNSEEN_COUNTS`), by the browser and everything else that stops
+its work out of sight.
 
 Seen on a real screen with the GPU on by the owner, 2026-11-14, dragging a split's divider beside a native page: it works. Holding the edge until Chromium's frame is in, the step kept in reserve, isn't needed.
 

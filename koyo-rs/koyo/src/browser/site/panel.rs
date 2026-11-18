@@ -235,7 +235,7 @@ impl SitePanel {
     fn extensions(&self, t: Tones, cx: &mut Context<Self>) -> Option<Div> {
         let page = self.page.upgrade()?;
         page.read(cx).extension_count(cx)?;
-        let shown = page.update(cx, |page, cx| page.extensions(false, cx));
+        let shown = page.read(cx).extensions(false, cx);
         let icons = shown.into_iter().enumerate().map(|(index, shown)| {
             let says = shown.title.clone();
             let (pressed, asked) = (shown.id.clone(), shown.clone());

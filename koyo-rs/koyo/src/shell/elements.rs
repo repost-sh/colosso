@@ -3,13 +3,13 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{Disableable as _, Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, App, Context, Div, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement as _, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, div, px,
+    Action, App, AppContext as _, Context, Div, ElementId, Entity, EventEmitter, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Render,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 
 use super::Shell;
@@ -160,21 +160,52 @@ pub fn pane_close_button(
         }))
 }
 
-/// The sidebar's search field, which narrows its worktrees as it's typed in.
-pub fn search_field(search: &Entity<InputState>, p: Palette) -> Div {
-    div()
-        .h(px(theme::ROW_HEIGHT))
-        .px_1()
-        .flex()
-        .items_center()
-        .text_sm()
-        .child(
-            Input::new(search)
-                .appearance(false)
-                .small()
-                .prefix(icon(IconName::Search, 14.).text_color(p.muted))
-                .flex_1(),
-        )
+/// What the search field holds, told as it changes.
+pub struct Searched(pub SharedString);
+
+/// The sidebar's search field, a view of its own, so a key or a caret blink builds it and not
+/// the shell.
+pub struct SearchField {
+    input: Entity<InputState>,
+    _changes: Subscription,
+}
+
+impl EventEmitter<Searched> for SearchField {}
+
+impl SearchField {
+    pub(super) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search")
+                .clean_on_escape()
+        });
+        let _changes = cx.subscribe(&input, |_, input, event, cx| {
+            if let InputEvent::Change = event {
+                cx.emit(Searched(input.read(cx).value()));
+            }
+        });
+        SearchField { input, _changes }
+    }
+}
+
+impl Render for SearchField {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::palette(cx);
+        div()
+            .debug_selector(|| "sidebar-search".to_owned())
+            .h(px(theme::ROW_HEIGHT))
+            .px_1()
+            .flex()
+            .items_center()
+            .text_sm()
+            .child(
+                Input::new(&self.input)
+                    .appearance(false)
+                    .small()
+                    .prefix(icon(IconName::Search, 14.).text_color(p.muted))
+                    .flex_1(),
+            )
+    }
 }
 
 /// What a sidebar says where a search found no worktrees.

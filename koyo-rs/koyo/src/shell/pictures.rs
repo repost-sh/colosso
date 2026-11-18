@@ -12,7 +12,7 @@
 //! macOS draws and no frame of the window's holds (`native/surface.rs`).
 
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Once;
 
 use gpui_apple::metal_renderer::set_surface_capture;
@@ -184,16 +184,17 @@ pub(super) fn blank(key: u64, cx: &App) {
 }
 
 /// Lets go of the pictures of the tabs `workspace` no longer has open: those no tab is known
-/// by, its first pane.
+/// by, its first pane. Painting makes them, so no number of the workspace's says when one is
+/// stale: this checks after every change, allocating only to let one go.
 pub(super) fn retain(workspace: &Workspace, cx: &mut App) {
-    let kept = cx.try_global::<Pictures>().map(|pictures| &pictures.of);
-    let Some(kept) = kept.filter(|kept| !kept.is_empty()) else {
+    let Some(pictures) = cx.try_global::<Pictures>() else {
         return;
     };
-    let open: HashSet<u64> = workspace.tab_keys().collect();
-    if kept.keys().any(|key| !open.contains(key)) {
-        (cx.global_mut::<Pictures>().of).retain(|key, _| open.contains(key));
+    let open = |key: &u64| workspace.tab_keys().any(|open| open == *key);
+    if pictures.of.keys().all(open) {
+        return;
     }
+    (cx.global_mut::<Pictures>().of).retain(|key, _| open(key));
 }
 
 /// The part of `bounds`, all a tab is drawn in, that its picture is of: its whole width from
@@ -213,9 +214,12 @@ fn framed(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 
 #[cfg(test)]
 mod tests {
-    use gpui_kit::{Bounds, point, px, size};
+    use gpui_kit::{Bounds, TestAppContext, point, px, size};
 
-    use super::framed;
+    use super::{framed, of};
+    use crate::model::PaneKind;
+    use crate::settings::Layout;
+    use crate::test_support::{close_shown, draw, shell_on};
 
     #[test]
     fn a_picture_is_of_the_top_of_a_tall_tab_and_the_middle_of_a_wide_one() {
@@ -224,5 +228,30 @@ mod tests {
         };
         assert_eq!(framed(on(300., 40., 624., 900.)), on(300., 40., 624., 392.));
         assert_eq!(framed(on(0., 0., 1000., 196.)), on(344., 0., 312., 196.));
+    }
+
+    #[gpui_kit::test]
+    fn a_closed_tabs_picture_is_let_go_at_once_and_the_others_are_kept(cx: &mut TestAppContext) {
+        let (window, shell, _) = shell_on("pictures-closed", Layout::Orca, cx);
+        let mut keys = Vec::new();
+        for _ in 0..2 {
+            let key = shell.update(cx, |shell, cx| {
+                shell.workspace.new_tab(PaneKind::Editor);
+                cx.notify();
+                shell.shown_tab_key().unwrap()
+            });
+            draw(window, cx);
+            keys.push(key);
+        }
+        let pictured = |key, cx: &TestAppContext| cx.read(|cx| of(key, cx).is_some());
+        assert!(
+            keys.iter().all(|&key| pictured(key, cx)),
+            "each tab shown has its picture"
+        );
+
+        close_shown(window, &shell, cx);
+        draw(window, cx);
+        assert!(!pictured(keys[1], cx), "the closed tab's picture is let go");
+        assert!(pictured(keys[0], cx), "the open tab's is kept");
     }
 }

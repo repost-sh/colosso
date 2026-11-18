@@ -2,6 +2,7 @@
 //! Which chats have a tab follows from what the panes show, whichever way a tab came or went,
 //! and the host is told, so the tabs come back with the app.
 
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -64,6 +65,8 @@ struct Made {
     /// drawn again whenever a view it reached into while rendering changes, which a chat's
     /// does as its answer arrives (`budget.rs`).
     place: Option<Workplace>,
+    /// Whether the view was last told it's in sight, compared here for the same reason.
+    seen: Cell<bool>,
     _events: Subscription,
 }
 
@@ -94,6 +97,17 @@ impl ChatTabs {
         self.views.get(&pane).map(|made| &made.view)
     }
 
+    /// Tells each chat pane's view whether it's in sight now, as `seen` says of its pane, when
+    /// that changed.
+    pub(crate) fn tell_sight(&self, seen: impl Fn(u64) -> bool, cx: &mut App) {
+        for (pane, made) in &self.views {
+            let now = seen(*pane);
+            if made.seen.replace(now) != now {
+                made.view.update(cx, |view, cx| view.set_in_sight(now, cx));
+            }
+        }
+    }
+
     /// A pane the window brought back shows thread `id` (`shell/kept.rs`): it keeps it if the
     /// host still has the chat, which its list says.
     pub(crate) fn bring_back(&mut self, id: &ThreadId) {
@@ -102,16 +116,20 @@ impl ChatTabs {
 
     /// Follows what the panes show, after any change to them: the views of panes gone are let
     /// go, and the host hears of a thread no pane shows now or one shown again. It's told even
-    /// if its last word says so already, as that word may be about to change.
-    pub fn retain(&mut self, workspace: &Workspace, cx: &mut Context<Shell>) {
+    /// if its last word says so already, as that word may be about to change. Says how many
+    /// views it let go of and threads it told of.
+    pub fn retain(&mut self, workspace: &Workspace, cx: &mut Context<Shell>) -> usize {
         let panes: HashSet<u64> = workspace.chat_panes().map(|(pane, _)| pane).collect();
+        let held = self.views.len();
         self.views.retain(|pane, _| panes.contains(pane));
+        let let_go = held - self.views.len();
         let shown: HashSet<ThreadId> = (workspace.chat_panes())
             .filter_map(|(_, thread)| thread.cloned())
             .collect();
         if shown == self.shown {
-            return;
+            return let_go;
         }
+        let told = self.shown.symmetric_difference(&shown).count();
         self.chats.update(cx, |chats, cx| {
             for gone in self.shown.difference(&shown) {
                 chats.tab_closed(gone, cx);
@@ -121,6 +139,7 @@ impl ChatTabs {
             }
         });
         self.shown = shown;
+        let_go + told
     }
 }
 
@@ -172,10 +191,7 @@ impl Shell {
         else {
             return;
         };
-        let held = self
-            .right_panel
-            .checkout()
-            .filter(|checkout| *checkout.read(cx).root() == unit.worktree.path);
+        let held = self.right_panel.checkout_at(&unit.worktree.path);
         let (Some(checkout), Some(tab)) = (held, unit.tabs.get(unit.active_tab)) else {
             return;
         };
@@ -233,6 +249,7 @@ impl Shell {
             Made {
                 view,
                 place: None,
+                seen: Cell::new(true),
                 _events: events,
             },
         );

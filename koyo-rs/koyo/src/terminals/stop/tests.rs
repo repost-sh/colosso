@@ -1,11 +1,15 @@
-use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
+use gpui_kit::{Entity, TestAppContext};
 use koyo_term::Source;
 use koyo_term_control::{Control, Handle, Status, TerminalRecord};
 
 use super::busy;
+use crate::settings::Layout;
 use crate::shell::Shell;
+use crate::terminals::budget::terminal_shown;
 use crate::terminals::states::State;
-use crate::test_support::{repo, select, shell_with, terminal_record as record};
+use crate::test_support::{
+    close_shown, draw, repo, select, shell_on, shell_with, terminal_record as record,
+};
 
 /// A terminal tab showing `record`, the daemon having said so; its id.
 pub(in crate::terminals) fn tab(shell: &Entity<Shell>, record: &TerminalRecord, cx: &mut TestAppContext) -> u64 {
@@ -22,18 +26,6 @@ pub(in crate::terminals) fn tab(shell: &Entity<Shell>, record: &TerminalRecord, 
         cx.notify();
         id
     })
-}
-
-fn close_shown(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppContext) {
-    window
-        .update(cx, |_, window, cx| {
-            shell.update(cx, |shell, cx| {
-                let at = shell.workspace.shown_tab().unwrap();
-                shell.close_tab_at(at, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
 }
 
 fn open(shell: &Entity<Shell>, id: u64, cx: &mut TestAppContext) -> bool {
@@ -108,5 +100,25 @@ fn closing_a_busy_terminal_asks_and_cancelling_keeps_it(cx: &mut TestAppContext)
     assert!(!open(&shell, id, cx), "agreeing closes it");
     shell.read_with(cx, |shell, _| {
         assert_eq!(shell.terminals.tab_of(&record.handle), None);
+    });
+}
+
+#[gpui_kit::test]
+fn closing_a_terminals_tab_lets_go_of_its_view_at_once(cx: &mut TestAppContext) {
+    let (window, shell, root) = shell_on("close-terminal-view", Layout::Orca, cx);
+    terminal_shown(window, &shell, &root, cx);
+    let id = shell.read_with(cx, |shell, _| {
+        shell.workspace.terminal_tabs().next().unwrap().1
+    });
+
+    close_shown(window, &shell, cx);
+    assert!(!cx.has_pending_prompt());
+    draw(window, cx);
+    shell.read_with(cx, |shell, _| {
+        assert!(shell.terminals.view(id).is_none(), "its view is let go");
+        assert!(
+            shell.terminals.sources.contains_key(&id),
+            "its terminal stays known, for ⌘⇧T"
+        );
     });
 }

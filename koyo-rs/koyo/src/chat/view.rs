@@ -94,6 +94,7 @@ pub struct ChatView {
     hand_scrolls: u64,
     /// The picture open over the chat.
     pub(super) picture: Option<Entity<Viewer>>,
+    in_sight: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -141,6 +142,7 @@ impl ChatView {
             scrolled_to: Pixels::ZERO,
             hand_scrolls: 0,
             picture: None,
+            in_sight: true,
             _subscriptions: subscriptions,
         };
         if let Some(thread) = opened {
@@ -188,6 +190,9 @@ impl ChatView {
             let (thread, scroller) = (thread.clone(), scroller.clone());
             cx.new(|cx| Timeline::new(thread, catalog, scroller, cwd, composer, inset, cx))
         };
+        if !self.in_sight {
+            timeline.update(cx, |timeline, cx| timeline.set_in_sight(false, cx));
+        }
         let mut following = vec![
             cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| {
                 cx.emit(event.clone());
@@ -329,6 +334,15 @@ impl ChatView {
         self.shown.last()
     }
 
+    /// The chat went out of sight, or came back in: out of sight, its timelines keep up with
+    /// nothing their threads do, and take in what happened meanwhile once it's back.
+    pub(super) fn set_in_sight(&mut self, in_sight: bool, cx: &mut Context<Self>) {
+        self.in_sight = in_sight;
+        for shown in &self.shown {
+            (shown.timeline).update(cx, |timeline, cx| timeline.set_in_sight(in_sight, cx));
+        }
+    }
+
     /// The bar on show, which is where the composer would be.
     fn bar(&self) -> Option<&Entity<SubagentBar>> {
         self.showing().and_then(|shown| shown.bar.as_ref())
@@ -422,7 +436,7 @@ impl Focusable for ChatView {
 
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        details::keep_fresh(self, cx);
+        details::keep_fresh(self, window, cx);
         self.note_seen(window, cx);
         cx.defer_in(window, |this, _, cx| this.float(cx));
         let timeline = (self.showing()).map(|shown| {

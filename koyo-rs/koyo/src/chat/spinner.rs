@@ -2,24 +2,21 @@
 //! its tab, its checkout's row, its project's tile and its space's mark. A small ring in amber
 //! with a gap in it, its line bold for its size, going round.
 //!
-//! It's drawn at every frame the display shows, so it turns evenly rather than in steps, and all
-//! of them turn together, off one clock. It turns whichever app is in front, for as long as the
-//! window is shown frames: a chat works while its person is elsewhere, and a spinner standing
-//! still there read as a chat that had stopped. A window nobody can see (minimized, covered, on
-//! another desktop) is shown none, and costs nothing. It's a view of its own: a turn can take a
-//! long time, and each frame draws only it, not the shell.
+//! It turns at the beat (`crate::beat`), all of them together, in the same frames, whichever app
+//! is in front: a chat works while its person is elsewhere, and a spinner standing still there
+//! read as a chat that had stopped. It's a view of its own: a turn can take a long time, and each
+//! beat draws only it, not the shell.
 
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::time::Duration;
 
 use gpui_kit::{
-    Animation, AnimationExt as _, App, AppContext as _, Bounds, Context, Div, Entity, Global, Hsla,
-    IntoElement, ParentElement as _, Pixels, Render, Styled as _, Window, canvas, div, fill, point,
-    px, size,
+    App, AppContext as _, Bounds, Context, Div, Entity, Global, Hsla, IntoElement,
+    ParentElement as _, Pixels, Render, Styled as _, Window, canvas, div, fill, point, px, size,
 };
 
-use crate::theme;
+use crate::{beat, theme};
 
 /// The spinner's square where nothing asks for another: the same as a dot's room.
 const SIZE: f32 = 10.;
@@ -39,13 +36,11 @@ struct Spin {
 }
 
 impl Render for Spin {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colour = theme::palette(cx).working;
-        let going = Animation::new(TURN).repeat_synced();
+        let turn = beat::turn(TURN, window, cx);
         let holder = div().size(px(self.size)).flex_shrink_0();
-        holder.with_animation("chat-working", going, move |holder, turn| {
-            holder.child(ring(turn, colour))
-        })
+        holder.child(ring(turn, colour))
     }
 }
 

@@ -283,8 +283,8 @@ pub fn get(cx: &App) -> &Profiles {
 }
 
 /// Changes the profiles, which are kept a moment later; what lists them, Settings → Browser,
-/// shows them anew, and the open pages of a project put on another follow it
-/// (`Browsers::profiles_changed`).
+/// shows them anew, as the shell observes them, and the open pages of a project put on another
+/// follow it (`Browsers::profiles_changed`).
 pub fn update(cx: &mut App, change: impl FnOnce(&mut Profiles)) {
     let mut profiles = get(cx).clone();
     change(&mut profiles);
@@ -296,7 +296,6 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Profiles)) {
     if store.file.get_mut().changed() {
         kept_file::write_later(cx, SAVE_DELAY, due);
     }
-    cx.refresh_windows();
 }
 
 /// Calls `changed` whenever the profiles change, for as long as the subscription is kept.

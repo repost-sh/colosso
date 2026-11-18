@@ -11,7 +11,7 @@ use gpui_kit::{AppContext as _, AsyncApp, Context, WeakEntity};
 use koyo_term::{Notice, Source, TermClient};
 use koyo_term_control::{ActorKind, Event, EventKind, RequestBody, ResponseBody, TerminalRecord};
 
-use super::states::NOTICE_SECS;
+use super::states::{Change, NOTICE_SECS};
 use crate::shell::Shell;
 
 impl Shell {
@@ -44,7 +44,7 @@ impl Shell {
         self.terminals.watching = Some(task);
     }
 
-    fn terminal_notice(&mut self, event: &Event, cx: &mut Context<Self>) {
+    pub(super) fn terminal_notice(&mut self, event: &Event, cx: &mut Context<Self>) {
         match &event.kind {
             EventKind::Opened { terminal } if terminal.created_by.kind == ActorKind::Agent => {
                 self.reveal(terminal, cx);
@@ -56,13 +56,22 @@ impl Shell {
             }
             _ => {}
         }
-        let before = self.terminals.states.takeover.clone();
-        if self.terminals.states.apply(event) {
+        let before = matches!(event.kind, EventKind::Control { .. })
+            .then(|| self.terminals.states.takeover.clone());
+        let change = self.terminals.states.apply(event);
+        if change != Change::Nothing {
             self.type_waiting(cx);
+        }
+        let shown = match change {
+            Change::Nothing => false,
+            Change::Terminal => self.terminal_drawn(&event.handle),
+            Change::Counts => true,
+        };
+        if shown {
             cx.notify();
         }
         let after = &self.terminals.states.takeover;
-        if after.is_some() && *after != before {
+        if before.is_some_and(|before| after.is_some() && *after != before) {
             cx.spawn(async move |this, cx| {
                 let due = Duration::from_secs(NOTICE_SECS) + Duration::from_millis(100);
                 cx.background_executor().timer(due).await;

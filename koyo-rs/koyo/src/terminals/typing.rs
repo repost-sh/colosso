@@ -78,10 +78,10 @@ mod tests {
 
     use gpui_kit::TestAppContext;
     use koyo_term::Source;
-    use koyo_term_control::{Actor, Control, Event, EventKind, Size, TerminalRecord};
+    use koyo_term_control::{Actor, Control, Size, TerminalRecord};
 
     use super::*;
-    use crate::test_support::{repo, shell_with};
+    use crate::test_support::{repo, shell_with, status_event};
 
     /// Terminal `handle`, a login shell at `status`.
     fn record(handle: &Handle, status: Status) -> TerminalRecord {
@@ -133,14 +133,7 @@ mod tests {
                 shell.terminals.typing.contains_key(&id),
                 "still starting up"
             );
-            let now = |status: Status, reason: &str| Event {
-                handle: handle.clone(),
-                kind: EventKind::Status {
-                    status,
-                    reason: reason.into(),
-                    progress: None,
-                },
-            };
+            let now = |status, reason| status_event(&handle.0, status, reason);
             shell
                 .terminals
                 .states

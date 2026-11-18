@@ -4,7 +4,8 @@
 //! A view of its own beside the composer, not in it, as a view's step draws every view it's in
 //! again: the chat's tab lays it over the composer and it draws where the composer last said its
 //! glass is (`Placement`). So a step draws it and the tab, never the composer, and it takes none
-//! once it holds still or has gone.
+//! once it holds still or has gone. It steps at the beat (`crate::beat`), in the frames the
+//! spinners turn in.
 
 use std::cell::Cell;
 use std::f32::consts::{FRAC_PI_2, PI};
@@ -13,19 +14,17 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{
     BorderStyle, Bounds, Context, Corners, Hsla, IntoElement, ParentElement as _, PathBuilder,
-    Pixels, Point, Render, Styled as _, Subscription, Task, Window, canvas, div, fill, outline,
-    point, px,
+    Pixels, Point, Render, Styled as _, Subscription, Window, canvas, div, fill, outline, point,
+    px,
 };
 
 use super::RADIUS;
+use crate::beat;
 use crate::fade::Fade;
 use crate::native::liquid;
 use crate::settings::{self, ChatActivity};
 use crate::theme;
 
-/// A step's time: at most 24 a second, each drawing the tab around the composer too, as what
-/// floats over a chat does (`chat/view.rs`).
-pub(in crate::chat) const FRAME: Duration = Duration::from_micros(41_667);
 /// How fast the line goes round, in points a second: a lap of a composer in a narrow column takes
 /// some fifteen seconds, in steps of under 5 points.
 const SPEED: f32 = 110.;
@@ -97,8 +96,8 @@ pub(in crate::chat) struct Activity {
     fade: Fade,
     /// When the line set off, which where it is now goes by.
     set_off: Instant,
-    /// The next step, while it moves or fades: dropped, it's not taken.
-    next: Option<Task<()>>,
+    /// Whether it asked for its next step as it was last drawn, as it does while it moves or fades.
+    stepping: bool,
     /// It moves as Settings says.
     _settings: Subscription,
     /// How many times it's been drawn.
@@ -112,7 +111,7 @@ impl Activity {
             placement,
             fade: Fade::new(FADE_IN, FADE_OUT),
             set_off: cx.background_executor().now(),
-            next: None,
+            stepping: false,
             _settings: settings::observe(cx),
             #[cfg(test)]
             renders: 0,
@@ -138,20 +137,12 @@ impl Activity {
     /// Whether a step of its own waits to be drawn.
     #[cfg(test)]
     pub(in crate::chat) fn stepping(&self) -> bool {
-        self.next.is_some()
+        self.stepping
     }
 }
 
-/// A step's time from now, to draw it again.
-fn step_later(cx: &mut Context<Activity>) -> Task<()> {
-    cx.spawn(async move |this, cx| {
-        cx.background_executor().timer(FRAME).await;
-        this.update(cx, |_, cx| cx.notify()).ok();
-    })
-}
-
 impl Render for Activity {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(test)]
         {
             self.renders += 1;
@@ -161,7 +152,10 @@ impl Render for Activity {
         let activity = settings::get(cx).chat_activity;
         let look = Look::of(activity).filter(|_| !cx.reduce_motion());
         let shows = activity != ChatActivity::Off && (self.fade.is_on() || changing);
-        self.next = (shows && (look.is_some() || changing)).then(|| step_later(cx));
+        self.stepping = shows && (look.is_some() || changing);
+        if self.stepping {
+            beat::again(window, cx);
+        }
         let edge = div().absolute().inset_0();
         if !shows {
             return edge.into_any_element();

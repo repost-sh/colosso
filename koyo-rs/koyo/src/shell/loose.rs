@@ -7,7 +7,7 @@
 use gpui_kit::{App, Context, Window};
 
 use super::Shell;
-use crate::model::{ClosedFrom, ClosedTab, Loose};
+use crate::model::{ClosedFrom, ClosedTab, Loose, Pane};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};
 
@@ -42,7 +42,7 @@ impl Shell {
         let Some(at) = self.workspace.loose_at(key) else {
             return;
         };
-        let address = self.workspace.pane(key).and_then(|pane| pane.address(cx));
+        let address = self.workspace.pane(key).and_then(Pane::address).map(str::to_owned);
         let space = self.workspace.space_shown();
         if let Some(Loose { tab, project }) = self.workspace.close_loose(at) {
             self.workspace.remember_closed(ClosedTab {
@@ -108,7 +108,7 @@ impl Shell {
     /// as it's let go on their list, and shows it there. Only a tab whose single pane is a page
     /// goes.
     pub(crate) fn loosen_tab_of(&mut self, pane: u64, place: usize, cx: &mut Context<Self>) {
-        let tab = self.page_tab_of(pane, cx);
+        let tab = self.page_tab_of(pane);
         if tab.is_some_and(|at| self.workspace.loosen_tab(at, place)) {
             self.look_at_tab_shown(cx);
         }

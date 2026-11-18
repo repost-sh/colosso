@@ -4,12 +4,13 @@
 //! app's data folder, where a later launch finds it. With no remote, or nothing to fetch, the
 //! tile shows the project's initials.
 
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
-use gpui_kit::{App, AppContext as _, Global};
+use gpui_kit::{App, AppContext as _, Context, Entity, Global};
 use koyo_git::Repo;
 
 use crate::settings;
@@ -19,11 +20,12 @@ const FRESH: Duration = Duration::from_hours(7 * 24);
 /// How long a host has to answer each request.
 const TIMEOUT: &str = "10";
 
-/// The avatars known by project.
-#[derive(Default)]
+/// The avatars fetched, by project, and the projects whose avatar was asked for, each once. A
+/// tile reads the fetched ones, so one arriving builds again what shows it; noting one asked
+/// for, as a tile is drawn, writes nothing a tile reads.
 struct Avatars {
-    /// `None` once looked for and not found.
-    known: HashMap<PathBuf, Option<PathBuf>>,
+    fetched: Entity<HashMap<PathBuf, PathBuf>>,
+    asked: RefCell<HashSet<PathBuf>>,
 }
 
 impl Global for Avatars {}
@@ -34,34 +36,41 @@ pub fn picture(project: &Path, cx: &mut App) -> Option<PathBuf> {
     if let Some(picked) = settings::get(cx).project_icon(project) {
         return Some(picked.to_owned());
     }
-    if let Some(known) = cx.default_global::<Avatars>().known.get(project) {
-        return known.clone();
+    if !cx.has_global::<Avatars>() {
+        let fetched = cx.new(|_| HashMap::new());
+        cx.set_global(Avatars { fetched, asked: RefCell::default() });
     }
-    cx.default_global::<Avatars>()
-        .known
-        .insert(project.to_owned(), None);
-    if cfg!(test) {
+    let avatars = cx.global::<Avatars>();
+    if let Some(found) = avatars.fetched.read(cx).get(project) {
+        return Some(found.clone());
+    }
+    if !avatars.asked.borrow_mut().insert(project.to_owned()) || cfg!(test) {
         return None;
     }
+    let (fetched, project) = (avatars.fetched.clone(), project.to_owned());
     let folder = settings::data_dir().map(|data| data.join("avatars"));
-    let project = project.to_owned();
     let fetching = cx.background_spawn({
         let project = project.clone();
         async move { fetch(&project, &folder?) }
     });
     cx.spawn(async move |cx| {
-        let Some(found) = fetching.await else {
-            return;
-        };
-        cx.update(|cx| {
-            cx.default_global::<Avatars>()
-                .known
-                .insert(project, Some(found));
-            cx.refresh_windows();
-        });
+        if let Some(found) = fetching.await {
+            fetched.update(cx, |fetched, cx| arrived(fetched, project, found, cx));
+        }
     })
     .detach();
     None
+}
+
+/// `project`'s avatar is the picture at `found`: what shows it is built again.
+fn arrived(
+    fetched: &mut HashMap<PathBuf, PathBuf>,
+    project: PathBuf,
+    found: PathBuf,
+    cx: &mut Context<HashMap<PathBuf, PathBuf>>,
+) {
+    fetched.insert(project, found);
+    cx.notify();
 }
 
 /// The host and owner a remote's URL names.
@@ -245,7 +254,43 @@ fn is_image(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine as _;
+    use gpui_kit::TestAppContext;
+
     use super::*;
+    use crate::budget::{Built, built_after, ratchet, settle};
+    use crate::settings::Layout;
+    use crate::test_support::{scratch, shell_on};
+
+    /// A picture of a pixel.
+    const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    /// A project's avatar arriving from its git host builds again what shows it, and nothing
+    /// else: the Arc sidebar's tile, which the shell draws, once as it arrives and once as its
+    /// picture has loaded.
+    #[gpui_kit::test]
+    fn an_avatar_arriving_builds_what_shows_it(cx: &mut TestAppContext) {
+        let (window, _, root) = shell_on("budget-avatar", Layout::Arc, cx);
+        let found = scratch("budget-avatar-picture").join("avatar.png");
+        std::fs::write(&found, base64::engine::general_purpose::STANDARD.decode(PNG).unwrap()).unwrap();
+        settle(cx);
+
+        let held = Built {
+            shell: 2,
+            views: 2,
+            frames: 2,
+        };
+        let fetched = cx.update(|cx| {
+            picture(&root, cx);
+            cx.global::<Avatars>().fetched.clone()
+        });
+        let arriving = |cx: &mut TestAppContext| {
+            fetched.update(cx, |fetched, cx| arrived(fetched, root.clone(), found.clone(), cx));
+        };
+        let built = built_after(window, cx, arriving);
+        assert_eq!(cx.update(|cx| picture(&root, cx)), Some(found), "the tile shows the avatar");
+        ratchet(built, held, "an avatar arriving");
+    }
 
     fn remote(host: &str, owner: &str, repo: &str) -> Remote {
         Remote {

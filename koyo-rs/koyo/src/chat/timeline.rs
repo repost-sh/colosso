@@ -25,6 +25,7 @@ use super::rows::{Drawing, message_of};
 use super::thread::ChatThread;
 use super::view::ChatViewEvent;
 use super::work::{patch_of, stands_alone};
+use crate::beat;
 use crate::settings::{self, ChatWidth, Verbosity};
 use crate::theme;
 use crate::theme::fonts::at_chat_size;
@@ -58,10 +59,17 @@ pub(super) struct Timeline {
     pub(super) colours: Rc<HashMap<ItemId, Rc<PatchColours>>>,
     colouring: HashSet<ItemId>,
     /// What the live row shows, and since when.
-    running: Option<(ItemId, Instant)>,
-    /// Whether another chat is over this one, so it has nothing to keep up with until it's back.
+    pub(super) running: Option<(ItemId, Instant)>,
+    /// Whether a subagent runs, which says for how long.
+    subagent_running: bool,
+    /// Whether another chat is over this one, or the chat is out of sight: either way it has
+    /// nothing to keep up with until that's over ([`Timeline::follows`]).
     covered: bool,
-    /// Keeps the elapsed time going while something's running.
+    in_sight: bool,
+    /// While it follows nothing, each time the thread came to hold more items: how many, and
+    /// when. What started meanwhile has run since it came, once the timeline takes it in.
+    grew: Vec<(usize, Instant)>,
+    /// The next tick of the elapsed time, while something's running.
     ticking: Option<Task<()>>,
     /// What was just copied, until the button stops saying so.
     copied: Option<(ItemId, Task<()>)>,
@@ -89,25 +97,21 @@ pub(super) struct GoBackTo(pub(super) RunId);
 /// A person clicked the picture at this path, which a message attached.
 pub(super) struct OpenPicture(pub(super) PathBuf);
 
-/// A second's tick for as long as something's `running`, for its elapsed time.
-pub(super) fn keep_ticking<T: 'static>(
-    ticking: &mut Option<Task<()>>,
+/// A second's tick from this drawing, for the elapsed time of what's `running`, in a window seen
+/// ([`crate::sight`]). Each tick draws it again, which asks for the next one, so nothing ticks
+/// while it isn't drawn or seen; the window drawn again once it's seen draws it with the time it
+/// is, and the ticks go on from there.
+pub(super) fn tick_later<T: 'static>(
     running: bool,
+    window: &Window,
     cx: &mut Context<T>,
-) {
-    if running == ticking.is_some() {
-        return;
-    }
-    *ticking = running.then(|| {
+) -> Option<Task<()>> {
+    (running && crate::sight::window_seen(window)).then(|| {
         cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(Duration::from_secs(1)).await;
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
-                    return;
-                }
-            }
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            this.update(cx, |_, cx| cx.notify()).ok();
         })
-    });
+    })
 }
 
 impl Timeline {
@@ -140,7 +144,10 @@ impl Timeline {
             colours: Rc::default(),
             colouring: HashSet::new(),
             running: None,
+            subagent_running: false,
             covered: false,
+            in_sight: true,
+            grew: Vec::new(),
             ticking: None,
             copied: None,
             inset,
@@ -154,9 +161,18 @@ impl Timeline {
         timeline
     }
 
+    /// Whether it keeps up with its thread: nothing's over it and the chat's in sight.
+    fn follows(&self) -> bool {
+        !self.covered && self.in_sight
+    }
+
     /// Takes in what the thread holds now.
     fn follow(&mut self, cx: &mut Context<Self>) {
-        if self.covered {
+        if !self.follows() {
+            let held = (self.thread.read(cx).replica()).map_or(0, |replica| replica.items.len());
+            if self.grew.last().is_none_or(|(had, _)| held > *had) {
+                self.grew.push((held, Instant::now()));
+            }
             return;
         }
         let replica = self.thread.read(cx).replica();
@@ -175,17 +191,21 @@ impl Timeline {
         let uncoloured = replica.map_or_else(Vec::new, |replica| self.uncoloured(replica));
         let prompts = replica.map_or_else(Vec::new, |replica| prompts(replica, &new));
         let running = replica.and_then(|replica| running_item(replica, &new));
-        let subagent_running = replica.is_some_and(|replica| {
+        self.subagent_running = replica.is_some_and(|replica| {
             (replica.items.iter()).any(|item| {
                 matches!(item.body, ItemBody::Subagent(_)) && item.status == ItemStatus::Running
             })
         });
-        self.running = running.map(|id| {
+        let came = |index: usize| (self.grew.iter()).find(|(held, _)| *held > index);
+        self.running = running.map(|(id, index)| {
             let since = (self.running.as_ref())
                 .filter(|(held, _)| *held == id)
-                .map_or_else(Instant::now, |(_, since)| *since);
+                .map(|(_, since)| *since)
+                .or_else(|| came(index).map(|(_, came)| *came))
+                .unwrap_or_else(Instant::now);
             (id, since)
         });
+        self.grew.clear();
         if let Some((replaced, count)) = changed(&self.rows, &new) {
             self.scroller.update(cx, |scroller, cx| {
                 scroller.splice(replaced, count, cx);
@@ -194,11 +214,6 @@ impl Timeline {
         self.rows = Rc::new(new);
         self.prompts = Rc::new(prompts);
         self.colour(uncoloured, cx);
-        keep_ticking(
-            &mut self.ticking,
-            self.running.is_some() || subagent_running,
-            cx,
-        );
         self.follow_queued_edit(cx);
         cx.notify();
     }
@@ -279,12 +294,19 @@ impl Timeline {
             .update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
     }
 
-    /// Another chat came over this one, or left: what happened meanwhile is taken in at once.
+    /// Another chat came over this one, or left: once it follows its thread again, what
+    /// happened meanwhile is taken in at once.
     pub(super) fn set_covered(&mut self, covered: bool, cx: &mut Context<Self>) {
         self.covered = covered;
-        if covered {
-            self.ticking = None;
-        } else {
+        if self.follows() {
+            self.follow(cx);
+        }
+    }
+
+    /// The chat went out of sight, or came back in: as for [`Timeline::set_covered`].
+    pub(super) fn set_in_sight(&mut self, in_sight: bool, cx: &mut Context<Self>) {
+        self.in_sight = in_sight;
+        if self.follows() {
             self.follow(cx);
         }
     }
@@ -356,11 +378,13 @@ impl Timeline {
 /// the list's: what scrolls the list measures it by its rows, without its padding, and jumps by
 /// the difference.
 impl Render for Timeline {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(test)]
         {
             self.renders += 1;
         }
+        let running = self.running.is_some() || self.subagent_running;
+        self.ticking = tick_later(running, window, cx);
         let drawing = self.drawing(cx);
         MessageScroller::new(
             "chat-timeline",
@@ -382,6 +406,7 @@ impl Timeline {
     pub(super) fn drawing(&self, cx: &Context<Self>) -> Drawing {
         Drawing {
             now: chrono::Utc::now(),
+            in_front: beat::is_frontmost(cx),
             thread: self.thread.clone(),
             catalog: self.catalog.clone(),
             timeline: cx.weak_entity(),
@@ -429,13 +454,13 @@ fn prompts(replica: &Replica, rows: &[Row]) -> Vec<usize> {
         .collect()
 }
 
-/// The item the live row in `rows` shows.
-fn running_item(replica: &Replica, rows: &[Row]) -> Option<ItemId> {
+/// The item the live row in `rows` shows, and its place among the replica's items.
+fn running_item(replica: &Replica, rows: &[Row]) -> Option<(ItemId, usize)> {
     let item = rows.iter().rev().find_map(|row| match row.kind {
         RowKind::Live { item } => item,
         _ => None,
     })?;
-    Some(replica.items.get(item)?.id.clone())
+    Some((replica.items.get(item)?.id.clone(), item))
 }
 
 /// What a person would copy of an item.

@@ -1,6 +1,6 @@
 //! What the host says, routed to the pane views: page state, cursors, questions and menus.
 
-use gpui_kit::Context;
+use gpui_kit::{Context, WeakEntity};
 use koyo_browser_ipc::client::Incoming;
 use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId};
 
@@ -34,18 +34,35 @@ impl Browsers {
         }
     }
 
+    /// Builds again the views of `profile`'s pages, which show its extensions.
+    fn notify_pages_of(&self, profile: &str, cx: &mut Context<Self>) {
+        for view in self.views.values().filter_map(WeakEntity::upgrade) {
+            if view.read(cx).profile() == Some(profile) {
+                view.update(cx, |_, cx| cx.notify());
+            }
+        }
+    }
+
     /// What the host says of extensions (`docs/extensions.md`): a profile's, what one set
-    /// its toolbar action to, and the tabs they open and ask for in front.
+    /// its toolbar action to, and the tabs they open and ask for in front. What changes what a
+    /// page shows builds that page's view again, and no other.
     fn extension_event(&mut self, event: HostEvent, cx: &mut Context<Self>) {
         match event {
             HostEvent::Extensions { profile, extensions } => {
-                self.extensions.listed(profile, extensions);
-                cx.refresh_windows();
+                if self.extensions.listed(profile.clone(), extensions) {
+                    self.notify_pages_of(&profile, cx);
+                }
             }
             HostEvent::ExtensionAction { profile, extension, pane, action } => {
-                self.extensions.acted(profile, extension, pane, action);
-                let _ = pane;
-                cx.refresh_windows();
+                if !self.extensions.acted(profile.clone(), extension, pane, action) {
+                    return;
+                }
+                match pane {
+                    Some(pane) => {
+                        self.update_view(pane, cx, |_, cx| cx.notify());
+                    }
+                    None => self.notify_pages_of(&profile, cx),
+                }
             }
             HostEvent::TabOpened { pane, opener, url, active } => {
                 let heard = self.update_view(opener, cx, |_, cx| {
@@ -65,7 +82,7 @@ impl Browsers {
         }
     }
 
-    pub(super) fn receive(&mut self, message: Incoming, cx: &mut Context<Self>) {
+    pub(in crate::browser) fn receive(&mut self, message: Incoming, cx: &mut Context<Self>) {
         match message {
             Incoming::Event(event) => self.event(event, cx),
             Incoming::Closed => self.stopped(cx),

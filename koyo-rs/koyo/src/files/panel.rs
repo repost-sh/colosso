@@ -134,18 +134,20 @@ impl FilesPanel {
         }
     }
 
-    /// Picks the file the shown tab shows, as the tree names it, and reveals it: its
-    /// folders opened and it scrolled to.
-    pub fn set_active(&mut self, active: Option<Arc<str>>, cx: &mut Context<Self>) {
-        if self.active == active {
+    /// Has `this` pick the file the shown tab shows, as the tree names it, and reveal it: its
+    /// folders opened and it scrolled to. It's updated only when that's another file.
+    pub fn set_active(this: &Entity<Self>, active: Option<Arc<str>>, cx: &mut App) {
+        if this.read(cx).active == active {
             return;
         }
-        self.active.clone_from(&active);
-        match active {
-            Some(path) if self.selected.as_ref() != Some(&path) => self.reveal(&path, cx),
-            _ => self.revealing = None,
-        }
-        cx.notify();
+        this.update(cx, |files, cx| {
+            files.active.clone_from(&active);
+            match active {
+                Some(path) if files.selected.as_ref() != Some(&path) => files.reveal(&path, cx),
+                _ => files.revealing = None,
+            }
+            cx.notify();
+        });
     }
 
     /// Opens the folders above `path`, then picks it and scrolls to it; if a folder on the

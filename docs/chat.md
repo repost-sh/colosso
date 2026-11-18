@@ -1258,9 +1258,10 @@ Layout, top to bottom inside the pane's card:
   the list's top row and where it laid the next prompt's row, as a person scrolls and after each
   draw of the tab.
 - **Status in the shell.** The tab face shows a spinner while working (`chat/spinner.rs`: a small
-  bold ring in amber, going round, drawn at every frame the window is shown, whichever app is in
-  front: a window nobody can see, minimized, covered or on another desktop, is shown none; until
-  2026-11-14 it stood still while Koyo wasn't in front), a dot in the text's colour
+  bold ring in amber, going round, drawn at each beat (`beat.rs`), at most 30 a second while
+  Koyo is in front and 10 while another app is; a window nobody can see, minimized, covered or
+  on another desktop, asks for none, and is drawn whole again once it's seen; until 2026-11-14 it
+  stood still while Koyo wasn't in front), a dot in the text's colour
   when it needs you, a dot when unread, red when failed. In the Arc layout a tab's row says it
   at its end instead: the spinner, then an indigo dot (`docs/arc-sidebar.md` 5). The sidebar's worktree row shows the
   most urgent of its chats, and a chat with no tab counts only while it's working or needs you.
@@ -1280,10 +1281,19 @@ Layout, top to bottom inside the pane's card:
 - A view holding what's read while it draws is drawn again for each update of it, notified or
   not, and every token updates the thread and `Chats`: the composer holds copies of what it shows
   of them, changed only when they differ.
-- Row derivation runs on structure changes only, and reuses unchanged rows.
+- Row derivation runs on structure changes only, and reuses unchanged rows, and only while a
+  person can see the chat: its tab shown, in a window on screen. Out of sight the timeline notes
+  when the thread grew and nothing more; seen again, it derives the rows once, and what started
+  meanwhile shows how long it's run since it came.
 - A thread opens with its latest 30 runs; older ones load as the person scrolls up.
-- A tab's elapsed label ticks once a second, only while a tool is running; the shimmer moves at
-  20 fps, whatever the display's rate, so the rows it draws again don't matter.
+- A tab's elapsed label ticks once a second, only while a tool is running, the timeline is drawn
+  and a person can see its window, beside another app's too, where a person watches a chat work;
+  it's drawn as it is now as the window is seen again. The shimmer moves at 20 fps, whatever the
+  display's rate, so the rows it draws again don't matter, and only while Koyo is in front
+  (`beat::is_frontmost`: one of its windows has the keyboard, its own floating ones included):
+  while another app is, the spinners say a chat works.
+- The details card reads the branch (`git fetch`, `gh pr view`) only while it's drawn and a person
+  can see its window; a read that came due while nobody could is made once the window is seen.
 - What's typed is parsed for its markdown once for each change of its text, and its styles are
   set only when they differ, so a key still draws no row. A person's message is parsed once, as
   its view is made, as an answer's is.
@@ -1292,9 +1302,14 @@ Layout, top to bottom inside the pane's card:
   when which prompt floats or how far up it is changes, and the timeline only when another
   prompt floats.
 - The composer's working edge is a view of its own, so its steps draw neither the composer nor
-  the timeline (the tab around it is drawn for each, as for anything floating over a chat); at
-  most 24 a second while it moves or fades, none while it holds still, and none once nothing
-  works.
+  the timeline (the tab around it is drawn for each, as for anything floating over a chat); it
+  steps at the beat (`beat.rs`), in the frames the spinners turn in, while it moves or fades: at
+  most 30 a second while Koyo is in front, 10 while another app is, none while it holds still or
+  nobody can see its window, and none once nothing works. Drawn in the same frames as the
+  spinners, the tab around them is drawn anyway, and the shell is drawn around them from the frame
+  before.
+- A field's caret blinks while it has the keyboard; a field in a window behind another app's draws
+  no caret and doesn't blink, as GPUI tells it it lost the keyboard.
 
 ---
 

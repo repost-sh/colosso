@@ -144,7 +144,7 @@ impl FileEditor {
     fn tell_dirty(&self, cx: &mut Context<Self>) {
         let dirty = self.is_dirty(cx);
         if let Some(document) = self.document.upgrade() {
-            document.update(cx, |document, cx| document.set_dirty(dirty, cx));
+            Document::set_dirty(&document, dirty, cx);
         }
     }
 

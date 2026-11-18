@@ -1,10 +1,11 @@
 //! The backdrop's tests: a picture made from a file, compressed, read back in the order the GPU
-//! reads it, and drawn by the renderer as a chat draws it, dithered and faded; and how long
-//! making one takes.
+//! reads it, and drawn by the renderer as a chat draws it, dithered and faded; how long making
+//! one takes; and when the watch looks at the wallpapers and lets a picture go.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use gpui_kit::{AppContext as _, TestAppContext, px, size};
 use objc2_core_foundation::{
     CFData, CFRetained, CFString, CFURL, CGFloat, CGPoint, CGRect, CGSize,
 };
@@ -13,11 +14,13 @@ use objc2_image_io::{CGImageDestination, CGImageSource};
 
 use super::astc::{self, Astc};
 use super::make::{Recipe, lay_out, make, upside_down};
+use super::screens;
 use super::texture::Texture;
+use crate::budget::wakes_a_minute;
 use crate::chat_backdrop::layout::Scaling;
 use crate::chat_backdrop::wallpaper::Wallpaper;
 use crate::settings::{ChatBackdrop, Quality};
-use crate::test_support::scratch;
+use crate::test_support::{Blank, in_window, on_screen, scratch};
 use crate::viewer::bitmap::Canvas;
 
 /// Red over the top half of `canvas`, blue under, a white bar down its middle third.
@@ -365,4 +368,47 @@ fn it_shows_at_its_opacity_and_fades_out_down_its_pane() {
     assert!(red(0) > 240, "whole where it starts: {}", red(0));
     assert!(red(32).abs_diff(158) <= 20, "a quarter down: {}", red(32));
     assert!(red(127) < 8, "gone at the bottom: {}", red(127));
+}
+
+/// The watch looks at the wallpapers once a second only while a chat shows the backdrop in a
+/// window somebody can see, and otherwise sleeps until told: by a chat showing it, or by a window
+/// seen again after nobody could see one, as the shell tells it.
+#[gpui_kit::test]
+fn the_wallpapers_are_looked_at_only_while_a_backdrop_is_seen(cx: &mut TestAppContext) {
+    cx.update(super::init);
+    let (window, _) = in_window(size(px(400.), px(300.)), cx, |_, cx| cx.new(|_| Blank));
+    assert_eq!(wakes_a_minute(cx), 0, "no chat shows the backdrop");
+    let hold = cx.update(|cx| screens::hold(1, cx));
+    assert_eq!(wakes_a_minute(cx), 60, "a chat shows it in a window seen");
+    on_screen(window, false, cx);
+    assert_eq!(wakes_a_minute(cx), 0, "nobody can see the window");
+    on_screen(window, true, cx);
+    cx.update(|cx| super::look_again(cx));
+    assert_eq!(wakes_a_minute(cx), 60, "the window seen again");
+    drop(hold);
+    assert_eq!(wakes_a_minute(cx), 0, "no chat shows it any more");
+}
+
+/// A screen's picture no chat shows any more is let go 30 s on, with no window to look at the
+/// wallpapers for meanwhile: the watch wakes for it then.
+#[gpui_kit::test]
+fn a_picture_no_chat_shows_is_let_go_a_while_on(cx: &mut TestAppContext) {
+    cx.update(super::init);
+    let path = scratch("chat-backdrop-let-go").join("wallpaper.png");
+    picture_file(&path, 64, 64, "public.png", grey);
+    let recipe = recipe(path, (64., 64.), Quality::Astc8Full);
+    let shown = |cx: &mut TestAppContext| {
+        cx.update(|cx| screens::picture(1, Some(recipe.clone()), solid(), cx)).is_some()
+    };
+    let hold = cx.update(|cx| screens::hold(1, cx));
+    assert!(!shown(cx), "being made");
+    cx.run_until_parked();
+    assert!(shown(cx), "made");
+    drop(hold);
+    cx.executor().advance_clock(Duration::from_secs(29));
+    cx.run_until_parked();
+    assert!(shown(cx), "kept a while once no chat shows it");
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    assert!(!shown(cx), "let go");
 }

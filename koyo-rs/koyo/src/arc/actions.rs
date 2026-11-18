@@ -281,14 +281,13 @@ impl Shell {
             return;
         };
         let settings = settings::get(cx);
+        let shown = settings.shown_space();
+        if shown.is_some_and(|space| space.selected.as_deref() == Some(active.as_path())) {
+            return;
+        }
         let Some(space) = settings.space_of(active) else {
             return;
         };
-        let followed = settings.space == space
-            && settings.spaces[space].selected.as_deref() == Some(active.as_path());
-        if followed {
-            return;
-        }
         let elsewhere = settings.space != space;
         let active = active.clone();
         settings::update(cx, |settings| {

@@ -107,9 +107,9 @@ impl Shell {
     /// handle to find it by.
     fn kept_pane(&self, pane: &Pane, cx: &App) -> Option<KeptPane> {
         match pane.kind {
-            PaneKind::Browser if pane.is_inspector(cx) => None,
+            PaneKind::Browser if pane.is_inspector() => None,
             PaneKind::Browser => Some(KeptPane::Page {
-                url: pane.address(cx)?,
+                url: pane.address()?.to_owned(),
                 title: pane.title.to_string(),
                 by_agent: pane.by_agent,
             }),

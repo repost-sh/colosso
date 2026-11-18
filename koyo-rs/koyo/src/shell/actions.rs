@@ -143,6 +143,7 @@ impl Shell {
                 settings::update(cx, |settings| settings.claude_path = None);
             })
             .on_drag_move(cx.listener(Self::resize_sidebar))
+            .child(Self::hearing_let_go(cx))
             .child(crate::popup::listener())
             .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
                 picker::open(this.rails_menu_at, window, cx);

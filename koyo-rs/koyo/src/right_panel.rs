@@ -1,10 +1,9 @@
 //! The right panel beside the chat: the selected checkout's changed files, or its file tree,
 //! each opened and closed by its own button in the top bar; a file picked in either opens in
 //! the workspace's tabs, its diff in the checkout's Changes tab or the file in a tab of its
-//! own. Each checkout in the sidebar keeps
-//! its panels while it's there, so leaving it and coming back finds its open folders, its
-//! pick and its scroll as they were. The panel follows the shell after each change to it
-//! rather than while it's drawn, so nothing is made or swapped mid-frame.
+//! own. Each checkout in the sidebar keeps its panels while it's there, so leaving it and coming
+//! back finds its open folders, its pick and its scroll as they were. The panel follows the shell
+//! after each change to it rather than while it's drawn, so nothing is made or swapped mid-frame.
 
 use std::collections::HashMap;
 use std::mem;
@@ -12,13 +11,13 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, AppContext as _, Context, DispatchPhase, Div, DragMoveEvent,
-    Empty, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseUpEvent,
-    ParentElement as _, Styled, Subscription, WeakEntity, Window, actions, canvas, div, px,
+    AnyElement, AnyWindowHandle, App, AppContext as _, Context, Div, DragMoveEvent, Empty, Entity,
+    FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Styled,
+    Subscription, WeakEntity, Window, actions, div, px,
 };
 
 use crate::changes::ChangesPanel;
-use crate::checkout::{Checkout, HeadMoved};
+use crate::checkout::{Checkout, HeadMoved, Seen, TotalsChanged};
 use crate::files::{FilesPanel, Place};
 use crate::language;
 use crate::navigation::Route;
@@ -86,6 +85,9 @@ pub struct RightPanelResize;
 /// One checkout's panels, each made the first time it's shown.
 struct Panels {
     checkout: Entity<Checkout>,
+    /// The lines its changes add and remove, for the changes button: the shell reads these, not
+    /// the checkout, which would draw it at each of the checkout's changes.
+    totals: (u32, u32),
     changes: Option<Entity<ChangesPanel>>,
     files: Option<Entity<FilesPanel>>,
     _subscriptions: Vec<Subscription>,
@@ -141,6 +143,15 @@ impl RightPanel {
         Some(&self.shown()?.checkout)
     }
 
+    /// The selected checkout, if it's the one at `root`.
+    pub fn checkout_at(&self, root: &Path) -> Option<&Entity<Checkout>> {
+        self.checkout().filter(|_| self.is_selected(root))
+    }
+
+    fn is_selected(&self, root: &Path) -> bool {
+        self.selected.as_deref() == Some(root)
+    }
+
     /// The selected checkout's changed files, once they've been shown.
     #[cfg(test)]
     pub fn changes(&self) -> Option<&Entity<ChangesPanel>> {
@@ -153,16 +164,17 @@ impl RightPanel {
     }
 
     /// The lines the selected checkout's changes add and remove, once they've been read.
-    pub fn totals(&self, cx: &App) -> (u32, u32) {
-        (self.checkout()).map_or((0, 0), |checkout| checkout.read(cx).totals())
+    pub fn totals(&self) -> (u32, u32) {
+        self.shown().map_or((0, 0), |panels| panels.totals)
     }
 
     /// The right panel as the card shows it, if it's open while it's `shown`, `beside` being
-    /// how wide what's left of the chat is.
+    /// how wide what's left of the chat is, `next_to_page` whether the tab beside it has a page.
     pub fn render(
         &mut self,
         shown: bool,
         beside: f32,
+        next_to_page: bool,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Div> {
@@ -181,14 +193,11 @@ impl RightPanel {
                 .h_full()
                 .flex_shrink_0()
                 .flex()
-                .child(theme::card::seam(
+                .children(theme::card::seam(
                     "right-panel-resize",
                     true,
                     RightPanelResize,
-                    p,
-                    islands,
-                ))
-                .child(
+                    next_to_page,
                     theme::card::part(p, islands)
                         .h_full()
                         .w(px(width))
@@ -199,7 +208,8 @@ impl RightPanel {
                             cx,
                         ))
                         .child(panel),
-                ),
+                    cx,
+                )),
         )
     }
 
@@ -214,10 +224,15 @@ impl RightPanel {
             .max(min)
     }
 
-    /// Saves the width the panel's edge was dragged to, once it's let go: whether it was.
-    fn let_go(&mut self, cx: &mut App) -> bool {
+    /// Whether the panel's edge is being dragged.
+    pub(crate) fn is_dragged(&self) -> bool {
+        self.dragged.is_some()
+    }
+
+    /// Saves the width the panel's edge was dragged to, once it's let go.
+    pub(crate) fn let_go(&mut self, cx: &mut App) {
         if self.dragged.is_none() {
-            return false;
+            return;
         }
         let width = self.width(cx);
         self.dragged = None;
@@ -226,14 +241,23 @@ impl RightPanel {
             View::Changes => settings.changes_files_width = width,
             View::Files => settings.files_tree_width = width,
         });
-        true
     }
 
-    /// Makes the panels of the checkout at `path`, unless it has them.
+    /// Makes the panels of the checkout at `path`, unless it has them, and tells the language
+    /// servers whether it's seen, now and as that changes. The shell going with its window
+    /// takes it out of sight, unless it left the sidebar first, which lets go of its servers.
     fn make_panels(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Shell>) {
         if !self.checkouts.contains_key(path) {
             let checkout = cx.new(|cx| Checkout::new(path.to_owned(), window, cx));
-            let observing = cx.observe(&checkout, |_, _, cx| cx.notify());
+            let root = path.to_owned();
+            let counted = cx.subscribe(&checkout, move |shell, _, TotalsChanged(totals), cx| {
+                if let Some(panels) = shell.right_panel.checkouts.get_mut(&root) {
+                    panels.totals = *totals;
+                }
+                if shell.right_panel.is_selected(&root) {
+                    cx.notify();
+                }
+            });
             let worktree = path.to_owned();
             let moved = cx.subscribe(&checkout, move |shell, _, _: &HeadMoved, cx| {
                 let project = shell.workspace.project_of(&worktree);
@@ -241,11 +265,19 @@ impl RightPanel {
                     shell.reload_project(project, cx);
                 }
             });
+            let root = path.to_owned();
+            let seen = cx.subscribe(&checkout, move |_, _, Seen(seen), cx| {
+                language::seen(&root, *seen, cx);
+            });
+            let root = path.to_owned();
+            let gone = cx.on_release(move |_, cx| language::seen(&root, false, cx));
+            language::seen(path, checkout.read(cx).is_seen(), cx);
             let panels = Panels {
+                totals: checkout.read(cx).totals(),
                 checkout,
                 changes: None,
                 files: None,
-                _subscriptions: vec![observing, moved],
+                _subscriptions: vec![counted, moved, seen, gone],
             };
             self.checkouts.insert(path.to_owned(), panels);
         }
@@ -257,8 +289,7 @@ impl Shell {
     pub fn handle_right_panel(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &ToggleRightPanel, _, cx| {
             let panel = &mut this.right_panel;
-            panel.open = !panel.open;
-            panel.focus = panel.open;
+            (panel.open, panel.focus) = (!panel.open, !panel.open);
             cx.notify();
         }))
         .on_action(cx.listener(|this, _: &ShowFiles, _, cx| this.show(View::Files, cx)))
@@ -268,31 +299,6 @@ impl Shell {
         .map(|root| Self::handle_symbols(root, cx))
         .map(|root| Self::handle_files(root, cx))
         .on_drag_move(cx.listener(Self::resize_right_panel))
-        .child(Self::hearing_let_go(cx))
-    }
-
-    /// Hears the edge let go wherever the pointer is. The root's own listeners hear only what's
-    /// over the root, and the pointer is over the edge's handle then, which takes the mouse for
-    /// itself; the window hears everything.
-    fn hearing_let_go(cx: &Context<Self>) -> impl IntoElement {
-        let shell = cx.weak_entity();
-        canvas(
-            |_, _, _| (),
-            move |_, (), window, _| {
-                window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
-                    if phase == DispatchPhase::Bubble {
-                        (shell.update(cx, |this, cx| {
-                            if this.right_panel.let_go(cx) {
-                                cx.notify();
-                            }
-                        }))
-                        .ok();
-                    }
-                });
-            },
-        )
-        .absolute()
-        .size_0()
     }
 
     /// Shows `view` in the right panel, opening it if it's closed, and gives it the keyboard.
@@ -320,11 +326,9 @@ impl Shell {
         }
     }
 
-    /// Points the right panel at the selected checkout, and its file tree at the file the
-    /// shown tab shows; makes what it shows now if it isn't made; colours the checkout's
-    /// diffs while its Changes tab is shown; lets go of the panels of checkouts gone from
-    /// the sidebar. Runs after each change to the shell.
-    pub fn follow_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Lets go of the panels of checkouts gone from the sidebar, and of their language servers.
+    /// Says how many.
+    pub(crate) fn let_go_of_checkouts_gone(&mut self, cx: &mut Context<Self>) -> usize {
         let (panel, workspace) = (&mut self.right_panel, &self.workspace);
         let mut gone = Vec::new();
         panel.checkouts.retain(|path, _| {
@@ -334,9 +338,17 @@ impl Shell {
             }
             kept
         });
-        for root in gone {
-            language::forget(&root, cx);
+        for root in &gone {
+            language::forget(root, cx);
         }
+        gone.len()
+    }
+
+    /// Points the right panel at the selected checkout, and its file tree at the file the
+    /// shown tab shows; makes what it shows now if it isn't made; colours the checkout's
+    /// diffs while its Changes tab is shown. Runs after each change to the shell.
+    pub fn follow_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (panel, workspace) = (&mut self.right_panel, &self.workspace);
         let selected = workspace
             .branch()
             .map(|branch| branch.worktree.path.as_path());
@@ -346,10 +358,7 @@ impl Shell {
         let reselected = panel.selected.as_deref() != selected;
         if reselected {
             if let Some(left) = panel.shown() {
-                left.checkout.update(cx, |checkout, cx| {
-                    checkout.set_selected(false, cx);
-                    checkout.set_coloured(false, cx);
-                });
+                Checkout::show(&left.checkout, false, false, cx);
             }
             panel.selected = selected.map(Path::to_path_buf);
         }
@@ -365,10 +374,7 @@ impl Shell {
             return;
         };
         let checkout = panels.checkout.clone();
-        checkout.update(cx, |checkout, cx| {
-            checkout.set_selected(true, cx);
-            checkout.set_coloured(diffs_shown, cx);
-        });
+        Checkout::show(&checkout, true, diffs_shown, cx);
         if open && view == View::Changes {
             let changes = panels.changes(window, cx);
             let handle = changes.read(cx).focus_handle().clone();
@@ -382,7 +388,7 @@ impl Shell {
         if let Some(files) = panels.files.clone() {
             let shown = self.shown_file(window, cx);
             let active = shown.and_then(|file| file.read(cx).relative.clone());
-            files.update(cx, |files, cx| files.set_active(active, cx));
+            FilesPanel::set_active(&files, active, cx);
             if open && view == View::Files {
                 let handle = files.read(cx).focus_handle().clone();
                 focus_once(&mut focus, &handle, window, cx);

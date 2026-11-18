@@ -11,7 +11,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Div, Empty, Entity, Font, FontWeight, Hsla, InteractiveElement as _,
     IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div, font, list, px,
+    Styled, Window, div, font, list, px,
 };
 use koyo_git::{Content, Status};
 
@@ -24,17 +24,15 @@ use crate::right_panel::panel_header;
 use crate::shell::{ellipsized, icon, icon_button};
 use crate::theme::{self, Palette};
 
-/// The changes panel's diffs, as a workspace tab shows them.
+/// The changes panel's diffs, as a workspace tab shows them. It reaches into the panel to draw
+/// them, so it's built again as the panel changes (`crate::budget`).
 pub struct ChangesTab {
     panel: Entity<ChangesPanel>,
-    /// Drawn again as the panel changes: its files read again, or scrolled to another.
-    _panel: Subscription,
 }
 
 impl ChangesTab {
-    pub fn new(panel: Entity<ChangesPanel>, cx: &mut Context<Self>) -> Self {
-        let _panel = cx.observe(&panel, |_, _, cx| cx.notify());
-        ChangesTab { panel, _panel }
+    pub fn new(panel: Entity<ChangesPanel>) -> Self {
+        ChangesTab { panel }
     }
 }
 

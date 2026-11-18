@@ -75,6 +75,7 @@ impl TerminalView {
         self.name.clone_from(&record.name);
         self.exited = record.exit;
         self.link = Link::Waiting;
+        self.told_title = None;
         cx.emit(TerminalEvent::Opened(record));
         if let Some(grid) = self.fill.get() {
             self.attach(size_of(grid), cx);
@@ -227,6 +228,7 @@ impl TerminalView {
             background: self.look.background,
         });
         vt.send(Command::OptionAsAlt(self.option_as_alt));
+        vt.send(Command::Seen(self.seen));
         self.link = Link::Attached { vt, index };
         self.updates = Some(cx.spawn(async move |this, cx| {
             while let Some(update) = received.next().await {
@@ -238,6 +240,14 @@ impl TerminalView {
                 }
             }
         }));
+    }
+
+    /// Whether a person can see the view: out of sight, its VT thread takes the output in and
+    /// makes no frames of it, so the view is drawn as it is once it's seen again. Its title
+    /// comes from the daemon meanwhile.
+    pub fn set_seen(&mut self, seen: bool) {
+        self.seen = seen;
+        self.send(Command::Seen(seen));
     }
 
     /// What the notice's button does: stops the daemon of another build, then opens or
@@ -296,20 +306,23 @@ impl TerminalView {
         cx.notify();
     }
 
-    fn on_update(&mut self, update: Update, cx: &mut Context<Self>) {
+    /// Says the terminal's title, from a frame or the daemon's word, when it isn't the one said
+    /// last: a program out of sight that sets its title over and over wakes nothing.
+    fn retitle(&mut self, title: &str, cx: &mut Context<Self>) {
+        if self.told_title.as_deref() != Some(title) {
+            self.told_title = Some(title.to_owned());
+            cx.emit(TerminalEvent::Title(title.to_owned()));
+        }
+    }
+
+    pub(super) fn on_update(&mut self, update: Update, cx: &mut Context<Self>) {
         log::trace!("{}: {update:?}", self.name);
         match update {
             Update::Frame => {
                 if let Link::Attached { vt, .. } = &self.link
                     && let Some(frame) = vt.take_frame()
                 {
-                    if self
-                        .frame
-                        .as_ref()
-                        .is_none_or(|before| before.title != frame.title)
-                    {
-                        cx.emit(TerminalEvent::Title(frame.title.clone()));
-                    }
+                    self.retitle(&frame.title, cx);
                     self.frame = Some(frame);
                     self.frame_under_pointer(cx);
                     cx.notify();
@@ -327,6 +340,7 @@ impl TerminalView {
                 }
                 EventKind::Closed => cx.emit(TerminalEvent::Closed),
                 EventKind::Bell => cx.emit(TerminalEvent::Bell),
+                EventKind::Title { title } => self.retitle(&title, cx),
                 EventKind::Size { size, pinned } => self.sized(size, pinned, cx),
                 EventKind::Refused { error } => {
                     log::info!("{}: input refused: {}", self.name, error.message);

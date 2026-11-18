@@ -35,7 +35,7 @@ impl Shell {
         if let Some(at) = open {
             self.workspace.select_tab(project, branch, at);
         } else {
-            let changes = cx.new(|cx| ChangesTab::new(panel.clone(), cx));
+            let changes = cx.new(|_| ChangesTab::new(panel.clone()));
             self.workspace
                 .open_beside_shown(Tab::Single(Pane::changes(changes)));
         }
@@ -67,7 +67,7 @@ impl Shell {
             .into_iter()
             .filter(|pane| ids.contains(&pane.id))
         {
-            pane.set_changes(cx.new(|cx| ChangesTab::new(panel.clone(), cx)));
+            pane.set_changes(cx.new(|_| ChangesTab::new(panel.clone())));
         }
     }
 }

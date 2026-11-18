@@ -16,7 +16,7 @@ second time, add the check first, then the row.
 | No Rust function over 100 lines. | Clippy `too_many_lines`, set in `koyo-rs/clippy.toml` | Split the function. |
 | A lint is never switched off. An exception is `#[expect(lint, reason = "...")]` on the one expression. | Clippy `allow_attributes` and `allow_attributes_without_reason` | Fix the code, or write the `#[expect]` with its reason. |
 | No `unwrap`, `expect`, `panic!`, `println!` or `eprintln!` outside tests, and no `todo!`, `unimplemented!`, `unreachable!` or `dbg!` anywhere. | `[workspace.lints.clippy]` in `koyo-rs/Cargo.toml` | Return the error to the caller. |
-| No `std::thread::sleep`, `std::process::exit` or `std::process::abort`, and no `CommandExt` call that forks the app. | `disallowed-methods` in `koyo-rs/clippy.toml` | The lint prints the replacement. |
+| No `std::thread::sleep`, `std::process::exit` or `std::process::abort`, no `CommandExt` call that forks the app, and no `refresh_windows` or `AsyncApp::refresh`, which rebuild every view of every window. | `disallowed-methods` in `koyo-rs/clippy.toml` | The lint prints the replacement. |
 | Clippy's pedantic group passes with every warning an error. | `script/lint` | Fix what Clippy names. |
 | TypeScript has no `as`, no `any` and no `@ts-` comment. Switches are exhaustive and conditions are booleans. A file has at most 500 lines, a function at most 4 parameters and 4 levels of nesting. | `koyo-js/eslint.config.ts` and `koyo-js/tsconfig.base.json`, run by `script/lint` | Fix what ESLint or tsc names. |
 | A daemon's version is settled whenever its sources change. | `script/daemon-version` | Run `script/daemon-version bump` if a running daemon must restart for the change, or `keep` if it need not. |

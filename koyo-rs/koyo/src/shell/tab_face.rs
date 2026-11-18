@@ -52,7 +52,7 @@ impl Face {
             } else {
                 pane.kind.icon()
             },
-            favicon: pane.favicon(cx),
+            favicon: pane.favicon(),
             title: pane.title.clone(),
             preview: file.is_some_and(FilePane::is_preview),
             dirty: file.is_some_and(FilePane::is_dirty),

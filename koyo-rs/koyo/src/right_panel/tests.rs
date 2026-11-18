@@ -1,12 +1,20 @@
 use std::path::PathBuf;
 
 use gpui_kit::{
-    Action, AnyWindowHandle, Entity, Modifiers, MouseButton, Pixels, Point, TestAppContext,
-    VisualTestContext, point,
+    Action, AnyWindowHandle, CursorStyle, Entity, Modifiers, MouseButton, Pixels, Point,
+    TestAppContext, VisualTestContext, point,
 };
 
 use super::*;
-use crate::test_support::{repo, select, shell_with};
+use crate::files::tests::shell_showing;
+use crate::settings::Layout;
+use crate::test_support::{GRAB, center_of, cursor_at, drag, draw, repo, select, shell_with};
+use crate::theme::card::HANDLE_REACH;
+
+/// The width the Files panel is set to.
+fn files_width(cx: &TestAppContext) -> f32 {
+    cx.read(|cx| settings::get(cx).files_tree_width)
+}
 
 /// The selected checkout and its file tree, as the right panel holds them.
 fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Entity<Checkout>, Entity<FilesPanel>) {
@@ -50,16 +58,15 @@ fn each_checkout_keeps_its_panels_until_it_leaves_the_sidebar(cx: &mut TestAppCo
     }
 }
 
-/// Drags the handle `selector` names `by` across, in steps, and lets go only once `between`
-/// has looked at the drag under way. The edge goes where the pointer is, so it moves as far
-/// as the pointer give or take where on the handle it was grabbed.
-fn drag(
-    selector: &'static str,
+/// Drags what's at `from` `by` across, in steps, and lets go only once `between` has looked at
+/// the drag under way. The edge goes where the pointer is, so it moves as far as the pointer
+/// give or take where on the handle it was grabbed.
+fn drag_and_look(
+    from: Point<Pixels>,
     by: f32,
     cx: &mut VisualTestContext,
     between: impl FnOnce(&mut VisualTestContext),
 ) {
-    let from: Point<Pixels> = cx.debug_bounds(selector).unwrap().center();
     cx.simulate_mouse_down(from, MouseButton::Left, Modifiers::none());
     let to = |step: f32| point(from.x + px(by * step / 10.), from.y);
     for step in 1..=10 {
@@ -68,10 +75,6 @@ fn drag(
     between(cx);
     cx.simulate_mouse_up(to(10.), MouseButton::Left, Modifiers::none());
 }
-
-/// How far from an edge its handle is grabbed at its middle: half the handle's 6 points, the
-/// border inside it, and a point to spare.
-const GRAB: f32 = 5.;
 
 #[gpui_kit::test]
 #[expect(
@@ -85,23 +88,63 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
     cx.dispatch_action(window, ShowFiles);
     cx.run_until_parked();
     let cx = &mut VisualTestContext::from_window(window, cx);
-    let saved = |cx: &mut VisualTestContext| cx.read(|cx| settings::get(cx).files_tree_width);
-    let set = saved(cx);
+    let set = files_width(cx);
     let edge = |selector, cx: &mut VisualTestContext| {
         cx.debug_bounds(selector).unwrap().center().x.as_f32()
     };
     let before = edge("right-panel-resize", cx);
-    drag("right-panel-resize", -60., cx, |cx| {
+    let from = cx.debug_bounds("right-panel-resize").unwrap().center();
+    drag_and_look(from, -60., cx, |cx| {
         let after = edge("right-panel-resize", cx);
         assert!((before - after - 60.).abs() < GRAB, "{before} to {after}");
-        assert_eq!(saved(cx), set, "nothing's saved mid-drag");
+        assert_eq!(files_width(cx), set, "nothing's saved mid-drag");
     });
-    assert!(
-        (saved(cx) - set - 60.).abs() < GRAB,
-        "{set} to {}",
-        saved(cx)
-    );
+    let saved = files_width(cx);
+    assert!((saved - set - 60.).abs() < GRAB, "{set} to {saved}");
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// The edge is picked up over the parts either side of it as well as on it, the resize cursor
+/// over all of it: on the one card a few points over the file shown and over the panel, which
+/// would each take the press otherwise; with islands, across the glass between them.
+#[gpui_kit::test]
+fn the_edge_is_picked_up_over_the_parts_either_side_of_it(cx: &mut TestAppContext) {
+    let root = repo("right-panel-reach", &[("README.md", "hi\n")]);
+    let (window, _, _) = shell_showing(&root, cx);
+    let gutter = theme::GUTTER / 2. - 1.;
+    let layouts = [
+        (Layout::Orca, [-HANDLE_REACH, HANDLE_REACH]),
+        (Layout::Arc, [-gutter, gutter]),
+    ];
+    for (layout, reaches) in layouts {
+        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+        draw(window, cx);
+        for reach in reaches {
+            picked_up(
+                window,
+                reach,
+                &format!("{layout:?}, {reach} from the edge"),
+                cx,
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Picks the edge up `reach` across from its middle and drags it 30 points left: the resize
+/// cursor shows there, and the panel widens by about as far.
+fn picked_up(window: AnyWindowHandle, reach: f32, what: &str, cx: &mut TestAppContext) {
+    let middle = center_of(window, "right-panel-resize", cx);
+    let at = point(middle.x + px(reach), middle.y);
+    assert_eq!(
+        cursor_at(window, at, cx),
+        CursorStyle::ResizeColumn,
+        "{what}"
+    );
+    let set = files_width(cx);
+    drag(window, at, at - point(px(30.), px(0.)), cx);
+    let grown = files_width(cx) - set;
+    assert!((grown - 30.).abs() < 10., "{what}: it widened {grown}");
 }
 
 /// What the top bar's buttons do: each opens the panel on its view and closes it, and the

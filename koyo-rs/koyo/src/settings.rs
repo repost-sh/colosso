@@ -2,6 +2,7 @@
 //! (`KOYO_CONFIG_DIR` points elsewhere). Each module reads its part at startup and writes
 //! changes back through `update`, which saves once they settle.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -50,7 +51,7 @@ use crate::theme::{self, ThemePreference};
 
 const FILE: &str = "settings.json";
 /// How long changes must settle before they are written, so a drag saves once.
-const SAVE_DELAY: Duration = Duration::from_millis(500);
+pub(crate) const SAVE_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum Layout {
@@ -323,15 +324,24 @@ fn default_worktrees_dir() -> PathBuf {
         .join("workspaces")
 }
 
+/// The settings, and their file's bookkeeping apart from them in a cell: noting a save or a
+/// read of the file tells none of the settings' observers anything changed.
 struct Store {
     settings: Settings,
     path: Option<PathBuf>,
+    file: RefCell<OnDisk>,
+}
+
+#[derive(Default)]
+struct OnDisk {
     /// The save waiting for changes to settle; replacing it cancels it.
     pending: Option<Task<()>>,
     /// Whether a change made in the app is still to be written, so the file doesn't undo it.
     unsaved: bool,
     /// When the file was last changed as the app knows it, read or written.
     seen: Option<SystemTime>,
+    /// The looking at the file for an edit made outside the app (`file::LOOK_EVERY`).
+    looking: Option<Task<()>>,
 }
 
 impl Global for Store {}
@@ -346,23 +356,16 @@ pub fn init(cx: &mut App) {
     let mut settings: Settings = path.as_deref().map(file::load).unwrap_or_default();
     settings.reconcile_spaces();
     let seen = path.as_deref().and_then(file::modified);
+    let file = RefCell::new(OnDisk {
+        seen,
+        ..OnDisk::default()
+    });
     cx.set_global(Store {
         settings,
         path,
-        pending: None,
-        unsaved: false,
-        seen,
+        file,
     });
-    #[cfg(not(test))]
-    cx.spawn(async move |cx| {
-        loop {
-            cx.background_executor()
-                .timer(Duration::from_millis(500))
-                .await;
-            cx.update(file::reload);
-        }
-    })
-    .detach();
+    file::look_while_in_front(cx);
     cx.on_action(|SetLayout(layout): &SetLayout, cx| {
         update(cx, |settings| settings.layout = *layout);
     });
@@ -408,19 +411,18 @@ pub fn init(cx: &mut App) {
     cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
         update(cx, |settings| settings.branch_prefix = prefix.clone());
     });
-    cx.on_app_quit(|cx| {
-        if cx.global_mut::<Store>().pending.take().is_some()
-            && let Some((path, json)) = file::encode(cx)
-        {
-            atomic_file::write(&path, &json);
-        }
-        async {}
-    })
-    .detach();
+    crate::kept_file::write_on_quit(cx, file::due_at_quit);
 }
 
 pub fn get(cx: &App) -> &Settings {
     &cx.global::<Store>().settings
+}
+
+/// Koyo came in front: an edit made to the settings file meanwhile is taken up, and the file is
+/// looked at again (`file::LOOK_EVERY`).
+pub fn came_to_front(cx: &mut App) {
+    file::reload(cx);
+    file::look_while_in_front(cx);
 }
 
 /// Where the settings are saved, if the app has a folder to save them in.
@@ -473,14 +475,14 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
             });
             let seen = written.await;
             cx.update(|cx| {
-                let store = cx.global_mut::<Store>();
-                (store.unsaved, store.seen) = (false, seen);
+                let mut file = cx.global::<Store>().file.borrow_mut();
+                (file.unsaved, file.seen) = (false, seen);
             });
         }
     });
-    let store = cx.global_mut::<Store>();
-    (store.pending, store.unsaved) = (Some(save), true);
+    let mut file = cx.global::<Store>().file.borrow_mut();
+    (file.pending, file.unsaved) = (Some(save), true);
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

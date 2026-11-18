@@ -13,22 +13,16 @@ use crate::theme;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
-    px,
+    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
 pub struct AccountsButton {
     accounts: Entity<Accounts>,
-    _observing: Subscription,
 }
 
 impl AccountsButton {
-    pub fn new(accounts: Entity<Accounts>, cx: &mut Context<Self>) -> Self {
-        let observing = cx.observe(&accounts, |_, _, cx| cx.notify());
-        AccountsButton {
-            accounts,
-            _observing: observing,
-        }
+    pub fn new(accounts: Entity<Accounts>) -> Self {
+        AccountsButton { accounts }
     }
 }
 

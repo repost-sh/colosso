@@ -1,8 +1,9 @@
 //! How light a page is, for the glass over it (`lightness.rs`), and what its canvas is painted,
 //! for what's behind it (`page.rs`). A page is drawn by Chromium in its own layers, which the
-//! app can't read, so the page is asked: once a second while it's drawn, the background colour
-//! at a grid of its points, through its `DevTools` session. That's what glass takes its tone
-//! from, blurred as it is; pictures and gradients read as what's behind them.
+//! app can't read, so the page is asked: once a second while it's in sight, the background colour
+//! at a grid of its points, through its `DevTools` session. Out of sight it's asked nothing and
+//! nothing wakes for it; seen again, it's asked at once. That's what glass takes its tone from,
+//! blurred as it is; pictures and gradients read as what's behind them.
 
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ use super::view::BrowserView;
 /// How many points across and down the page are asked about.
 const ACROSS: usize = 12;
 const DOWN: usize = 8;
-/// How often a drawn page is asked.
+/// How often a page in sight is asked.
 const EVERY: Duration = Duration::from_secs(1);
 /// How far a point's lightness moves before glass is drawn again for it.
 const NOTICEABLE: f32 = 0.04;
@@ -81,8 +82,8 @@ impl Tone {
 }
 
 impl BrowserView {
-    /// Has the page asked how light it is for as long as the view lives, while it's drawn.
-    /// Started once.
+    /// Has the page asked how light it is, now and each second after: `tell_sight` starts it
+    /// while the page is drawn (`BrowserView::drawn`) and drops it once it isn't.
     pub(super) fn watch_tone(&mut self, cx: &mut Context<Self>) {
         if self.tone_watch.is_some() {
             return;
@@ -90,7 +91,11 @@ impl BrowserView {
         self.tone_watch = Some(cx.spawn(async move |this, cx| {
             loop {
                 let Ok(asked) = this.update(cx, |this, cx| {
-                    (this.shown.is_some() && this.is_open(cx)).then(|| {
+                    #[cfg(test)]
+                    {
+                        this.tone_turns += 1;
+                    }
+                    this.is_open(cx).then(|| {
                         let pane = this.pane;
                         let params = json!({ "expression": ASK, "returnByValue": true });
                         (this.browsers).update(cx, |browsers, _| browsers.call(pane, "Runtime.evaluate", params))
@@ -104,15 +109,7 @@ impl BrowserView {
                         .and_then(serde_json::Value::as_str)
                         .and_then(Tone::parse)
                 {
-                    let kept = this.update(cx, |this, cx| {
-                        let changed = (this.tone.as_ref()).is_none_or(|was| was.differs(&tone));
-                        if changed {
-                            log::debug!("page {} is {:?} light at its foot", this.pane, tone.lightness([0., 0.9, 1., 1.]));
-                            this.tone = Some(tone);
-                            cx.notify();
-                            cx.refresh_windows();
-                        }
-                    });
+                    let kept = this.update(cx, |this, cx| this.toned(tone, cx));
                     if kept.is_err() {
                         return;
                     }
@@ -121,11 +118,29 @@ impl BrowserView {
             }
         }));
     }
+
+    /// Kept, and the view drawn again, only if glass over the page would look different.
+    fn toned(&mut self, tone: Tone, cx: &mut Context<Self>) {
+        if (self.tone.as_ref()).is_none_or(|was| was.differs(&tone)) {
+            log::debug!("page {} is {:?} light at its foot", self.pane, tone.lightness([0., 0.9, 1., 1.]));
+            self.tone = Some(tone);
+            cx.notify();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use gpui_kit::{AppContext as _, Entity, TestAppContext};
+
     use super::{ACROSS, DOWN, Tone};
+    use crate::browser::BrowserView;
+    use crate::browser::view::sight::Shown;
+    use crate::budget::{Built, built_after, ratchet, within};
+    use crate::settings::Layout;
+    use crate::test_support::{on_screen, open_page_view, shell_on};
 
     fn tone(of: impl Fn(usize, usize) -> f32) -> Tone {
         let cells = (0..DOWN).flat_map(|row| (0..ACROSS).map(move |column| (column, row)));
@@ -163,5 +178,68 @@ mod tests {
         let (white, nearly, dark) = (tone(|_, _| 1.), tone(|_, _| 0.98), tone(|_, _| 0.2));
         assert!(!white.differs(&nearly));
         assert!(white.differs(&dark));
+    }
+
+    /// A page that turns dark from light, as the page says at most once a second while it's
+    /// drawn, builds its view again, whose glass takes its tone from the page.
+    #[gpui_kit::test]
+    fn a_page_turning_dark_builds_its_view_again(cx: &mut TestAppContext) {
+        let (window, shell, _) = shell_on("budget-tone", Layout::Orca, cx);
+        let view = open_page_view(window, &shell, "https://example.com/", cx);
+        let toned = |lightness: f32| {
+            let view = view.clone();
+            move |cx: &mut TestAppContext| view.update(cx, |view, cx| view.toned(tone(|_, _| lightness), cx))
+        };
+        built_after(window, cx, toned(1.));
+
+        let held = Built {
+            shell: 0,
+            views: 2,
+            frames: 1,
+        };
+        ratchet(built_after(window, cx, toned(0.98)), Built::default(), "a page a shade darker");
+        within(built_after(window, cx, toned(0.)), held, "a page turned dark");
+    }
+
+    /// Has `view` drawn, as its page element has it while it draws it, until what's returned
+    /// goes: a test's page is never drawn, as the notice that no engine runs covers it.
+    fn drawn(view: &Entity<BrowserView>, cx: &mut TestAppContext) -> Entity<Shown> {
+        let shown = cx.new(|cx| Shown::new(view.downgrade(), cx));
+        view.update(cx, |view, cx| {
+            view.shown = Some(shown.downgrade());
+            view.tell_sight(cx);
+        });
+        shown
+    }
+
+    /// A page wakes to ask how light it is only while a person can see it: in a window nobody
+    /// sees, or no longer drawn as its tab isn't shown, it keeps no wake-up of its own, and
+    /// seen again it asks at once.
+    #[gpui_kit::test]
+    fn a_page_out_of_sight_keeps_no_wake_up_and_asks_at_once_when_seen(cx: &mut TestAppContext) {
+        let (window, shell, _) = shell_on("tone-sight", Layout::Orca, cx);
+        let view = open_page_view(window, &shell, "https://example.com/", cx);
+        view.update(cx, BrowserView::pretend_opened);
+        let shown = drawn(&view, cx);
+        let turns_after = |seconds: u64, cx: &mut TestAppContext| {
+            cx.executor().advance_clock(Duration::from_secs(seconds));
+            cx.run_until_parked();
+            view.read_with(cx, |view, _| view.tone_turns)
+        };
+        let seen = turns_after(0, cx);
+        assert_eq!(turns_after(3, cx), seen + 3, "a turn each second while it's seen");
+
+        on_screen(window, false, cx);
+        let unseen = turns_after(0, cx);
+        assert_eq!(turns_after(3, cx), unseen, "it woke in a window nobody sees");
+        on_screen(window, true, cx);
+        assert_eq!(turns_after(0, cx), unseen + 1, "seen again, it asks at once");
+
+        drop(shown);
+        cx.update(|_| {});
+        let hidden = turns_after(0, cx);
+        assert_eq!(turns_after(3, cx), hidden, "it woke no longer drawn");
+        let _shown = drawn(&view, cx);
+        assert_eq!(turns_after(0, cx), hidden + 1, "drawn again, it asks at once");
     }
 }

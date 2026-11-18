@@ -14,6 +14,7 @@ use gpui_kit::{
 
 use super::needs::{Need, Xcode};
 use super::{Devices, Link, Standing, devices};
+use crate::beat::is_frontmost;
 use crate::modal::{self, Button, Mark, Tone};
 use crate::theme;
 
@@ -164,7 +165,7 @@ pub(super) async fn look_along<V: 'static>(
     loop {
         cx.background_executor().timer(Duration::from_secs(1)).await;
         let Ok(()) = this.update(cx, |this, cx| {
-            let front = cx.active_window().is_some();
+            let front = is_frontmost(cx);
             let due = front && waiting(this, cx) && (!in_front || last.elapsed() >= LOOK_EVERY);
             if due {
                 last = Instant::now();

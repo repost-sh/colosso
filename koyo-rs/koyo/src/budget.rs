@@ -9,19 +9,22 @@
 //! (`terminals/budget.rs`), a chat's answer arriving and its spinner turning
 //! (`chat/tests/budget.rs`). What breaks it is the shell reaching into the pane's view while it
 //! renders, by `read` or by `update`: keep what the shell needs of a view beside the view, told
-//! by the view's events, and compare what the shell tells a view before telling it.
+//! by the view's events, so the window doesn't read the view as it draws, and update a view the
+//! shell tells what to show only when that changed: one updated and not notified builds again
+//! all the same when the shell it's in renders.
 //!
 //! The frames are the ones the window asks for, delivered a display frame apart on the test
 //! clock as the app's display link delivers them, so an animation is seen and comes to rest as
 //! it does in the app. A window that keeps asking fails the budget, unless the test means it to
-//! and counts a set number of frames (`built_over`).
+//! and counts what it builds over a set time (`built_for`).
 
 use std::cell::Cell;
 use std::time::Duration;
 
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, TestAppContext, Window};
 
-use crate::test_support::{draw, repo, select, shell_with};
+use crate::settings::Layout;
+use crate::test_support::{in_front, shell_on};
 
 thread_local! {
     static SHELL_RENDERS: Cell<usize> = const { Cell::new(0) };
@@ -75,16 +78,79 @@ fn come_to_rest(window: AnyWindowHandle, cx: &mut TestAppContext, when: &str) {
     );
 }
 
-/// What the next `n` frames build, for a window that's meant to keep asking for them, as while
-/// something animates for as long as it's shown.
-pub fn built_over(window: AnyWindowHandle, cx: &mut TestAppContext, n: usize) -> Built {
+/// What `window` builds while the clock passes by `time`, a display frame at a time, with each
+/// frame it asks for delivered: for what keeps going for as long as it's shown, whether it asks
+/// for every frame or draws itself again on a timer of its own. A timer that runs out draws the
+/// window on its own here, where the app draws all that changed by the next display frame in one,
+/// so what moves on timers of its own counts more frames here than the app draws.
+pub fn built_for(window: AnyWindowHandle, cx: &mut TestAppContext, time: Duration) -> Built {
     count(window, cx, |cx| {
-        let asked = frames(window, cx, n);
-        assert_eq!(
-            asked, n,
-            "the window came to rest after {asked} of {n} frames"
-        );
+        cx.run_until_parked();
+        let mut passed = Duration::ZERO;
+        while passed < time {
+            cx.executor().advance_clock(FRAME);
+            on(window, cx, Window::simulate_next_frame);
+            cx.run_until_parked();
+            passed += FRAME;
+        }
     })
+}
+
+/// What `time` of `window` builds behind another app's window, in front, and behind again, each
+/// after a second to settle, held at `behind` and `front` ([`ratchet`]). Behind is where a person
+/// watches from another app, the window still in sight. It's measured once the window has been in
+/// front a while, as one in use has: a test's window starts behind without ever having lost the
+/// keyboard, so a caret in it blinks there as none does behind in use.
+pub fn held_behind_and_in_front(
+    window: AnyWindowHandle,
+    time: Duration,
+    behind: Built,
+    front: Built,
+    cx: &mut TestAppContext,
+) {
+    let second = Duration::from_secs(1);
+    in_front(window, true, cx);
+    built_for(window, cx, second);
+    let time_of = |front: bool, cx: &mut TestAppContext| {
+        in_front(window, front, cx);
+        built_for(window, cx, second);
+        built_for(window, cx, time)
+    };
+    ratchet(time_of(false, cx), behind, "behind another app's");
+    ratchet(time_of(true, cx), front, "in front");
+    ratchet(time_of(false, cx), behind, "put behind again");
+}
+
+/// What the clock passing by `time` makes `window` build, from rest to rest: the timers that run
+/// out in it, and what they start.
+pub fn built_during(window: AnyWindowHandle, cx: &mut TestAppContext, time: Duration) -> Built {
+    built_after(window, cx, |cx| cx.executor().advance_clock(time))
+}
+
+/// Lets every timer the setup started run out, so a change measured over the clock passing
+/// counts only what it starts.
+pub fn settle(cx: &mut TestAppContext) {
+    cx.executor().advance_clock(Duration::from_secs(5));
+    cx.run_until_parked();
+}
+
+/// How many times the app wakes for a timer in a minute of the clock, once what was going on has
+/// come to rest ([`settle`]): each moment one or more timers run out is one wake, as one wake of
+/// the thread runs all that came due then, a timer whose task was let go among them. The clock is
+/// left at the minute's end, or at the first timer after it, which is left to run.
+pub fn wakes_a_minute(cx: &mut TestAppContext) -> usize {
+    settle(cx);
+    let end = cx.executor().now() + Duration::from_secs(60);
+    let mut wakes = 0;
+    while cx.dispatcher.advance_clock_to_next_timer() && cx.executor().now() <= end {
+        wakes += 1;
+        cx.run_until_parked();
+    }
+    let now = cx.executor().now();
+    if now < end {
+        cx.executor().advance_clock(end - now);
+    }
+    wakes
 }
 
 /// What `change` builds the second time it's made: the first time after a tab is shown also
@@ -121,6 +187,21 @@ pub fn within(built: Built, budget: Built, what: &str) {
         "{what}: {} views were built, where the budget is {}",
         built.views,
         budget.views,
+    );
+}
+
+/// Asserts that `built` is `held`, a budget held at what a change costs today that a fix should
+/// lower: the shell rendered, the views built and the frames drawn as many times. It fails when
+/// the cost rises, a regression, and when it falls, which takes the lower number.
+pub fn ratchet(built: Built, held: Built, what: &str) {
+    let worse = built.shell > held.shell || built.views > held.views || built.frames > held.frames;
+    assert!(
+        !worse,
+        "{what}: a regression, {built:?} built where {held:?} is held"
+    );
+    assert!(
+        built == held,
+        "{what}: better: lower the held number from {held:?} to {built:?}"
     );
 }
 
@@ -170,15 +251,12 @@ fn on<R>(
 
 #[gpui_kit::test]
 fn a_window_nothing_changes_in_draws_no_frame_however_long_it_waits(cx: &mut TestAppContext) {
-    let root = repo("budget-rest", &[("README.md", "hi\n")]);
-    let (window, shell) = shell_with(&[&root], cx);
-    select(&shell, &root, cx);
-    draw(window, cx);
-    let minute = |cx: &mut TestAppContext| cx.executor().advance_clock(Duration::from_secs(60));
+    let (window, shell, _) = shell_on("budget-rest", Layout::Orca, cx);
+    let minute = Duration::from_secs(60);
 
     assert_eq!(built_after(window, cx, |_| {}), Built::default());
     assert_eq!(
-        built_after(window, cx, minute),
+        built_during(window, cx, minute),
         Built::default(),
         "a timer draws the window while nothing changes in it"
     );
@@ -193,11 +271,11 @@ fn a_window_nothing_changes_in_draws_no_frame_however_long_it_waits(cx: &mut Tes
     });
     let shell_once = Built {
         shell: 1,
-        views: 3,
+        views: 2,
         frames: 1,
     };
     within(
-        built_after(window, cx, minute),
+        built_during(window, cx, minute),
         shell_once,
         "a timer that draws the shell, which the count sees, so the minute above had none",
     );
@@ -205,15 +283,12 @@ fn a_window_nothing_changes_in_draws_no_frame_however_long_it_waits(cx: &mut Tes
 
 #[gpui_kit::test]
 fn a_change_to_the_shell_renders_it_once_in_one_frame(cx: &mut TestAppContext) {
-    let root = repo("budget-shell", &[("README.md", "hi\n")]);
-    let (window, shell) = shell_with(&[&root], cx);
-    select(&shell, &root, cx);
-    draw(window, cx);
+    let (window, shell, _) = shell_on("budget-shell", Layout::Orca, cx);
 
     let built = built_after(window, cx, |cx| shell.update(cx, |_, cx| cx.notify()));
     let budget = Built {
         shell: 1,
-        views: 2,
+        views: 1,
         frames: 1,
     };
     within(built, budget, "the shell notified");

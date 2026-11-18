@@ -1,6 +1,7 @@
 //! The card's git: its branch's pull request, and what can be done next with what's changed. What's
 //! known of the branch is read off the main thread, as it asks the remote and GitHub, and goes old
-//! after a while. It's read as the card is drawn, so a chat nobody's looking at asks nothing.
+//! after a while. It's read as the card is drawn in a window seen, so a chat nobody's looking at
+//! asks nothing.
 
 use std::time::{Duration, Instant};
 
@@ -115,11 +116,16 @@ fn next(facts: &Facts) -> Option<Next> {
     }
 }
 
-/// Reads the branch, unless what's known of it is still good or nothing would show it. Each step
-/// runs on its own, so a read let go of takes none after the one it's on.
-pub(in super::super) fn keep_fresh(view: &mut ChatView, cx: &mut Context<ChatView>) {
+/// Reads the branch, unless what's known of it is still good or nothing would show it: the card's
+/// down, or its window isn't seen. Each step runs on its own, so a read let go of takes none
+/// after the one it's on.
+pub(in super::super) fn keep_fresh(
+    view: &mut ChatView,
+    window: &Window,
+    cx: &mut Context<ChatView>,
+) {
     let shown = view.details.is_up(cx) && settings::get(cx).chat_details.shows(DetailsItem::Git);
-    if view.details.git.fresh.is_some() || !shown {
+    if view.details.git.fresh.is_some() || !shown || !crate::sight::window_seen(window) {
         return;
     }
     let Some(git) = view

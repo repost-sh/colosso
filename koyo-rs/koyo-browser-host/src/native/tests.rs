@@ -18,7 +18,7 @@ pub(super) fn heard(pane: PaneId, views: Views) {
 }
 
 /// A page with none of its views made, as it is before CEF makes them.
-fn opened(pane: PaneId) {
+pub(crate) fn opened(pane: PaneId) {
     let entry = Entry {
         holder: None,
         views: None,

@@ -16,6 +16,7 @@ use super::granting::{Grant, Step};
 use super::host::{Incoming, Running};
 use super::{Desk, State};
 use crate::browser::control::{Actor, IMPLICIT_HOLD, Mode, Refused};
+use crate::sight::Showable as _;
 
 /// A desk whose host stands in: what it's told comes out of the channel.
 fn running(cx: &mut TestAppContext) -> (Entity<Desk>, Receiver<ToHost>) {
@@ -456,3 +457,5 @@ fn the_setup_takes_the_grants_one_at_a_time_as_the_host_reports_them(cx: &mut Te
         assert!(!desk.setup_due());
     });
 }
+
+mod sight;

@@ -52,6 +52,7 @@ use koyo_agent::protocol::requests::Response;
 
 use crate::settings;
 use host::{agent_client, follow};
+use status::Shown;
 use thread::{ChatThread, ThreadEvent};
 
 pub use asks::{AllowRequest, AllowRequestForChat, DenyRequest};
@@ -371,7 +372,7 @@ impl Chats {
     fn take_in(&mut self, notices: Vec<Notice>, cx: &mut Context<Self>) {
         let mut touched: HashMap<ThreadId, Vec<ThreadEvent>> = HashMap::new();
         let mut ended = false;
-        let mut summaries = false;
+        let mut shown = false;
         for notice in notices {
             let Notice::Event(event) = notice else {
                 ended = true;
@@ -386,17 +387,15 @@ impl Chats {
                     (touched.entry(appended.thread_id.clone()).or_default())
                         .push(ThreadEvent::Appended(appended));
                 }
-                Event::ThreadSummary(summary)
-                    if self.summaries.get(&summary.id) != Some(&summary) =>
-                {
+                Event::ThreadSummary(summary) => {
                     self.tell_of(&summary, cx);
+                    let was = self.summaries.get(&summary.id);
+                    shown |= was.is_none_or(|was| Shown::of(was) != Shown::of(&summary));
                     self.summaries.insert(summary.id.clone(), summary);
-                    summaries = true;
                 }
-                Event::ThreadSummary(_) => {}
                 Event::ThreadRemoved(removed) => {
                     self.summaries.remove(&removed.thread_id);
-                    summaries = true;
+                    shown = true;
                     self.threads.remove(&removed.thread_id);
                     drafts::thread_removed(&removed.thread_id, cx);
                     cx.emit(ChatsEvent::Removed(removed.thread_id));
@@ -411,7 +410,7 @@ impl Chats {
                 thread.update(cx, |thread, cx| thread.take_in(events, cx));
             }
         }
-        if summaries {
+        if shown {
             self.summaries_changed(cx);
         }
         if ended {

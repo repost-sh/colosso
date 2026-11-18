@@ -22,7 +22,7 @@ mod button;
 mod confirm;
 mod step;
 
-pub use button::{Button, Tone, spinner};
+pub use button::{Button, Tone, spinner, wheel};
 pub use confirm::{Confirm, confirm};
 pub use step::{Mark, STEP, step};
 

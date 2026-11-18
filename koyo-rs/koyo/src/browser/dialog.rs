@@ -106,8 +106,8 @@ impl BrowserView {
             let (page, from) = (cx.weak_entity(), self.site_trigger.clone());
             self.asked = Some(id);
             self.asked_in = Put::Site;
-            cx.refresh_windows();
             window.defer(cx, move |window, cx| {
+                page.update(cx, |_, cx| cx.notify()).ok();
                 let prompt =
                     |cx: &mut App| cx.new(|cx| super::site::Prompt::new(page, id, &origin, &permissions, cx));
                 from.open_panel(prompt, window, cx);

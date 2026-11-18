@@ -8,16 +8,23 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Entity, Modifiers, Point, Render, Size,
-    TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions, point, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, MouseButton,
+    Pixels, Point, Render, Size, TestAppContext, VisualTestContext, Window, WindowBounds,
+    WindowOptions, WindowVisibility, point, px, size,
 };
 #[cfg(test)]
 use koyo_term_control::{
-    Actor, Control, Handle, Status, TerminalRecord, TerminalSummary, WorktreeRef,
+    Actor, Control, Event, EventKind, Handle, Status, TerminalRecord, TerminalSummary, WorktreeRef,
 };
 
 #[cfg(test)]
+use crate::browser::BrowserView;
+#[cfg(test)]
 use crate::projects::read_worktrees;
+#[cfg(test)]
+use crate::right_panel::{ToggleChanges, View};
+#[cfg(test)]
+use crate::settings::{self, Layout};
 #[cfg(test)]
 use crate::shell::Shell;
 
@@ -89,6 +96,31 @@ pub fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
     cx.run_until_parked();
 }
 
+/// Brings `window` in front, the app's active window, or puts it behind another app's, as a
+/// person does. A test's window starts behind.
+#[cfg(test)]
+pub fn in_front(window: AnyWindowHandle, front: bool, cx: &mut TestAppContext) {
+    if front {
+        (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
+    } else {
+        VisualTestContext::from_window(window, cx).deactivate_window();
+    }
+    cx.run_until_parked();
+}
+
+/// Shows `window` where a person can see it, or hides it from them, as covering it, minimizing it
+/// or going to another desktop does. A test's window starts seen.
+#[cfg(test)]
+pub fn on_screen(window: AnyWindowHandle, seen: bool, cx: &mut TestAppContext) {
+    let visibility = if seen {
+        WindowVisibility::Visible
+    } else {
+        WindowVisibility::Hidden
+    };
+    cx.simulate_window_visibility_change(window, visibility);
+    cx.run_until_parked();
+}
+
 /// A view that draws nothing: a window to float others over, or what they hold.
 #[cfg(test)]
 pub struct Blank;
@@ -107,7 +139,7 @@ impl Render for Blank {
 /// What `build` makes, in a window of its own of `size`.
 #[cfg(test)]
 pub fn in_window<V: Render>(
-    size: Size<gpui_kit::Pixels>,
+    size: Size<Pixels>,
     cx: &mut TestAppContext,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> (AnyWindowHandle, Entity<V>) {
@@ -140,6 +172,24 @@ pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle,
     (window, shell)
 }
 
+/// The shell in `layout` over a checkout of its own with a README, selected and drawn: the
+/// window, the shell and the checkout. The layout is set before the first draw.
+#[cfg(test)]
+pub fn shell_on(
+    name: &str,
+    layout: Layout,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, PathBuf) {
+    let root = repo(name, &[("README.md", "hi\n")]);
+    let (window, shell) = shell_with(&[&root], cx);
+    if layout != Layout::default() {
+        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    }
+    select(&shell, &root, cx);
+    draw(window, cx);
+    (window, shell, root)
+}
+
 /// The shell in a laptop-sized window of its own, as the app opens it.
 #[cfg(test)]
 pub fn shell_window(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
@@ -156,6 +206,20 @@ pub fn select(shell: &Entity<Shell>, root: &Path, cx: &mut TestAppContext) {
         assert!(shell.workspace.select_worktree(project, root));
         cx.notify();
     });
+    cx.run_until_parked();
+}
+
+/// Closes the tab shown, as the close button does, and lets what it starts run.
+#[cfg(test)]
+pub fn close_shown(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppContext) {
+    window
+        .update(cx, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                let at = shell.workspace.shown_tab().unwrap();
+                shell.close_tab_at(at, window, cx);
+            });
+        })
+        .unwrap();
     cx.run_until_parked();
 }
 
@@ -177,6 +241,31 @@ pub fn open_page(
     opened.unwrap().expect("a checkout is selected")
 }
 
+/// Opens a browser tab at `url` on the selected checkout and draws it: its page.
+#[cfg(test)]
+pub fn open_page_view(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    url: &str,
+    cx: &mut TestAppContext,
+) -> Entity<BrowserView> {
+    let pane = open_page(window, shell, Some(url), cx);
+    draw(window, cx);
+    shell.read_with(cx, |shell, _| {
+        let pane = shell.workspace.pane(pane).expect("the tab's pane");
+        pane.view().expect("its page").clone()
+    })
+}
+
+/// Opens the right panel on the changes of the selected checkout and draws it.
+#[cfg(test)]
+pub fn open_changes(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppContext) {
+    cx.dispatch_action(window, ToggleChanges);
+    draw(window, cx);
+    let open = shell.read_with(cx, |shell, _| shell.right_panel.shows(View::Changes));
+    assert!(open, "the right panel is open on the changes");
+}
+
 /// Clicks in the middle of pane `pane` of the tab shown, as a person does to be in it.
 #[cfg(test)]
 pub fn click_pane(window: AnyWindowHandle, pane: u64, cx: &mut TestAppContext) {
@@ -188,13 +277,85 @@ pub fn click_pane(window: AnyWindowHandle, pane: u64, cx: &mut TestAppContext) {
     );
 }
 
+/// The middle of what `selector` names in `window`, as it was last drawn.
+#[cfg(test)]
+pub fn center_of(
+    window: AnyWindowHandle,
+    selector: &'static str,
+    cx: &mut TestAppContext,
+) -> Point<Pixels> {
+    let bounds = VisualTestContext::from_window(window, cx).debug_bounds(selector);
+    bounds.expect(selector).center()
+}
+
 /// Clicks the middle of what `selector` names in `window`, and draws what that changed.
 #[cfg(test)]
 pub fn click(window: AnyWindowHandle, selector: &'static str, cx: &mut TestAppContext) {
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let at = vcx.debug_bounds(selector).expect(selector).center();
-    vcx.simulate_click(at, Modifiers::default());
+    let at = center_of(window, selector, cx);
+    VisualTestContext::from_window(window, cx).simulate_click(at, Modifiers::default());
     draw(window, cx);
+}
+
+/// Moves the pointer to `at` in `window`, with no button down.
+#[cfg(test)]
+pub fn hover(window: AnyWindowHandle, at: Point<Pixels>, cx: &mut TestAppContext) {
+    VisualTestContext::from_window(window, cx).simulate_mouse_move(at, None, Modifiers::default());
+}
+
+/// Moves the pointer to `at` in `window`, the left button held.
+#[cfg(test)]
+pub fn move_held(window: AnyWindowHandle, at: Point<Pixels>, cx: &mut TestAppContext) {
+    VisualTestContext::from_window(window, cx).simulate_mouse_move(
+        at,
+        MouseButton::Left,
+        Modifiers::default(),
+    );
+}
+
+/// How far from an edge its handle is grabbed at its middle: half the handle's 6 points, the
+/// border inside it, and a point to spare.
+#[cfg(test)]
+pub const GRAB: f32 = 5.;
+
+/// Drags in `window` from `from` to `to` as a person does: the button pressed, the pointer
+/// nudged past where a drag starts, moved on to `to`, the button let go, and what that changed
+/// drawn.
+#[cfg(test)]
+pub fn drag(
+    window: AnyWindowHandle,
+    from: Point<Pixels>,
+    to: Point<Pixels>,
+    cx: &mut TestAppContext,
+) {
+    let none = Modifiers::default();
+    let way = to - from;
+    let nudge = from + way * (5. / way.x.as_f32().hypot(way.y.as_f32()).max(1.));
+    VisualTestContext::from_window(window, cx).simulate_mouse_down(from, MouseButton::Left, none);
+    move_held(window, nudge, cx);
+    move_held(window, to, cx);
+    VisualTestContext::from_window(window, cx).simulate_mouse_up(to, MouseButton::Left, none);
+    draw(window, cx);
+}
+
+/// The cursor `window` shows with the pointer moved to `at`, no button down, as it was last
+/// drawn: GPUI says it only in its account of the app's state.
+#[cfg(test)]
+pub fn cursor_at(
+    window: AnyWindowHandle,
+    at: Point<Pixels>,
+    cx: &mut TestAppContext,
+) -> CursorStyle {
+    hover(window, at, cx);
+    let state = cx.update(|cx| cx.debug_state());
+    let id = window.window_id().as_u64();
+    let windows = state["windows"].as_array().expect("the app's windows");
+    let shown = windows
+        .iter()
+        .find(|shown| shown["id"] == id)
+        .expect("the window");
+    serde_json::from_value::<Option<CursorStyle>>(shown["cursor_style"].clone())
+        .expect("a cursor style")
+        .unwrap_or_default()
 }
 
 /// Whether the keyboard is in key context `context` after a few frames, where what would take
@@ -271,6 +432,19 @@ pub fn terminal_listed(handle: &str, name: &str, worktree: &Path) -> TerminalSum
             ..terminal_record(handle, at, Status::Idle, "prompt")
         },
         preview: String::new(),
+    }
+}
+
+/// What the daemon says of terminal `handle` going to `status` for `reason`.
+#[cfg(test)]
+pub fn status_event(handle: &str, status: Status, reason: &str) -> Event {
+    Event {
+        handle: Handle(handle.into()),
+        kind: EventKind::Status {
+            status,
+            reason: reason.into(),
+            progress: None,
+        },
     }
 }
 

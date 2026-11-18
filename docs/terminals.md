@@ -954,7 +954,10 @@ sees the shell back from its screen, idle at its prompt.
    selection, scrollbar, title, modes { alt_screen, mouse, kitty_keyboard, bracketed_paste },
    kitty_images: [...] }`. `Cell { grapheme: SmolStr or atom id, fg, bg, underline{style,color},
    flags: bold|italic|strike|wide|wide_spacer|inverse|blink|hidden, hyperlink: Option<id> }`.
-   Frames are published at most once per display refresh; the thread coalesces.
+   Frames are published at most once per display refresh; the thread coalesces. While nobody
+   can see the view (its tab isn't shown, or its window is covered, minimized or on another
+   desktop) the engine takes the output in and no frame is made; seen again, one goes out at
+   once. The tab's title comes from the daemon's `Title` event meanwhile.
 3. `TerminalElement` (a GPUI element implementing `Element`):
    - layout: cell size from the font's advance and line height, grid = floor(size / cell),
      a resize request is sent to the daemon when the grid changes, one at a time (the latest
@@ -1055,8 +1058,10 @@ sees the shell back from its screen, idle at its prompt.
   offsets whenever the daemon announces a `Logged` append; a tab keeps its newest 2000 rows,
   and a rotated log starts over. Activity, Commands (with "Failed only") and Info are as
   above; rows expand by a click. Follow, "Jump to latest" and Clear work as in the dashboard.
-  Output sets its mark with "Set mark" and reads on once a second while the tab is shown,
-  through the daemon's `ReadStream` (below), keeping the newest 256 KiB. Screenshots shows
+  Output sets its mark with "Set mark" and reads on once a second while the tab is shown and a
+  person can see its terminal, through the daemon's `ReadStream` (below), keeping the newest
+  256 KiB; seen again, it reads what came meanwhile at once, on by offset while reads come back
+  full. Screenshots shows
   thumbnails from `screenshots.jsonl`; nothing writes it until the MCP's screenshot tool
   exists. Not yet: the setting for new terminals, remembering the panel and its width across
   restarts, jump-to-output from a command, the lightbox, pending "waiting" rows and a look
@@ -1080,8 +1085,9 @@ sees the shell back from its screen, idle at its prompt.
   carry the same file, read as fast as macOS allows, measured in the same run. The 1.5 s
   first written here is met on an idle M4 Max (about 1 s) but depends on the machine; the
   relative target doesn't.
-- Idle: zero CPU when nothing changes (no timers besides cursor blink, which pauses when
-  the window is hidden).
+- Idle: zero CPU when nothing changes (no timers besides cursor blink, which runs only while
+  the view has the keyboard in the window in front: GPUI tells the view it lost the keyboard as
+  the window goes behind another app's, and the cursor holds still there, drawn).
 - Memory: engine scrollback limit default 50 MB per terminal (Ghostty's default), compressed
   incrementally during idle (`compress` incremental mode on the VT thread).
 

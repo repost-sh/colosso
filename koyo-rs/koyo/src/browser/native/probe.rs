@@ -70,8 +70,6 @@ mod keys;
 mod look;
 use look::{draw, quit, state, views, windows};
 
-use crate::browser::view::sight::UNSEEN_COUNTS;
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct CGRect {
@@ -115,7 +113,7 @@ pub fn start(cx: &mut App) {
         let (cmd, out) = (folder.join("cmd"), folder.join("out"));
         loop {
             cx.background_executor().timer(Duration::from_millis(100)).await;
-            if UNSEEN_COUNTS.load(std::sync::atomic::Ordering::Relaxed) {
+            if crate::sight::unseen_counts() {
                 look::draw_unseen();
             }
             let Ok(text) = std::fs::read_to_string(&cmd) else {
@@ -140,6 +138,8 @@ pub fn start(cx: &mut App) {
                     cx.update(|cx| look::pick(rest, cx))
                 } else if verb == "burst" {
                     keys::burst(rest, &folder, cx).await
+                } else if verb == "tick" {
+                    cx.update(tick)
                 } else {
                     run(verb, rest, &folder)
                 };
@@ -256,10 +256,6 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         ("state", _) => state(&window),
         ("cursor", _) => look::cursor(&window),
         ("layers", _) => look::layers(&window),
-        ("tick", _) => {
-            let on = !UNSEEN_COUNTS.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
-            format!("ticking {on}")
-        }
         ("views", _) => {
             let mut text = String::new();
             if let Some(content) = window.contentView() {
@@ -273,6 +269,17 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         }
         _ => "unknown".into(),
     }
+}
+
+/// Has a window nothing shows count as seen, or no longer, as it did ([`crate::sight`]), and
+/// the shell drawn again, which tells what it holds whether it's in sight now.
+fn tick(cx: &mut App) -> String {
+    let on = !crate::sight::unseen_counts();
+    crate::sight::count_unseen(on);
+    if let Some((_, shell)) = crate::control::main_shell(cx) {
+        shell.update(cx, |_, cx| cx.notify());
+    }
+    format!("ticking {on}")
 }
 
 /// The app in front and the window key, as when the person works in it.

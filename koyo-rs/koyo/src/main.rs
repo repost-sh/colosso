@@ -4,6 +4,7 @@ mod ago;
 mod arc;
 mod atomic_file;
 mod backdrop;
+mod beat;
 mod bottom;
 mod browser;
 #[cfg(test)]
@@ -52,6 +53,7 @@ mod settings;
 mod settings_view;
 mod shell;
 mod sidebar;
+mod sight;
 mod spaces;
 mod surfaces;
 mod symbols;

@@ -75,20 +75,19 @@ pub fn left_page(window: &Window, pane: PaneId, part: Part) {
     seam::left_page(known(window), pane, part);
 }
 
-/// `window` became the key window, or stopped being it; and GPUI's focus is where it is now
-/// (`follow_focus`). Read as the window's key state changes and as each frame of the shell is
-/// drawn, so a change the holders missed is made up.
-pub fn key(window: &Window, cx: &mut App) {
-    follow_focus(window, cx);
-    let key = window.is_window_active();
-    seam::key(known(window), key);
+/// Whether `window` is the key window, told again each frame the shell is drawn, so a change the
+/// holders missed is made up. It reads none of the window's views, so drawing the shell depends
+/// on none of them.
+pub fn key_state(window: &Window) {
+    seam::key(known(window), window.is_window_active());
 }
 
 /// A page the person put the keyboard in has it only while GPUI's focus is its view's: if it
 /// isn't, the keyboard is in GPUI's view, its bar or elsewhere. GPUI tells a page its focus
 /// left only in a frame after one drawn with the window key, so a move made while it wasn't,
 /// by the very press that makes it key again (back from the launcher or another app, on the
-/// composer), is never told.
+/// composer), is never told. GPUI's focus comes into the shell's root in that frame all the
+/// same, and this is read then.
 pub fn follow_focus(window: &Window, cx: &mut App) {
     if !window.is_window_active() {
         return;

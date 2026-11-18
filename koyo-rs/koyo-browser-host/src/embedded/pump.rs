@@ -1,14 +1,43 @@
 //! CEF's work, run from `AppKit`'s run loop on the main thread, which the app runs: CEF says when
 //! it next has work (`OnScheduleMessagePumpWork`, from any thread) and a run-loop timer in the
-//! common modes runs it then, at the latest a thirtieth of a second on, as CEF advises. The
-//! timer fires during a menu's or a window's tracking too, as those run the loop in modes the
-//! common ones include.
+//! common modes runs it then, and at the latest a while on ([`Load`]). The timer fires during a
+//! menu's or a window's tracking too, as those run the loop in modes the common ones include.
+//!
+//! The latest is CEF's net for the work it leaves without asking: a turn runs its work for 10 ms
+//! (`MessagePumpExternal` in CEF's `browser_message_loop.cc`), and the work still waiting then
+//! asks for no turn, nor does any posted after it, until a turn runs. CEF advises a thirtieth of
+//! a second, which holds while a person sees what the engine does or waits on it. A page out of
+//! sight, loading say, can have such work too, which a tenth of a second on still finishes. With
+//! no page at all, a second: what the engine schedules still runs when it asks, and the app's
+//! requests, a page to open or to show among them, run it at once (`host::queue`).
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 
-/// Never run CEF's work further apart than this.
+/// Never run CEF's work further apart than this while a person sees what it does.
 const AT_MOST: f64 = 1. / 30.;
+
+/// What the engine works for, which sets how far apart its work may run (`host::load`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Load {
+    /// No page, no window, nothing of the app's waiting.
+    Idle,
+    /// Pages, none of them on screen, and nothing else.
+    Unseen,
+    /// A page on screen or being opened, or anything else a person waits on.
+    Seen,
+}
+
+impl Load {
+    /// How far apart CEF's work may run, in seconds.
+    pub(crate) fn at_most(self) -> f64 {
+        match self {
+            Self::Idle => 1.,
+            Self::Unseen => 1. / 10.,
+            Self::Seen => AT_MOST,
+        }
+    }
+}
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
@@ -122,7 +151,8 @@ pub fn work() {
     WORKING.store(false, Ordering::Release);
 }
 
-/// The earliest time work was asked for since the timer last fired, as an `f64`'s bits.
+/// When the timer fires next, as an `f64`'s bits: the soonest of what was asked since it last
+/// fired and its net; infinite while it fires.
 static ASKED: AtomicU64 = AtomicU64::new(f64::INFINITY.to_bits());
 /// Whether CEF's work is running, so a run loop it spins meanwhile doesn't run it again.
 static WORKING: AtomicBool = AtomicBool::new(false);
@@ -161,20 +191,29 @@ pub fn schedule(delay_ms: i64) {
     }
     // SAFETY: a CF call with no arguments.
     let when = unsafe { CFAbsoluteTimeGetCurrent() } + (delay_ms.max(0) as f64) / 1000.;
-    let mut asked = ASKED.load(Ordering::Acquire);
-    while when < f64::from_bits(asked) {
-        match ASKED.compare_exchange_weak(asked, when.to_bits(), Ordering::AcqRel, Ordering::Acquire) {
-            Ok(_) => {
-                // SAFETY: CF's timers and run loops may be changed from any thread.
-                unsafe {
-                    CFRunLoopTimerSetNextFireDate(timer, when);
-                    CFRunLoopWakeUp(CFRunLoopGetMain());
-                }
-                return;
-            }
-            Err(now) => asked = now,
-        }
+    arm(timer, when);
+}
+
+/// Has the timer fire at `when`, unless it fires sooner already; from any thread. A sooner time
+/// asked meanwhile on another thread is armed again after this, so it holds whichever thread's
+/// arming lands last.
+fn arm(timer: *mut c_void, when: f64) {
+    let sooner = |asked: u64| (when < f64::from_bits(asked)).then_some(when.to_bits());
+    if ASKED.fetch_update(Ordering::AcqRel, Ordering::Acquire, sooner).is_err() {
+        return;
     }
+    let mut armed = when;
+    loop {
+        // SAFETY: CF's timers and run loops may be changed from any thread.
+        unsafe { CFRunLoopTimerSetNextFireDate(timer, armed) };
+        let asked = f64::from_bits(ASKED.load(Ordering::Acquire));
+        if asked >= armed {
+            break;
+        }
+        armed = asked;
+    }
+    // SAFETY: as above.
+    unsafe { CFRunLoopWakeUp(CFRunLoopGetMain()) };
 }
 
 extern "C" fn fire(timer: *mut c_void, _: *mut c_void) {
@@ -193,17 +232,12 @@ extern "C" fn fire(timer: *mut c_void, _: *mut c_void) {
         then();
     }
     work();
-    let asked = f64::from_bits(ASKED.load(Ordering::Acquire));
-    // SAFETY: as above.
-    let now = unsafe { CFAbsoluteTimeGetCurrent() };
-    let at_most = if STARTED.load(Ordering::Acquire) {
-        now + AT_MOST
-    } else {
-        f64::INFINITY
-    };
-    let next = asked.min(at_most);
-    if next.is_finite() {
-        // SAFETY: the timer is ours and alive.
-        unsafe { CFRunLoopTimerSetNextFireDate(timer, next) };
+    if STARTED.load(Ordering::Acquire) {
+        // SAFETY: a CF call with no arguments.
+        let now = unsafe { CFAbsoluteTimeGetCurrent() };
+        arm(timer, now + crate::host::load().at_most());
     }
 }
+
+#[cfg(test)]
+mod tests;

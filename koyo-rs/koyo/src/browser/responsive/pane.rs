@@ -418,7 +418,6 @@ impl BrowserView {
     pub(in crate::browser) fn session_opened(&mut self, cx: &mut Context<Self>) {
         self.responsive.emulated = Emulation::default();
         self.emulate(cx);
-        self.watch_tone(cx);
     }
 
     /// Tells the page's session what the mode emulates that it doesn't yet. The app sends

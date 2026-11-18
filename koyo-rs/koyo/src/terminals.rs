@@ -4,6 +4,7 @@
 //! attaches. Closing a tab ends its terminal; quitting the app can leave terminals running,
 //! and they come back as tabs when it opens again.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -28,6 +29,7 @@ mod open;
 mod panel;
 mod responsive;
 mod restore;
+mod sight;
 pub(crate) mod states;
 mod stop;
 mod typing;
@@ -76,6 +78,8 @@ struct Made {
     /// Whether the terminal was pinned when the view last said its pin changed: the terminal
     /// bar's toggle shows it, so the shell draws again when it flips.
     pinned: bool,
+    /// Whether the view was last told it's in sight (`sight.rs`).
+    seen: Cell<bool>,
     _events: Subscription,
 }
 
@@ -158,18 +162,34 @@ impl Terminals {
         self.next
     }
 
-    /// Lets go of the views whose panes closed, which detaches them. A closed tab's terminals
-    /// stay known, so ⌘⇧T opens them again.
-    pub fn retain(&mut self, workspace: &Workspace) {
+    /// How many terminal tabs were given what they show, ever, whether or not the workspace has
+    /// them.
+    pub(crate) fn added(&self) -> u64 {
+        self.next
+    }
+
+    /// Lets go of the views whose panes closed, which detaches them, and says how many things
+    /// it let go of. A closed tab's terminals stay known, so ⌘⇧T opens them again.
+    pub fn retain(&mut self, workspace: &Workspace) -> usize {
         let shown: HashSet<u64> = workspace.terminal_tabs().map(|(_, id)| id).collect();
         let known: HashSet<u64> = (shown.iter().copied())
             .chain(workspace.closed_terminals())
             .collect();
+        let held = self.held();
         self.views.retain(|id, _| shown.contains(id));
         self.unconfirmed.retain(|id| shown.contains(id));
         self.panels.retain(|id, _| shown.contains(id));
         self.typing.retain(|id, _| shown.contains(id));
         self.sources.retain(|id, _| known.contains(id));
+        held - self.held()
+    }
+
+    fn held(&self) -> usize {
+        self.views.len()
+            + self.unconfirmed.len()
+            + self.panels.len()
+            + self.typing.len()
+            + self.sources.len()
     }
 }
 
@@ -280,6 +300,7 @@ impl Shell {
             responsive,
             look,
             pinned: false,
+            seen: Cell::new(true),
             _events: events,
         };
         self.terminals.views.insert(id, made);
@@ -436,7 +457,7 @@ impl Shell {
 }
 
 #[cfg(test)]
-mod budget;
+pub(crate) mod budget;
 #[cfg(test)]
 mod keys;
 

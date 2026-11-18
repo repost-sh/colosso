@@ -23,5 +23,9 @@ parking_lot = "0.12"
 # A pasted image's file, private and never an existing one.
 tempfile = "3"
 
+[dev-dependencies]
+# Headless windows for testing the view.
+gpui-kit = { workspace = true, features = ["test-support"] }
+
 [lints]
 workspace = true

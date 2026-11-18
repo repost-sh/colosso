@@ -107,8 +107,8 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   a tab's row and a space's mark; amber is what's at work, and red is kept for what went wrong.
 - While something in the project works (a chat running), the spinner in the same corner
   (`chat/spinner.rs`): a small ring in amber with a gap in it, its line bold for its size,
-  going round. It's drawn at every frame the display shows, so it turns evenly rather than in
-  steps, and all of them turn together. Wherever a chat is said to be working, a tab's row,
+  going round. It's drawn at most 30 times a second while Koyo is in front and 10 while another
+  app is (`beat.rs`), and all of them turn together, in the same frames. Wherever a chat is said to be working, a tab's row,
   a space's mark, the Orca layout's tabs and rows, it's this spinner.
 - Hovering a tile shows a card with the project's name and stats: its worktrees, and its
   activity (chats running, terminals, tabs open). The card is under its tile, or over it
