@@ -39,5 +39,7 @@ fi
 
 export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$PWD/.tools/bun-cache}"
 export BUN_RUNTIME_TRANSPILER_CACHE_PATH="${BUN_RUNTIME_TRANSPILER_CACHE_PATH:-$BUN_INSTALL_CACHE_DIR/transpiler}"
+# The package scripts run `bun` by name, so the pinned one is the one they find.
+export PATH="$PWD/$BUN_DIR:$PATH"
 cd koyo-js
 exec "../$BUN" "$@"
