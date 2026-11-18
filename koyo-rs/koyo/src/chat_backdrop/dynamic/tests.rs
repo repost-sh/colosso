@@ -4,6 +4,7 @@ use base64::Engine as _;
 use plist::{Dictionary, Value};
 
 use super::{Dynamic, Now, Place, Style, place_of, read_metadata, style_in, sun};
+use crate::blocking::in_test;
 
 /// A value as a wallpaper's metadata holds it: a binary property list in Base64.
 fn encoded(value: &Value) -> String {
@@ -213,7 +214,7 @@ fn sonoma_is_an_appearance_wallpaper() {
     if !path.exists() {
         return;
     }
-    let sonoma = read_metadata(path).expect("Sonoma's metadata");
+    let sonoma = in_test(|may| read_metadata(path, may)).expect("Sonoma's metadata");
     assert_eq!(sonoma.pick(Style::Automatic, now(true, 0., 0.)), 1);
     assert_eq!(sonoma.pick(Style::Automatic, now(false, 0., 0.)), 0);
 }
@@ -226,12 +227,12 @@ fn sonoma_is_an_appearance_wallpaper() {
 fn dynamic_wallpapers_through_a_day() {
     let paths = std::env::var("KOYO_DYNAMIC").expect("KOYO_DYNAMIC");
     for path in paths.split(':') {
-        let dynamic = read_metadata(Path::new(path)).expect(path);
+        let dynamic = in_test(|may| read_metadata(Path::new(path), may)).expect(path);
         let styles = [Style::Automatic, Style::Dynamic, Style::Light, Style::Dark];
         println!("{path}");
         println!(
             "  now, with the store's choice and the system's appearance → {:?}",
-            super::image(Path::new(path), None)
+            in_test(|may| super::image(Path::new(path), None, may))
         );
         for dark in [false, true] {
             let still: Vec<_> = styles

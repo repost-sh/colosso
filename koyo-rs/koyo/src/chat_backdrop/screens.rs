@@ -3,7 +3,8 @@
 //! One is made at a time, the last one asked for next, and the last one made shows meanwhile.
 //! How a picture looks is said to the renderer as it's drawn (`Texture::mark`), so changing the
 //! look makes nothing again. A picture is kept while a chat on its screen shows it, and let go
-//! a while after none does ([`KEPT`]).
+//! a while after none does ([`KEPT`]). The wallpaper's file is read off the main thread too, and
+//! the picture made once it's read; it's let go with the picture, and read again before the next.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -17,7 +18,8 @@ use objc2_core_video::CVPixelBuffer;
 
 use super::make::{self, Recipe};
 use super::texture::Texture;
-use super::wallpaper::{self, Wallpaper};
+use super::wallpaper::{self, Named, Wallpaper};
+use crate::blocking;
 use crate::settings::{ChatBackdrop, Quality};
 
 /// How long a screen's picture is kept once no chat shows it: a chat shown again within it,
@@ -39,10 +41,10 @@ impl Global for Screens {}
 
 #[derive(Default)]
 struct Screen {
-    /// The wallpaper as last read, none when the screen has no file `AppKit` names; and
-    /// whether it has been read.
+    /// The wallpaper as last read, none when the screen has no file `AppKit` names or none has
+    /// been read.
     wallpaper: Option<Wallpaper>,
-    read: bool,
+    read: Read,
     shown: Option<Shown>,
     /// The picture being made.
     making: Option<Task<()>>,
@@ -54,6 +56,18 @@ struct Screen {
     /// Held by each chat showing the backdrop on the screen, and since when none has.
     chats: Rc<()>,
     unheld_since: Option<Instant>,
+}
+
+/// Where reading a screen's wallpaper stands.
+#[derive(Default)]
+enum Read {
+    /// To be read: the first chat to ask for it has it read.
+    #[default]
+    Due,
+    /// Its file being read, off the main thread.
+    Reading,
+    /// Read, and read again each time the watch looks.
+    Done,
 }
 
 /// A screen's picture, on the GPU.
@@ -105,23 +119,24 @@ fn screen(display: u64, cx: &mut App) -> &mut Screen {
     screens.by_display.entry(display).or_default()
 }
 
-/// The wallpaper of screen `display`, read the first time it's asked for.
+/// The wallpaper of screen `display` as last read. One not read yet is read off the main thread,
+/// none meanwhile, and the windows drawn again once it is.
 pub fn wallpaper(display: u64, cx: &mut App) -> Option<Wallpaper> {
-    let screen = screen(display, cx);
-    if !screen.read {
-        (screen.wallpaper, screen.read) = (read(display), true);
-        if screen.wallpaper.is_none() {
+    if matches!(screen(display, cx).read, Read::Due) {
+        let named = named(display);
+        if named.is_none() {
             log::warn!(
                 "screen {display} has no wallpaper file AppKit names: its chat backdrop shows \
                  the card"
             );
         }
+        read(display, named, cx);
     }
-    screen.wallpaper.clone()
+    screen(display, cx).wallpaper.clone()
 }
 
 /// The wallpaper `AppKit` names for screen `display`, from the main thread.
-fn read(display: u64) -> Option<Wallpaper> {
+fn named(display: u64) -> Option<Named> {
     #[cfg(feature = "visual-check")]
     if let Some(stand_in) = super::visual::wallpaper() {
         return Some(stand_in);
@@ -130,32 +145,58 @@ fn read(display: u64) -> Option<Wallpaper> {
     if let Some(path) = std::env::var_os("KOYO_WALLPAPER") {
         return Some(stand_in(path.into()));
     }
-    wallpaper::read(u32::try_from(display).ok()?, MainThreadMarker::new()?)
+    wallpaper::named(u32::try_from(display).ok()?, MainThreadMarker::new()?)
 }
 
 /// A debug build's wallpaper for every screen, from `KOYO_WALLPAPER`: a test Koyo on a desktop
 /// with no wallpaper still has one to show, and no one's wallpaper is changed for it.
 #[cfg(debug_assertions)]
-fn stand_in(path: std::path::PathBuf) -> Wallpaper {
-    let modified = std::fs::metadata(&path)
-        .and_then(|file| file.modified())
-        .ok();
-    Wallpaper {
-        image: super::dynamic::image(&path, modified),
+fn stand_in(path: std::path::PathBuf) -> Named {
+    Named {
         path,
-        modified,
         scaling: super::layout::Scaling::Fill,
         fill: [0., 0., 0.],
     }
 }
 
+/// Reads the file of the wallpaper `named` off the main thread, as screen `display`'s, and
+/// keeps it once it's read; with nothing named, keeps none at once.
+pub(super) fn read(display: u64, named: Option<Named>, cx: &mut App) {
+    let Some(named) = named else {
+        keep(display, None, cx);
+        return;
+    };
+    let read = blocking::spawn(cx.background_executor(), move |may| named.read(may));
+    cx.spawn(async move |cx| {
+        let wallpaper = read.await;
+        cx.update(|cx| keep(display, Some(wallpaper), cx));
+    })
+    .detach();
+    screen(display, cx).read = Read::Reading;
+}
+
+/// Keeps `wallpaper` as screen `display`'s, drawing the windows again if it changed, so the chats
+/// on the screen ask for the picture of it.
+fn keep(display: u64, wallpaper: Option<Wallpaper>, cx: &mut App) {
+    let screen = screen(display, cx);
+    screen.read = Read::Done;
+    if wallpaper == screen.wallpaper {
+        return;
+    }
+    if screen.wallpaper.is_some() {
+        log::info!("screen {display}'s wallpaper changed");
+    }
+    screen.wallpaper = wallpaper;
+    redraw(cx);
+}
+
 /// A hold on screen `display`'s picture, for a chat showing it. The first since none held it
-/// reads the wallpaper again, which nothing watched meanwhile.
+/// has the watch read the wallpaper again, which nothing watched meanwhile.
 pub fn hold(display: u64, cx: &mut App) -> Hold {
     let watch = cx.default_global::<Screens>().tell.clone();
     let screen = screen(display, cx);
     if Rc::strong_count(&screen.chats) == 1 {
-        (screen.read, screen.unheld_since) = (false, None);
+        screen.unheld_since = None;
         tell(watch.as_ref());
     }
     Hold {
@@ -264,14 +305,14 @@ fn redraw(cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// Looks again at the wallpaper of each screen a chat shows the backdrop on, as the watch does
-/// (`watch.rs`), drawing the windows again when one changed; and lets the pictures no chat has
-/// shown for [`KEPT`] go. How long until it's to run again unless the watch is told sooner: none
-/// while nothing waits on it.
+/// Reads again the wallpaper of each screen a chat shows the backdrop on, unless it's being read,
+/// as the watch does (`watch.rs`), drawing the windows again when one changed; and lets the
+/// pictures no chat has shown for [`KEPT`] go. How long until it's to run again unless the watch
+/// is told sooner: none while nothing waits on it.
 pub fn tick(cx: &mut App) -> Option<Duration> {
     let seen = any_window_seen(cx);
     let now = cx.background_executor().now();
-    let mut changed = false;
+    let mut again = Vec::new();
     let screens = &mut cx.default_global::<Screens>().by_display;
     let next = (screens.iter_mut())
         .filter_map(|(&display, screen)| {
@@ -279,12 +320,8 @@ pub fn tick(cx: &mut App) -> Option<Duration> {
                 if !seen {
                     return None;
                 }
-                if screen.read {
-                    let wallpaper = read(display);
-                    if wallpaper != screen.wallpaper {
-                        log::info!("screen {display}'s wallpaper changed");
-                        (screen.wallpaper, changed) = (wallpaper, true);
-                    }
+                if matches!(screen.read, Read::Done) {
+                    again.push(display);
                 }
                 return Some(EVERY);
             }
@@ -293,12 +330,16 @@ pub fn tick(cx: &mut App) -> Option<Duration> {
             if left.is_zero() && screen.shown.is_some() {
                 log::info!("let screen {display}'s chat backdrop go: no chat shows it");
                 (screen.shown, screen.wanted, screen.making) = (None, None, None);
+                screen.wallpaper = None;
+                if matches!(screen.read, Read::Done) {
+                    screen.read = Read::Due;
+                }
             }
             screen.shown.is_some().then_some(left)
         })
         .min();
-    if changed {
-        redraw(cx);
+    for display in again {
+        read(display, named(display), cx);
     }
     next
 }
