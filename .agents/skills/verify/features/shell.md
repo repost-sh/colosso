@@ -52,7 +52,7 @@ Preconditions: the baseline. `$B app tab_list '{}'` lists no tab yet.
 - **Layout.** `$B app layout_set '{"layout":"arc"}'` switches to Arc: the shot shows the icon
   rail and tiles. `$B app layout_set '{"sidebar":false}'` hides the sidebar, as ⌘B does
   (`$B probe 'key 11 b cmd'`).
-- **Switcher** (a floating panel: SKILL.md, rule 5, so ask the owner first and close it at
+- **Switcher** (a floating panel: SKILL.md, rule 5, so close it at
   once). Hold ⌃ and press ⇥ with `$B probe 'key 48 "\t" ctrl'`, then take
   `$B shot switcher`. The panel lives in a window of its own, so get its number from
   `$B probe windows` and pass it to `shot`. The panel is a glass panel. To check its pictures,

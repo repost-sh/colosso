@@ -24,9 +24,9 @@ Read these before every run. Each one protects the owner's machine.
    `~/Library/Application Support/codes.koyo.desktop`). Your `mcp__koyo__*` tools talk to the
    owner's Koyo. Use only its `desktop_*` tools, and only on the test app's pid and windows.
    Do the rest with `$B app`, `$B mcp` and `$B probe`.
-2. **One thread at a time uses the agent desktop.** Before `desktop_open`, ask the owner or your
-   coordinator for the agent desktop and wait for their go. When you finish, run `$B stop` and
-   tell them it's free.
+2. **One thread at a time uses the agent desktop.** The owner has allowed it once and for all
+   (2026-11-18): don't ask before `desktop_open`. Within one run, only the thread that opened the
+   test app drives it; subagents of a coordinator take it in turn. When you finish, run `$B stop`.
 3. **Never start the bundle from a shell** (`open`, running its binary, or `script/dev-bundle`
    without `--no-run`). Its window would land on the owner's desktop. Only `desktop_open`
    starts it.
@@ -85,9 +85,7 @@ Read these before every run. Each one protects the owner's machine.
    It refuses while an instance runs, and when the dev bundle is older than
    `koyo-rs/target/debug/koyo`. Its last line is the `desktop_open` input.
 
-3. **Ask for the agent desktop** (rule 2) and wait for the go.
-
-4. **Open it on the agent desktop** with the Koyo MCP tool. Use an absolute path. The `args`
+3. **Open it on the agent desktop** with the Koyo MCP tool. Use an absolute path. The `args`
    keep GPUI from writing `~/Library/Preferences/test.koyo.verify.plist`:
 
    ```json
@@ -97,7 +95,7 @@ Read these before every run. Each one protects the owner's machine.
 
    The answer carries `pid` and the windows so far.
 
-5. **Confirm** isolation and readiness:
+4. **Confirm** isolation and readiness:
 
    ```sh
    $B confirm <pid>
@@ -111,7 +109,7 @@ Read these before every run. Each one protects the owner's machine.
    ready, it prints
    `test Koyo pid N: isolated (KOYO_DATA_DIR=…), control socket up, probe ticking`.
 
-6. **Start the evidence folder**:
+5. **Start the evidence folder**:
 
    ```sh
    $B run <label>
@@ -285,7 +283,7 @@ $B stop            # or: $B stop --keep   (keeps data and settings, for a relaun
 4. It removes `d c l p t s fixture worktrees`.
 
 The bundle and `.superpowers/v/evidence/` stay. `stop` prints the evidence folder and its
-contents. Afterwards, tell the owner the agent desktop is free. `desktop_close {"pid": …}` is
+contents. `desktop_close {"pid": …}` is
 the desktop's own way to quit the test app. Run `$B stop` after it anyway, for the leftovers
 and the logs.
 
@@ -344,8 +342,8 @@ None of these is on the default path, but each is worth knowing:
   windows off screen and saves PNGs under `.superpowers/qa/<name>/`. They need
   `KOYO_CONFIG_DIR`, `KOYO_DATA_DIR`, `TMPDIR` and `KOYO_LOG_DIR` inside the checkout, and the
   chat ones need `KOYO_AGENT_PROVIDER=fake` (`docs/tab-switcher.md` section 7 has the full
-  command). They have no pages, and their windows aren't on the agent desktop, so ask the
-  owner before you run one while they work.
+  command). They have no pages, and their windows open off screen, not on the agent
+  desktop.
 
 ## Gaps worth closing in the app
 

@@ -1,0 +1,39 @@
+#!/bin/sh
+# What the test Koyo costs the machine, in three scenes, each sampled by script/perf-sample:
+#
+#   launch  the window as it opens, nothing added: what starting up leaves running
+#   idle    a terminal, a file:// page and a chat open, the chat shown
+#   term    then the Changes panel, beside a terminal printing 50 lines a second
+#
+#   .agents/skills/verify/bin/perf-run <pid> <label> [seconds]
+#
+# <pid> is the test Koyo `koyo-verify confirm` accepted, freshly launched. Each scene is a row
+# in .superpowers/perf/<stamp>-<label>-<scene>.tsv. Ends with `koyo-verify stop`. KOYO_VERIFY names
+# another helper, such as one whose bundle is an older build, for a before/after.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here/../../../.."
+B=${KOYO_VERIFY:-$here/koyo-verify}
+[ $# -ge 2 ] || { echo "usage: perf-run <pid> <label> [seconds]" >&2; exit 2; }
+pid=$1 label=$2 seconds=${3:-60}
+fixture="$PWD/.superpowers/v/fixture/focus.html"
+
+total() { script/perf-sample "$pid" "$1" "$label-$2" | awk '$2 == "total" { print }'; }
+
+$B run "perf-$label" >/dev/null
+sleep 10
+total "$seconds" launch
+
+$B app tab_open '{"kind":"terminal","command":"/bin/zsh -f","select":true}' >/dev/null
+$B app tab_open "{\"kind\":\"browser\",\"url\":\"file://$fixture\",\"select\":true}" >/dev/null
+$B app chat_create '{"text":"hello","select":true}' >/dev/null
+sleep 15
+total "$seconds" idle
+
+$B app layout_set '{"rightPanel":"changes"}' >/dev/null
+$B app tab_open '{"kind":"terminal","command":"/bin/sh -c \"while :; do date; sleep 0.02; done\"","select":true}' >/dev/null
+sleep 5
+total "$seconds" term
+
+$B stop >/dev/null 2>&1
+echo "perf-run $label done; the test Koyo is stopped"
