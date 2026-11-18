@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::{self, Write};
 
 use crate::process::FileReport;
@@ -5,14 +6,14 @@ use crate::rule::RULES;
 
 pub fn write_findings(out: &mut impl Write, reports: &[FileReport]) -> io::Result<()> {
     let mut counts = [0_usize; RULES.len()];
-    let mut files = 0;
+    let mut files = BTreeSet::new();
     for report in reports.iter().filter(|report| !report.findings.is_empty()) {
-        files += 1;
+        files.insert(&report.path);
         for finding in &report.findings {
             writeln!(
                 out,
                 "{}:{}:{}: {}: {}",
-                report.path, finding.line, finding.column, finding.rule.name, finding.excerpt
+                report.path, finding.line, finding.column, finding.rule.name, finding.detail
             )?;
             if let Some(slot) = RULES.iter().position(|rule| *rule == finding.rule) {
                 counts[slot] += 1;
@@ -33,7 +34,7 @@ pub fn write_findings(out: &mut impl Write, reports: &[FileReport]) -> io::Resul
         out,
         "\n{} in {} ({}).",
         counted(total, "finding"),
-        counted(files, "file"),
+        counted(files.len(), "file"),
         by_rule.join(", ")
     )?;
     for (rule, _) in RULES.iter().zip(counts).filter(|(_, count)| *count > 0) {
@@ -55,7 +56,7 @@ pub fn write_fix_summary(
     )
 }
 
-fn counted(count: usize, noun: &str) -> String {
+pub fn counted(count: usize, noun: &str) -> String {
     if count == 1 {
         format!("1 {noun}")
     } else {
