@@ -5,14 +5,15 @@
 //! seen: the host keeps the picture current only then, or for an agent.
 
 use gpui_kit::{
-    App, Bounds, ContentMask, Corners, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Overflow, Pixels, ScrollEvent, Style, Window, point, px, relative, size,
+    App, Bounds, ContentMask, Corners, Element, ElementId, ElementInputHandler, Entity, GlobalElementId, Hitbox,
+    HitboxBehavior, InspectorElementId, LayoutId, Overflow, Pixels, Style, Window, point, px,
+    relative,
 };
 use koyo_device_wire::Size;
 
 use super::link::Link;
 use super::view::DeviceView;
+use crate::hosted::canvas::{fitted, listen};
 use crate::sight::Shown;
 
 pub struct Canvas {
@@ -26,25 +27,6 @@ pub struct Placed {
     shown: Bounds<Pixels>,
     /// The radius of the screen's corners as shown.
     corner: Pixels,
-}
-
-/// `screen` (in points) at the largest size that fits `area`, centred, never larger than
-/// `most` times its size in points: where it shows and how much of its size that is.
-pub fn fitted(area: Bounds<Pixels>, screen: Size, most: f32) -> (Bounds<Pixels>, f32) {
-    let (wide, high) = (screen.width as f32, screen.height as f32);
-    if wide <= 0. || high <= 0. {
-        return (area, 1.);
-    }
-    let fit = (area.size.width.as_f32() / wide)
-        .min(area.size.height.as_f32() / high)
-        .clamp(0.01, most.max(0.01));
-    let shown = size(px(wide * fit), px(high * fit));
-    let origin = area.origin
-        + point(
-            (area.size.width - shown.width) / 2.,
-            (area.size.height - shown.height) / 2.,
-        );
-    (Bounds::new(origin, shown), fit)
 }
 
 impl Element for Canvas {
@@ -133,75 +115,6 @@ impl Element for Canvas {
             let focus = self.view.read(cx).focus.clone();
             window.handle_input(&focus, ElementInputHandler::new(shown, self.view.clone()), cx);
         }
-        self.listen(&placed.hitbox, window);
-    }
-}
-
-impl Canvas {
-    /// The pointer over the picture: a press focuses the tab, a drag that began on it keeps
-    /// reaching it, and a trackpad's scroll over it scrolls the device; nothing scrolled over it
-    /// reaches the pane.
-    fn listen(&self, hitbox: &Hitbox, window: &mut Window) {
-        let (down, over_down) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !over_down.is_hovered(window) {
-                return;
-            }
-            let _ = down.update(cx, |view, cx| view.pressed_at(event, window, cx));
-            cx.stop_propagation();
-        });
-        let up = self.view.downgrade();
-        window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
-            if phase == DispatchPhase::Capture {
-                let _ = up.update(cx, |view, cx| view.released_at(event, cx));
-            }
-        });
-        let (moved, over_move) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-            if phase != DispatchPhase::Capture {
-                return;
-            }
-            let over = over_move.is_hovered(window);
-            let _ = moved.update(cx, |view, cx| view.moved_to(event, over, cx));
-        });
-        let (scrolled, over_scroll) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !over_scroll.should_handle_scroll(window) {
-                return;
-            }
-            let _ = scrolled.update(cx, |view, cx| view.scrolled(event, cx));
-            cx.stop_propagation();
-        });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn area(width: f32, height: f32) -> Bounds<Pixels> {
-        Bounds::new(point(px(10.), px(20.)), size(px(width), px(height)))
-    }
-
-    #[test]
-    fn a_phone_fits_a_short_pane_by_its_height_and_is_centred() {
-        let phone = Size {
-            width: 402.,
-            height: 874.,
-        };
-        let (shown, fit) = fitted(area(1000., 437.), phone, 1.5);
-        assert!((fit - 0.5).abs() < 1e-6);
-        assert_eq!(shown.size.height, px(437.));
-        assert_eq!(shown.origin.x, px(10. + (1000. - 201.) / 2.));
-    }
-
-    #[test]
-    fn a_large_pane_shows_it_no_larger_than_its_pixels_allow() {
-        let phone = Size {
-            width: 402.,
-            height: 874.,
-        };
-        let (_, fit) = fitted(area(4000., 4000.), phone, 1.5);
-        assert!((fit - 1.5).abs() < 1e-6);
+        listen(&self.view, &placed.hitbox, window);
     }
 }

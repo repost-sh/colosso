@@ -27,7 +27,7 @@ pub fn lock_name(udid: &str) -> String {
 
 pub use ask::{Act, Ask, Press, Spot};
 pub use input::{Button, Edge, Finger, Input, Orientation};
-pub use koyo_desk_wire::{MAX_FRAME, Point, Rect, Size, read_frame, write_frame};
+pub use koyo_desk_wire::{Point, Rect, Size, read_frame, write_frame};
 pub use link::{
     Answer, App, Change, FromHost, LogLevel, Mark, Missing, PROTOCOL, PixelSize, Refusal,
     RefusalCode, RequestId, Screen, Source, State, Step, ToHost,

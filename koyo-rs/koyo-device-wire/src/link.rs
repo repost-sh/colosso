@@ -1,8 +1,12 @@
 //! The link between the app and the host of one device (`docs/devices.md` 7). The app starts
-//! the host as its child with its end of a socket pair inherited; the app says hello first,
-//! the host answers before it compares versions so the app can show a mismatch. Requests carry
-//! an id answered with the same id. Pictures don't travel here: the host hands the app a ring of
-//! three `IOSurface`s by mach port once per generation, and names the slot of each frame here.
+//! the host as its child with its end of a socket pair inherited; both say hello first, so each
+//! side can show a mismatch as long as it can read the other's hello. Version 4 took `pid` out
+//! of the host's: a version-3 app can't read a version-4 host's hello, and says a field is
+//! missing instead. The app and its host ship in one bundle, so two versions meet only when a
+//! debug build runs the host `KOYO_DEVICE_HOST` names.
+//! Requests carry an id answered with the same id. Pictures don't travel here: the host hands
+//! the app a ring of three `IOSurface`s by mach port once per generation, and names the slot of
+//! each frame here.
 
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
@@ -12,7 +16,7 @@ use crate::input::{Input, Orientation};
 use koyo_desk_wire::{Point, Rect, Size};
 
 /// The link's version. Both sides refuse another.
-pub const PROTOCOL: u32 = 3;
+pub const PROTOCOL: u32 = 4;
 
 /// A request, the app's number for it; its answer carries the same.
 pub type RequestId = u64;
@@ -54,11 +58,9 @@ pub enum ToHost {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum FromHost {
-    Hello {
-        protocol: u32,
-        /// Whose mach messages the app accepts.
-        pid: i32,
-    },
+    /// The host's process, whose mach messages the app accepts, is the one the kernel names
+    /// at the other end of the socket.
+    Hello { protocol: u32 },
     /// How the device stands: at hello and on every change.
     State {
         state: State,

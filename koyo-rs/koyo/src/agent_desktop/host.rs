@@ -12,20 +12,19 @@
 //! the workspace's `target/desk-host`, where `script/desk-host` packages it.
 
 use std::ffi::OsStr;
-use std::io::{self, BufReader};
-use std::os::fd::AsRawFd as _;
+use std::io;
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{Sender, channel};
 use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::mach;
 use koyo_desk_wire::link::{FromHost, PROTOCOL, ToHost};
 use koyo_desk_wire::{read_frame, write_frame};
+
+use super::Grants;
+use crate::hosted::link;
 
 const LOADER: &str = "Koyo Agent Desktop.app";
 /// The host itself, which lies beside the loader's bundle.
@@ -38,44 +37,14 @@ const SOCKET_PATH: usize = 103;
 const PROBE_WITHIN: Duration = Duration::from_secs(3);
 
 /// What comes from the host.
-pub enum Incoming {
-    Said(FromHost),
-    /// A window's frames: `pane` is the window's number, each port a frame's surface.
-    Frame(mach::Ring),
-    /// The host went away.
-    Closed,
-}
+pub type Incoming = link::Incoming<FromHost>;
+/// A host that runs.
+pub type Running = link::Running<ToHost>;
 
 /// The loader app and the arguments put before the host's own.
 pub struct Loader {
     app: PathBuf,
     before: Vec<String>,
-}
-
-/// A host that runs.
-pub struct Running {
-    pub pid: i32,
-    /// What the app tells it, written on a thread of its own.
-    pub tell: Sender<ToHost>,
-    stop: Arc<AtomicBool>,
-}
-
-#[cfg(test)]
-impl Running {
-    /// A host that isn't one: what is told to it goes to `tell`.
-    pub fn stand_in(tell: Sender<ToHost>) -> Running {
-        Running {
-            pid: 0,
-            tell,
-            stop: Arc::default(),
-        }
-    }
-}
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
 }
 
 /// Where the host is, as the module says.
@@ -115,27 +84,6 @@ pub fn loader() -> Result<Loader, String> {
         .ok_or_else(|| "Koyo Agent Desktop isn't in this build of Koyo.".to_owned())
 }
 
-/// The process on the other end of `stream`.
-fn peer(stream: &UnixStream) -> io::Result<i32> {
-    let mut pid: libc::pid_t = 0;
-    let mut size = libc::socklen_t::try_from(size_of::<libc::pid_t>()).map_err(io::Error::other)?;
-    // SAFETY: a live socket, and an out-pointer of the size the option is said to have.
-    let got = unsafe {
-        libc::getsockopt(
-            stream.as_raw_fd(),
-            libc::SOL_LOCAL,
-            libc::LOCAL_PEERPID,
-            (&raw mut pid).cast(),
-            &raw mut size,
-        )
-    };
-    if got == 0 {
-        Ok(pid)
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
 /// The program a process runs, as the kernel has it.
 fn program(pid: i32) -> Option<PathBuf> {
     let mut path = [0u8; 4096];
@@ -156,8 +104,8 @@ fn accept(listener: &UnixListener, app: &Path) -> io::Result<UnixStream> {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
-                let theirs = (peer(&stream).ok())
-                    .and_then(program)
+                let theirs = (mach::Process::at_other_end(&stream).ok())
+                    .and_then(|host| program(host.pid()))
                     .and_then(|program| std::fs::canonicalize(program).ok());
                 let known = (theirs.as_deref().and_then(Path::parent))
                     .zip(ours.as_deref())
@@ -336,15 +284,14 @@ pub fn shown(loader: &Loader, dir: &Path) -> PathBuf {
     standing_alone(&loader.app, dir).unwrap_or_else(|_| loader.app.clone())
 }
 
-/// Starts the host with `dir` for what it and the link keep, and says hello. Blocks while
-/// the host starts: called off the main thread. `sink` hears what comes, on threads of the
-/// link's own, `Closed` last.
+/// Starts the host with `dir` for what it and the link keep, says hello and reads its hello,
+/// which says what grants it holds. Blocks while the host starts: called off the main thread.
+/// `sink` hears what comes after, on threads of the link's own, `Closed` last.
 pub fn start(
     loader: &Loader,
     dir: &Path,
-    sink: impl Fn(Incoming) + Send + Clone + 'static,
-) -> io::Result<Running> {
-    static SERVICES: AtomicU32 = AtomicU32::new(0);
+    sink: link::Sink<FromHost>,
+) -> io::Result<(Running, Grants)> {
     std::fs::create_dir_all(dir)?;
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     let socket = dir.join("link.sock");
@@ -357,12 +304,7 @@ pub fn start(
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket)?;
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
-    let service = format!(
-        "codes.koyo.desk.{}.{}",
-        std::process::id(),
-        SERVICES.fetch_add(1, Ordering::Relaxed)
-    );
-    let surfaces = mach::Receiver::check_in(&service)?;
+    let surfaces = mach::Receiver::check_in(&format!("codes.koyo.desk.{}", std::process::id()))?;
     let log = dir.join("host.log");
     let app = standing_alone(&loader.app, dir)?;
     let launched = launching(&app)
@@ -387,48 +329,47 @@ pub fn start(
     let stream = accept(&listener, &app)?;
     drop(listener);
     let _ = std::fs::remove_file(&socket);
-    let pid = peer(&stream)?;
-    let mut writer = stream.try_clone()?;
+    linked(stream, surfaces, sink)
+}
+
+/// The link to the host that connected on `stream`: told hello, and once its own hello is in
+/// this app's protocol, written to and read from on threads of its own, and its frames
+/// received on `surfaces`.
+fn linked(
+    mut stream: UnixStream,
+    surfaces: mach::Receiver,
+    sink: link::Sink<FromHost>,
+) -> io::Result<(Running, Grants)> {
     let hello = ToHost::Hello {
         protocol: PROTOCOL,
-        surfaces: service,
+        surfaces: surfaces.name().to_owned(),
     };
-    write_frame(&mut writer, &hello)?;
-    let stop = Arc::new(AtomicBool::new(false));
-
-    let (tell, told) = channel::<ToHost>();
-    std::thread::Builder::new()
-        .name("desk-tell".into())
-        .spawn(move || {
-            while let Ok(message) = told.recv() {
-                if write_frame(&mut writer, &message).is_err() {
-                    return;
-                }
-            }
-        })?;
-
-    let (said, stopped) = (sink.clone(), Arc::clone(&stop));
-    std::thread::Builder::new()
-        .name("desk-said".into())
-        .spawn(move || {
-            let mut reader = BufReader::new(stream);
-            while let Ok(Some(message)) = read_frame::<FromHost>(&mut reader) {
-                said(Incoming::Said(message));
-            }
-            stopped.store(true, Ordering::Relaxed);
-            said(Incoming::Closed);
-        })?;
-
-    let stopped = Arc::clone(&stop);
-    let sender = u32::try_from(pid).map_err(io::Error::other)?;
-    std::thread::Builder::new()
-        .name("desk-frames".into())
-        .spawn(move || {
-            while !stopped.load(Ordering::Relaxed) {
-                if let Ok(Some(ring)) = surfaces.receive(sender, 200) {
-                    sink(Incoming::Frame(ring));
-                }
-            }
-        })?;
-    Ok(Running { pid, tell, stop })
+    write_frame(&mut stream, &hello)?;
+    let grants = koyo_frame::hello(
+        &mut stream,
+        koyo_frame::HELLO_WITHIN,
+        koyo_frame::End::App,
+        PROTOCOL,
+        |stream| {
+            Ok(read_frame(stream)?.and_then(|said| match said {
+                FromHost::Hello {
+                    protocol,
+                    accessibility,
+                    screen_recording,
+                    ..
+                } => Some((
+                    protocol,
+                    Grants {
+                        accessibility,
+                        screen_recording,
+                    },
+                )),
+                _ => None,
+            }))
+        },
+    )?;
+    Ok((link::run(stream, surfaces, "desk", sink)?, grants))
 }
+
+#[cfg(test)]
+mod tests;

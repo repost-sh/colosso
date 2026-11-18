@@ -7,24 +7,34 @@ use std::time::Duration;
 use futures::FutureExt as _;
 use gpui_kit::{AppContext as _, Entity, EntityId, Task, TestAppContext};
 use koyo_desk_wire::link::{
-    Answer, Ask, Button, DesktopState, FromHost, Input, Lent, PROTOCOL, RefusalCode, ToHost, Window,
+    Answer, Ask, Button, DesktopState, FromHost, Input, Lent, RefusalCode, ToHost, Window,
 };
 use koyo_desk_wire::{Point, Rect, Size};
 
-use super::control::RESTS_AFTER;
 use super::granting::{Grant, Step};
 use super::host::{Incoming, Running};
-use super::{Desk, State};
-use crate::browser::control::{Actor, IMPLICIT_HOLD, Mode, Refused};
+use super::{Desk, Grants, State};
+use crate::browser::control::{Actor, IMPLICIT_HOLD, Leased as _, Mode, RESTS_AFTER, Refused};
 use crate::sight::Showable as _;
 
-/// A desk whose host stands in: what it's told comes out of the channel.
+/// What a host that has both grants says it holds.
+const GRANTED: Grants = Grants {
+    accessibility: true,
+    screen_recording: true,
+};
+
+/// A desk whose host stands in, with both grants: what it's told comes out of the channel.
 fn running(cx: &mut TestAppContext) -> (Entity<Desk>, Receiver<ToHost>) {
+    running_with(GRANTED, cx)
+}
+
+/// A desk whose host stands in, holding `grants`.
+fn running_with(grants: Grants, cx: &mut TestAppContext) -> (Entity<Desk>, Receiver<ToHost>) {
     let (tell, told) = channel();
     let desk = cx.new(Desk::new);
     desk.update(cx, |desk, cx| {
         desk.state = State::Starting;
-        assert!(desk.started(desk.starts, Ok(Running::stand_in(tell)), cx));
+        assert!(desk.started(desk.starts, Ok((Running::stand_in(tell), grants)), cx));
     });
     assert_eq!(told.try_recv(), Ok(ToHost::Visible { visible: false }));
     (desk, told)
@@ -58,17 +68,11 @@ fn window(id: u32) -> Window {
 
 #[gpui_kit::test]
 fn what_the_host_says_is_how_the_desk_stands(cx: &mut TestAppContext) {
-    let (desk, _told) = running(cx);
-    says(
-        &desk,
-        FromHost::Hello {
-            protocol: PROTOCOL,
-            pid: 77,
-            accessibility: true,
-            screen_recording: false,
-        },
-        cx,
-    );
+    let grants = Grants {
+        accessibility: true,
+        screen_recording: false,
+    };
+    let (desk, _told) = running_with(grants, cx);
     let size = Size {
         width: 1800.,
         height: 1169.,
@@ -84,19 +88,6 @@ fn what_the_host_says_is_how_the_desk_stands(cx: &mut TestAppContext) {
         assert!(grants.accessibility && !grants.screen_recording);
         assert_eq!(desk.size(), Some(size));
         assert_eq!(desk.windows.len(), 2);
-    });
-    says(
-        &desk,
-        FromHost::Hello {
-            protocol: PROTOCOL + 1,
-            pid: 77,
-            accessibility: true,
-            screen_recording: true,
-        },
-        cx,
-    );
-    desk.read_with(cx, |desk, _| {
-        assert!(matches!(desk.state, State::Failed(_)));
     });
 }
 
@@ -195,7 +186,7 @@ fn what_is_asked_while_the_host_starts_is_asked_once_it_runs(cx: &mut TestAppCon
     });
     assert!(told.try_recv().is_err());
     desk.update(cx, |desk, cx| {
-        assert!(desk.started(desk.starts, Ok(Running::stand_in(tell)), cx));
+        assert!(desk.started(desk.starts, Ok((Running::stand_in(tell), GRANTED)), cx));
     });
     let told: Vec<ToHost> = told.try_iter().collect();
     assert_eq!(told.first(), Some(&ToHost::Visible { visible: true }));
@@ -252,7 +243,7 @@ fn a_start_overtaken_has_its_host_told_to_quit_and_changes_nothing(cx: &mut Test
     desk.update(cx, |desk, cx| {
         desk.starts += 1;
         let stale = desk.starts - 1;
-        assert!(!desk.started(stale, Ok(Running::stand_in(late)), cx));
+        assert!(!desk.started(stale, Ok((Running::stand_in(late), GRANTED)), cx));
         assert_eq!(desk.state, State::Running);
     });
     assert_eq!(told_late.try_recv(), Ok(ToHost::Quit));
@@ -312,7 +303,7 @@ fn what_the_person_presses_while_the_host_starts_is_not_kept(cx: &mut TestAppCon
             },
             cx,
         );
-        assert!(desk.started(desk.starts, Ok(Running::stand_in(tell)), cx));
+        assert!(desk.started(desk.starts, Ok((Running::stand_in(tell), GRANTED)), cx));
     });
     let told: Vec<ToHost> = told.try_iter().collect();
     assert!(
@@ -375,14 +366,14 @@ fn the_desktop_is_an_agents_while_it_acts_and_the_persons_once_they_do(cx: &mut 
     };
     desk.update(cx, |desk, cx| {
         assert_eq!(desk.agent_acts(agent.clone(), cx), Ok(()));
-        assert_eq!(desk.control.agent(), Some(&agent));
+        assert_eq!(desk.lease.control.agent(), Some(&agent));
     });
 
     let input = Input::Text { text: "x".into() };
     desk.update(cx, |desk, cx| {
         desk.input(input, cx);
         assert!(desk.person_holds());
-        assert_eq!(desk.control.displaced, Some(agent.clone()));
+        assert_eq!(desk.lease.control.displaced, Some(agent.clone()));
         let refused = desk.agent_acts(agent.clone(), cx).unwrap_err();
         let implicit = Mode::Implicit;
         assert!(matches!(refused, Refused::PersonHasControl { mode, .. } if mode == implicit));
@@ -409,22 +400,18 @@ fn the_desktop_is_an_agents_while_it_acts_and_the_persons_once_they_do(cx: &mut 
     cx.executor()
         .advance_clock(RESTS_AFTER + Duration::from_millis(100));
     cx.run_until_parked();
-    desk.read_with(cx, |desk, _| assert_eq!(desk.control.holder, None));
+    desk.read_with(cx, |desk, _| assert_eq!(desk.lease.control.holder, None));
 }
 
 /// The setup follows what the host says it holds: one grant asked for at a time, each seen
 /// as it's given, and the setup offered by itself only once.
 #[gpui_kit::test]
 fn the_setup_takes_the_grants_one_at_a_time_as_the_host_reports_them(cx: &mut TestAppContext) {
-    let (desk, told) = running(cx);
-    desk.read_with(cx, |desk, _| assert_eq!(desk.step(), Step::Starting));
-    let hello = |accessibility, screen_recording| FromHost::Hello {
-        protocol: PROTOCOL,
-        pid: 77,
-        accessibility,
-        screen_recording,
+    let none = Grants {
+        accessibility: false,
+        screen_recording: false,
     };
-    says(&desk, hello(false, false), cx);
+    let (desk, told) = running_with(none, cx);
     desk.update(cx, |desk, cx| {
         assert_eq!(desk.step(), Step::Needs(Grant::Accessibility));
         assert!(desk.setup_due());
@@ -444,7 +431,11 @@ fn the_setup_takes_the_grants_one_at_a_time_as_the_host_reports_them(cx: &mut Te
         assert_eq!(desk.step(), Step::Needs(Grant::ScreenRecording));
     });
 
-    says(&desk, hello(true, true), cx);
+    let grants = FromHost::Grants {
+        accessibility: true,
+        screen_recording: true,
+    };
+    says(&desk, grants, cx);
     desk.read_with(cx, |desk, _| assert_eq!(desk.step(), Step::Starting));
     let size = Size {
         width: 1800.,

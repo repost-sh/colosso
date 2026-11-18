@@ -230,7 +230,8 @@ pub enum Act {
 pub enum FromHost {
     Hello {
         protocol: u32,
-        /// The host's process, which the app accepts frames from.
+        /// The host's process id, as the host has it. The app doesn't use it: it takes frames
+        /// from the process the kernel names at the socket's other end, by its audit token.
         pid: i32,
         /// The privacy grants the host holds.
         accessibility: bool,

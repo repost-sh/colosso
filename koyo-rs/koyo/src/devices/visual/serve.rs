@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use koyo_app_control::Scope;
 
+use crate::browser::control::Leased as _;
 use crate::control::ApprovedClient;
 use crate::visual::{Drawn, Result};
 

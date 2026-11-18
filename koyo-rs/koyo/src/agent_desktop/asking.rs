@@ -8,7 +8,7 @@ use gpui_kit::{App, Context, Task};
 use koyo_desk_wire::link::{Answer, Ask, Refusal, RefusalCode, ToHost};
 
 use super::{Desk, State, desk};
-use crate::browser::control::{Actor, Refused};
+use crate::browser::control::{Actor, Leased as _, Refused};
 
 /// Asks the agent desktop's host on behalf of a tool, and waits at most `limit` for its
 /// answer ([`Desk::ask`]).

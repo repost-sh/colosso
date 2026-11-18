@@ -5499,6 +5499,7 @@ dependencies = [
  "koyo-desk-wire",
  "koyo-device-gestures",
  "koyo-device-wire",
+ "koyo-frame",
  "koyo-git",
  "koyo-lsp",
  "koyo-project",
@@ -5608,6 +5609,7 @@ version = "0.1.0"
 dependencies = [
  "cef",
  "koyo-browser-ipc",
+ "koyo-frame",
  "koyo-seam",
  "libc",
  "log",
@@ -5628,6 +5630,7 @@ name = "koyo-browser-ipc"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "koyo-frame",
  "libc",
  "serde",
  "serde_json",
@@ -5649,6 +5652,7 @@ dependencies = [
  "block2 0.6.2",
  "koyo-browser-ipc",
  "koyo-desk-wire",
+ "koyo-frame",
  "libc",
  "objc2 0.6.5",
  "objc2-core-foundation",
@@ -5661,6 +5665,7 @@ name = "koyo-desk-wire"
 version = "0.1.0"
 dependencies = [
  "ciborium",
+ "koyo-frame",
  "serde",
  "serde_bytes",
 ]
@@ -5682,6 +5687,7 @@ dependencies = [
  "koyo-browser-ipc",
  "koyo-device-gestures",
  "koyo-device-wire",
+ "koyo-frame",
  "libc",
  "memchr",
  "objc2 0.6.5",
@@ -5708,6 +5714,10 @@ dependencies = [
  "serde_bytes",
  "serde_json",
 ]
+
+[[package]]
+name = "koyo-frame"
+version = "0.1.0"
 
 [[package]]
 name = "koyo-git"

@@ -12,7 +12,7 @@ use gpui_kit::{
 use koyo_browser_ipc::PaneId;
 use serde::Deserialize;
 
-use super::control::Mode;
+use super::control::{Leased as _, Mode};
 use super::view::BrowserView;
 
 /// How long a press on back or forward is held before its list shows instead.

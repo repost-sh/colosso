@@ -1,121 +1,32 @@
-//! Who drives the agent desktop (`docs/agent-desktop.md` 9): the lease a browser page has
-//! (`browser::control`), for the one desktop. The person pre-empts any agent: by acting in
-//! the tab, which holds the desktop while they're at it and [`IMPLICIT_HOLD`] after; or with
-//! Take control, which holds it until they give it back. An agent's act takes the desktop
-//! for that agent, from another agent too (there's one desktop, and agents share it), and
-//! an agent that rests a while has let it go. The bar at the tab's bottom says who has it,
+//! Who drives the agent desktop (`docs/agent-desktop.md` 9): its lease ([`Leased`]), a
+//! device's, for the one desktop that agents share. The bar at the tab's bottom says who has it,
 //! the same bar a page has.
-
-use std::time::{Duration, Instant};
 
 use gpui_kit::{AnyElement, ClickEvent, Context, ElementId, Window};
 
 use super::Desk;
 use super::view::DeskView;
-use crate::browser::control::{Actor, Control, IMPLICIT_HOLD, Mode, Refused};
+use crate::browser::control::{Actor, Lease, Leased, Mode};
 use crate::held::{Held, OnClick};
 
-/// How long after its last act an agent still has the desktop.
-pub const RESTS_AFTER: Duration = Duration::from_secs(10);
+impl Leased for Desk {
+    fn lease(&self) -> &Lease {
+        &self.lease
+    }
 
-/// What comes to its end by itself: the person's hold by acting, an agent's by resting.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Ends {
-    Hold,
-    Rest,
+    fn lease_mut(&mut self) -> &mut Lease {
+        &mut self.lease
+    }
+
+    fn named(&self) -> &'static str {
+        "the agent desktop"
+    }
 }
 
 impl Desk {
-    /// The person acts in the tab, or asks for the desktop: theirs from now on, whoever
-    /// drove it, and for [`IMPLICIT_HOLD`] past this act unless they asked for it.
-    pub fn person_acts(&mut self, mode: Mode, cx: &mut Context<Self>) {
-        let held = self.control.holder.clone();
-        if let Some(displaced) = self.control.person_takes(mode) {
-            log::info!("the person took the agent desktop from {}", displaced.label);
-        }
-        if self.control.person_using() {
-            self.ends(Ends::Hold, IMPLICIT_HOLD, cx);
-        } else {
-            self.lapse = None;
-        }
-        if self.control.holder != held {
-            cx.notify();
-        }
-    }
-
-    /// The person gives the desktop back: nobody holds it, and an agent may act again.
-    pub fn give_back(&mut self, cx: &mut Context<Self>) {
-        self.lapse = None;
-        self.control.person_gives_back();
-        cx.notify();
-    }
-
-    /// An agent is about to act: refused while the person holds the desktop, and its own
-    /// otherwise, until it has rested [`RESTS_AFTER`].
-    pub fn agent_acts(&mut self, actor: Actor, cx: &mut Context<Self>) -> Result<(), Refused> {
-        let held = self.control.holder.clone();
-        self.control.agent_claims(actor, true, None)?;
-        self.ends(Ends::Rest, RESTS_AFTER, cx);
-        if self.control.holder != held {
-            cx.notify();
-        }
-        Ok(())
-    }
-
     /// Whether the person holds the desktop: an agent's act is refused then.
     pub fn person_holds(&self) -> bool {
-        self.control.person_holds()
-    }
-
-    /// Nobody holds a desktop that's gone.
-    pub(super) fn released(&mut self) {
-        self.control = Control::default();
-        (self.lapse, self.rest) = (None, None);
-    }
-
-    fn end(&mut self, which: Ends) -> &mut Option<(Instant, gpui_kit::Task<()>)> {
-        match which {
-            Ends::Hold => &mut self.lapse,
-            Ends::Rest => &mut self.rest,
-        }
-    }
-
-    /// Has `which` end `after` from now. One task waits on each however often it's asked:
-    /// each asking only moves its deadline on.
-    fn ends(&mut self, which: Ends, after: Duration, cx: &mut Context<Self>) {
-        let until = cx.background_executor().now() + after;
-        if let Some((deadline, _)) = self.end(which) {
-            *deadline = until;
-            return;
-        }
-        let task = cx.spawn(async move |this, cx| {
-            loop {
-                let left = this.update(cx, |this, cx| {
-                    let (until, _) = this.end(which).as_ref()?;
-                    Some(until.saturating_duration_since(cx.background_executor().now()))
-                });
-                match left {
-                    Ok(Some(left)) if !left.is_zero() => {
-                        cx.background_executor().timer(left).await;
-                    }
-                    Ok(Some(_)) => break,
-                    Ok(None) | Err(_) => return,
-                }
-            }
-            let _ = this.update(cx, |this, cx| {
-                *this.end(which) = None;
-                match which {
-                    Ends::Hold => this.control.person_gives_back(),
-                    Ends::Rest => {
-                        if let Some(agent) = this.control.agent().cloned() {
-                            this.control.agent_releases(&agent);
-                        }
-                    }
-                }
-                cx.notify();
-            });
-        });
-        *self.end(which) = Some((until, task));
+        self.lease.control.person_holds()
     }
 }
 
@@ -129,7 +40,7 @@ impl DeskView {
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let (agent, displaced, using) = {
-            let control = &self.desk.read(cx).control;
+            let control = &self.desk.read(cx).lease.control;
             let label = |actor: &Actor| actor.label.clone();
             (
                 control.agent().map(label),

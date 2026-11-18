@@ -4,12 +4,16 @@
 //! record the app's next start goes by), or by letting a real device go, which then locks by its
 //! own setting.
 
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::{inherit, mach};
-use koyo_device_wire::{FromHost, LogLevel, Missing, PROTOCOL, State, Step, ToHost};
+use koyo_device_wire::{
+    FromHost, LogLevel, Missing, PROTOCOL, State, Step, ToHost, read_frame, write_frame,
+};
+use koyo_frame::{End, HELLO_WITHIN, same_token};
 
 use crate::device::Device;
 use crate::gpu::Gpu;
@@ -23,7 +27,6 @@ use crate::start::{self, Phase};
 pub use koyo_device_wire::{ENV_SOCKET_FD, ENV_TOKEN};
 const TICK: Duration = Duration::from_millis(50);
 const BUSY_TICK: Duration = Duration::from_millis(4);
-const HELLO_WITHIN: Duration = Duration::from_secs(10);
 /// The host before may let a first boot finish (up to 400 s) before it shuts the simulator down
 /// and goes: this one waits that out, saying it is starting meanwhile.
 const ALONE_WITHIN: Duration = Duration::from_secs(420);
@@ -131,26 +134,25 @@ fn developer_dir() -> String {
     )
 }
 
-/// The app's hello: its protocol and its mach service, once its token is the one this host was
-/// started with.
-fn hello(link: &Link, token: &str) -> Result<(u32, String, Vec<ToHost>), String> {
-    let started = Instant::now();
-    let mut early = Vec::new();
-    while started.elapsed() < HELLO_WITHIN && !link.closed() {
-        for message in link.take() {
-            match message {
+/// The app's hello: its mach service, once its token is the one this host was started with.
+fn hello(socket: &mut UnixStream, token: &str) -> Result<String, String> {
+    let (given, surfaces) =
+        koyo_frame::hello(socket, HELLO_WITHIN, End::Host, PROTOCOL, |socket| {
+            Ok(read_frame(socket)?.and_then(|said| match said {
                 ToHost::Hello {
                     protocol,
-                    token: given,
+                    token,
                     surfaces,
-                } if given == token => return Ok((protocol, surfaces, early)),
-                ToHost::Hello { .. } => return Err("the app's hello had another token".into()),
-                other => early.push(other),
-            }
-        }
-        link::pump(Duration::from_millis(20));
+                } => Some((protocol, (token, surfaces))),
+                _ => None,
+            }))
+        })
+        .map_err(|error| error.to_string())?;
+    if same_token(&given, token) {
+        Ok(surfaces)
+    } else {
+        Err("the app's hello had another token".into())
     }
-    Err("the app didn't say hello".into())
 }
 
 /// Runs the host until the app says quit or goes away.
@@ -175,19 +177,12 @@ pub fn run(args: &Args) -> Result<(), String> {
     let socket =
         std::env::var(ENV_SOCKET_FD).map_err(|error| format!("{ENV_SOCKET_FD}: {error}"))?;
     let token = std::env::var(ENV_TOKEN).map_err(|error| format!("{ENV_TOKEN}: {error}"))?;
-    let socket = inherit::take(&socket).map_err(|error| format!("no link to the app: {error}"))?;
-    let link = Link::new(socket).map_err(|error| format!("no link to the app: {error}"))?;
-    let (protocol, surfaces, early) = hello(&link, &token)?;
+    let no_link = |error: std::io::Error| format!("no link to the app: {error}");
+    let mut socket = inherit::take(&socket).map_err(no_link)?;
+    write_frame(&mut socket, &FromHost::Hello { protocol: PROTOCOL }).map_err(no_link)?;
+    let surfaces = hello(&mut socket, &token)?;
+    let link = Link::new(socket).map_err(no_link)?;
     let teller = link.teller.clone();
-    teller.tell(&FromHost::Hello {
-        protocol: PROTOCOL,
-        pid: i32::try_from(std::process::id()).unwrap_or_default(),
-    });
-    if protocol != PROTOCOL {
-        return Err(format!(
-            "the app speaks version {protocol} of the link, the host {PROTOCOL}"
-        ));
-    }
     let unavailable = |code, why: String| {
         teller.log(LogLevel::Error, &why);
         teller.tell(&FromHost::State {
@@ -226,9 +221,6 @@ pub fn run(args: &Args) -> Result<(), String> {
     let ring = Ring::new(gpu, teller.clone(), sender);
     crate::text::warm_up();
     let mut host = host(args, teller.clone(), ring).map_err(|(code, why)| unavailable(code, why))?;
-    for message in early {
-        host.hear(message);
-    }
     let looped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         turns(&mut host, &link, args.stats);
     }));
@@ -327,4 +319,31 @@ fn end(host: &mut Host, args: &Args) {
         }
     }
     let _ = std::fs::remove_file(record_path(&args.state, &args.udid));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn heard(protocol: u32, token: &str) -> Result<String, String> {
+        let (mut ours, mut app) = UnixStream::pair().map_err(|error| error.to_string())?;
+        let said = ToHost::Hello {
+            protocol,
+            token: token.into(),
+            surfaces: "svc".into(),
+        };
+        write_frame(&mut app, &said).map_err(|error| error.to_string())?;
+        hello(&mut ours, "secret")
+    }
+
+    #[test]
+    fn the_apps_hello_is_heard_only_with_this_hosts_token_and_protocol() {
+        assert_eq!(heard(PROTOCOL, "secret"), Ok("svc".into()));
+        assert_eq!(heard(PROTOCOL, "secreT"), Err("the app's hello had another token".into()));
+        let mismatch = koyo_frame::Mismatch {
+            app: PROTOCOL + 1,
+            host: PROTOCOL,
+        };
+        assert_eq!(heard(PROTOCOL + 1, "secret"), Err(mismatch.to_string()));
+    }
 }

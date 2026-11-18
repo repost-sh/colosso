@@ -11,6 +11,7 @@ use koyo_device_wire::{
 
 use super::host::Running;
 use super::link::{Link, State};
+use crate::browser::control::Leased as _;
 
 fn screen() -> Screen {
     Screen {

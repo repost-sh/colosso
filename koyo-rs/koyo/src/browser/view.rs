@@ -14,7 +14,7 @@ use gpui_kit::{
 };
 use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Viewport};
 
-use super::control::Control;
+use super::control::Lease;
 use super::dialog::Question;
 use super::dock::{Asked, Devtools};
 use super::find::{ACTUAL_SIZE, FindBar};
@@ -109,11 +109,8 @@ pub struct BrowserView {
     pub(super) browsers: Entity<Browsers>,
     kind: Kind,
     pub(super) page: PageState,
-    /// Who drives the page.
-    pub(super) control: Control,
-    /// When a page the person is only using goes back, unless they act again first, and
-    /// the task that gives it back then (`control::keep_hold`).
-    pub(super) lapse: Option<(Instant, Task<()>)>,
+    /// Who drives the page, and when a page the person is only using goes back to nobody.
+    pub(super) lease: Lease,
     /// The page the pane shows once the host is ready; empty for the start page, which
     /// needs no browser.
     target: String,
@@ -284,8 +281,7 @@ impl BrowserView {
                 url: url.clone(),
                 ..PageState::default()
             },
-            control: Control::default(),
-            lapse: None,
+            lease: Lease::default(),
             target: url,
             viewport: None,
             opened: None,

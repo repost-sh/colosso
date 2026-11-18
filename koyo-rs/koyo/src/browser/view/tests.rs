@@ -5,7 +5,7 @@ use gpui_kit::{AnyWindowHandle, TestAppContext, px, size};
 use koyo_browser_ipc::Dialog;
 
 use super::*;
-use crate::browser::control::Mode;
+use crate::browser::control::{Leased as _, Mode};
 use crate::browser::host::HostStatus;
 use crate::test_support::{draw, in_window};
 
@@ -27,12 +27,12 @@ fn a_new_tab_is_a_start_page_nobody_holds_until_the_person_acts(cx: &mut TestApp
         assert!(view.is_start_page());
         assert_eq!(view.title(), "New tab");
         assert!(!view.is_inspector());
-        assert!(view.control.holder.is_none());
+        assert!(view.lease.control.holder.is_none());
     });
     view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
-    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    view.read_with(cx, |view, _| assert!(view.lease.control.person_holds()));
     view.update(cx, BrowserView::give_back);
-    view.read_with(cx, |view, _| assert!(view.control.holder.is_none()));
+    view.read_with(cx, |view, _| assert!(view.lease.control.holder.is_none()));
 }
 
 #[gpui_kit::test]
@@ -82,21 +82,21 @@ fn a_page_the_person_only_uses_goes_back_once_they_have_been_still_a_while(
     };
     view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
     still(cx, 3);
-    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    view.read_with(cx, |view, _| assert!(view.lease.control.person_holds()));
     view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
     still(cx, 3);
     view.read_with(cx, |view, _| {
-        assert!(view.control.person_holds(), "still at it");
+        assert!(view.lease.control.person_holds(), "still at it");
     });
     still(cx, 2);
     view.read_with(cx, |view, _| {
-        assert!(view.control.holder.is_none(), "gone back");
+        assert!(view.lease.control.holder.is_none(), "gone back");
     });
     view.update(cx, |view, cx| view.person_acts(Mode::Explicit, cx));
     still(cx, 60);
-    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    view.read_with(cx, |view, _| assert!(view.lease.control.person_holds()));
     view.update(cx, BrowserView::give_back);
-    view.read_with(cx, |view, _| assert!(view.control.holder.is_none()));
+    view.read_with(cx, |view, _| assert!(view.lease.control.holder.is_none()));
 }
 
 #[gpui_kit::test]
@@ -261,6 +261,6 @@ fn the_persons_right_click_in_a_page_an_agent_holds_takes_it_back_and_shows_its_
             view.update(cx, |view, cx| view.pressed_at(&press, window, cx));
         })
         .unwrap();
-    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    view.read_with(cx, |view, _| assert!(view.lease.control.person_holds()));
     assert_eq!(gate(cx), Ok(()), "the person's menu shows");
 }

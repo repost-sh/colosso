@@ -105,7 +105,7 @@ impl BrowserView {
             url: self.page.url.clone(),
             title: self.title(),
             loading: self.page.loading,
-            controller: match &self.control.holder {
+            controller: match &self.lease.control.holder {
                 Some(Holder::Human { .. }) => Some("person".to_owned()),
                 Some(Holder::Agent { actor, .. }) => Some(actor.label.clone()),
                 None => None,

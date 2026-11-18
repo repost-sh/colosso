@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # The link's messages and frames, shared with the app.
 koyo-desk-wire = { path = "../koyo-desk-wire" }
+koyo-frame = { path = "../koyo-frame" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Each frame's surface goes to the app as a mach port, on the channel the browser's pages use.

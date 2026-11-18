@@ -16,6 +16,7 @@ use koyo_desk_wire::keys::{self, flags};
 use koyo_desk_wire::link::{Button, DesktopState, Input};
 
 use super::canvas::Canvas;
+use crate::hosted::canvas::Pointed;
 use super::{Desk, State, marks};
 use crate::browser::keys::key_codes;
 use crate::modal::{Button as Push, Tone};
@@ -127,8 +128,10 @@ impl DeskView {
     pub(super) fn send(&mut self, input: Input, cx: &mut Context<Self>) {
         self.desk.update(cx, |desk, cx| desk.input(input, cx));
     }
+}
 
-    pub(super) fn pressed_at(
+impl Pointed for DeskView {
+    fn pressed_at(
         &mut self,
         event: &MouseDownEvent,
         window: &mut Window,
@@ -148,7 +151,7 @@ impl DeskView {
         self.send(input, cx);
     }
 
-    pub(super) fn released_at(&mut self, event: &MouseUpEvent, cx: &mut Context<Self>) {
+    fn released_at(&mut self, event: &MouseUpEvent, cx: &mut Context<Self>) {
         let Some(button) = button_of(event.button) else {
             return;
         };
@@ -166,7 +169,7 @@ impl DeskView {
     /// The pointer moved over the desktop, or with a button it pressed there held. A move
     /// alone doesn't take over: it's the person looking, and reaches the window under it
     /// only while they have control.
-    pub(super) fn moved_to(&mut self, event: &MouseMoveEvent, over: bool, cx: &mut Context<Self>) {
+    fn moved_to(&mut self, event: &MouseMoveEvent, over: bool, cx: &mut Context<Self>) {
         let at = self.desk_point(event.position);
         if let Some(button) = self.pressed {
             self.send(Input::Drag { at, button }, cx);
@@ -175,7 +178,7 @@ impl DeskView {
         }
     }
 
-    pub(super) fn wheel(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
+    fn scrolled(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
         let (dx, dy) = match event.delta {
             ScrollDelta::Pixels(delta) => (delta.x.as_f32(), delta.y.as_f32()),
             ScrollDelta::Lines(delta) => (delta.x * LINE, delta.y * LINE),
@@ -196,6 +199,12 @@ impl DeskView {
         self.send(input, cx);
     }
 
+    fn pressing(&self) -> bool {
+        self.pressed.is_some()
+    }
+}
+
+impl DeskView {
     /// A key that types text goes on to the input method, whose text is sent as text; every
     /// other key (a shortcut, an arrow, a function key) is sent as the key it is.
     fn key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
@@ -353,6 +362,8 @@ impl DeskView {
         Some((message, action.into_iter().collect()))
     }
 }
+
+crate::hosted::typing::typed_as_text!(DeskView, Input);
 
 impl Render for DeskView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

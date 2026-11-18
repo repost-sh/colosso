@@ -1,10 +1,10 @@
-//! The host's end of the link (`docs/agent-desktop.md` 8): it connects to the app's socket,
-//! reads what the app says on a thread of its own, and hands it to the main thread.
+//! The host's end of the link (`docs/agent-desktop.md` 8): once the app has said hello on the
+//! socket the host connected to, what the app says is read on a thread of its own and handed to
+//! the main thread.
 
 use std::collections::VecDeque;
-use std::io;
+use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -20,26 +20,18 @@ pub struct Link {
 }
 
 impl Link {
-    /// Connects to the app.
+    /// The link on `writer`, the socket to the app, its reader started.
     ///
     /// # Errors
-    /// When the socket isn't there or the reader thread can't start.
-    pub fn connect(socket: &Path) -> io::Result<Link> {
-        let writer = UnixStream::connect(socket)?;
-        let mut reader = writer.try_clone()?;
+    /// When the reader thread can't start.
+    pub fn new(writer: UnixStream) -> io::Result<Link> {
+        let reader = writer.try_clone()?;
         let inbox = Arc::new(Mutex::new(VecDeque::new()));
         let closed = Arc::new(AtomicBool::new(false));
         let (told, ended) = (Arc::clone(&inbox), Arc::clone(&closed));
         std::thread::Builder::new()
             .name("desk-link".into())
-            .spawn(move || {
-                while let Ok(Some(message)) = read_frame::<ToHost>(&mut reader) {
-                    (told.lock().unwrap_or_else(PoisonError::into_inner)).push_back(message);
-                    ns::wake();
-                }
-                ended.store(true, Ordering::Relaxed);
-                ns::wake();
-            })?;
+            .spawn(move || hear(reader, &told, &ended))?;
         Ok(Link {
             writer,
             inbox,
@@ -83,5 +75,53 @@ impl Link {
             }
             _ => self.closed.store(true, Ordering::Relaxed),
         }
+    }
+}
+
+/// What the app says, off `reader` into `inbox` until the link ends, which `closed` then says.
+fn hear(reader: impl Read, inbox: &Mutex<VecDeque<ToHost>>, closed: &AtomicBool) {
+    for message in koyo_frame::frames(reader, read_frame::<ToHost>) {
+        (inbox.lock().unwrap_or_else(PoisonError::into_inner)).push_back(message);
+        ns::wake();
+    }
+    closed.store(true, Ordering::Relaxed);
+    ns::wake();
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    struct Counted<'a> {
+        bytes: &'a [u8],
+        reads: &'a Cell<usize>,
+    }
+
+    impl Read for Counted<'_> {
+        fn read(&mut self, into: &mut [u8]) -> io::Result<usize> {
+            self.reads.set(self.reads.get() + 1);
+            self.bytes.read(into)
+        }
+    }
+
+    #[test]
+    fn the_apps_frames_are_read_through_a_buffer() {
+        let said = [true, false, true].map(|visible| ToHost::Visible { visible });
+        let mut bytes = Vec::new();
+        for message in &said {
+            write_frame(&mut bytes, message).unwrap();
+        }
+        let (inbox, closed, reads) = (Mutex::default(), AtomicBool::new(false), Cell::new(0));
+        hear(Counted { bytes: &bytes, reads: &reads }, &inbox, &closed);
+        assert_eq!(Vec::from(inbox.into_inner().unwrap()), said);
+        assert!(closed.load(Ordering::Relaxed));
+        assert!(
+            reads.get() <= said.len(),
+            "{} frames took {} reads: more than one a frame",
+            said.len(),
+            reads.get()
+        );
     }
 }

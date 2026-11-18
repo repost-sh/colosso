@@ -6,17 +6,17 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use futures::StreamExt as _;
-use futures::channel::{mpsc, oneshot};
+use futures::channel::oneshot;
 use gpui_kit::{App, AppContext as _, Context, Entity, EntityId, Global, Task, point, size};
 use koyo_browser_ipc::mach;
 use koyo_desk_wire::link::{
-    Answer, DesktopState, FromHost, Input, Lent, LogLevel, PROTOCOL, Refusal, RefusalCode,
-    RequestId, ToHost, Window,
+    Answer, DesktopState, FromHost, Input, Lent, LogLevel, Refusal, RefusalCode, RequestId,
+    ToHost, Window,
 };
 
-use crate::browser::control::{Control, Mode};
+use crate::browser::control::{Lease, Leased as _, Mode};
 use crate::browser::pointer::Pointer;
+use crate::hosted::host::{Host, follow};
 use crate::settings;
 use crate::sight::{Showable, ShownBy};
 
@@ -29,7 +29,6 @@ mod marks;
 mod notices;
 mod picture;
 pub mod setup;
-mod typing;
 mod view;
 
 pub use asking::{agent_acts, ask};
@@ -65,17 +64,11 @@ pub struct Desk {
     pub picture: Entity<Picture>,
     /// Where an agent last acted, drawn over the desktop.
     pub pointer: Pointer,
-    running: Option<host::Running>,
-    /// What is told once the host runs.
-    queued: Vec<ToHost>,
+    host: Host<ToHost>,
     pending: HashMap<RequestId, oneshot::Sender<Result<Answer, Refusal>>>,
     next: RequestId,
-    /// Who drives the desktop: the person, an agent, or nobody.
-    pub control: Control,
-    /// When the person's hold by acting ends, and an agent's by resting, each with the
-    /// task that waits for it.
-    lapse: Option<(Instant, Task<()>)>,
-    rest: Option<(Instant, Task<()>)>,
+    /// Who drives the desktop: the person, an agent, or nobody, and when their hold ends.
+    pub lease: Lease,
     /// When the person was last sent to System Settings for a grant, the task that looks
     /// for Screen Recording meanwhile, and whether the setup was offered since Koyo started.
     expected: Option<Instant>,
@@ -137,13 +130,10 @@ impl Desk {
             backdrop: None,
             picture: cx.new(|_| Picture::default()),
             pointer: Pointer::default(),
-            running: None,
-            queued: Vec::new(),
+            host: Host::default(),
             pending: HashMap::new(),
             next: 1,
-            control: Control::default(),
-            lapse: None,
-            rest: None,
+            lease: Lease::default(),
             expected: None,
             probing: None,
             offered: false,
@@ -181,67 +171,45 @@ impl Desk {
         };
         self.state = State::Starting;
         cx.notify();
-        let (tell, mut told) = mpsc::unbounded::<host::Incoming>();
-        let started = cx.background_executor().spawn(async move {
-            host::start(&loader, &dir, move |incoming| {
-                let _ = tell.unbounded_send(incoming);
-            })
-        });
         self.starts += 1;
-        let mine = self.starts;
-        cx.spawn(async move |this, cx| {
-            let started = started.await;
-            let running = this.update(cx, |this, cx| this.started(mine, started, cx));
-            if !matches!(running, Ok(true)) {
-                return;
-            }
-            while let Some(first) = told.next().await {
-                let handled = this.update(cx, |this, cx| {
-                    if this.starts != mine {
-                        return false;
-                    }
-                    let mut next = Some(first);
-                    let mut frames = Vec::new();
-                    while let Some(incoming) = next.take() {
-                        match incoming {
-                            host::Incoming::Frame(ring) => frames.push(ring),
-                            other => this.receive(other, cx),
-                        }
-                        next = told.try_recv().ok();
-                    }
-                    this.frames(frames, cx);
-                    true
-                });
-                if !matches!(handled, Ok(true)) {
-                    return;
-                }
-            }
-        })
-        .detach();
+        let start = move |sink| host::start(&loader, &dir, sink);
+        follow(self.starts, |desk: &Desk| desk.starts, start, Desk::started, Desk::heard, cx);
     }
 
-    /// The start numbered `mine` came to its end: its host runs, or it failed.
+    /// What the host said since it was last heard, in order; of the frames, each window's last.
+    fn heard(&mut self, batch: Vec<host::Incoming>, cx: &mut Context<Self>) {
+        let mut frames = Vec::new();
+        for incoming in batch {
+            match incoming {
+                host::Incoming::Ring(ring) => frames.push(ring),
+                other => self.receive(other, cx),
+            }
+        }
+        self.frames(frames, cx);
+    }
+
+    /// The start numbered `mine` came to its end: its host runs, holding `grants`, or it
+    /// failed.
     fn started(
         &mut self,
         mine: u64,
-        started: std::io::Result<host::Running>,
+        started: std::io::Result<(host::Running, Grants)>,
         cx: &mut Context<Self>,
     ) -> bool {
         let current = mine == self.starts && self.state == State::Starting;
         match started {
-            Ok(running) => {
+            Ok((running, grants)) => {
                 if !current {
                     let _ = running.tell.send(ToHost::Quit);
                     return false;
                 }
-                log::info!("the agent desktop's host runs as process {}", running.pid);
-                koyo_seam::heard::desk_host(Some(running.pid));
-                let visible = self.shown_by.any();
-                let _ = (running.tell).send(ToHost::Visible { visible });
-                for message in std::mem::take(&mut self.queued) {
-                    let _ = running.tell.send(message);
+                if let Some(pid) = running.pid {
+                    log::info!("the agent desktop's host runs as process {pid}");
                 }
-                self.running = Some(running);
+                koyo_seam::heard::desk_host(running.pid);
+                let visible = self.shown_by.any();
+                self.host.take(running, ToHost::Visible { visible });
+                self.grants = Some(grants);
                 self.state = State::Running;
                 cx.notify();
                 true
@@ -258,7 +226,7 @@ impl Desk {
 
     /// Tells the host to close the agent's apps, remove the desktop and go.
     pub fn stop(&mut self, cx: &mut Context<Self>) {
-        if let Some(running) = self.running.take() {
+        if let Some(running) = self.host.end() {
             let _ = running.tell.send(ToHost::Quit);
         }
         self.starts += 1;
@@ -275,7 +243,6 @@ impl Desk {
 
     fn fail(&mut self, why: String, cx: &mut Context<Self>) {
         log::warn!("{why}");
-        self.running = None;
         self.forget(&why, cx);
         self.state = State::Failed(why);
         cx.notify();
@@ -287,11 +254,11 @@ impl Desk {
         self.desktop = None;
         self.wanted = None;
         self.lent.clear();
-        self.released();
+        self.lease = Lease::default();
         self.windows.clear();
         self.backdrop = None;
         self.picture.update(cx, Picture::clear);
-        self.queued.clear();
+        self.host.end();
         for (_, answer) in self.pending.drain() {
             let _ = answer.send(Err(Refusal::new(RefusalCode::NoDesktop, why)));
         }
@@ -303,7 +270,7 @@ impl Desk {
                 return self.said(said, cx);
             }
             host::Incoming::Said(said) => self.said(said, cx),
-            host::Incoming::Frame(ring) => self.frames(vec![ring], cx),
+            host::Incoming::Ring(ring) => self.frames(vec![ring], cx),
             host::Incoming::Closed => {
                 if matches!(self.state, State::Starting | State::Running) {
                     self.fail("The agent desktop's host stopped.".into(), cx);
@@ -318,23 +285,7 @@ impl Desk {
 
     fn said(&mut self, said: FromHost, cx: &mut Context<Self>) {
         match said {
-            FromHost::Hello {
-                protocol,
-                accessibility,
-                screen_recording,
-                ..
-            } => {
-                self.grants = Some(Grants {
-                    accessibility,
-                    screen_recording,
-                });
-                if protocol != PROTOCOL {
-                    self.fail(
-                        "This Koyo and its agent desktop host don't match.".into(),
-                        cx,
-                    );
-                }
-            }
+            FromHost::Hello { .. } => {}
             FromHost::Grants {
                 accessibility,
                 screen_recording,
@@ -405,13 +356,7 @@ impl Desk {
     }
 
     fn tell(&mut self, message: ToHost) {
-        match (&self.state, &self.running) {
-            (State::Running, Some(running)) => {
-                let _ = running.tell.send(message);
-            }
-            (State::Starting, _) => self.queued.push(message),
-            _ => {}
-        }
+        self.host.tell(message, self.state == State::Starting);
     }
 
     /// The person pressed "Open Yours": the host starts the app for them, as their own.

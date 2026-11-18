@@ -25,6 +25,7 @@ mod go_to_file;
 mod gradient;
 mod held;
 mod history;
+mod hosted;
 mod kept_file;
 mod key_repeat;
 mod keyboard;

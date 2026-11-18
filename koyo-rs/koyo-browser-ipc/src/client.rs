@@ -91,7 +91,6 @@ fn handshake(
     token: String,
     passkeys: bool,
 ) -> io::Result<(String, String)> {
-    stream.set_read_timeout(Some(START_TIMEOUT))?;
     crate::write_frame(
         stream,
         &Hello {
@@ -100,25 +99,25 @@ fn handshake(
             passkeys,
         },
     )?;
-    let ready = crate::read_frame::<HostEvent>(stream)?;
-    stream.set_read_timeout(None)?;
-    match ready {
-        Some(HostEvent::Ready {
-            protocol,
-            engine,
-            chromium,
-        }) if protocol == PROTOCOL => Ok((engine, chromium)),
-        Some(HostEvent::Ready { protocol, .. }) => Err(io::Error::other(format!(
-            "the browser host speaks protocol {protocol}"
-        ))),
-        Some(HostEvent::Error { message, .. }) => Err(io::Error::other(message)),
-        _ => Err(io::Error::other("the browser host closed during hello")),
-    }
+    koyo_frame::hello(
+        stream,
+        START_TIMEOUT,
+        koyo_frame::End::App,
+        PROTOCOL,
+        |stream| match crate::read_frame::<HostEvent>(stream)? {
+            Some(HostEvent::Ready {
+                protocol,
+                engine,
+                chromium,
+            }) => Ok(Some((protocol, (engine, chromium)))),
+            Some(HostEvent::Error { message, .. }) => Err(io::Error::other(message)),
+            _ => Ok(None),
+        },
+    )
 }
 
 fn read_events(reader: UnixStream, sink: &impl Sink) {
-    let mut reader = io::BufReader::new(reader);
-    while let Ok(Some(event)) = crate::read_frame::<HostEvent>(&mut reader) {
+    for event in koyo_frame::frames(reader, crate::read_frame::<HostEvent>) {
         if sink(Incoming::Event(event)).is_some() {
             return;
         }
@@ -284,5 +283,50 @@ impl Drop for Connection {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use koyo_frame::Mismatch;
+
+    use super::*;
+
+    /// The handshake with a host that answers `answer`, once it has heard the app's hello.
+    fn handshake_with(answer: &HostEvent) -> io::Result<(String, String)> {
+        let (mut app, mut host) = UnixStream::pair()?;
+        crate::write_frame(&mut host, answer)?;
+        let said = handshake(&mut app, "secret".into(), true);
+        let hello = crate::read_frame::<Hello>(&mut host)?;
+        let expected = Hello {
+            protocol: PROTOCOL,
+            token: "secret".into(),
+            passkeys: true,
+        };
+        assert_eq!(hello, Some(expected));
+        said
+    }
+
+    #[test]
+    fn a_host_is_ready_only_in_this_protocol_and_says_why_it_isnt() {
+        let ready = |protocol| HostEvent::Ready {
+            protocol,
+            engine: "1.0".into(),
+            chromium: "140".into(),
+        };
+        let versions = handshake_with(&ready(PROTOCOL)).unwrap();
+        assert_eq!(versions, ("1.0".into(), "140".into()));
+        let refused = handshake_with(&ready(PROTOCOL + 1)).unwrap_err();
+        let mismatch = refused.get_ref().and_then(|inner| inner.downcast_ref::<Mismatch>());
+        let expected = Mismatch {
+            app: PROTOCOL,
+            host: PROTOCOL + 1,
+        };
+        assert_eq!(mismatch, Some(&expected));
+        let error = HostEvent::Error {
+            pane: None,
+            message: "no engine".into(),
+        };
+        assert_eq!(handshake_with(&error).unwrap_err().to_string(), "no engine");
     }
 }

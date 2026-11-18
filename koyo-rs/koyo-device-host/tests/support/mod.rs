@@ -99,6 +99,31 @@ pub struct Driver {
     pub touched: u64,
 }
 
+/// Takes the rings that come from `host`, as the app does, on a thread of its own.
+fn take_rings(receiver: mach::Receiver, host: mach::Process, rings: Arc<Mutex<Vec<Ring>>>) {
+    std::thread::spawn(move || {
+        while let Ok(received) = receiver.receive(host, 200) {
+            let Some(ring) = received else { continue };
+            let surfaces = ring
+                .ports
+                .iter()
+                .filter_map(|&port| {
+                    let surface = IOSurfaceRef::lookup_from_mach_port(port);
+                    mach::release(port);
+                    surface.map(Surface)
+                })
+                .collect();
+            rings
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(Ring {
+                    generation: ring.generation,
+                    surfaces,
+                });
+        }
+    });
+}
+
 pub fn token() -> String {
     format!(
         "{:x}{:x}",
@@ -118,12 +143,8 @@ impl Driver {
         let folder: PathBuf = [env!("KOYO_TARGET_DIR"), "ds-state"].iter().collect();
         let (writer, theirs) = UnixStream::pair().unwrap();
         let token = token();
-        let service = format!(
-            "codes.koyo.device.test.{}.{}",
-            std::process::id(),
-            token.len() + rand_suffix()
-        );
-        let receiver = mach::Receiver::check_in(&service).unwrap();
+        let receiver = mach::Receiver::check_in("codes.koyo.device.test").unwrap();
+        let service = receiver.name().to_owned();
         let mut command = Command::new(env!("CARGO_BIN_EXE_koyo-device-host"));
         match &target.kind {
             Kind::Simulator { set } => command.args(["--simulator", &target.udid, "--set", set]),
@@ -157,27 +178,6 @@ impl Driver {
             }
         });
         let rings = Arc::new(Mutex::new(Vec::new()));
-        let kept = Arc::clone(&rings);
-        std::thread::spawn(move || {
-            while let Ok(received) = receiver.receive(pid, 200) {
-                let Some(ring) = received else { continue };
-                let surfaces = ring
-                    .ports
-                    .iter()
-                    .filter_map(|&port| {
-                        let surface = IOSurfaceRef::lookup_from_mach_port(port);
-                        mach::release(port);
-                        surface.map(Surface)
-                    })
-                    .collect();
-                kept.lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(Ring {
-                        generation: ring.generation,
-                        surfaces,
-                    });
-            }
-        });
         let mut driver = Driver {
             child,
             writer,
@@ -211,6 +211,8 @@ impl Driver {
             ),
             "{hello:?}"
         );
+        let host = mach::Process::at_other_end(&driver.writer).unwrap();
+        take_rings(receiver, host, Arc::clone(&driver.rings));
         driver
     }
 
@@ -428,12 +430,6 @@ impl Drop for Driver {
             let _ = self.child.wait();
         }
     }
-}
-
-fn rand_suffix() -> usize {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |time| time.subsec_nanos() as usize)
 }
 
 /// `simctl --set <set>` from the test, as an agent's own `simctl` would.

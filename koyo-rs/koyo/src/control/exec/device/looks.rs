@@ -67,7 +67,7 @@ pub(super) fn standing(link: &Link) -> (&'static str, Option<String>) {
 
 /// Who drives a device now: an agent's name, or `person`.
 fn controller(link: &Link) -> Option<String> {
-    match &link.control.holder {
+    match &link.lease.control.holder {
         Some(Holder::Human { .. }) => Some("person".into()),
         Some(Holder::Agent { actor, .. }) => Some(actor.label.clone()),
         None => None,

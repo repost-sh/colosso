@@ -261,6 +261,8 @@ Koyo started again at once waits for the last one's host to finish.
 - No codec. A frame's `IOSurface` goes to the app as a mach port (one message a frame, on the
   channel the browser's pages use, `koyo-browser-ipc`'s `mach`), and the app draws it as it is at
   the window's place on a canvas the shape of the desktop, back to front as the host lists them.
+  The app takes a frame only from the process at the other end of the host's socket, by the
+  audit token the kernel gives each (`LOCAL_PEERTOKEN`, the message's trailer).
 - A window that isn't showing is delivered whole about 57 times a second whether or not it
   changed. The host compares each frame with the last (every second point's row) and drops equal
   ones, so a still desktop costs the app nothing; a still window's frame is sent again every 2 s,

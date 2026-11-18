@@ -35,6 +35,7 @@ koyo-project = { path = "../koyo-project" }
 koyo-lsp = { path = "../koyo-lsp" }
 # The browser panes' host process (koyo-rs/koyo-browser-host), talked to over this.
 koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+koyo-frame = { path = "../koyo-frame" }
 # The native layer: the one owner of the seam between GPUI's window and the native views in it.
 koyo-seam = { path = "../koyo-seam" }
 # A search typed into a browser tab's address, encoded as a query: the version `url` (in

@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn frames_round_trip_and_a_clean_end_is_none() {
+fn requests_round_trip_as_frames_of_json() {
     let messages = vec![
         AppRequest::Open {
             pane: 7,
@@ -47,24 +47,6 @@ fn frames_round_trip_and_a_clean_end_is_none() {
             Some(m)
         );
     }
-    assert_eq!(read_frame::<AppRequest>(&mut reader).expect("eof"), None);
-}
-
-#[test]
-fn a_truncated_or_oversized_frame_is_an_error() {
-    let mut buf = Vec::new();
-    write_frame(
-        &mut buf,
-        &HostEvent::Cursor {
-            pane: 1,
-            cursor: Cursor::Text,
-        },
-    )
-    .expect("write");
-    buf.truncate(buf.len() - 1);
-    assert!(read_frame::<HostEvent>(&mut buf.as_slice()).is_err());
-    let huge = u32::try_from(MAX_FRAME + 1).expect("fits").to_le_bytes();
-    assert!(read_frame::<HostEvent>(&mut huge.as_slice()).is_err());
 }
 
 #[test]
@@ -198,19 +180,6 @@ fn dialogs_and_answers_have_stable_wire_names() {
     let unknown: Vec<Permission> =
         serde_json::from_value(serde_json::json!(["camera", "somethingNew"])).expect("json");
     assert_eq!(unknown, [Permission::Camera, Permission::Other]);
-}
-
-#[test]
-fn hello_needs_the_same_protocol_and_token() {
-    let hello = |protocol, token: &str| Hello {
-        protocol,
-        token: token.into(),
-        passkeys: false,
-    };
-    assert!(check_hello(&hello(PROTOCOL, "secret"), "secret").is_ok());
-    assert!(check_hello(&hello(PROTOCOL, "secreT"), "secret").is_err());
-    assert!(check_hello(&hello(PROTOCOL, "secre"), "secret").is_err());
-    assert!(check_hello(&hello(PROTOCOL + 1, "secret"), "secret").is_err());
 }
 
 #[test]

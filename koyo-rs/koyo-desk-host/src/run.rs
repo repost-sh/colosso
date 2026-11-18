@@ -3,12 +3,17 @@
 //! quit or goes away. Everything runs on the main thread, on whose run loop macOS delivers
 //! its notices.
 
+use std::io;
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use koyo_browser_ipc::mach;
 use koyo_desk_wire::link::{FromHost, LogLevel, PROTOCOL, ToHost};
+use koyo_desk_wire::{read_frame, write_frame};
+use koyo_frame::{End, HELLO_WITHIN};
 
 use crate::capture::Streams;
 use crate::desktop;
@@ -18,9 +23,8 @@ use crate::input::Poster;
 use crate::link::Link;
 use crate::ns;
 
-/// How long the loop sleeps when nothing comes, and how long the app gets to say hello.
+/// How long the loop sleeps when nothing comes.
 const TICK: Duration = Duration::from_millis(50);
-const HELLO_WITHIN: Duration = Duration::from_secs(10);
 /// How long it looks for something to hear between two turns of typing.
 const BUSY_TICK: Duration = Duration::from_millis(1);
 /// How long the host before this one gets to finish.
@@ -54,6 +58,39 @@ fn alone(state: &std::path::Path) -> Option<std::fs::File> {
     locked.then_some(file)
 }
 
+/// The app's hello on `stream`: the mach service it names for frames, once it speaks this
+/// host's protocol. It is read on a thread of its own while this one's run loop runs, as it
+/// runs through every other wait of the host's, so what macOS delivers there meanwhile is
+/// served.
+fn hello(stream: &UnixStream) -> io::Result<String> {
+    let mut reading = stream.try_clone()?;
+    let (heard, hearing) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("desk-hello".into())
+        .spawn(move || {
+            let said =
+                koyo_frame::hello(&mut reading, HELLO_WITHIN, End::Host, PROTOCOL, |stream| {
+                    Ok(read_frame(stream)?.and_then(|said| match said {
+                        ToHost::Hello { protocol, surfaces } => Some((protocol, surfaces)),
+                        _ => None,
+                    }))
+                });
+            let _ = heard.send(said);
+            ns::wake();
+        })?;
+    let mut said = None;
+    ns::pump_until(HELLO_WITHIN + TICK, || {
+        said = hearing.try_recv().ok();
+        said.is_some()
+    });
+    said.unwrap_or_else(|| {
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "the app didn't say hello in time",
+        ))
+    })
+}
+
 /// Runs the host against the app's socket until the app says quit or goes away.
 ///
 /// # Errors
@@ -71,31 +108,18 @@ pub fn run(socket: &std::path::Path, state: PathBuf, counting: bool) -> Result<(
         libc::signal(libc::SIGINT, handler);
     }
     crate::ax::answer_within_a_second();
-    let mut link = Link::connect(socket).map_err(|error| format!("no link to the app: {error}"))?;
-    let mut hello = None;
-    let mut early = Vec::new();
-    ns::pump_until(HELLO_WITHIN, || {
-        for message in link.take() {
-            match message {
-                ToHost::Hello { protocol, surfaces } => hello = Some((protocol, surfaces)),
-                other => early.push(other),
-            }
-        }
-        hello.is_some() || link.closed()
-    });
-    let (protocol, surfaces) = hello.ok_or("the app didn't say hello")?;
+    let no_link = |error: io::Error| format!("no link to the app: {error}");
+    let mut stream = UnixStream::connect(socket).map_err(no_link)?;
     let grants = Grants::read();
-    link.tell(&FromHost::Hello {
+    let ours = FromHost::Hello {
         protocol: PROTOCOL,
         pid: i32::try_from(std::process::id()).unwrap_or_default(),
         accessibility: grants.accessibility,
         screen_recording: grants.screen_recording,
-    });
-    if protocol != PROTOCOL {
-        return Err(format!(
-            "the app speaks version {protocol} of the link, the host {PROTOCOL}"
-        ));
-    }
+    };
+    write_frame(&mut stream, &ours).map_err(no_link)?;
+    let surfaces = hello(&stream).map_err(|error| error.to_string())?;
+    let link = Link::new(stream).map_err(no_link)?;
     let poster = Poster::new().ok_or("no event source")?;
     let _alone =
         alone(&state).ok_or("another agent desktop host is still at work on this folder")?;
@@ -108,12 +132,7 @@ pub fn run(socket: &std::path::Path, state: PathBuf, counting: bool) -> Result<(
     if host.grants.accessibility {
         desktop::remove_leftovers(&host.state);
     }
-    objc2::rc::autoreleasepool(|_| {
-        host.make_desktop();
-        for message in early {
-            host.hear(message);
-        }
-    });
+    objc2::rc::autoreleasepool(|_| host.make_desktop());
     let looped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         while !host.ending() && !ENDING.load(Ordering::Relaxed) {
             objc2::rc::autoreleasepool(|_| {
@@ -133,3 +152,6 @@ pub fn run(socket: &std::path::Path, state: PathBuf, counting: bool) -> Result<(
         format!("the host's loop panicked: {said}")
     })
 }
+
+#[cfg(test)]
+mod tests;

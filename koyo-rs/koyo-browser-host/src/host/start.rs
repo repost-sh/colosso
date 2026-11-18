@@ -4,9 +4,20 @@ use super::{WRITER, chromium_version, engine_version, read_requests, send, with}
 use cef::args::Args;
 use cef::{CefString, Settings};
 use koyo_browser_ipc::{self as ipc, HostEvent};
+use koyo_frame::{End, HELLO_WITHIN};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::Mutex;
+
+/// Tells the app why its hello was refused, and hands that on.
+fn refuse(stream: &mut UnixStream, why: &str) -> String {
+    let refused = HostEvent::Error {
+        pane: None,
+        message: why.to_owned(),
+    };
+    let _ = ipc::write_frame(stream, &refused);
+    why.to_owned()
+}
 
 fn env(name: &str) -> Result<String, String> {
     std::env::var(name)
@@ -14,21 +25,20 @@ fn env(name: &str) -> Result<String, String> {
 }
 
 /// Says hello on the app's socket: reads the app's, checks it, and keeps the socket for
-/// events. The reader's end comes back.
+/// events. The reader's end comes back. A hello refused is refused to the app too, saying why.
 fn connect(mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
-    let hello: ipc::Hello = ipc::read_frame(&mut stream)
-        .map_err(|e| format!("hello: {e}"))?
-        .ok_or("the app closed before hello")?;
-    if let Err(message) = ipc::check_hello(&hello, token) {
-        let _ = ipc::write_frame(
-            &mut stream,
-            &HostEvent::Error {
-                pane: None,
-                message: message.clone(),
-            },
-        );
-        return Err(message);
-    }
+    let heard = koyo_frame::hello(
+        &mut stream,
+        HELLO_WITHIN,
+        End::Host,
+        ipc::PROTOCOL,
+        |stream| Ok(ipc::read_frame::<ipc::Hello>(stream)?.map(|hello| (hello.protocol, hello))),
+    );
+    let hello = match heard {
+        Ok(hello) if koyo_frame::same_token(&hello.token, token) => hello,
+        Ok(_) => return Err(refuse(&mut stream, "The browser host refused the connection.")),
+        Err(error) => return Err(refuse(&mut stream, &error.to_string())),
+    };
     crate::passkeys::enable(hello.passkeys);
     let reader = stream.try_clone().map_err(|e| e.to_string())?;
     let _ = WRITER.set(Mutex::new(stream));
@@ -168,4 +178,50 @@ pub(crate) fn quit() {
         return;
     }
     cef::quit_message_loop();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_hello_of_another_protocol_or_token_is_refused_and_the_app_told_why() {
+        let hello = |protocol, token: &str| ipc::Hello {
+            protocol,
+            token: token.into(),
+            passkeys: false,
+        };
+        for given in [hello(ipc::PROTOCOL + 1, "secret"), hello(ipc::PROTOCOL, "secreT")] {
+            let (mut app, host) = UnixStream::pair().unwrap();
+            ipc::write_frame(&mut app, &given).unwrap();
+            let why = connect(host, "secret").unwrap_err();
+            let told = ipc::read_frame::<HostEvent>(&mut app).unwrap();
+            assert!(
+                matches!(&told, Some(HostEvent::Error { pane: None, message }) if *message == why),
+                "refused for {why:?}, the app told {told:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_app_of_another_protocol_is_told_whose_version_is_which() {
+        let (mut app, host) = UnixStream::pair().unwrap();
+        let hello = ipc::Hello {
+            protocol: ipc::PROTOCOL + 1,
+            token: "secret".into(),
+            passkeys: false,
+        };
+        ipc::write_frame(&mut app, &hello).unwrap();
+        let _ = connect(host, "secret");
+        let told = ipc::read_frame::<HostEvent>(&mut app).unwrap();
+        let mismatch = koyo_frame::Mismatch {
+            app: ipc::PROTOCOL + 1,
+            host: ipc::PROTOCOL,
+        }
+        .to_string();
+        assert!(
+            matches!(&told, Some(HostEvent::Error { message, .. }) if *message == mismatch),
+            "{told:?}"
+        );
+    }
 }

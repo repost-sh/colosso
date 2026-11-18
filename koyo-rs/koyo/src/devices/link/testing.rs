@@ -19,8 +19,8 @@ impl Link {
 
     /// The host's process, while one runs: the live pictures kill it to see the restart.
     #[cfg(feature = "visual-check")]
-    pub fn pid(&self) -> Option<u32> {
-        self.running.as_ref().map(|running| running.pid)
+    pub fn pid(&self) -> Option<i32> {
+        self.host.running.as_ref().and_then(|running| running.pid)
     }
 
     /// For tests elsewhere in the app: a stand-in host, ready with `screen`; what the app tells it

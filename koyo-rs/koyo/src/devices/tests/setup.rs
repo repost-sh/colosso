@@ -10,7 +10,7 @@ use super::super::setup::{self, Setup, Step};
 use super::super::view::{Chosen, DeviceView};
 use super::super::{Devices, Simulator, devices};
 use super::screen;
-use crate::browser::control::Actor;
+use crate::browser::control::{Actor, Leased as _};
 use crate::modal;
 use crate::test_support::{draw, repo, select, shell_with};
 

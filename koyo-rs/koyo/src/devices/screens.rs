@@ -9,7 +9,7 @@ use koyo_device_wire::{Mark, Missing, Step};
 
 use super::link::Link;
 use super::view::DeviceView;
-use crate::browser::control::Holder;
+use crate::browser::control::{Holder, Leased as _};
 use crate::held::Held;
 use crate::modal::{Button as Push, Tone};
 use crate::theme::Palette;
@@ -163,7 +163,7 @@ impl DeviceView {
         };
         let link = link.read(cx);
         matches!(link.standing(), super::Standing::Ended { missing: Some(Missing::Xcode), .. })
-            && !matches!(link.control.holder, Some(Holder::Agent { .. }))
+            && !matches!(link.lease.control.holder, Some(Holder::Agent { .. }))
     }
 
     /// The browser's own pill at the pane's foot: who has the device while it's contested, with
@@ -173,7 +173,7 @@ impl DeviceView {
         let link = self.link.as_ref()?;
         let (name, contested) = {
             let link = link.read(cx);
-            let (name, control) = (&link.name, &link.control);
+            let (name, control) = (&link.name, &link.lease.control);
             let contested = if let Some(agent) = control.agent() {
                 Some((format!("{} is using {name}", agent.label), true))
             } else if let Some(displaced) = &control.displaced {
