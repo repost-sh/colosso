@@ -125,6 +125,7 @@ actions!(
 /// window's, heard wherever the keyboard is (`launcher::OpenAddress`).
 pub fn init(cx: &mut App, may: crate::blocking::Blocking<'_>) {
     profiles::init(cx, may);
+    host::folder::drop_cleared(cx);
     cx.on_action(|SetDevtoolsDock(dock): &SetDevtoolsDock, cx| {
         crate::settings::update(cx, |settings| settings.devtools.dock = *dock);
     });

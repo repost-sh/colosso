@@ -12,7 +12,6 @@ koyo/src/arc/avatar.rs 1
 koyo/src/browser/dialog.rs 1
 koyo/src/browser/engine.rs 1
 koyo/src/browser/extensions.rs 1
-koyo/src/browser/host.rs 1
 koyo/src/browser/native/probe.rs 3
 koyo/src/browser/native/probe/keys.rs 1
 koyo/src/chat/attachments.rs 9
@@ -31,7 +30,7 @@ koyo/src/devices/host.rs 4
 koyo/src/devices/simulators.rs 7
 koyo/src/files/markdown/diagram.rs 1
 koyo/src/files/open.rs 1
-koyo/src/hosted/link.rs 4
+koyo/src/hosted/link.rs 2
 koyo/src/language/edits.rs 2
 koyo/src/language/server_log.rs 3
 koyo/src/language/status.rs 1

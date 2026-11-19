@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{AppContext as _, Entity, TestAppContext};
+use gpui_kit::{Entity, TestAppContext};
 
 use super::{Kept, KeptCheckout, KeptPane, KeptProject, KeptTree, SAVE_DELAY};
 use crate::blocking::in_test;
@@ -17,6 +17,7 @@ mod back;
 mod kinds;
 mod loose;
 mod pinned;
+mod quit;
 
 /// What the window's file at `path` holds, as a launch reads it.
 pub(super) fn read_file(path: &Path) -> Kept {
@@ -317,47 +318,6 @@ fn tabs_wait_for_their_checkout_and_go_with_it_or_its_project(cx: &mut TestAppCo
     assert_eq!(left.checkouts.len(), 1);
     assert_eq!(left.checkouts[0].checkout, root);
     assert_eq!(left.projects.len(), 1);
-}
-
-#[gpui_kit::test]
-fn a_change_still_settling_is_written_when_the_app_quits(cx: &mut TestAppContext) {
-    let root = repo("kept-window-quit", &[("README.md", "hi\n")]);
-    let path = file("kept-window-quit-file", &Kept::default());
-    let (window, shell) = shell_with(&[&root], cx);
-    launch(&shell, &path, &[&root], cx);
-    select(&shell, &root, cx);
-    open_page(window, &shell, Some("https://example.com/"), cx);
-    cx.run_until_parked();
-    assert!(!path.exists(), "written a moment later");
-
-    cx.quit();
-
-    assert_eq!(
-        read_file(&path),
-        main_with(&root, 0, &[page("https://example.com/", "example.com")])
-    );
-}
-
-#[gpui_kit::test]
-fn a_window_closed_then_the_app_quit_keeps_what_was_due_as_it_closed(cx: &mut TestAppContext) {
-    let root = repo("kept-window-close-quit", &[("README.md", "hi\n")]);
-    let path = file("kept-window-close-quit-file", &Kept::default());
-    let (window, shell) = shell_with(&[&root], cx);
-    launch(&shell, &path, &[&root], cx);
-    select(&shell, &root, cx);
-    open_page(window, &shell, Some("https://example.com/"), cx);
-    cx.run_until_parked();
-    assert!(!path.exists(), "written a moment later");
-
-    drop(shell);
-    cx.update_window(window, |_, window, _| window.remove_window())
-        .unwrap();
-    cx.quit();
-
-    assert_eq!(
-        read_file(&path),
-        main_with(&root, 0, &[page("https://example.com/", "example.com")])
-    );
 }
 
 #[gpui_kit::test]

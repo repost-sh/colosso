@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use futures::channel::oneshot;
-use gpui_kit::App;
+use gpui_kit::{App, Global};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -20,6 +20,8 @@ use crate::blocking::{self, Blocking};
 mod writer;
 
 pub use writer::Writers;
+#[cfg(test)]
+pub(crate) use writer::{WAITS, stuck::Stuck};
 
 /// What's in the JSON file at `path`; `None` when there's none, or it can't be read, which is
 /// said.
@@ -89,13 +91,30 @@ pub fn write_later(
 /// still waiting to be written.
 pub fn write_on_quit(
     cx: &mut App,
-    mut take: impl FnMut(&mut App) -> Option<(PathBuf, Vec<u8>)> + 'static,
+    take: impl FnMut(&mut App) -> Option<(PathBuf, Vec<u8>)> + 'static,
 ) {
-    blocking::on_quit(cx, move |may, cx| {
-        write_due(take(cx), cx);
-        Writers::of(cx).settle(may);
-    });
+    if !cx.has_global::<DueAtQuit>() {
+        blocking::on_quit(cx, |may, cx| {
+            let mut takes = std::mem::take(&mut cx.default_global::<DueAtQuit>().0);
+            for take in &mut takes {
+                write_due(take(cx), cx);
+            }
+            Writers::of(cx).settle(may);
+        });
+    }
+    cx.default_global::<DueAtQuit>().0.push(Box::new(take));
 }
+
+/// What gives each kept file's write due as the app quits: all are handed to their writers
+/// first, then the writes settle once, so a write stuck on the disk is waited on once
+/// however many files the app keeps.
+#[derive(Default)]
+struct DueAtQuit(Vec<Take>);
+
+/// What a kept file has due, taken as the app quits: where, and the JSON.
+type Take = Box<dyn FnMut(&mut App) -> Option<(PathBuf, Vec<u8>)>>;
+
+impl Global for DueAtQuit {}
 
 /// Hands `json` to the writer of the file at `path`; what it returns is ready once the file
 /// holds it, or what was handed after it.
@@ -130,7 +149,7 @@ mod tests {
 
     use gpui_kit::{App, Global, TestAppContext};
 
-    use super::{KeptFile, encode, write_later};
+    use super::{KeptFile, Stuck, WAITS, encode, write_later};
     use crate::blocking::in_test;
     use crate::test_support::scratch;
 
@@ -200,6 +219,31 @@ mod tests {
         });
         cx.run_until_parked();
         assert_eq!(read(&path), Some(vec!["two".to_owned()]));
+    }
+
+    #[gpui_kit::test]
+    fn the_app_quitting_waits_once_on_a_stuck_write_however_many_files_it_keeps(
+        cx: &mut TestAppContext,
+    ) {
+        let folder = scratch("kept-file-quit-stuck");
+        let disk = Stuck::writing(&folder.join("stuck.json"), "1");
+        cx.update(|cx| cx.set_global(disk.writers.clone()));
+        let files = ["one", "two", "three"].map(|name| folder.join(format!("{name}.json")));
+        cx.update(|cx| {
+            for path in files.clone() {
+                super::write_on_quit(cx, move |_| Some((path.clone(), encode(&["kept"])?)));
+            }
+        });
+
+        let began = std::time::Instant::now();
+        cx.quit();
+        let waited = began.elapsed();
+
+        assert!(waited < WAITS * 3 / 2, "quitting waited {waited:?}");
+        for path in &files {
+            let kept = read::<Vec<String>>(path);
+            assert_eq!(kept, Some(vec!["kept".to_owned()]), "{}", path.display());
+        }
     }
 
     #[test]

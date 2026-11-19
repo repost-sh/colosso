@@ -6,7 +6,7 @@ use super::{Header, MACH_MSG_PORT_DESCRIPTOR, MACH_MSGH_BITS_COMPLEX, Received};
 pub(super) const MACH_MSG_OOL_DESCRIPTOR: u8 = 1;
 pub(super) const MACH_MSG_OOL_PORTS_DESCRIPTOR: u8 = 2;
 pub(super) const MACH_MSG_OOL_VOLATILE_DESCRIPTOR: u8 = 3;
-const MACH_MSG_GUARDED_PORT_DESCRIPTOR: u8 = 4;
+pub(super) const MACH_MSG_GUARDED_PORT_DESCRIPTOR: u8 = 4;
 
 unsafe extern "C" {
     fn mach_msg_destroy(msg: *mut Header);

@@ -1,7 +1,8 @@
 use std::os::unix::net::UnixStream;
 
 use super::refused::{
-    MACH_MSG_OOL_DESCRIPTOR, MACH_MSG_OOL_PORTS_DESCRIPTOR, MACH_MSG_OOL_VOLATILE_DESCRIPTOR,
+    MACH_MSG_GUARDED_PORT_DESCRIPTOR, MACH_MSG_OOL_DESCRIPTOR, MACH_MSG_OOL_PORTS_DESCRIPTOR,
+    MACH_MSG_OOL_VOLATILE_DESCRIPTOR,
 };
 use super::*;
 
@@ -219,6 +220,70 @@ fn a_ring_is_a_message_as_the_sender_makes_it_and_nothing_else() {
     for (how, message) in otherwise {
         assert_eq!(verdict_on(KERN_SUCCESS, message, us()), Verdict::Refused, "{how}");
     }
+}
+
+/// A received descriptor's disposition for a receive right, and for a send-once right.
+const MACH_MSG_TYPE_PORT_RECEIVE: u8 = 16;
+const MACH_MSG_TYPE_PORT_SEND_ONCE: u8 = 18;
+
+#[test]
+fn a_ring_brings_a_send_right_or_nothing_in_each_slot_and_no_other_right() {
+    let changed = |change: fn(&mut SurfacesMessage)| {
+        let mut message = sent();
+        change(&mut message);
+        message
+    };
+    let otherwise = [
+        ("memory in a slot", changed(|m| m.ports[0].kind = MACH_MSG_OOL_DESCRIPTOR)),
+        ("a port array in a slot", changed(|m| m.ports[1].kind = MACH_MSG_OOL_PORTS_DESCRIPTOR)),
+        ("a guarded port", changed(|m| m.ports[0].kind = MACH_MSG_GUARDED_PORT_DESCRIPTOR)),
+        ("memory in an empty slot", changed(|m| m.ports[2].kind = MACH_MSG_OOL_DESCRIPTOR)),
+        ("a receive right", changed(|m| m.ports[0].disposition = MACH_MSG_TYPE_PORT_RECEIVE)),
+        ("a send-once right", changed(|m| m.ports[1].disposition = MACH_MSG_TYPE_PORT_SEND_ONCE)),
+        ("a reply port", changed(|m| m.header.remote_port = 7)),
+        ("a voucher", changed(|m| m.header.voucher_port = 7)),
+    ];
+    let taken: Vec<&str> = (otherwise.into_iter())
+        .filter(|(_, message)| verdict_on(KERN_SUCCESS, *message, us()) != Verdict::Refused)
+        .map(|(how, _)| how)
+        .collect();
+    assert_eq!(taken, [""; 0], "taken as rings");
+    let empty = changed(|m| m.ports[2].disposition = MACH_MSG_TYPE_PORT_RECEIVE);
+    assert_eq!(verdict_on(KERN_SUCCESS, empty, us()), Verdict::Ring, "an empty slot");
+}
+
+#[test]
+fn memory_in_a_rings_slot_from_the_host_frees_none_of_the_receivers_own_rights() {
+    #[repr(C, packed(4))]
+    struct MemoryFirst {
+        header: Header,
+        descriptor_count: u32,
+        memory: [u8; 16],
+        ports: [PortDescriptor; 2],
+        pane: u64,
+        count: u32,
+    }
+    assert_eq!(size_of::<MemoryFirst>(), size_of::<SurfacesMessage>());
+    let receiver = Receiver::check_in(SERVICE).expect("check in");
+    let sender = Sender::look_up(receiver.name()).expect("look up");
+    let own = new_port().expect("port");
+    let bytes = vec![0u8; own as usize];
+    let empty = PortDescriptor {
+        kind: MACH_MSG_PORT_DESCRIPTOR,
+        ..PortDescriptor::default()
+    };
+    let mut message = MemoryFirst {
+        header: Header::default(),
+        descriptor_count: u32::from(crate::RING),
+        memory: out_of_line(MACH_MSG_OOL_DESCRIPTOR, KEPT, 0, address_of(&bytes), own),
+        ports: [empty; 2],
+        pane: 0,
+        count: 1,
+    };
+    send_raw(&sender, &mut message, MACH_MSGH_BITS_COMPLEX | MACH_MSG_TYPE_COPY_SEND, 0);
+    let taken = receiver.receive(us(), 1_000).expect("receive");
+    assert_eq!(send_refs(own), 1, "the memory's size named a right of the receiver's, now lost");
+    assert_eq!(taken, None, "memory was taken as a ring");
 }
 
 #[test]

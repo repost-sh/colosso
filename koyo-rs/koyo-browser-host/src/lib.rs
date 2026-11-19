@@ -29,7 +29,7 @@ mod pending;
 
 use std::process::ExitCode;
 
-pub use host::{forget_profile, keeps_profile};
+pub use host::{drop_cleared, forget_profile, keeps_profile};
 
 /// Whether this engine was packaged without a release signature: its
 /// Info.plist says so, and a signed bundle's Info.plist is sealed. Inside Koyo's process the

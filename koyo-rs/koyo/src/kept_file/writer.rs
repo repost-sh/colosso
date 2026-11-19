@@ -11,22 +11,41 @@ use crate::blocking::{self, Blocking};
 
 /// How long the app quitting, or a window opening again, waits on a write that's running
 /// before it goes on without it.
-const WAITS: Duration = Duration::from_secs(1);
+pub(crate) const WAITS: Duration = Duration::from_secs(1);
 
 /// The one writer of each file the app keeps: a write lands after those handed to it before,
 /// and one still waiting when the next comes is dropped for it, as the next holds what it did.
 /// Writes run on the background executor; what's still waiting when the app quits is written
-/// there and then, once the write running ends ([`Writers::settle`]).
+/// there and then, each file's once the write of it running ends ([`Writers::settle`]).
 #[derive(Clone, Default)]
 pub struct Writers(Arc<Shared>);
 
 impl Global for Writers {}
 
-#[derive(Default)]
 struct Shared {
     files: Mutex<HashMap<PathBuf, File>>,
     /// Told each time a write ends.
     ended: Condvar,
+    /// How a file is written: [`write_atomic`], or a test's stand-in for the disk.
+    write: Write,
+}
+
+type Write = Box<dyn Fn(&Path, &[u8], Blocking<'_>) + Send + Sync>;
+
+impl Default for Shared {
+    fn default() -> Self {
+        Self::writing_with(Box::new(write_atomic))
+    }
+}
+
+impl Shared {
+    fn writing_with(write: Write) -> Self {
+        Shared {
+            files: Mutex::default(),
+            ended: Condvar::new(),
+            write,
+        }
+    }
 }
 
 /// One file's writes.
@@ -55,9 +74,21 @@ impl Writers {
     /// ends, unless a later one comes first. What it returns is ready once the file holds it,
     /// or the later one.
     pub fn write(&self, path: PathBuf, json: Vec<u8>, cx: &App) -> oneshot::Receiver<()> {
+        let (told, drain) = self.hand(path.clone(), json);
+        if drain {
+            let writers = self.clone();
+            blocking::spawn(cx.background_executor(), move |may| writers.drain(&path, may))
+                .detach();
+        }
+        told
+    }
+
+    /// Hands `json` to `path`'s writer: what's ready once the file holds it, and whether a
+    /// drain is to start, as none is under way for the file.
+    fn hand(&self, path: PathBuf, json: Vec<u8>) -> (oneshot::Receiver<()>, bool) {
         let (landed, told) = oneshot::channel();
         let mut files = self.files();
-        let file = files.entry(path.clone()).or_default();
+        let file = files.entry(path).or_default();
         match &mut file.next {
             Some(due) => {
                 due.json = json;
@@ -70,13 +101,9 @@ impl Writers {
                 });
             }
         }
-        if !file.draining {
-            file.draining = true;
-            let writers = self.clone();
-            blocking::spawn(cx.background_executor(), move |may| writers.drain(&path, may))
-                .detach();
-        }
-        told
+        let drain = !file.draining;
+        file.draining = true;
+        (told, drain)
     }
 
     /// Writes what's waiting for `path` until nothing is.
@@ -100,38 +127,37 @@ impl Writers {
     }
 
     /// Writes everything waiting, once the writes running end, waiting on them for `WAITS`
-    /// at most: as the app quits, and before a window opening again reads its files.
+    /// at most: as the app quits, and before a window opening again reads its files. A file
+    /// still being written then is gone on without, and its write waiting with it; every other
+    /// file's waiting write lands.
     pub fn settle(&self, may: Blocking<'_>) {
         let until = Instant::now() + WAITS;
-        let being_written = |files: &HashMap<PathBuf, File>| {
-            (files.iter()).find_map(|(path, file)| file.writing.then(|| path.clone()))
-        };
         let mut files = self.files();
         loop {
-            while let Some(path) = being_written(&files) {
-                let left = until.saturating_duration_since(Instant::now());
-                if left.is_zero() {
-                    log::warn!("{} was still being written: going on without it", path.display());
-                    return;
-                }
-                let waited = self.0.ended.wait_timeout(files, left);
-                files = waited.unwrap_or_else(PoisonError::into_inner).0;
+            if let Some((path, due)) = next_to_land(&mut files) {
+                drop(files);
+                self.land(&path, due, may);
+                files = self.files();
+                continue;
             }
-            let next = (files.iter_mut())
-                .find_map(|(path, file)| Some((path.clone(), file.next.take()?, file)));
-            let Some((path, due, file)) = next else {
+            if !files.values().any(|file| file.writing) {
                 return;
-            };
-            file.writing = true;
-            drop(files);
-            self.land(&path, due, may);
-            files = self.files();
+            }
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                for path in (files.iter()).filter_map(|(path, file)| file.writing.then_some(path)) {
+                    log::warn!("{} was still being written: going on without it", path.display());
+                }
+                return;
+            }
+            let waited = self.0.ended.wait_timeout(files, left);
+            files = waited.unwrap_or_else(PoisonError::into_inner).0;
         }
     }
 
     /// Writes `due` to `path`, which is noted as being written, and tells who waits on it.
     fn land(&self, path: &Path, due: Due, may: Blocking<'_>) {
-        write_atomic(path, &due.json, may);
+        (self.0.write)(path, &due.json, may);
         if let Some(file) = self.files().get_mut(path) {
             file.writing = false;
         }
@@ -145,3 +171,17 @@ impl Writers {
         self.0.files.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
+
+/// The write waiting for a file not being written now, if there's one, the file noted as being
+/// written.
+fn next_to_land(files: &mut HashMap<PathBuf, File>) -> Option<(PathBuf, Due)> {
+    let (path, file) = (files.iter_mut()).find(|(_, file)| !file.writing && file.next.is_some())?;
+    let due = file.next.take()?;
+    file.writing = true;
+    Some((path.clone(), due))
+}
+
+#[cfg(test)]
+pub(super) mod stuck;
+#[cfg(test)]
+mod tests;

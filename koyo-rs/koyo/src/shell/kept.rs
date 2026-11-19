@@ -14,7 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gpui_kit::{App, Context, Global};
+use gpui_kit::{App, Context, Global, WeakEntity};
 use serde::{Deserialize, Serialize};
 
 use super::Shell;
@@ -152,6 +152,17 @@ impl KeptWindow {
     }
 }
 
+/// The shell made last, whose window and pinned pages are written as the app quits.
+struct Quitting(WeakEntity<Shell>);
+
+impl Global for Quitting {}
+
+impl Quitting {
+    fn shell(cx: &App) -> Option<WeakEntity<Shell>> {
+        Some(cx.try_global::<Self>()?.0.clone())
+    }
+}
+
 /// Told how opening the window again went.
 type Opened = Box<dyn FnOnce(&gpui_kit::Result<()>, &mut App)>;
 
@@ -240,17 +251,20 @@ impl Shell {
 
     /// Has the window and the pinned pages written as the app quits, and as the window
     /// closes, if a write of either is due then: handed to their files' writers as it closes,
-    /// written with everything else waiting as the app quits.
+    /// written with everything else waiting as the app quits. Asked once for the app, as the
+    /// first shell is made, of the shell made last, the window's: a shell gone has handed
+    /// what was due as it closed.
     pub(super) fn keep_on_the_way_out(cx: &mut Context<Self>) {
+        if !cx.has_global::<Quitting>() {
+            kept_file::write_on_quit(cx, |cx| {
+                Quitting::shell(cx)?.update(cx, |shell, cx| shell.window_due(cx)).ok().flatten()
+            });
+            kept_file::write_on_quit(cx, |cx| {
+                Quitting::shell(cx)?.update(cx, |shell, _| shell.pinned_due()).ok().flatten()
+            });
+        }
         let shell = cx.weak_entity();
-        blocking::on_quit(cx, move |may, cx| {
-            if let Ok(dues) = shell.update(cx, |shell, cx| shell.what_is_due(cx)) {
-                for due in dues {
-                    kept_file::write_due(due, cx);
-                }
-            }
-            kept_file::Writers::of(cx).settle(may);
-        });
+        cx.set_global(Quitting(shell));
         cx.on_release(|shell, cx| {
             for due in shell.what_is_due(cx) {
                 kept_file::write_due(due, cx);
@@ -259,7 +273,8 @@ impl Shell {
         .detach();
     }
 
-    /// What's due to be written of the window and the pinned pages, taken now.
+    /// What's due to be written of the window and the pinned pages, taken now, as the window
+    /// closes.
     fn what_is_due(&mut self, cx: &App) -> [Option<(PathBuf, Vec<u8>)>; 2] {
         [self.window_due(cx), self.pinned_due()]
     }

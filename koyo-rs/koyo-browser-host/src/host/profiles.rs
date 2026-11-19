@@ -59,7 +59,7 @@ pub fn forget_profile(root: &Path, name: &str) -> std::io::Result<()> {
 /// Deletes the folders of profiles cleared before, which were still open when they were
 /// cleared, and of profiles deleted, and takes them off Chrome's list of profiles, which it
 /// would make again from. Before CEF opens the root, and not on a thread that mustn't wait.
-pub(crate) fn drop_cleared(root: &Path) {
+pub fn drop_cleared(root: &Path) {
     let now = generation(root);
     let listed = std::fs::read_to_string(root.join(DELETED)).unwrap_or_default();
     let deleted: Vec<&str> = listed
