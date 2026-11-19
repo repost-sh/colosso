@@ -473,8 +473,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
    **Built**: `chat_backdrop/layout.rs`, `place` and `decode_longest`, tested for each
    layout of 3.2 and for the pixels a picture is decoded at.
 2. Reading each screen's wallpaper and its options; making the picture: decoded, laid out,
-   dimmed, compressed to ASTC, its encode time measured. **Built**: `wallpaper.rs` (read on
-   the main thread, as AppKit asks of its screens), `make.rs` and `astc.rs`, tested by
+   dimmed, compressed to ASTC, its encode time measured. **Built**: `wallpaper.rs` (named on
+   the main thread, as AppKit asks of its screens; its file read off it through
+   `blocking::spawn`, `screens.rs`), `make.rs` and `astc.rs`, tested by
    compressing a picture and reading its blocks back; times in section 9.
 3. The renderer's texture mark, and the chat view drawing the picture cropped to its pane.
    Screenshots of the real app on this checkout. **Built**: the mark (section 4), the

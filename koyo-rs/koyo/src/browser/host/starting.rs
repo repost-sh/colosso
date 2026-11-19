@@ -1,6 +1,7 @@
-//! Starting the host: launched off the main thread, its panes told only once it's taken a
-//! while. It starts once while Koyo runs, in Koyo's own process (`browser/native`): one that
-//! fails to start, or stops, leaves its panes saying why.
+//! Starting the host: launched off the main thread, once what was under way on the profiles'
+//! folder is done with it (`folder.rs`), its panes told only once it's taken a while. It
+//! starts once while Koyo runs, in Koyo's own process (`browser/native`): one that fails to
+//! start, or stops, leaves its panes saying why.
 
 use std::time::Instant;
 
@@ -34,7 +35,9 @@ impl Browsers {
         self.asked_at = Some((Instant::now(), false));
         self.notify_views(cx);
         let (tell, mut told) = mpsc::unbounded::<Incoming>();
+        let readied = super::folder::readied(cx);
         let started = cx.background_executor().spawn(async move {
+            readied.await;
             let sink = move |message: Incoming| {
                 tell.unbounded_send(message)
                     .err()

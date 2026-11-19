@@ -18,7 +18,10 @@ use koyo_browser_ipc::{AppRequest, PaneId};
 use super::view::BrowserView;
 
 mod events;
+pub(super) mod folder;
 mod starting;
+#[cfg(test)]
+mod tests;
 
 /// How long a quitting host may take to close its pages.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
@@ -132,8 +135,9 @@ fn profiles(_: &App) -> Option<std::path::PathBuf> {
     super::engine::profiles()
 }
 
-/// Has the folders of the profile of this id go as the engine next starts: they can't from
-/// under a running Chromium, and one deleted has no page left open in it to need them now.
+/// Has the folders of the profile of this id go as the app next launches, or the engine next
+/// starts: they can't from under a running Chromium, and one deleted has no page left open in
+/// it to need them now.
 pub(super) fn forget_profile(id: &str, cx: &App) {
     let Some(root) = profiles(cx) else {
         return;
@@ -396,25 +400,15 @@ impl Browsers {
     /// engine starts once a run and can't be stopped under its pages: it's asked to move every
     /// profile to a fresh folder, and closes its pages, which open again as the views hear of
     /// it (`page_closed`); one starting is asked once it runs. With no engine, nothing holds
-    /// the profiles, and their folder goes.
+    /// the profiles, and their folder goes, moved aside before an engine can start in it
+    /// (`folder.rs`).
     pub fn clear_data(&mut self, cx: &mut Context<Self>) {
         if matches!(self.host, Host::Running { .. } | Host::Starting) {
             self.reopening = self.views.keys().copied().collect();
             self.send(AppRequest::ClearData);
             return;
         }
-        let Some(profiles) = profiles(cx) else {
-            return;
-        };
-        cx.background_executor()
-            .spawn(async move {
-                match std::fs::remove_dir_all(&profiles) {
-                    Ok(()) => {}
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => log::warn!("couldn't clear {}: {error}", profiles.display()),
-                }
-            })
-            .detach();
+        folder::clear(cx);
     }
 
     /// The profiles changed: each open page whose project is on another profile now closes,

@@ -234,14 +234,32 @@ fn verdict(kr: KernReturn, buffer: &Received, sender: Process) -> Verdict {
 }
 
 /// Whether `message` is a ring as [`Sender::send`] makes one: only then is the trailer where
-/// the buffer has it, and the ports what the message says.
+/// the buffer has it, and the ports what the message says. It brings a send right or nothing
+/// in each slot, and no reply port or voucher.
 fn wellformed(message: &SurfacesMessage) -> bool {
     let header = message.header;
     header.size as usize == size_of::<SurfacesMessage>()
         && header.id == SURFACES_ID
         && header.bits & MACH_MSGH_BITS_COMPLEX != 0
+        && header.remote_port == 0
+        && header.voucher_port == 0
         && message.descriptor_count == u32::from(crate::RING)
+        && message.ports.iter().all(PortDescriptor::send_right_or_none)
         && message.count <= u32::from(crate::RING)
+}
+
+impl PortDescriptor {
+    /// Whether it's a port descriptor as received with a send right, or with no port.
+    fn send_right_or_none(&self) -> bool {
+        let Self {
+            name,
+            disposition,
+            kind,
+            ..
+        } = *self;
+        kind == MACH_MSG_PORT_DESCRIPTOR
+            && (name == 0 || u32::from(disposition) == MACH_MSG_TYPE_MOVE_SEND)
+    }
 }
 
 /// The app's end: a checked-in service that receives surface rings.
