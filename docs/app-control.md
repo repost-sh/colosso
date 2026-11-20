@@ -753,7 +753,8 @@ Accounts, and `settings_set` doesn't reach them (a test holds the catalog to it)
 
 ```
 settings_get [read] R {} → the allowlisted settings, camelCase
-settings_set [settings] I { appearance?: "system"|"light"|"dark", layout?, previewFiles?,
+settings_set [settings] I { appearance?: "system"|"light"|"dark", layout?,
+             loosePages?: "per_space"|"shared", previewFiles?,
              saveScope?: "shown"|"all", inlayHints?, semanticColouring?, sidebarOpenOnLaunch?,
              worktreesDir?: path|null, branchPrefix?: { githubUser } | { custom } | { none },
              mostLanguageServers?: int|null, stopIdleLanguageServers?, sidebarWidth?,

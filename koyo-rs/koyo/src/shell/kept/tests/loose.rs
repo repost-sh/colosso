@@ -8,7 +8,7 @@ use super::super::loose::{KeptLoose, KeptSpace};
 use super::pinned::relaunched;
 use super::{Kept, read_file, written};
 use crate::browser::NO_PROJECT;
-use crate::settings::{self, Layout};
+use crate::settings::{self, Layout, LoosePages};
 use crate::test_support::{draw, open_page, repo, scratch, select, shell_with};
 
 fn kept(url: &str, title: &str, project: &str) -> KeptLoose {
@@ -17,6 +17,7 @@ fn kept(url: &str, title: &str, project: &str) -> KeptLoose {
         title: title.into(),
         project: project.into(),
         session: koyo_browser_ipc::Session::default(),
+        shown_in: Vec::new(),
     }
 }
 
@@ -121,7 +122,7 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
     let loose = |cx: &TestAppContext| {
         cx.read(|cx| {
             let workspace = &back.read(cx).workspace;
-            let pages = (workspace.loose().iter())
+            let pages = (workspace.loose().into_iter())
                 .map(|page| page.tab.first().address().unwrap_or_default().to_owned());
             (pages.collect::<Vec<_>>(), workspace.loose_shown())
         })
@@ -145,4 +146,97 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
         count, 3,
         "the first space's two, and the one from the space that's gone"
     );
+}
+
+#[gpui_kit::test]
+fn shared_loose_pages_come_back_shared_in_their_order_and_each_in_its_space_per_space(
+    cx: &mut TestAppContext,
+) {
+    let root = repo("kept-loose-shared", &[("README.md", "hi\n")]);
+    let window_file = scratch("kept-loose-shared-file").join("window.json");
+    let (window, shell) = shell_with(&[&root], cx);
+    let ids = cx.update(|cx| {
+        settings::update(cx, |settings| {
+            settings.layout = Layout::Arc;
+            settings.loose_pages = LoosePages::Shared;
+            settings.add_space();
+        });
+        let spaces = &settings::get(cx).spaces;
+        (spaces[0].id, spaces[1].id)
+    });
+    shell.update(cx, |shell, cx| {
+        shell.keep_window_at(&window_file);
+        shell.show_space(0, cx);
+    });
+    select(&shell, &root, cx);
+    let opened = |url: &'static str, cx: &mut TestAppContext| {
+        (cx.update_window(window, |_, window, cx| {
+            shell.update(cx, |shell, cx| {
+                let opened = shell.open_page(Some(url.into()), (true, false), None, window, cx);
+                opened.expect("a loose page opens with no checkout to open it on")
+            })
+        }))
+        .unwrap()
+    };
+    let a = opened("https://a.example/", cx);
+    opened("https://c.example/", cx);
+    shell.update(cx, |shell, cx| {
+        shell.show_space(1, cx);
+        shell.show_tab_holding(a, cx);
+    });
+    opened("https://b.example/", cx);
+    shell.update(cx, |shell, cx| shell.show_tab_holding(a, cx));
+    draw(window, cx);
+
+    let file = written(&window_file, cx);
+    let filed: Vec<_> = (file.spaces.iter())
+        .map(|kept| (kept.space, kept.shown, kept.tabs.len()))
+        .collect();
+    assert_eq!(
+        filed,
+        [(ids.0, None, 1), (ids.1, None, 1), (ids.0, Some(0), 1)],
+        "each page under its own space, as a build before reads them"
+    );
+    assert_eq!(
+        file.spaces[0].tabs[0].shown_in,
+        [ids.1],
+        "a, shown in the other space"
+    );
+
+    let addresses = |shell: &gpui_kit::Entity<crate::shell::Shell>, cx: &TestAppContext| {
+        cx.read(|cx| {
+            let workspace = &shell.read(cx).workspace;
+            let pages = (workspace.loose().into_iter())
+                .map(|page| page.tab.first().address().unwrap_or_default().to_owned());
+            (pages.collect::<Vec<_>>(), workspace.loose_shown())
+        })
+    };
+    let all = [
+        "https://a.example/",
+        "https://b.example/",
+        "https://c.example/",
+    ]
+    .map(String::from);
+    let back = relaunched(&window_file, cx);
+    assert_eq!(addresses(&back, cx), (all.to_vec(), Some(0)), "a, shown");
+    back.update(cx, |shell, cx| shell.show_space(0, cx));
+    assert_eq!(addresses(&back, cx), (all.to_vec(), Some(2)), "c, shown");
+
+    for open in [&shell, &back] {
+        open.update(cx, |shell, _| shell.workspace.select_project(None));
+    }
+    cx.update(|cx| settings::update(cx, |settings| settings.loose_pages = LoosePages::PerSpace));
+    let apart = relaunched(&window_file, cx);
+    apart.update(cx, |shell, cx| shell.show_space(1, cx));
+    assert_eq!(
+        addresses(&apart, cx),
+        (vec!["https://b.example/".to_owned()], None),
+        "it showed a, which is the other space's"
+    );
+    apart.update(cx, |shell, cx| shell.show_space(0, cx));
+    let first = vec![
+        "https://a.example/".to_owned(),
+        "https://c.example/".to_owned(),
+    ];
+    assert_eq!(addresses(&apart, cx), (first, Some(1)));
 }

@@ -87,9 +87,9 @@ impl Workspace {
         };
         match spot {
             Spot::Checkout(project, branch, _) if beside(project, branch) => 0,
-            Spot::Loose(space) if space == self.space_shown() && self.loose_shown().is_some() => 0,
+            Spot::Loose(space) if self.lists_loose_of(space) && self.loose_shown().is_some() => 0,
             Spot::Checkout(project, ..) if self.active_project() == Some(project) => 1,
-            Spot::Loose(space) if space == self.space_shown() => 1,
+            Spot::Loose(space) if self.lists_loose_of(space) => 1,
             Spot::Checkout(..) | Spot::Loose(_) | Spot::Pinned => 2,
         }
     }
@@ -157,11 +157,9 @@ impl Workspace {
             tab: &pinned.tab,
             spot: Spot::Pinned,
         });
-        let loose = self.loose_by_space().flat_map(|(space, pages, _)| {
-            pages.iter().map(move |page| Visited {
-                tab: &page.tab,
-                spot: Spot::Loose(space),
-            })
+        let loose = self.loose_filed().map(|(space, page)| Visited {
+            tab: &page.tab,
+            spot: Spot::Loose(space),
         });
         let open = (self.projects.iter().enumerate()).flat_map(|(project, held)| {
             (held.branches.iter().enumerate()).flat_map(move |(branch, unit)| {

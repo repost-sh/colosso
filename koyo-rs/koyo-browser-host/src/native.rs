@@ -384,6 +384,7 @@ pub(crate) fn off_screen(pane: PaneId) -> bool {
 pub(crate) fn on_screen(pane: PaneId, visible: bool) {
     let changed = page(pane, |entry| std::mem::replace(&mut entry.on_screen, visible) != visible);
     if changed == Some(true) {
+        crate::sight::shown(pane, visible);
         settle(pane);
     }
 }

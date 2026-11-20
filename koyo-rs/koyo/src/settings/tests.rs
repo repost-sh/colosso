@@ -317,6 +317,24 @@ fn the_pinned_tabs_zone_shows_until_a_person_puts_it_away_which_is_kept() {
 }
 
 #[test]
+fn loose_pages_are_each_spaces_until_a_person_shares_them_which_is_kept() {
+    use super::LoosePages;
+    let missing: Settings = serde_json::from_str("{}").unwrap();
+    assert_eq!(
+        missing.loose_pages,
+        LoosePages::PerSpace,
+        "a file from before"
+    );
+    let shared = Settings {
+        loose_pages: LoosePages::Shared,
+        ..Settings::default()
+    };
+    let json = serde_json::to_value(&shared).unwrap();
+    assert_eq!(json["loose_pages"], "Shared");
+    assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), shared);
+}
+
+#[test]
 fn the_search_engine_is_google_until_a_person_picks_another_which_is_kept() {
     use crate::browser::SearchEngine;
     let missing: Settings = serde_json::from_str("{}").unwrap();

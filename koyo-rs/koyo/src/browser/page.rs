@@ -7,7 +7,7 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Bounds, Context, DispatchPhase, Div, Element, ElementId, Entity, GlobalElementId,
+    App, Bounds, Context, Corners, DispatchPhase, Div, Element, ElementId, Entity, GlobalElementId,
     Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _, LayoutId,
     MouseDownEvent, ParentElement as _, Pixels, Stateful, Style, Styled as _, Window, div, fill,
     relative, white,
@@ -32,6 +32,14 @@ pub struct PageSurface {
     pub blank: bool,
     pub palette: Palette,
 }
+
+/// The island the page is on where the element is drawn, as it was when last prepainted around
+/// it. A frame that builds the page again and not the shell draws the shell from the frame
+/// before, the island where it was, and prepaints the page alone, outside any island: there the
+/// page is on the island it last saw. Kept with the element, so a page drawn somewhere else, full
+/// screen, starts on none.
+#[derive(Default)]
+struct Island(Option<Bounds<Pixels>>);
 
 /// Where the page shows in the element, and what's there to point at.
 pub struct Placed {
@@ -93,6 +101,10 @@ impl Element for PageSurface {
             (laid, mode.is_some(), free, placed, view.pane, view.is_open(cx))
         };
         let shown = laid.1;
+        let rounded = Self::rounded(pane, shown, window, cx);
+        if self.view.read(cx).rounded != rounded {
+            self.view.update(cx, |view, _| view.rounded = rounded);
+        }
         if !placed {
             self.view.update(cx, |view, cx| {
                 view.place_page(laid, bounds.size, window, cx);
@@ -115,7 +127,7 @@ impl Element for PageSurface {
             open,
             #[cfg(all(target_os = "macos", not(test)))]
             native: (open && !self.covered)
-                .then(|| self.place_native(pane, shown, window, cx)),
+                .then(|| self.place_native(pane, shown, rounded, window, cx)),
         }
     }
 
@@ -175,6 +187,27 @@ impl Element for PageSurface {
 }
 
 impl PageSurface {
+    /// Which of the corners of a page over `shown` its view rounds: those it shares with the
+    /// island it's on, as the island said where it is when last prepainted around the page
+    /// ([`Island`]).
+    fn rounded(
+        pane: koyo_browser_ipc::PaneId,
+        shown: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Corners<bool> {
+        let key = ElementId::NamedInteger("browser-page-island".into(), pane);
+        let island = window.use_keyed_state(key, cx, |_, _| Island::default());
+        let island = match theme::card::prepainted() {
+            Some(now) => {
+                island.update(cx, |island, _| island.0 = Some(now));
+                Some(now)
+            }
+            None => island.read(cx).0,
+        };
+        island.map_or_else(Corners::default, |island| theme::card::shared_corners(shown, island))
+    }
+
     /// The native view of `pane`'s page put over `shown`, for a page that's open with no notice
     /// over it. As the element is prepainted, with its hitbox, not as it's painted: once a frame
     /// is prepainted GPUI notes where the window's native views are, and what of its own a
@@ -188,6 +221,7 @@ impl PageSurface {
         &self,
         pane: koyo_browser_ipc::PaneId,
         shown: Bounds<Pixels>,
+        rounded: Corners<bool>,
         window: &mut Window,
         cx: &mut App,
     ) -> Entity<crate::native::surface::Kept<super::native::NativePage>> {
@@ -199,7 +233,7 @@ impl PageSurface {
                 .ok()
         });
         if let Some(native) = kept.read(cx).0.as_ref() {
-            native.place(shown, clip, window);
+            native.place(shown, clip, rounded, window);
         }
         kept
     }
@@ -263,3 +297,6 @@ impl BrowserView {
         input::edits(page, cx)
     }
 }
+
+#[cfg(test)]
+mod tests;

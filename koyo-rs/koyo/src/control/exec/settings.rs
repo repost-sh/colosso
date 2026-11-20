@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use gpui_kit::App;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::settings::{
-    Appearance, BranchPrefix, Devtools, DevtoolsDock, SaveScope, SettingsSetInput, SettingsValues,
+    Appearance, BranchPrefix, Devtools, DevtoolsDock, LoosePages, SaveScope, SettingsSetInput,
+    SettingsValues,
 };
 use koyo_app_control::ops::shared::Layout;
 use serde_json::Value;
@@ -26,6 +27,10 @@ pub(crate) fn values(settings: &Settings) -> SettingsValues {
             ThemePreference::Dark => Appearance::Dark,
         },
         layout: settings.layout.into(),
+        loose_pages: match settings.loose_pages {
+            settings::LoosePages::PerSpace => LoosePages::PerSpace,
+            settings::LoosePages::Shared => LoosePages::Shared,
+        },
         preview_files: settings.preview_files,
         save_scope: match settings.save_scope {
             settings::SaveScope::Shown => SaveScope::Shown,
@@ -132,6 +137,12 @@ pub(crate) fn set(input: SettingsSetInput, cx: &mut App) -> Result<Value, Contro
         }
         if let Some(layout) = input.layout {
             settings.layout = layout.into();
+        }
+        if let Some(pages) = input.loose_pages {
+            settings.loose_pages = match pages {
+                LoosePages::PerSpace => settings::LoosePages::PerSpace,
+                LoosePages::Shared => settings::LoosePages::Shared,
+            };
         }
         if let Some(scope) = input.save_scope {
             settings.save_scope = match scope {

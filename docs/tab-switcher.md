@@ -18,9 +18,9 @@ check runs it in real windows off screen (section 7).
   those that were: as the window comes back, with only the tab shown looked at, ⌃⇥ still goes
   among the tabs that are open. **[asked]** The nearest come first, each lot in the order
   it's listed in: **[ours]**
-  1. the tabs beside the one shown: its worktree's, or its space's loose pages;
-  2. the rest of what the sidebar lists: the space's loose pages, the open project's
-     worktrees;
+  1. the tabs beside the one shown: its worktree's, or the loose pages the space lists;
+  2. the rest of what the sidebar lists: the space's loose pages (every space's, while
+     they're shared, `docs/arc-sidebar.md` 11.3), the open project's worktrees;
   3. other projects' tabs, and other spaces' loose pages.
 - A pinned page is listed once it's been looked at: until then it's a tile, with no page
   open (`docs/arc-sidebar.md` 11.7). **[ours]**
@@ -64,7 +64,8 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
   two for its own Spaces. **[ours]**
 - Showing a tab of another project or space shows that project in its space, as a tab picked
   in the sidebar does: a worktree's tab leaves a pinned or a loose page for it, a loose page
-  of another space shows that space, and a pinned page shows over whatever space is shown.
+  the space shown doesn't list shows its own space, and a pinned page shows over whatever
+  space is shown.
   The tab picked takes the keyboard (`docs/arc-sidebar.md` 9).
 - With the keyboard in a browser page, the page's view hears ⌃ let go in GPUI's place; the
   window hands GPUI each change of the modifiers all the same (`docs/native-pages.md` 6), so

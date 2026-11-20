@@ -90,6 +90,7 @@ wrap_client! {
             }
             if crate::session::from_renderer(self.pane, message)
                 || crate::tone::from_renderer(self.pane, message)
+                || crate::sight::from_renderer(self.pane, frame, message)
             {
                 return 1;
             }

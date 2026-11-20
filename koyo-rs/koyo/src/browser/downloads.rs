@@ -3,7 +3,7 @@
 //! Downloads folder under a name nothing there has, `report (1).pdf` beside `report.pdf` as
 //! Chrome names them, or where the person picks in the system's save panel when Settings →
 //! Browser says to ask: never for a page an agent drives, nor one whose tab is closed. The
-//! address field's downloads button opens the list (`panel.rs`).
+//! downloads button in the window's top bar opens the list (`button.rs`, `panel.rs`).
 
 use std::path::{Path, PathBuf};
 
@@ -15,10 +15,15 @@ use super::host::Browsers;
 use super::view::BrowserView;
 use crate::blocking::{self, Blocking};
 
+mod button;
 mod panel;
-pub(super) use panel::button;
+pub use button::{CameOrWent, DownloadsButton, ToggleDownloads};
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "visual-check")]
+mod visual;
+#[cfg(feature = "visual-check")]
+pub use visual::run as check;
 
 /// Which download.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +88,8 @@ pub(super) struct Downloads {
     list: Vec<Entry>,
     /// The PDFs saved so far, which number the next.
     pdfs: u64,
+    /// How many downloads have started this run, which the button marks the arrival of.
+    arrivals: u64,
     /// Where downloads go without asking, in a test: a folder of its own.
     #[cfg(test)]
     pub(super) folder: Option<PathBuf>,
@@ -106,6 +113,11 @@ impl Downloads {
     pub(super) fn listed(cx: &App) -> &[Entry] {
         cx.try_global::<GlobalDownloads>()
             .map_or(&[], |global| global.0.read(cx).list.as_slice())
+    }
+
+    /// How many downloads have started this run.
+    pub(super) fn arrivals(cx: &App) -> u64 {
+        cx.try_global::<GlobalDownloads>().map_or(0, |global| global.0.read(cx).arrivals)
     }
 
     fn entry(&mut self, key: Key) -> Option<&mut Entry> {
@@ -153,6 +165,7 @@ impl Downloads {
             stage: Stage::Placing,
             by,
         });
+        self.arrivals += 1;
         cx.notify();
         if ask {
             let panel = cx.prompt_for_new_path(&self.folder(cx), Some(&name));
@@ -298,6 +311,7 @@ impl Downloads {
             stage: Stage::Going,
             by: None,
         });
+        self.arrivals += 1;
         send(AppRequest::Print { pane, print }, cx);
         cx.notify();
     }

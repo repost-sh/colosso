@@ -1,16 +1,18 @@
-//! The downloads button at the end of a page's address field, there once something was
-//! downloaded, and the list it opens: each download with how far it's come, a way to cancel
-//! one coming in, and, once done, to open its file or show it in the Finder.
+//! The list the top bar's downloads button opens (`button.rs`), as Safari's: each download
+//! with its file's kind, its name, and how it stands (how much has come of how much, done,
+//! failed and why, canceled); Show in Finder while its file is there and Cancel while it comes
+//! in; a press on a done one's row opens its file. Clear takes off what has ended.
+
+use std::path::Path;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, ElementId, FontWeight, Hsla,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Render, Size, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px, relative, size,
+    App, Context, Div, FontWeight, Hsla, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement as _, Pixels, Render, Size, Stateful, StatefulInteractiveElement as _, Styled as _,
+    Subscription, Window, div, px, relative, size,
 };
-use koyo_browser_ipc::PaneId;
 
 use super::{Downloads, Entry, Key, Stage, size as bytes};
 use crate::browser::site::Tones;
@@ -25,52 +27,6 @@ const PAD: f32 = 6.;
 const TITLE: f32 = 28.;
 const ROW: f32 = 46.;
 const MOST: usize = 8;
-
-/// The downloads button of `pane`'s address field, `tint` its icon's colour while nothing
-/// comes in, with a bar under it as far as what's coming has come; none before the first
-/// download.
-pub(in crate::browser) fn button(pane: PaneId, tint: Hsla, cx: &App) -> Option<AnyElement> {
-    let listed = Downloads::listed(cx);
-    if listed.is_empty() {
-        return None;
-    }
-    let p = theme::palette(cx);
-    let coming: Vec<&Entry> = listed.iter().filter(|entry| !entry.stage.ended()).collect();
-    let share = share(&coming);
-    let trigger = menu::Trigger::new(ElementId::NamedInteger("downloads-menu".into(), pane));
-    let open = trigger.is_open(cx);
-    let face = div()
-        .id(("downloads", pane))
-        .debug_selector(|| "downloads-button".to_owned())
-        .relative()
-        .size(px(22.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(6.))
-        .cursor_pointer()
-        .hover(move |button| button.bg(p.hover))
-        .when(open, |button| button.bg(p.selected))
-        .child(icon(IconName::Download, 14.).text_color(if coming.is_empty() { tint } else { p.accent }))
-        .children(share.map(|share| {
-            div()
-                .absolute()
-                .left(px(5.))
-                .bottom(px(2.))
-                .h(px(2.))
-                .w(px(12. * share))
-                .rounded_full()
-                .bg(p.accent)
-        }))
-        .tooltip(|window, cx| Tooltip::new("Downloads").build(window, cx));
-    let opens = trigger.clone();
-    let element = trigger.wraps(face, move |_, window, cx| {
-        cx.stop_propagation();
-        let at = opens.clone();
-        opens.toggle_panel(|cx| cx.new(|cx| DownloadsPanel::new(at, cx)), window, cx);
-    });
-    Some(element.into_any_element())
-}
 
 /// How much of what's coming has come, while the server said how much each is.
 pub(super) fn share(coming: &[&Entry]) -> Option<f32> {
@@ -91,9 +47,9 @@ pub(super) fn status(entry: &Entry) -> String {
             None => bytes(entry.received),
         },
         Stage::Done if matches!(entry.key, Key::Pdf(_)) => "Saved as a PDF".to_owned(),
-        Stage::Done => bytes(entry.received),
+        Stage::Done => format!("{} · Done", bytes(entry.received)),
         Stage::Canceled => "Canceled".to_owned(),
-        Stage::Failed(reason) => reason.clone(),
+        Stage::Failed(reason) => format!("Failed · {reason}"),
     };
     format!("{said}{by}")
 }
@@ -105,7 +61,7 @@ pub(super) struct DownloadsPanel {
 }
 
 impl DownloadsPanel {
-    fn new(at: menu::Trigger, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new(at: menu::Trigger, cx: &mut Context<Self>) -> Self {
         let downloads = Downloads::global(cx);
         let changed = cx.observe(&downloads, |_, _, cx| cx.notify());
         DownloadsPanel { at, _changed: changed }
@@ -115,11 +71,8 @@ impl DownloadsPanel {
         let key = entry.key;
         let path = entry.path.clone();
         let done = entry.stage == Stage::Done;
-        let mark = match entry.stage {
-            Stage::Failed(_) | Stage::Canceled => IconName::CircleX,
-            _ if matches!(key, Key::Pdf(_)) => IconName::FileText,
-            _ => IconName::FileDown,
-        };
+        let engine = matches!(key, Key::Engine { .. });
+        let there = done || (entry.stage == Stage::Going && engine);
         let bar = (entry.stage == Stage::Going).then(|| {
             let share = share(&[entry]).unwrap_or(0.);
             div().mt(px(3.)).h(px(3.)).w_full().rounded_full().bg(t.off).child(
@@ -134,25 +87,23 @@ impl DownloadsPanel {
             .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).truncate().child(entry.name.clone()))
             .child(div().text_size(px(11.)).text_color(t.muted).truncate().child(status(entry)))
             .children(bar);
-        let side = if done {
-            path.clone().map(|path| {
-                Self::side(("download-reveal", index), IconName::FolderSearch, "Show in Finder", t)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        cx.reveal_path(&path);
-                        this.at.close(cx);
-                    }))
-            })
-        } else if !entry.stage.ended() && matches!(key, Key::Engine { .. }) {
-            Some(Self::side(("download-cancel", index), IconName::X, "Cancel", t).on_click(cx.listener(
+        let reveal = path.clone().filter(|_| there).map(|path| {
+            Self::side(("download-reveal", index), IconName::Search, "Show in Finder", t).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    cx.reveal_path(&path);
+                    this.at.close(cx);
+                }),
+            )
+        });
+        let cancel = (!entry.stage.ended() && engine).then(|| {
+            Self::side(("download-cancel", index), IconName::X, "Cancel", t).on_click(cx.listener(
                 move |_, _, _, cx| {
                     cx.stop_propagation();
                     Downloads::global(cx).update(cx, |downloads, cx| downloads.cancel(key, cx));
                 },
-            )))
-        } else {
-            None
-        };
+            ))
+        });
         div()
             .id(("download", index))
             .debug_selector(move || format!("download-{index}"))
@@ -163,9 +114,10 @@ impl DownloadsPanel {
             .px(px(6.))
             .rounded(px(8.))
             .when(done, |row| row.cursor_pointer().hover(move |row| row.bg(t.hover)))
-            .child(icon(mark, 18.).text_color(t.muted))
+            .child(icon(kind(&entry.name), 20.).text_color(t.muted))
             .child(text)
-            .children(side)
+            .children(reveal)
+            .children(cancel)
             .when_some(path.filter(|_| done), |row, path| {
                 row.on_click(cx.listener(move |this, _, _, cx| {
                     cx.open_with_system(&path);
@@ -175,8 +127,10 @@ impl DownloadsPanel {
     }
 
     fn side(id: (&'static str, usize), mark: IconName, says: &'static str, t: Tones) -> Stateful<Div> {
+        let (name, at) = id;
         div()
             .id(id)
+            .debug_selector(move || format!("{name}-{at}"))
             .size(px(24.))
             .flex_shrink_0()
             .flex()
@@ -188,6 +142,26 @@ impl DownloadsPanel {
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .tooltip(move |window, cx| Tooltip::new(says).build(window, cx))
             .child(icon(mark, 14.).text_color(t.text))
+    }
+}
+
+/// The mark of a file of `name`, by the kind its extension says it is, as the Finder's icons
+/// tell kinds apart.
+fn kind(name: &str) -> IconName {
+    let extension = Path::new(name).extension().and_then(|extension| extension.to_str());
+    match extension.unwrap_or_default().to_ascii_lowercase().as_str() {
+        "pdf" | "txt" | "md" | "rtf" | "doc" | "docx" | "pages" | "epub" => IconName::FileText,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "svg" | "tif" | "tiff" | "avif" => {
+            IconName::FileImage
+        }
+        "zip" | "gz" | "tgz" | "bz2" | "xz" | "zst" | "7z" | "rar" | "tar" | "dmg" | "pkg"
+        | "iso" => IconName::FileArchive,
+        "mp3" | "wav" | "m4a" | "aac" | "flac" | "ogg" | "aiff" => IconName::FileMusic,
+        "mp4" | "mov" | "m4v" | "webm" | "mkv" | "avi" => IconName::FileVideoCamera,
+        "csv" | "tsv" | "xls" | "xlsx" | "numbers" => IconName::FileSpreadsheet,
+        "json" | "js" | "ts" | "rs" | "py" | "html" | "css" | "sh" | "xml" | "yaml" | "yml"
+        | "toml" | "swift" | "go" => IconName::FileCode,
+        _ => IconName::File,
     }
 }
 
@@ -234,7 +208,12 @@ impl Render for DownloadsPanel {
                 .text_color(t.muted)
                 .hover(move |button| button.bg(t.hover))
                 .child("Clear")
-                .on_click(|_, _, cx| Downloads::global(cx).update(cx, Downloads::clear))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    Downloads::global(cx).update(cx, Downloads::clear);
+                    if Downloads::listed(cx).is_empty() {
+                        this.at.close(cx);
+                    }
+                }))
         });
         let title = div()
             .h(px(TITLE))

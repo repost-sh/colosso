@@ -222,6 +222,10 @@ fn main() -> ExitCode {
         return theme::visual::run();
     }
     #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-downloads") {
+        return browser::check_downloads();
+    }
+    #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-arc") {
         return arc::visual::run();
     }

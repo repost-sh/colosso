@@ -295,8 +295,7 @@ pub(crate) fn rescope(cx: &mut App) {
 pub(crate) fn prune(shell: &Shell, cx: &mut App) {
     asks::forget_over(cx.background_executor().now(), cx);
     let workspace = &shell.workspace;
-    let loose = (workspace.loose_by_space())
-        .flat_map(|(_, pages, _)| pages.iter().map(|page| &page.tab));
+    let loose = workspace.loose_filed().map(|(_, page)| &page.tab);
     let separate = profiles::get(cx).separate();
     let worktrees = (workspace.projects.iter())
         .flat_map(|project| &project.branches)

@@ -70,6 +70,7 @@ wrap_render_process_handler! {
             if let (Some(frame), Some(context)) = (frame, context) {
                 crate::session::renderer::context_created(frame, context);
                 crate::tone::renderer::context_created(frame, context);
+                crate::sight::renderer::context_created(frame, context);
                 crate::passkeys::renderer::context_created(frame, context);
             }
         }

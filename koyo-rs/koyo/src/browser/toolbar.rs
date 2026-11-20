@@ -194,6 +194,7 @@ fn address(
     let ends = (!editing).then(|| super::site::buttons(view, &cx.entity(), p.muted, hovered, Vec::new(), cx)).flatten();
     div()
         .id(id)
+        .debug_selector(|| "browser-address".to_owned())
         .on_hover(hover)
         .key_context("BrowserAddress")
         .relative()

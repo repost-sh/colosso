@@ -36,7 +36,7 @@ pub struct Surface {
     visible: Cell<Option<bool>>,
     /// Where the view was last put in its surface.
     frame: Cell<Option<NSRect>>,
-    /// Which of the view's corners were last rounded, and by how much.
+    /// Which of the view's corners its layer was last rounded at, and by how much.
     #[cfg_attr(test, expect(dead_code, reason = "a page's view is what's rounded, and tests show none"))]
     rounded: Cell<Option<(Corners<bool>, f64)>>,
     /// What stands for the view in a picture of the window ([`Surface::mark`]): a buffer that
@@ -146,13 +146,13 @@ impl Surface {
     /// view not at all.
     #[cfg_attr(test, expect(dead_code, reason = "a page's view is what's rounded, and tests show none"))]
     pub fn round(&self, corners: Corners<bool>, radius: f64) {
+        let Some(layer) = self.view.layer() else {
+            return;
+        };
         let rounded = Some((corners, radius));
         if self.rounded.replace(rounded) == rounded {
             return;
         }
-        let Some(layer) = self.view.layer() else {
-            return;
-        };
         let mask = [
             (corners.bottom_left, CACornerMask::LayerMinXMinYCorner),
             (corners.bottom_right, CACornerMask::LayerMaxXMinYCorner),

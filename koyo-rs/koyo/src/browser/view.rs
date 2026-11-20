@@ -164,6 +164,8 @@ pub struct BrowserView {
     settle: Settle,
     /// Where the page is in the window, for menus and an agent's pointer at page positions.
     pub(super) origin: Point<Pixels>,
+    /// Which corners of the page's view are rounded, as the page was last placed (`page.rs`).
+    pub(super) rounded: gpui_kit::Corners<bool>,
     /// Questions the page waits on, the first one asked.
     pub(super) dialogs: VecDeque<Question>,
     /// The question in the dialog on screen.
@@ -320,6 +322,7 @@ impl BrowserView {
             notice: None,
             settle: Settle::default(),
             origin: Point::default(),
+            rounded: gpui_kit::Corners::default(),
             dialogs: VecDeque::new(),
             asked: None,
             menu_request: None,
