@@ -27,7 +27,9 @@
 //! scroll <dy>              a wheel turned by dy pixels, where the pointer is (a wheel event
 //!                          made here has the pointer's place, not one of its own)
 //! type <text>              keys for the text, to the window's first responder
-//! key <code> <chars> [cmd|shift|ctrl|alt…]   a key down and up, as a key equivalent first
+//! key <code> <chars> [cmd|shift|ctrl|alt…]   a key down and up, as a key equivalent first;
+//!                          <chars> as written, or quoted with escapes: "\r" a return
+//!                          (`browser::keys::key_characters`)
 //! press <code> [cmd|shift|ctrl|alt…]   a key down and up as a keyboard's: an event of the
 //!                          system's making, with the flags and characters the system gives
 //!                          that key, put in the app's own queue, so `AppKit` handles it as
@@ -240,7 +242,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         ("key", _) => {
             let mut words = rest.split(' ');
             let code = words.next().and_then(|w| w.parse::<u16>().ok()).unwrap_or(0);
-            let chars = words.next().unwrap_or("");
+            let chars = crate::browser::keys::key_characters(words.next().unwrap_or(""));
             let mut flags = 0usize;
             for word in words {
                 flags |= match word {
@@ -251,7 +253,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
                     _ => 0,
                 };
             }
-            key(&window, code, chars, flags, true)
+            key(&window, code, &chars, flags, true)
         }
         ("state", _) => state(&window),
         ("cursor", _) => look::cursor(&window),

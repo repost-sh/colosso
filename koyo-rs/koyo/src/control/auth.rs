@@ -7,10 +7,10 @@
 
 use std::time::Duration;
 
-use gpui_kit::{App, AppContext as _, AsyncApp, PromptLevel};
+use gpui_kit::{App, AppContext as _, AsyncApp, PromptLevel, Task};
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_app_control::{ControlError, ErrorCode, Hello, PROTOCOL_VERSION, Scope};
-use koyo_term_control::{Handle, RequestBody, ResponseBody};
+use koyo_term_control::{ClientError, Handle, RequestBody, ResponseBody, TerminalRecord};
 
 use super::activity::{ActivityKind, Decision};
 use super::confirm::answered;
@@ -65,7 +65,8 @@ fn chat_hello(caller: Caller, id: &str, reply: Answer<Welcome>, cx: &mut App) {
     });
 }
 
-/// Welcomes an agent in Koyo terminal `handle`, once the daemon says the terminal exists.
+/// Welcomes an agent in Koyo terminal `handle`, once the daemon says the terminal exists, which
+/// the window takes in if it hadn't heard of it (`terminals/watch.rs`).
 fn terminal_hello(caller: Caller, handle: String, reply: Answer<Welcome>, cx: &mut App) {
     let welcome = |caller| Welcome {
         caller,
@@ -79,47 +80,59 @@ fn terminal_hello(caller: Caller, handle: String, reply: Answer<Welcome>, cx: &m
             ),
         )
     };
-    if known_here(caller.terminal.as_deref().unwrap_or_default(), cx) {
+    let wanted = Handle(caller.terminal.clone().unwrap_or_default());
+    if known_here(&wanted, cx) {
         return reply(Ok(welcome(caller)));
     }
-    let Some(client) = daemon(cx) else {
+    let Some(listing) = daemon_terminals(cx) else {
         return reply(Err(unknown()));
     };
-    let wanted = Handle(caller.terminal.clone().unwrap_or_default());
-    let listing = cx.background_spawn(async move {
-        client.request_if_running(RequestBody::ListTerminals {
-            worktree: None,
-            status: None,
-        })
-    });
-    cx.spawn(async move |_: &mut AsyncApp| {
-        let known = match listing.await {
-            Ok(Some(ResponseBody::Terminals { terminals })) => terminals
-                .iter()
-                .any(|summary| summary.record.handle == wanted),
-            Ok(_) => false,
+    cx.spawn(async move |cx: &mut AsyncApp| {
+        let found = match listing.await {
+            Ok(Some(terminals)) => terminals.into_iter().find(|record| record.handle == wanted),
+            Ok(None) => None,
             Err(error) => {
                 log::warn!("couldn't ask the terminal daemon about {wanted}: {error}");
-                false
+                None
             }
         };
-        reply(if known {
-            Ok(welcome(caller))
-        } else {
-            Err(unknown())
+        let Some(record) = found else {
+            return reply(Err(unknown()));
+        };
+        cx.update(|cx| {
+            if let Some((_, shell)) = main_shell(cx) {
+                shell.update(cx, |shell, cx| shell.terminal_heard(&record, cx));
+            }
         });
+        reply(Ok(welcome(caller)));
     })
     .detach();
 }
 
-/// Whether the window knows terminal `handle` already, or a test says it exists.
-fn known_here(handle: &str, cx: &App) -> bool {
+/// Whether the window knows terminal `handle` already.
+fn known_here(handle: &Handle, cx: &App) -> bool {
+    main_shell(cx).is_some_and(|(_, shell)| shell.read(cx).terminal_known(handle))
+}
+
+/// The terminals the daemon runs, asked off the main thread: none when no daemon runs.
+fn daemon_terminals(cx: &mut App) -> Option<Task<Result<Option<Vec<TerminalRecord>>, ClientError>>> {
     #[cfg(test)]
-    if Control::get(cx).test_terminals.contains(handle) {
-        return true;
+    if !Control::get(cx).test_terminals.is_empty() {
+        return Some(Task::ready(Ok(Some(Control::get(cx).test_terminals.clone()))));
     }
-    main_shell(cx)
-        .is_some_and(|(_, shell)| shell.read(cx).terminal_known(&Handle(handle.to_owned())))
+    let client = daemon(cx)?;
+    Some(cx.background_spawn(async move {
+        let listed = client.request_if_running(RequestBody::ListTerminals {
+            worktree: None,
+            status: None,
+        })?;
+        Ok(listed.map(|listed| match listed {
+            ResponseBody::Terminals { terminals } => {
+                terminals.into_iter().map(|summary| summary.record).collect()
+            }
+            _ => Vec::new(),
+        }))
+    }))
 }
 
 /// The terminal daemon's client, made on first use.

@@ -1,8 +1,9 @@
 //! The engine as Koyo runs it: started in this process by `embedded::start`, CEF driven from
 //! the main thread's run loop by the pump while `NSApp` runs it, and a page opened in a holder
 //! of its own, then stopped by `embedded::finish`. Each test has its page do one thing
-//! (`inside.rs`): load and draw, sit idle on screen, have Chromium put work off, or leave the
-//! app's window and come back with a bubble of Chromium's up.
+//! (`inside.rs`): load and draw, sit idle on screen, have Chromium put work off, leave the
+//! app's window and come back with a bubble of Chromium's up, or be shown again after a while
+//! hidden.
 //!
 //! CEF starts once in a process, and on the main thread, so this is a test binary of its own
 //! that owns its main thread (`harness = false`), each test run in a process of its own. Its helpers stay up only for a
@@ -26,6 +27,7 @@
 mod bubbles;
 mod inside;
 mod pump;
+mod sight;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};

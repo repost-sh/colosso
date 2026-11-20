@@ -70,9 +70,53 @@ pub(crate) fn key_codes(key: &str) -> (i32, i32) {
     }
 }
 
+/// The characters a key written as `word` gives, as the probe's `key` is told them
+/// (`native/probe.rs`): the word itself, or between double quotes with `\r`, `\t`, `\e`, `\n`
+/// and `\\` for a return, a tab, an escape, a newline and a backslash. Taken as written, a
+/// quoted Return typed its four characters into the page (2026-11-20).
+#[cfg_attr(
+    all(not(debug_assertions), not(test)),
+    expect(dead_code, reason = "only a debug build has the probe")
+)]
+pub(crate) fn key_characters(word: &str) -> String {
+    let Some(quoted) = word.strip_prefix('"').and_then(|rest| rest.strip_suffix('"')) else {
+        return word.to_owned();
+    };
+    let mut characters = String::new();
+    let mut escaped = false;
+    for character in quoted.chars() {
+        match (escaped, character) {
+            (false, '\\') => escaped = true,
+            (false, other) => characters.push(other),
+            (true, other) => {
+                escaped = false;
+                characters.push(match other {
+                    'r' => '\r',
+                    't' => '\t',
+                    'n' => '\n',
+                    'e' => '\u{1b}',
+                    other => other,
+                });
+            }
+        }
+    }
+    characters
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_keys_characters_are_the_word_or_the_escapes_between_its_quotes() {
+        assert_eq!(key_characters("l"), "l");
+        assert_eq!(key_characters("\"\\r\""), "\r");
+        assert_eq!(key_characters("\"\\t\""), "\t");
+        assert_eq!(key_characters("\"\\e\""), "\u{1b}");
+        assert_eq!(key_characters("\"\\\\\""), "\\");
+        assert_eq!(key_characters("\"a\""), "a");
+        assert_eq!(key_characters(""), "");
+    }
 
     #[test]
     fn keys_map_to_chromium_and_mac_codes() {

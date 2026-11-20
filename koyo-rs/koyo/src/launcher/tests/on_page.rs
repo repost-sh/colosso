@@ -58,7 +58,7 @@ fn open_address(
 /// search row says, in the page.
 #[gpui_kit::test]
 fn words_typed_on_a_page_are_searched_for_with_the_engine_picked(cx: &mut TestAppContext) {
-    let (window, _, _, view) = on_page("launcher-engine", Layout::Arc, cx);
+    let (window, _, _, view) = on_page("launcher-search-engine", Layout::Arc, cx);
     let kagi = crate::browser::SearchEngine::Kagi;
     cx.update(|cx| settings::update(cx, |settings| settings.search_engine = kagi));
     let (launcher_window, launcher) = open_address(window, cx);

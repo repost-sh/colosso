@@ -106,16 +106,17 @@ the person's pages. In place against it: the person's consent for one of their p
 bound to the connection that asked for it, and a page they turned down isn't asked about
 again for 10 minutes, whoever asks.
 
-**A caller's worktree.** The browser tools hand a page an agent's files (`browser_upload`)
-and show it `file:` pages (5, Browser) only from one folder of the person's: the worktree of
-the Koyo chat or terminal the caller names, as Koyo has that chat or terminal, never the
-folder its hello names. A caller that names neither has no worktree, and those tools refuse
-it and say why. This keeps an agent's mistakes, and a page's words steering a well-meaning
-agent, inside its own worktree. It is no boundary against an agent set on reaching the
-person's other files: anything may name any chat or terminal (above), and Koyo's tools let an
-agent run commands in any worktree (`tab_open` or `terminal_open` with a `command`,
-`chat_create`) and see the agent desktop. A secret per chat or terminal checked at hello
-wouldn't change that while those tools run commands, so Koyo checks none.
+**A caller's worktree.** It governs uploads only: `browser_upload` (5, Browser) hands a page
+an agent's files only from one folder of the person's, the worktree of the Koyo chat or
+terminal the caller names, as Koyo has that chat or terminal, never the folder its hello
+names. A caller that names neither has no worktree, and is refused uploads and told why. This
+keeps an agent's mistakes, and a page's words steering a well-meaning agent, inside its own
+worktree. It is no boundary against an agent set on reaching the person's other files:
+anything may name any chat or terminal (above), and Koyo's tools let an agent run commands in
+any worktree (`tab_open` or `terminal_open` with a `command`, `chat_create`) and see the
+agent desktop. A secret per chat or terminal checked at hello wouldn't change that while
+those tools run commands, so Koyo checks none. It doesn't govern pages: any caller opens and
+reads any page, `file:` ones and their source included, wherever the file is.
 
 Scopes:
 
@@ -435,19 +436,6 @@ keeps what agents hear of each page (`browser/agent/heard.rs`) [built 2026-11-19
   2 GiB at most per upload, and a folder gives 10,000 files at most, which Koyo chose, as
   Chromium sets no bound of its own. A chooser the page opened anew since the agent read it gets
   none (`control/exec/browser/upload/given.rs`).
-- **`file:` pages** [built 2026-11-19]. An agent opens a `file:` page (`browser_navigate`,
-  `tab_open`, `pane_split`) only of its worktree, links followed, and every browser tool that
-  reads or acts on a page refuses one whose address is a `file:` page, or its source, outside
-  it, checked before each protocol command and again once it's answered if the page moved, so
-  a `file:` page going to another doesn't get round it (`control/exec/browser/root.rs`). A
-  file that isn't there, or has another name elsewhere (a hard link), counts as outside, and
-  an address is read as Chromium reads it, tabs and line breaks in it dropped, so
-  `view-sou\trce:` is a page's source too. A caller that names no chat or terminal is
-  refused every `file:` page. Like uploads, this guards against an agent's mistakes and a
-  page's steering, not an agent bent on other files (4, A caller's worktree). The person's
-  own `file:` pages are the person's to browse as before. Not checked: what a `file:` page of
-  the worktree shows of other files in itself, an image or a frame, which Chromium lets one
-  `file:` page do; and tools outside the browser's, which this doesn't govern.
 
 The person sees an agent at work (`browser/pointer.rs`): a glow inside the page's edges
 while an agent holds it, and for `browser_click` the agent's pointer, a navigation arrow

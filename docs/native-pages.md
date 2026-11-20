@@ -105,6 +105,10 @@ engine's helper apps running the browser host's binary, so what the host does in
   readying its root cache run on the thread that starts it; CEF's own start (`adopt_app`,
   `cef_initialize`) runs from the run loop. One log line says how long each step took (`the
   browser engine's start in the app: ...`), and `stall` what it held the main thread for.
+  The app gives the start 20 s to say it's ready, not counting CEF's own start on the main
+  thread, which the host stops the app's clock for (`client::StartClock`): the whole app waits
+  on that start, so giving up during it gains nothing, and a loaded machine, where it took 31 s
+  (2026-11-20), would be told the engine failed as it started (`koyo-browser-ipc` tests).
 - **Koyo must run from a bundle that holds the engine.** Run as a bare binary with the engine
   elsewhere (`koyo-rs/target/debug/koyo`), every helper exits at once (GPU process
   `exit_code=5`, then "GPU process isn't usable"). Run from
@@ -247,6 +251,18 @@ Hidden this way is hidden as Chrome hides a tab in the background (2026-11-19,
 seconds on screen and 2 or 3 out of sight, and the first animation frame once it was shown
 again came 16-19 ms after the host was told. `[proven]` CEF's own `WasHidden` isn't a way:
 for a Chrome-style page it does nothing (`chrome_browser_host_impl.cc`, `NOTIMPLEMENTED`).
+
+A page shown again in a window macOS has covered (one on the agent desktop, or its holder as
+an agent wakes it) turns `visible` a second late, after Chromium's own wait: as its views
+arrive in a window, Chromium's `WebContentsViewCocoa` takes the page to be visible at once in
+a window it sees uncovered, and only after `kOcclusionUpdateDelayInSeconds`, 1 s, in one it
+sees covered (`web_contents_view_cocoa.mm`). In a window the person sees, the page is visible
+and draws at once (`tests/smoke/sight.rs`). Koyo leaves that second to Chromium. Telling
+the view the page is visible as it arrives (`updateWebContentsVisibility:`, tried 2026-11-20)
+drew a page in a covered window 1 ms after it was shown rather than 1002 ms, but it helped
+only windows nobody looks at, and it cost the person's: leaving a tab, its page went hidden,
+visible and hidden (5 times of 5 on the first page opened,
+`.superpowers/v/evidence/live-r6-checks-20261120-100747`).
 
 A hidden page's holder stays shown, parked or over its pane, with nothing in it. Ordered out
 as well (CEF's `Window::Hide`, which suspends the holder's compositor), four hidden pages of

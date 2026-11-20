@@ -26,10 +26,11 @@ actions!(go_to_file, [GoToFile]);
 /// How many of the files opened lately each checkout remembers.
 const MOST_RECENT: usize = 50;
 
-/// ⌘P anywhere; and in the palette's field, the keys that move through what it found, which
-/// the field would otherwise take.
+/// ⌘P anywhere but in a page, which prints it then (`browser::init`), as ⌘P in Chrome does;
+/// and in the palette's field, the keys that move through what it found, which the field would
+/// otherwise take.
 pub fn init(cx: &mut App) {
-    cx.bind_keys([KeyBinding::new("cmd-p", GoToFile, None)]);
+    cx.bind_keys([KeyBinding::new("cmd-p", GoToFile, Some("!BrowserPage"))]);
     crate::list::bind_keys("GoToFile > Input", cx);
 }
 

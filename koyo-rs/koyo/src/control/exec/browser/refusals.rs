@@ -24,11 +24,10 @@ pub(super) fn failed(error: AgentError, pane: u64) -> ControlError {
              loads one."
         ))
         .retryable(false),
-        AgentError::NotOpen(NotOpen::Failed(why)) => ControlError::browser_unavailable(format!(
-            "The browser engine isn't running ({why}). The person can start it again with \
-             Restart browser on the page."
-        ))
-        .retryable(false),
+        AgentError::NotOpen(NotOpen::Failed(why)) => {
+            ControlError::browser_unavailable(format!("The browser engine isn't running. {why}"))
+                .retryable(false)
+        }
         AgentError::Asking(dialog) => ControlError::browser_unavailable(format!(
             "Pane {pane}'s page waits on its {} and does nothing else until it's answered: \
              answer it with browser_dialog (accept or dismiss).",
@@ -232,5 +231,15 @@ mod tests {
             (between.code, between.retryable),
             (ErrorCode::BrowserUnavailable, true)
         );
+    }
+
+    /// An agent is told why the engine isn't running as the page says it, and nothing the page
+    /// doesn't offer: no control brings the engine back while Koyo runs.
+    #[test]
+    fn an_agent_is_told_what_the_page_says_of_an_engine_that_did_not_start() {
+        let said = format!("The browser engine did not start. {}", crate::browser::STARTS_AGAIN);
+        let refused = failed(AgentError::NotOpen(NotOpen::Failed(said.clone())), 3);
+        assert_eq!(refused.message, format!("The browser engine isn't running. {said}"));
+        assert!(!refused.retryable);
     }
 }

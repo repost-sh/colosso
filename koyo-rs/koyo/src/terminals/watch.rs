@@ -1,7 +1,11 @@
 //! The app follows what the daemon says of every terminal (`docs/terminals.md` 7.4, 9): its
 //! list once, and again after it comes back, then its events, into `Terminals::states`. A
 //! terminal an agent opens gets a tab of its checkout, which doesn't take the focus, and a
-//! terminal closed in the daemon takes its tab with it, drawn or not.
+//! terminal closed in the daemon takes its tab with it, drawn or not. With no daemon running
+//! as the list is asked for, the app hears nothing until it next asks the daemon something:
+//! a daemon only an agent's `koyo mcp` started runs terminals the window hasn't heard of, and a
+//! caller naming one of them (`control/auth.rs`) has the window take it in and follow the
+//! daemon from then on.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -79,6 +83,19 @@ impl Shell {
             })
             .detach();
         }
+    }
+
+    /// The daemon runs `record`, a terminal the window hadn't heard of, which a caller named:
+    /// the window takes it in, and follows the daemon from now on.
+    pub(crate) fn terminal_heard(&mut self, record: &TerminalRecord, cx: &mut Context<Self>) {
+        self.terminals.states.upsert(record);
+        if self.terminals.watching.is_none() {
+            self.watch_terminals(cx);
+        } else if let Some(client) = self.terminals.client() {
+            cx.spawn(async move |this, cx| relist(&this, &client, cx).await)
+                .detach();
+        }
+        cx.notify();
     }
 }
 

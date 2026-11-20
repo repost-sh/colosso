@@ -26,7 +26,7 @@ impl FakeHost {
     pub(crate) fn serve(name: &str, cx: &mut TestAppContext) -> Self {
         let (tell, asked) = channel();
         let embedded = Embedded {
-            start: Box::new(move |stream, _| answer(stream, tell)),
+            start: Box::new(move |stream, _, _| answer(stream, tell)),
             finish: Box::new(|_| {}),
         };
         let scratch = crate::test_support::scratch(name);

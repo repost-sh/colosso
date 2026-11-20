@@ -281,6 +281,7 @@ pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
         return;
     }
     with_pane(pane, |p| p.progress = None);
+    settle_address(pane);
     super::restoring::loaded(pane);
     let early = with_pane(pane, |p| {
         if p.loaded || p.restore.is_some() {
@@ -295,6 +296,23 @@ pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
     }
     frontend_loaded(pane);
 }
+
+/// `pane`'s page stopped loading: its address is what its main frame committed, as Chrome's
+/// is once a load ends. A navigation the engine refused never commits, and the address it was
+/// asked for goes with it: a link to a `data:` address in a new tab, which Chrome blocks,
+/// left the tab at `about:blank` saying the `data:` address (2026-11-20). A frame that never
+/// committed a document has the empty one Chromium gives every new page, `about:blank`.
+fn settle_address(pane: PaneId) {
+    let Some(frame) = browser_of(pane).and_then(|browser| browser.main_frame()) else {
+        return;
+    };
+    let committed = cef::CefString::from(&frame.url()).to_string();
+    let url = if committed.is_empty() { BLANK.to_owned() } else { committed };
+    page_changed(pane, |page| page.url = url);
+}
+
+/// The address of the empty document every page starts with.
+const BLANK: &str = "about:blank";
 
 /// The engine's zoom of `pane`'s page may have changed: it keeps one for each site, which a
 /// page takes as it commits, and which zooming a page of the site changes for all of them.

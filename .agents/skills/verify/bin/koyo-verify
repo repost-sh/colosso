@@ -160,6 +160,7 @@ cmd_prepare() {
   git -C "$FIX/repo" -c user.name=verify -c user.email=verify@localhost commit -q -m "fixture"
   cat > "$FIX/focus.html" <<'HTML'
 <!doctype html>
+<meta charset="utf-8">
 <title>verify focus</title>
 <body style="font: 20px -apple-system; margin: 24px">
 <input id="field" placeholder="type here" style="font-size: 24px; width: 90%">
@@ -175,6 +176,7 @@ cmd_prepare() {
 HTML
   cat > "$FIX/popups.html" <<'HTML'
 <!doctype html>
+<meta charset="utf-8">
 <title>verify popups</title>
 <body style="font: 20px -apple-system; margin: 24px">
 <p><a id="blank" href="?tab" target="_blank">a link to a new tab</a></p>
@@ -203,6 +205,7 @@ HTML
 HTML
   cat > "$FIX/saves.html" <<'HTML'
 <!doctype html>
+<meta charset="utf-8">
 <title>verify saves</title>
 <body style="font: 20px -apple-system; margin: 24px">
 <p><a id="text" href="data:text/plain;charset=utf-8,downloaded%20by%20the%20verify%20page%0A"
@@ -285,6 +288,13 @@ cmd_confirm() {
   echo "test Koyo pid $pid: isolated (KOYO_DATA_DIR=$D), control socket up, probe ticking"
 }
 
+# Where `koyo app` and `koyo mcp` run: the fixture's repo, the test instance's project, so what
+# takes the caller's folder for its worktree (terminal_open with none named) lands there and
+# never in this checkout, which the test instance doesn't know.
+caller_dir() {
+  if [ -d "$FIX/repo" ]; then echo "$FIX/repo"; else echo "$V"; fi
+}
+
 cmd_app() {
   local op="${1:-}" json="${2:-}"
   [ -n "$op" ] || die "app <operation> ['{json}']"
@@ -302,9 +312,11 @@ cmd_app() {
   esac
   # A clean environment: no KOYO_TERMINAL or KOYO_CHAT of the caller's own Koyo, whose hello
   # this instance would refuse, and only this instance's data folder, so the call can't reach
-  # the Koyo in use.
+  # the Koyo in use. VERIFY_TERMINAL names a terminal of the test instance's to call as
+  # (KOYO_TERMINAL), which uploads need.
   local out status=0
-  out=$(cd "$R" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+  out=$(cd "$(caller_dir)" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+    ${VERIFY_TERMINAL:+KOYO_TERMINAL="$VERIFY_TERMINAL"} \
     "$BIN" app "$op" ${json:+--json "$json"} --client "$CLIENT" 2>&1) || status=$?
   record "## $(now) app $op ${json}" "$out" ""
   printf '%s\n' "$out"
@@ -318,7 +330,8 @@ cmd_mcp() {
   [ -n "$tool" ] || die "mcp <tool | --list> ['{json}']"
   [ -S "$SOCK" ] || die "no control socket at $SOCK: is the test Koyo running? (koyo-verify doctor)"
   local out status=0
-  out=$(cd "$R" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+  out=$(cd "$(caller_dir)" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+    ${VERIFY_TERMINAL:+KOYO_TERMINAL="$VERIFY_TERMINAL"} \
     /usr/bin/python3 -I "$SKILL/bin/mcp-call.py" "$BIN" "$CLIENT" "$tool" "$json" 2>&1) || status=$?
   record "## $(now) mcp $tool ${json}" "$out" ""
   printf '%s\n' "$out"

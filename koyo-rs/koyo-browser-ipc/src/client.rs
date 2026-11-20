@@ -16,8 +16,16 @@ use std::process::{Child, Command};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-/// How long the host may take to start and say hello.
+mod clock;
+
+pub use clock::StartClock;
+
+/// How long the host may take to start and say hello, not counting what its [`StartClock`]
+/// was stopped for.
+#[cfg(not(test))]
 const START_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(test)]
+const START_TIMEOUT: Duration = Duration::from_millis(300);
 
 /// Where the host runs from and keeps its profiles.
 #[derive(Clone, Debug)]
@@ -49,10 +57,10 @@ impl<F: Fn(Incoming) -> Option<Incoming> + Clone + Send + 'static> Sink for F {}
 /// (`docs/native-pages.md`): the app gives the host's library its end of the socket, and at
 /// the end has it stop on the main thread, which is the host's there.
 pub struct Embedded {
-    /// Starts the host with its end of the socket and the token it's greeted with, the app's
-    /// hello already on the socket: what of the start needn't be on the main thread runs on
-    /// the thread that calls it. Off the main thread.
-    pub start: Box<dyn FnOnce(UnixStream, String) + Send>,
+    /// Starts the host with its end of the socket, the token it's greeted with and the clock
+    /// the app times its start by, the app's hello already on the socket: what of the start
+    /// needn't be on the main thread runs on the thread that calls it. Off the main thread.
+    pub start: Box<dyn FnOnce(UnixStream, String, StartClock) + Send>,
     /// Stops the host within the time given, once it's been asked to shut down. On the main
     /// thread.
     pub finish: Box<dyn FnOnce(Duration) + Send>,
@@ -106,7 +114,7 @@ pub fn token() -> io::Result<String> {
 /// exits first closes its end, which ends the wait.
 fn handshake(stream: &mut UnixStream, token: String, passkeys: bool) -> io::Result<Engine> {
     say_hello(stream, token, passkeys)?;
-    hear_ready(stream)
+    hear_ready(stream, &StartClock::new())
 }
 
 fn say_hello(stream: &mut UnixStream, token: String, passkeys: bool) -> io::Result<()> {
@@ -120,11 +128,12 @@ fn say_hello(stream: &mut UnixStream, token: String, passkeys: bool) -> io::Resu
     )
 }
 
-/// The host's hello, what it says of its engine in it, or why it refused.
-fn hear_ready(stream: &mut UnixStream) -> io::Result<Engine> {
-    koyo_frame::hello(
+/// The host's hello, what it says of its engine in it, or why it refused, once `clock` has
+/// counted no more than [`START_TIMEOUT`].
+fn hear_ready(stream: &mut UnixStream, clock: &StartClock) -> io::Result<Engine> {
+    koyo_frame::hello_within(
         stream,
-        START_TIMEOUT,
+        || clock.left(START_TIMEOUT),
         koyo_frame::End::App,
         PROTOCOL,
         |stream| match crate::read_frame::<HostEvent>(stream)? {
@@ -225,10 +234,17 @@ impl Connection {
     ) -> io::Result<Self> {
         let (mut stream, host_end, token) = Self::begin(launch)?;
         say_hello(&mut stream, token.clone(), launch.passkeys)?;
-        (embedded.start)(host_end, token);
-        let engine = hear_ready(&mut stream).map_err(|e| {
+        let clock = StartClock::new();
+        (embedded.start)(host_end, token, clock.clone());
+        let engine = hear_ready(&mut stream, &clock).map_err(|e| {
             if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) {
-                io::Error::new(io::ErrorKind::TimedOut, "the browser engine did not start")
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!(
+                        "it wasn't ready within {} s, not counting CEF's start on the main thread",
+                        START_TIMEOUT.as_secs()
+                    ),
+                )
             } else {
                 e
             }
@@ -338,6 +354,64 @@ mod tests {
         };
         assert_eq!(hello, Some(expected));
         said
+    }
+
+    /// A host in the app's process that hears the app's hello, spends `outside` of its start
+    /// with the clock running and `initializing` with it stopped, then says it's ready, or
+    /// nothing if `ready` is false.
+    fn embedded(outside: Duration, initializing: Duration, ready: bool) -> Embedded {
+        Embedded {
+            start: Box::new(move |mut host, _, clock| {
+                std::thread::spawn(move || {
+                    let _ = crate::read_frame::<Hello>(&mut host);
+                    rest(outside);
+                    clock.stopped_during(|| rest(initializing));
+                    let said = HostEvent::Ready {
+                        protocol: PROTOCOL,
+                        engine: "1.0".into(),
+                        chromium: "140".into(),
+                        framework: Framework::default(),
+                    };
+                    if ready {
+                        crate::write_frame(&mut host, &said).unwrap();
+                    }
+                    rest(START_TIMEOUT * 10);
+                });
+            }),
+            finish: Box::new(|_| {}),
+        }
+    }
+
+    fn rest(time: Duration) {
+        let (_never, wait) = mpsc::channel::<()>();
+        let _ = wait.recv_timeout(time);
+    }
+
+    fn start_embedded(embedded: Embedded) -> io::Result<Connection> {
+        let launch = Launch {
+            executable: PathBuf::from("fake-host"),
+            profiles: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("no-profiles"),
+            passkeys: false,
+        };
+        Connection::start_embedded(&launch, embedded, |_| None)
+    }
+
+    #[test]
+    fn an_embedded_host_is_waited_for_while_cef_starts_on_the_main_thread() {
+        let slow = embedded(START_TIMEOUT / 2, START_TIMEOUT * 3, true);
+        let started = start_embedded(slow).map(|host| host.engine.clone());
+        assert_eq!(started.map_err(|e| e.to_string()), Ok("1.0".to_string()));
+    }
+
+    #[test]
+    fn an_embedded_host_silent_outside_cefs_start_still_runs_out_of_time() {
+        let began = std::time::Instant::now();
+        let silent = embedded(START_TIMEOUT / 2, START_TIMEOUT * 2, false);
+        let refused = start_embedded(silent).err().map(|e| e.kind());
+        let took = began.elapsed();
+        assert_eq!(refused, Some(io::ErrorKind::TimedOut));
+        assert!(took >= START_TIMEOUT * 3, "gave up after {took:?}");
+        assert!(took < START_TIMEOUT * 5, "gave up after {took:?}");
     }
 
     /// A token is 24 bytes in hex, and no two are alike.

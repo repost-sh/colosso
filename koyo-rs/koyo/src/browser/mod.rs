@@ -56,6 +56,8 @@ mod view;
 pub mod fullscreen;
 pub use dock::DOCK_MIN;
 #[cfg(test)]
+pub(crate) use host::STARTS_AGAIN;
+#[cfg(test)]
 pub(crate) use host::fake::FakeHost;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use lightness::glass_dark;

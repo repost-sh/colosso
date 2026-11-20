@@ -10,12 +10,13 @@ use gpui_kit::TestAppContext;
 use koyo_app_control::frame::{MAX_CLIENT_FRAME, MAX_SERVER_FRAME};
 use koyo_app_control::transport::{Connection, FrameReader};
 use koyo_app_control::{ClientFrame, ClientInfo, ErrorCode, Scope, ServerFrame};
+use koyo_term_control::Status;
 use serde_json::{Value, json};
 
 use super::{Rig, allow, controlled, hello_of, op, terminal};
 use crate::control::listener::serve;
 use crate::control::{Control, InProcess, Request, handle};
-use crate::test_support::repo;
+use crate::test_support::{repo, terminal_record};
 
 /// Answers the next request a connection or client hands the UI thread, and what follows
 /// from it, the client's coming and going it tells as well answered on the way; fails once the
@@ -46,7 +47,8 @@ fn next_frame(reader: &mut FrameReader) -> Value {
 fn a_socket_client_says_hello_and_its_calls_are_answered(cx: &mut TestAppContext) {
     let root = repo("control-socket", &[("README.md", "hi\n")]);
     let mut rig = controlled("control-socket", &[&root], cx);
-    cx.update(|cx| Control::get_mut(cx).test_terminals.insert("term_1".into()));
+    let record = terminal_record("term_1", &root.to_string_lossy(), Status::Idle, "");
+    cx.update(|cx| Control::get_mut(cx).test_terminals.push(record));
     let requests = cx.read(|cx| Control::get(cx).requests.clone());
     let (app_end, client_end) = Connection::pair().unwrap();
     let (done, mut served) = oneshot::channel::<()>();

@@ -4,6 +4,7 @@
 
 use gpui_kit::TestAppContext;
 use koyo_app_control::{ErrorCode, Scope};
+use koyo_term_control::Status;
 use serde_json::json;
 
 use super::chats::summary;
@@ -15,13 +16,14 @@ use crate::control::{
     ActivityKind, Control, DEFAULT_PORT, Decision, allow_denied, denied, policy, revoke,
     set_client_scopes, set_enabled, set_port,
 };
-use crate::test_support::repo;
+use crate::test_support::{repo, terminal_record};
 
 #[gpui_kit::test]
 fn an_agent_in_a_koyo_terminal_is_welcomed_without_asking(cx: &mut TestAppContext) {
     let root = repo("control-hello-terminal", &[("README.md", "hi\n")]);
     let _rig = controlled("control-hello-terminal", &[&root], cx);
-    cx.update(|cx| Control::get_mut(cx).test_terminals.insert("term_1".into()));
+    let record = terminal_record("term_1", &root.to_string_lossy(), Status::Idle, "");
+    cx.update(|cx| Control::get_mut(cx).test_terminals.push(record));
     let welcome = hello(&terminal("term_1"), cx).unwrap();
     assert_eq!(welcome.grant, Scope::AGENT.to_vec());
     assert!(!cx.has_pending_prompt(), "nobody was asked");

@@ -1374,8 +1374,8 @@ Each milestone ends with `script/check` green, the simplify pass, and its commit
     to the chat's id (4.7). Nothing is written to the person's Claude config, and their own
     servers still load.
   - Trust: the relay's hello names the chat (`chat`, from `KOYO_CHAT`), which nothing proves,
-    as `chat_list` hands every chat's id out. The chat's worktree is where its files are for
-    the browser tools, a guard against an agent's mistakes rather than a boundary
+    as `chat_list` hands every chat's id out. The chat's worktree is where `browser_upload` takes
+    its files from, a guard against an agent's mistakes rather than a boundary
     (`docs/app-control.md` 4, A caller's worktree). The app welcomes it as
     it welcomes an agent in a Koyo terminal (`docs/app-control.md` 4): no MCP-server switch, no
     prompt, the agent grant `read navigate manage browser settings`, `destructive` withheld. It
