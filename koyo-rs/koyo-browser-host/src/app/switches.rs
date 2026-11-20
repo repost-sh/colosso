@@ -1,6 +1,7 @@
 //! The switches the browser process starts with: Chrome's own windows and prompts turned off,
-//! a page hidden only by the app, and the work Chrome does for its metrics turned off, which a
-//! build of Koyo's never sends.
+//! a page hidden only by the app, the work Chrome does for its metrics turned off, which a
+//! build of Koyo's never sends, and what Chrome fetches in the background for its omnibox,
+//! its AI and translate features and autofill's server, which no page of Koyo's shows.
 
 use cef::{CefString, CommandLine, ImplCommandLine};
 
@@ -33,16 +34,60 @@ const NO_STACK_SAMPLING: &str = "disable-stack-profiler";
 
 /// Chrome's features turned off: allocation sampling for its metrics, in one launch in a
 /// hundred, which nothing reads here either.
-const FEATURES_OFF: [&str; 1] = ["HeapProfilerReporting"];
+const METRICS_OFF: [&str; 1] = ["HeapProfilerReporting"];
+
+/// Chrome's omnibox and the search behind it, which Koyo's address field is instead of: the
+/// model the omnibox suggests from offline, a component a fresh profile fetched in its first
+/// minutes; the check of whether Google offers its AI Mode there, a request to
+/// www.google.com with its cookies as every launch starts; and the connection to the search
+/// engine Chrome keeps warm, opened five seconds after the start and again each minute.
+const OMNIBOX_OFF: [&str; 4] = [
+    "OmniboxOnDeviceHeadProviderNonIncognito",
+    "OmniboxOnDeviceHeadProviderIncognito",
+    "AimEnabled",
+    "PreconnectToSearch",
+];
+
+/// What Google's optimization guide sends Chrome: hints for its own features, a component
+/// fetched for none Koyo shows, and the on-device models Chrome's AI features run.
+const GUIDE_OFF: [&str; 2] = ["OptimizationHints", "OptimizationGuideModelExecution"];
+
+/// The model that decides whether to offer translating a page, fetched as the first page
+/// loads, for a translate bubble Koyo never shows.
+const TRANSLATE_OFF: [&str; 2] = ["TranslateRankerQuery", "TranslateRankerEnforcement"];
+
+/// Autofill's questions to Google about a form's fields, which need an API key Koyo's build
+/// hasn't and are refused. What a person saved fills in all the same.
+const AUTOFILL_SERVER_OFF: [&str; 1] = ["AutofillServerCommunication"];
+
+/// Every feature the browser process turns off. What stays on, and why, is in the tests:
+/// the components and requests that check certificates, warn of dangerous sites and
+/// downloads, play protected video and keep extensions current.
+fn features_off() -> impl Iterator<Item = &'static str> {
+    METRICS_OFF
+        .into_iter()
+        .chain(OMNIBOX_OFF)
+        .chain(GUIDE_OFF)
+        .chain(TRANSLATE_OFF)
+        .chain(AUTOFILL_SERVER_OFF)
+}
+
+/// Every switch the browser process starts with.
+fn switches() -> impl Iterator<Item = &'static str> {
+    CHROME_UI
+        .into_iter()
+        .chain([COVERED_IS_SHOWN, NO_STACK_SAMPLING])
+}
 
 /// Adds the browser process's switches to `command_line`.
 pub(super) fn browser(command_line: &mut CommandLine) {
-    for switch in CHROME_UI.into_iter().chain([COVERED_IS_SHOWN, NO_STACK_SAMPLING]) {
+    for switch in switches() {
         command_line.append_switch(Some(&switch.into()));
     }
     let name = CefString::from("disable-features");
     let had = CefString::from(&command_line.switch_value(Some(&name))).to_string();
-    let features = with_features(&had, &FEATURES_OFF);
+    let off: Vec<&str> = features_off().collect();
+    let features = with_features(&had, &off);
     command_line.append_switch_with_value(Some(&name), Some(&features.as_str().into()));
 }
 
@@ -61,7 +106,55 @@ fn with_features(had: &str, more: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::with_features;
+    use super::{features_off, switches, with_features};
+
+    /// What a fresh profile fetched in its first minutes, and every launch asked Google, for
+    /// nothing a page of Koyo's shows: each stays off.
+    const OFF: [&str; 10] = [
+        "HeapProfilerReporting",
+        "OmniboxOnDeviceHeadProviderNonIncognito",
+        "OmniboxOnDeviceHeadProviderIncognito",
+        "AimEnabled",
+        "PreconnectToSearch",
+        "OptimizationHints",
+        "OptimizationGuideModelExecution",
+        "TranslateRankerQuery",
+        "TranslateRankerEnforcement",
+        "AutofillServerCommunication",
+    ];
+
+    /// Switches that would stop what a page needs along with what it doesn't: background
+    /// networking takes extensions' updates and Safe Browsing's lists with it, and component
+    /// updates Widevine's video decryption, the certificate revocation list and the
+    /// certificate transparency logs.
+    const NEVER_SWITCHED: [&str; 2] = ["disable-background-networking", "disable-component-update"];
+
+    /// Features that serve the person, or whose being off does the opposite of what it
+    /// sounds like: without attestations every site may use the Privacy Sandbox's APIs; the
+    /// subresource filter marks heavy ads; the media engagement list lets the sites a person
+    /// plays video on autoplay with sound; network time tells a certificate error from a
+    /// wrong clock.
+    const NEVER_OFF: [&str; 4] = [
+        "EnforcePrivacySandboxAttestations",
+        "SubresourceFilter",
+        "PreloadMediaEngagementData",
+        "NetworkTimeServiceQuerying",
+    ];
+
+    #[test]
+    fn what_serves_no_page_of_koyos_is_off_and_what_keeps_pages_safe_stays_on() {
+        let off: Vec<&str> = features_off().collect();
+        for feature in OFF {
+            assert!(off.contains(&feature), "{feature} is off");
+        }
+        for feature in NEVER_OFF {
+            assert!(!off.contains(&feature), "{feature} stays on");
+        }
+        let given: Vec<&str> = switches().collect();
+        for switch in NEVER_SWITCHED {
+            assert!(!given.contains(&switch), "no --{switch}");
+        }
+    }
 
     #[test]
     fn the_features_cef_turns_off_stay_off_beside_the_apps() {

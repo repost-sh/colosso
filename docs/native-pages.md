@@ -400,6 +400,31 @@ the point expected.
 Before these, a hit region over the whole window was put up on a seam's press, drawn at once
 (commit 455480ba2). It raced the pointer's first move and treated neither cause; it's gone.
 
+**Placing a page in prepaint costs nothing at rest, and on a resize only what Chromium's own
+resize costs.** Measured 2026-11-20 on the agent desktop, a debug build at a load of 17 to 50,
+with each placement timed and the `AppKit` calls it made counted (the app's surface bounds,
+the view's frame and its corners in `native::surface`; the host's `settle` and its holder's
+frame in `native::place`):
+
+- With a page shown and the window drawn ten times a second, no placement in 30 s, twice.
+  GPUI reuses a view's prepaint while nothing notifies it, so the page's element isn't
+  prepainted again.
+- Drawn again with nothing moved, as a page's title changes: 26 to 60 µs a placement, and no
+  call that changes anything, in `AppKit` or the host.
+- Each of 37 frames of a window resize made one change of the surface's bounds, one of the
+  view's frame and one of the holder's, and never re-added a view. The holder's
+  `setFrame_display`, Chromium laying the page out at its new size, took most of it: 6.5 ms
+  median, 8.8 ms mean, 60 ms at most, the whole placement 7.6 ms median and 11.7 ms at the
+  90th percentile. Twice the surface's bounds took 2.6 s and 10.4 s, while the main thread
+  waited in the engine's pump work with the app at 0.3% of a CPU: the engine's wait, seen on
+  that run only, not placement's.
+
+So placing stays in prepaint. Its work on a moved frame is the resize Chromium needs in that
+frame wherever it's asked from, and moved to paint it would only note the page where it was
+a frame before. The window was resized rather than a divider dragged because a window on the
+agent desktop is drawn only on the probe's tick: drags of a split's divider of 121 and 31
+moves drew one and two frames.
+
 **A release GPUI never hears is let go all the same.** GPUI's core counts a press over a
 native view as that view's until it has seen the release of every button down (gpui-fast
 0.1.12 `fast/composition.rs`, `dispatch_native`), and while it does, a press anywhere in the
