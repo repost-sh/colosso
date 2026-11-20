@@ -1,9 +1,9 @@
 //! Arc layout (`docs/arc-sidebar.md`): the sidebar on the glass as Arc's. Under the top rail's
 //! browser controls, an address bar says what's shown; then the pages pinned for every space as
-//! tiles, which stay as a space swipes away; then the space: its loose pages, the selected
-//! project's name and each of its worktrees as a folder, its tabs under its header, and at its
-//! foot the space's projects as tiles. The spaces line the sidebar's foot, and two fingers swipe
-//! between them.
+//! tiles, which stay as a space swipes away, as the loose pages do while every space shares
+//! them; then the space: its own loose pages, the selected project's name and each of its
+//! worktrees as a folder, its tabs under its header, and at its foot the space's projects as
+//! tiles. The spaces line the sidebar's foot, and two fingers swipe between them.
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
@@ -155,6 +155,7 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .on_mouse_down(MouseButton::Right, cx.listener(Shell::show_space_menu))
         .child(shell.arc_top.bar())
         .children(pinned::region(shell, pins, look, cx))
+        .children(loose::still(shell, loosens, look, cx))
         .child(space)
         .child(foot::bar(shell, window, cx))
 }

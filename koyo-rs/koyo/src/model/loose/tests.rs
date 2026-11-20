@@ -196,9 +196,17 @@ fn shared_every_space_lists_every_loose_page_and_each_goes_back_to_its_own_space
     workspace.show_pages_of(1);
     assert_eq!(
         (listed(&workspace), shown(&workspace)),
-        (vec!["a".into(), "b".into(), "c".into()], "a".into()),
-        "the same pages in another space, which shows what it showed last"
+        (vec!["a".into(), "b".into(), "c".into()], "c".into()),
+        "the same pages in another space, the one shown still shown, as a pinned one would be"
     );
+    workspace.leave_apart();
+    workspace.show_pages_of(2);
+    assert_eq!(
+        (workspace.loose_shown(), shown(&workspace).as_str()),
+        (None, "New chat"),
+        "none shown here, none there, rather than what that space showed last"
+    );
+    workspace.show_pages_of(1);
     workspace.add_loose(loose("d"), usize::MAX, false);
     assert!(workspace.move_loose(2, 0));
     assert!(workspace.show_loose(0));

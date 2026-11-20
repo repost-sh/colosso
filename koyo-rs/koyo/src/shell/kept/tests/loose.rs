@@ -220,7 +220,11 @@ fn shared_loose_pages_come_back_shared_in_their_order_and_each_in_its_space_per_
     let back = relaunched(&window_file, cx);
     assert_eq!(addresses(&back, cx), (all.to_vec(), Some(0)), "a, shown");
     back.update(cx, |shell, cx| shell.show_space(0, cx));
-    assert_eq!(addresses(&back, cx), (all.to_vec(), Some(2)), "c, shown");
+    assert_eq!(
+        addresses(&back, cx),
+        (all.to_vec(), Some(0)),
+        "a, still shown in the other space, as a pinned page would be"
+    );
 
     for open in [&shell, &back] {
         open.update(cx, |shell, _| shell.workspace.select_project(None));

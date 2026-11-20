@@ -58,7 +58,7 @@ fn pin(
 }
 
 /// The view of the pinned page known by `key`, once it's made, and whether it has the keyboard.
-fn page_of(
+pub(super) fn page_of(
     window: AnyWindowHandle,
     shell: &Entity<Shell>,
     key: u64,

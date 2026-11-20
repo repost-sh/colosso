@@ -215,7 +215,7 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
             MouseButton::Left,
             cx.listener(|this, _, _, cx| {
                 this.press_hovered(cx);
-                if this.workspace.pinned_shown().is_some() {
+                if this.workspace.shown_in_every_space() {
                     cx.stop_propagation();
                 }
             }),

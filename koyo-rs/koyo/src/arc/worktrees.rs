@@ -155,7 +155,7 @@ pub fn space(
         .overflow_y_scroll()
         .flex()
         .flex_col()
-        .children(super::loose::list(shell, loosens, look, cx))
+        .children(super::loose::sliding(shell, loosens, look, cx))
         .children(heading)
         .children(body)
 }

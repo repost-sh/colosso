@@ -26,6 +26,7 @@ use crate::test_support::{click_pane, draw, open_page, repo, select, shell_on, s
 
 mod address;
 mod loose;
+mod loose_slide;
 mod pinned;
 mod project_keys;
 mod space_keys;
