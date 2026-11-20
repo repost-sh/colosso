@@ -13,6 +13,7 @@ use koyo_app_control::ops::browser::{
 use serde_json::{Value, json};
 
 use super::super::{Caller, Exec, output};
+use super::frames::{self, Named, centre, on_element};
 use super::keys::Key;
 use super::page::{acted, call, later, now, refused, resolve};
 use super::pages::Page;
@@ -24,7 +25,7 @@ const READ_LIMIT: usize = 50_000;
 
 /// Finds the page, then carries out `act` on it from a task, its answer settled as every
 /// call's on the person's page is (`page::later`); `acts` claims it for `caller`.
-fn on_page<F>(
+pub(super) fn on_page<F>(
     caller: &Caller,
     named: Option<u64>,
     acts: bool,
@@ -53,13 +54,10 @@ pub(crate) fn read(
         ReadFormat::Html => "html",
     };
     let selector = input.selector.clone();
-    let root = selector.as_deref().map_or_else(
-        || Ok("document.body".to_owned()),
-        |selector| script::element(None, Some(selector)),
-    );
+    let root = (selector.as_deref()).map_or_else(|| "document.body".to_owned(), script::find);
     let limit = input.limit.map_or(READ_LIMIT, |limit| limit as usize);
     on_page(caller, input.pane, false, cx, async move |page, _, cx| {
-        let expression = script::read(&root?, format, limit);
+        let expression = script::read(&root, format, limit);
         let value = evaluate(&page, None, &expression, false, cx).await?;
         let Value::String(content) = value else {
             return Err(script::missing(None, selector.as_deref()));
@@ -88,13 +86,13 @@ pub(crate) fn snapshot(
 ) -> Result<Exec, ControlError> {
     let interactive = input.interactive.unwrap_or(false);
     on_page(caller, input.pane, false, cx, async move |page, _, cx| {
-        let tree = evaluate(&page, None, &script::snapshot(interactive), false, cx).await?;
+        let tree = frames::snapshot(&page, interactive, cx).await?;
         let at = cx.update(|cx| now(&page, cx))?;
         output(&BrowserSnapshotOutput {
             pane: at.pane,
             url: at.url,
             title: at.title,
-            tree: tree.as_str().unwrap_or_default().to_owned(),
+            tree,
         })
     })
 }
@@ -177,18 +175,11 @@ pub(crate) fn click(
         cx,
         async move |page, actor, cx| {
             let actor = actor.as_ref();
-            let (x, y) = match (input.x, input.y) {
-                (Some(x), Some(y)) => (x, y),
-                _ => {
-                    centre(
-                        &page,
-                        actor,
-                        input.element.as_deref(),
-                        input.selector.as_deref(),
-                        cx,
-                    )
-                    .await?
-                }
+            let (x, y) = if let (Some(x), Some(y)) = (input.x, input.y) {
+                (x, y)
+            } else {
+                let named = Named::new(input.element.as_deref(), input.selector.as_deref())?;
+                centre(&page, actor, &named, cx).await?
             };
             let button = match input.button.unwrap_or(MouseButton::Left) {
                 MouseButton::Left => "left",
@@ -208,6 +199,8 @@ pub(crate) fn click(
                     cx.background_executor().timer(travel).await;
                 }
             }
+            let scale = cx.update(|cx| Ok::<_, ControlError>(page.view()?.read(cx).input_scale()))?;
+            let (x, y) = (x * scale, y * scale);
             mouse(
                 &page,
                 actor,
@@ -229,49 +222,6 @@ pub(crate) fn click(
 /// Where the page is now, as an acting operation answers.
 fn at_page(page: &Page, cx: &mut AsyncApp) -> Result<Value, ControlError> {
     output(&cx.update(|cx| now(page, cx))?)
-}
-
-/// Runs `body` on the element `element` or `selector` names, as `el`, after scrolling it
-/// into view; refused when there's no such element.
-async fn on_element(
-    page: &Page,
-    actor: Option<&Caller>,
-    (element, selector): (Option<&str>, Option<&str>),
-    body: &str,
-    cx: &mut AsyncApp,
-) -> Result<(), ControlError> {
-    let found = script::element(element, selector)?;
-    let expression = format!(
-        "(() => {{ const el = {found}; if (!el) return false; \
-         el.scrollIntoView({{ block: 'center' }}); {body} return true; }})()"
-    );
-    if evaluate(page, actor, &expression, false, cx).await? == Value::Bool(true) {
-        Ok(())
-    } else {
-        Err(script::missing(element, selector))
-    }
-}
-
-/// Scrolls the element into view and answers its centre, in the page's viewport.
-async fn centre(
-    page: &Page,
-    actor: Option<&Caller>,
-    element: Option<&str>,
-    selector: Option<&str>,
-    cx: &mut AsyncApp,
-) -> Result<(f64, f64), ControlError> {
-    let found = script::element(element, selector)?;
-    let expression = format!(
-        "(() => {{ const el = {found}; if (!el) return null; \
-         el.scrollIntoView({{ block: 'center', inline: 'center' }}); \
-         const box = el.getBoundingClientRect(); \
-         return [box.left + box.width / 2, box.top + box.height / 2]; }})()"
-    );
-    let point = evaluate(page, actor, &expression, false, cx).await?;
-    match point.as_array().map(Vec::as_slice) {
-        Some([x, y]) => Ok((x.as_f64().unwrap_or(0.), y.as_f64().unwrap_or(0.))),
-        _ => Err(script::missing(element, selector)),
-    }
 }
 
 async fn mouse(
@@ -309,15 +259,15 @@ pub(crate) fn type_text(
         cx,
         async move |page, actor, cx| {
             let actor = actor.as_ref();
-            let named = (input.element.as_deref(), input.selector.as_deref());
-            if named != (None, None) {
+            if input.element.is_some() || input.selector.is_some() {
+                let named = Named::new(input.element.as_deref(), input.selector.as_deref())?;
                 let clear = input.clear.unwrap_or(false);
                 let body = format!(
                     "el.focus(); if ({clear}) {{ if ('value' in el) {{ el.value = ''; \
                  el.dispatchEvent(new Event('input', {{ bubbles: true }})); }} \
                  else if (el.isContentEditable) {{ el.textContent = ''; }} }}"
                 );
-                on_element(&page, actor, named, &body, cx).await?;
+                on_element(&page, actor, &named, &body, cx).await?;
             }
             call(
                 &page,
@@ -365,8 +315,7 @@ pub(crate) fn scroll(
         cx,
         async move |page, actor, cx| {
             let actor = actor.as_ref();
-            let named = (input.element.as_deref(), input.selector.as_deref());
-            if named == (None, None) {
+            if input.element.is_none() && input.selector.is_none() {
                 let (dx, dy) = (input.dx.unwrap_or(0.), input.dy.unwrap_or(0.));
                 if dx == 0. && dy == 0. {
                     return Err(ControlError::invalid_input(
@@ -376,7 +325,8 @@ pub(crate) fn scroll(
                 let by = format!("window.scrollBy({dx}, {dy})");
                 evaluate(&page, actor, &by, false, cx).await?;
             } else {
-                on_element(&page, actor, named, "", cx).await?;
+                let named = Named::new(input.element.as_deref(), input.selector.as_deref())?;
+                on_element(&page, actor, &named, "", cx).await?;
             }
             at_page(&page, cx)
         },

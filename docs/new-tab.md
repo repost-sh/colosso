@@ -44,8 +44,9 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
 - **Nothing typed, Enter** opens an empty tab of the kind: the browser's start page with the
   address focused, a new chat, or a new shell.
 - **Typed, Enter** picks the selected row. The first row does what's typed:
-  - Browser: visits the address, or searches Google for the words (`browser::address_to_url`
-    decides, as the address bar always has).
+  - Browser: visits the address, or searches for the words with the search engine picked in
+    Settings › Browser, Google unless another is (`browser::address_to_url` decides, as the
+    address bar always has).
   - Chat: opens a new chat and sends the text through its composer, exactly as if it had
     been typed there and sent.
   - Terminal: opens a new login shell named after the command, then types the command into
@@ -101,7 +102,7 @@ Once something is typed, the first row is selected.
 
 | Kind | Nothing typed | Typed |
 | --- | --- | --- |
-| Browser | Open browser tabs but the one shown ("Switch to Tab", up to 4), then top sites no tab shows (up to 8 rows in all) | Host autofill, or the address typed ("Visit"); the search ("Search with Google") unless what's typed has a scheme; past searches (≤2, clock icon) and Google's suggestions; then pages from history, but the one the first row visits. A page an open tab shows becomes "Switch to Tab", and open tabs that match are added |
+| Browser | Open browser tabs but the one shown ("Switch to Tab", up to 4), then top sites no tab shows (up to 8 rows in all) | Host autofill, or the address typed ("Visit"); the search ("Search with Google", or the engine picked) unless what's typed has a scheme; past searches (≤2, clock icon) and the engine's suggestions; then pages from history, but the one the first row visits. A page an open tab shows becomes "Switch to Tab", and open tabs that match are added |
 | Chat | Chats on this checkout with no tab ("Open Chat", up to 4), then messages sent lately | "Ask in a New Chat"; chat tabs and tabless chats that match; then past messages |
 | Terminal | Commands run lately | "Run in a New Terminal"; terminal tabs that match; then past commands |
 
@@ -207,9 +208,13 @@ typed, so the launcher works them out once, the first time it autofills
 
 ### 4.6 Search suggestions
 
-Google's endpoint in Firefox's format:
-`https://www.google.com/complete/search?client=firefox&q=…`. The answer is
-`["query", ["suggestion", …]]`, and is used only if element 0 matches what was asked.
+The search engine picked in Settings › Browser is asked, at the endpoint Firefox asks it at,
+in Firefox's format (Google's
+`https://www.google.com/complete/search?client=firefox&q=…`; Kagi, which Firefox doesn't list,
+at the one its own search description names; `browser/search.rs` has each). The answer is
+`["query", ["suggestion", …]]`, and is used only if element 0 matches what was asked. Bing's
+answered 204 with no body when tried from here on 2026-11-19, so with Bing picked there are
+often none.
 
 - Requests start 50 ms after typing pauses, with a 500 ms timeout (Firefox's
   `browser.search.suggest.timeout`).
@@ -267,7 +272,8 @@ sends. No host or IPC change was needed.
 | `koyo/src/launcher/here.rs` | The checkout it opened on, its open tabs, and its chats with no tab |
 | `koyo/src/launcher/act.rs` | What a pick does in the window behind, or in the page it opened on |
 | `koyo/src/shell/shown_page.rs` | The page ⌘L and the sidebar's controls act on |
-| `koyo/src/launcher/suggest.rs` | Google's suggestions |
+| `koyo/src/launcher/suggest.rs` | The search engine's suggestions |
+| `koyo/src/browser/search.rs` | The search engines, their results and suggestion addresses |
 | `koyo/src/history/` | The store, ranking (`rank.rs`) and site icons (`icons.rs`) |
 | `koyo/src/browser/view/navigation.rs` | How a page came to load, for its visit |
 | `koyo/src/shell/visits.rs` | Visits and searches recorded from browser tabs |

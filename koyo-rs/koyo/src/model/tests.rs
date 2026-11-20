@@ -44,6 +44,7 @@ pub(crate) fn page(address: &str) -> Tab {
         address: address.into(),
         favicon: None,
         restored: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     let content = Content::Browser(Browser::waiting(unloaded, By::Person));
     Tab::Single(Pane {
@@ -401,6 +402,7 @@ fn a_pane_is_the_persons_unless_it_is_a_page_an_agent_opened() {
         address: "https://agent.example/".into(),
         favicon: None,
         restored: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     let agents = Pane::of(Content::Browser(Browser::waiting(unloaded, By::Agent)));
     assert_eq!(agents.by(), By::Agent);

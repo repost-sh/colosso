@@ -6,18 +6,18 @@
 //! calls, so state is never borrowed across a call into CEF.
 use cef::{Browser, BrowserHost, ImplBrowser, ImplFrame, RequestContext};
 use koyo_browser_ipc::{
-    self as ipc, AppRequest, Cursor, Edit, Go, HostEvent, PageState, PaneId,
+    AppRequest, Cursor, Edit, Go, HostEvent, PageState, PaneId, Session,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 
 mod inspect;
+mod outgoing;
 mod panes;
 mod profiles;
 mod queue;
+mod restoring;
 mod site;
 mod start;
 
@@ -25,14 +25,16 @@ use inspect::{cdp, open_dev_tools};
 pub(crate) use inspect::{from_frontend, from_page};
 pub(crate) use panes::{
     browser_closed, browser_created, cursor_changed, found, fullscreen_changed, loading_changed,
-    navigate_later, page_changed, renderer_gone,
+    navigate_later, page_changed, progressed, renderer_gone,
 };
-pub(crate) use panes::adopt;
+pub(crate) use panes::{adopt, close_later, never_made};
 use panes::{close, exit_fullscreen, navigate, open, resize, view, visible};
 pub(crate) use panes::leave_fullscreen;
 pub use profiles::{drop_cleared, forget_profile, keeps_profile};
+pub(crate) use profiles::kept;
 pub(crate) use site::{keep_media, media_decided};
 pub(crate) use queue::{context_initialized, protocol_heard};
+pub(crate) use restoring::{session_changed, stand_ins};
 use queue::{Queued, enqueue, read_requests};
 pub(crate) use start::{quit, run, teardown};
 pub(crate) use start::{ready_embedded, run_embedded};
@@ -41,9 +43,6 @@ use crate::embedded::pump::Load;
 
 #[cfg(test)]
 mod tests;
-
-/// The app's socket, for events. Written from the UI thread only.
-static WRITER: OnceLock<Mutex<UnixStream>> = OnceLock::new();
 
 thread_local! {
     static HOST: RefCell<Host> = RefCell::new(Host::default());
@@ -59,11 +58,22 @@ struct Host {
     generation: u32,
     contexts: HashMap<String, RequestContext>,
     panes: HashMap<PaneId, Pane>,
+    /// The history and scroll each pane about to open brings back ([`AppRequest::BringBack`]).
+    bringing: HashMap<PaneId, Session>,
 }
 
 struct Pane {
     browser: Option<Browser>,
     page: PageState,
+    /// The page as the app was last told of it: as `page`, but while a page is brought back,
+    /// that page, and the page a stand-in stands for while it's shown (`session::shown`).
+    shown: PageState,
+    /// The page's history and scroll, as the app was last told of them.
+    session: Session,
+    /// What's still to be brought back of a page brought back.
+    restore: Option<crate::session::Restore>,
+    /// The stand-ins issued for its history, the only ones shown as the pages they stand for.
+    stand_ins: crate::session::StandIns,
     cursor: Cursor,
     /// A page's open `DevTools`.
     inspected: Option<crate::devtools::Inspected>,
@@ -77,27 +87,36 @@ struct Pane {
     /// The host's own commands in the page's session, until answered.
     own: std::collections::HashSet<i64>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
-    /// or the app's agent commands need them.
+    /// or the app's commands need them.
     observer: Option<cef::Registration>,
-    /// The app's agent commands under way: the host's message id for each,
-    /// and the app's number for it. Once there has been one, the page's
-    /// events in its own session go to the app too.
-    agent: Option<HashMap<i64, u64>>,
-    /// The first page has loaded; agent commands before then wait, since
+    /// The app's commands under way, its own and its agents': the host's message id for
+    /// each, and the app's number for it.
+    calls: HashMap<i64, u64>,
+    /// The domains an agent enabled in the page's own session (`Runtime`, `Network`): their
+    /// events go to the app ([`HostEvent::CdpEvent`]), and no other's.
+    heard: std::collections::HashSet<String>,
+    /// The first page has loaded; the app's commands before then wait, since
     /// Chromium drops a session's commands while the first page commits.
     loaded: bool,
-    /// Agent commands waiting for the first page to load.
+    /// The app's commands waiting for the first page to load.
     early: Vec<AppRequest>,
+    /// How much of the loading page has loaded, as the app was last told.
+    progress: Option<u8>,
 }
 
 impl Pane {
     fn new(url: &str) -> Self {
+        let page = PageState {
+            url: url.into(),
+            ..PageState::default()
+        };
         Self {
             browser: None,
-            page: PageState {
-                url: url.into(),
-                ..PageState::default()
-            },
+            shown: page.clone(),
+            page,
+            session: Session::default(),
+            restore: None,
+            stand_ins: crate::session::StandIns::default(),
             cursor: Cursor::Arrow,
             inspected: None,
             inspector: None,
@@ -105,9 +124,11 @@ impl Pane {
             closing: false,
             own: std::collections::HashSet::new(),
             observer: None,
-            agent: None,
+            calls: HashMap::new(),
+            heard: std::collections::HashSet::new(),
             loaded: false,
             early: Vec::new(),
+            progress: None,
         }
     }
 }
@@ -121,12 +142,9 @@ fn with_pane<R>(pane: PaneId, f: impl FnOnce(&mut Pane) -> R) -> Option<R> {
     with(|host| host.panes.get_mut(&pane).map(f)).flatten()
 }
 
+/// Tells the app `event`, from any thread: it's written on a thread of its own (`outgoing`).
 pub(crate) fn send(event: &HostEvent) {
-    if let Some(writer) = WRITER.get()
-        && let Ok(mut writer) = writer.lock()
-    {
-        let _ = ipc::write_frame(&mut *writer, event);
-    }
+    outgoing::send(outgoing::Outgoing::Event(event.clone()));
 }
 
 /// Whether a shutdown was asked for and every pane has closed since.
@@ -134,23 +152,24 @@ pub(crate) fn all_closed() -> bool {
     with(|host| host.shutting_down && host.panes.is_empty()) == Some(true)
 }
 
-/// What the engine works for: seen while it isn't up, a request of the app's waits for it, a
-/// window of Chrome's own is open, an extension's popup is expected, or a page is on screen or
-/// being opened; idle with no page and no window at all; unseen otherwise.
+/// What the engine works for: waited on while it isn't up, a request of the app's waits for
+/// it, a window of Chrome's own is open or an extension's popup is expected; shown while a page
+/// is on screen or being opened; idle with no page and no window at all; unseen otherwise.
 pub(crate) fn load() -> Load {
     let Some((ready, empty, none_on_screen)) = with(|host| {
         let none_on_screen = host.panes.keys().all(|&pane| crate::native::off_screen(pane));
         (host.ready, host.panes.is_empty(), none_on_screen)
     }) else {
-        return Load::Seen;
+        return Load::Waited;
     };
     let waited_on = !ready
-        || !none_on_screen
         || queue::drain_pending()
         || crate::native::strays() > 0
         || crate::extensions::popup_expected();
     if waited_on {
-        Load::Seen
+        Load::Waited
+    } else if !none_on_screen {
+        Load::Shown
     } else if empty && crate::native::none_left() {
         Load::Idle
     } else {
@@ -241,27 +260,46 @@ fn host_of(pane: PaneId) -> Option<BrowserHost> {
     browser_of(pane).and_then(|b| b.host())
 }
 
+/// The person moves through `pane`'s history, reloads or stops it. While its page is being
+/// brought back, reloading or stopping it loads that page, the stand-in shown standing in for
+/// another.
+fn go(pane: PaneId, to: Go) {
+    let bringing_back = restoring::abandon(pane);
+    if let (Some(target), Go::Reload | Go::Stop) = (bringing_back, to) {
+        navigate(pane, &target);
+        return;
+    }
+    if let Some(browser) = browser_of(pane) {
+        match to {
+            Go::Back => browser.go_back(),
+            Go::Forward => browser.go_forward(),
+            Go::Reload => browser.reload(),
+            Go::Stop => browser.stop_load(),
+        }
+    }
+}
+
 fn handle(request: AppRequest) {
     match request {
+        AppRequest::BringBack { pane, session } => {
+            with(|host| host.bringing.insert(pane, session));
+        }
         AppRequest::Open {
             pane,
             url,
             viewport,
             profile,
-        } => open(pane, &url, viewport, &profile),
-        AppRequest::Resize { pane, viewport } => resize(pane, viewport),
-        AppRequest::Navigate { pane, url } => navigate(pane, &url),
-        AppRequest::Go { pane, to } => {
-            if let Some(browser) = browser_of(pane) {
-                match to {
-                    Go::Back => browser.go_back(),
-                    Go::Forward => browser.go_forward(),
-                    Go::Reload => browser.reload(),
-                    Go::Stop => browser.stop_load(),
-                }
-            }
+        } => {
+            let session = with(|host| host.bringing.remove(&pane)).flatten();
+            open(pane, &url, viewport, &profile, session.unwrap_or_default());
         }
-        AppRequest::Close { pane } => close(pane),
+        AppRequest::Resize { pane, viewport } => resize(pane, viewport),
+        AppRequest::Navigate { pane, url } => {
+            restoring::abandon(pane);
+            navigate(pane, &url);
+        }
+        AppRequest::Go { pane, to } => go(pane, to),
+        AppRequest::Close { pane } => panes::close_asked(pane),
         AppRequest::ExitFullscreen { pane } => exit_fullscreen(pane),
         AppRequest::SiteSettings { pane } => site::tell(pane),
         AppRequest::SetSiteSetting {
@@ -311,9 +349,11 @@ fn handle(request: AppRequest) {
         AppRequest::Cdp {
             pane,
             call,
+            caller,
+            session,
             method,
             params,
-        } => cdp(pane, call, &method, params),
+        } => cdp(pane, call, (caller, session), &method, params),
         AppRequest::ExtensionAct {
             pane,
             extension,
@@ -326,6 +366,12 @@ fn handle(request: AppRequest) {
             change,
         } => crate::extensions::change(&profile, &extension, change),
         AppRequest::Active { pane } => crate::extensions::active(pane),
+        AppRequest::Print { pane, print } => {
+            if let Some(host) = host_of(pane) {
+                crate::printing::print(pane, &host, print);
+            }
+        }
+        AppRequest::Download { pane, download, act } => crate::downloads::act(pane, download, act),
         AppRequest::ClearData => panes::clear_data(),
         AppRequest::Shutdown => shutdown(),
     }

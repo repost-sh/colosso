@@ -131,6 +131,8 @@ const KOYO_READS = [
   "browser_list",
   "browser_read",
   "browser_snapshot",
+  "browser_console",
+  "browser_network",
   "browser_screenshot",
   "browser_wait",
   "desktop_windows",

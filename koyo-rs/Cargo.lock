@@ -5539,6 +5539,7 @@ dependencies = [
  "syntect",
  "two-face",
  "unicode-general-category",
+ "url",
 ]
 
 [[package]]

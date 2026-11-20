@@ -10,9 +10,14 @@ use crate::pool::map_in_order;
 use code::{Body, read};
 pub use code::{Code, Declared, Kind, Token};
 
-pub const CRATE_ROOT: &str = "koyo-rs/koyo/src/main.rs";
+/// The root of the koyo crate's shipped build, the app.
+pub const KOYO: &str = "koyo-rs/koyo/src/main.rs";
 
-/// A file of the koyo crate's module tree, by its path in the checkout.
+/// The root of the browser host's, the library the app runs the engine with on its main
+/// thread.
+pub const BROWSER_HOST: &str = "koyo-rs/koyo-browser-host/src/lib.rs";
+
+/// A file of a crate's module tree, by its path in the checkout.
 pub struct File {
     pub path: PathBuf,
     /// The module the file is, `[]` for the crate root.
@@ -21,15 +26,17 @@ pub struct File {
     owns: PathBuf,
 }
 
-/// Each file of the koyo crate the shipped build compiles, read from the checkout at `root`
-/// and handed to `read` with its text and its code, the shipped build's alone: the module tree
-/// walked from the crate root as rustc does, a level of files at a time, each level's files
-/// read in parallel. What `read` makes of each comes back in that order, the root's first.
+/// Each file of the crate at `crate_root` (its root's path in the checkout) the shipped build
+/// compiles, read from the checkout at `root` and handed to `read` with its text and its code,
+/// the shipped build's alone: the module tree walked from the crate root as rustc does, a level
+/// of files at a time, each level's files read in parallel. What `read` makes of each comes
+/// back in that order, the root's first.
 pub fn walk<T: Send>(
     root: &Path,
+    crate_root: &str,
     read: impl Fn(&File, &str, &Code<'_>) -> T + Sync,
 ) -> Result<Vec<T>, Failure> {
-    let crate_root = PathBuf::from(CRATE_ROOT);
+    let crate_root = PathBuf::from(crate_root);
     let owns = crate_root
         .parent()
         .map(Path::to_path_buf)

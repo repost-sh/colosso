@@ -11,7 +11,7 @@ use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Bytes, carried as base64url without padding, as `WebAuthn`'s JSON forms carry them;
-/// padding is taken too.
+/// padding is taken too. A page's icon travels so as well ([`crate::HostEvent::Favicon`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Bytes(pub Vec<u8>);
 

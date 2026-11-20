@@ -190,7 +190,7 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
             typed.to_owned(),
             Act::Search(typed.to_owned()),
         );
-        rows.push(search.hint("Search with Google"));
+        rows.push(search.hint(crate::settings::get(cx).search_engine.hint()));
     }
     let suggestions = if address.is_none() {
         searches(query, typed, cx)
@@ -222,7 +222,8 @@ fn origin(host: &str, cx: &mut App) -> Row {
     let (url, title) = match home {
         Some((url, title)) => (url, Some(title).filter(|title| !title.is_empty())),
         None => (
-            address_to_url(host).unwrap_or_else(|| host.to_owned()),
+            address_to_url(host, crate::settings::get(cx).search_engine)
+                .unwrap_or_else(|| host.to_owned()),
             None,
         ),
     };

@@ -45,6 +45,8 @@ form_urlencoded = "1.2"
 # already in the lockfile.
 base64 = "0.22"
 percent-encoding = "2.3"
+# A `file:` page's path, to tell whether it's in an agent's worktree (`control/exec/browser/root.rs`).
+url = "2"
 # The files a language server asked to hear about, matched by its globs: ripgrep's matcher,
 # already in the lockfile.
 globset = "0.4"

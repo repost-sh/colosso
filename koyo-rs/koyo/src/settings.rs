@@ -201,8 +201,15 @@ pub struct Settings {
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
     pub devtools: crate::browser::DevtoolsPlace,
+    /// The search engine words typed as an address go to.
+    pub search_engine: crate::browser::SearchEngine,
     /// Whether the new-tab launcher asks the search engine what it suggests for what's typed.
     pub search_suggestions: bool,
+    /// Whether a download asks where it goes, in the system's save panel; off, or for an
+    /// agent's page, it goes to `downloads_dir`.
+    pub downloads_ask: bool,
+    /// The folder downloads go to without asking; the Downloads folder when none.
+    pub downloads_dir: Option<PathBuf>,
     /// Whether a page that goes full screen, as a video does, takes the whole screen; off, it
     /// fills its pane (`browser/fullscreen.rs`).
     pub fullscreen_fills_screen: bool,
@@ -302,7 +309,10 @@ impl Default for Settings {
             koyo_tools: true,
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
+            search_engine: crate::browser::SearchEngine::Google,
             search_suggestions: true,
+            downloads_ask: false,
+            downloads_dir: None,
             fullscreen_fills_screen: true,
             on_quit: crate::quitting::OnQuit::default(),
             agent_desktop: false,

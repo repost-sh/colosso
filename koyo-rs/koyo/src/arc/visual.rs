@@ -62,6 +62,7 @@ fn web_page(address: &str, title: &str) -> Tab {
         address: address.into(),
         favicon: None,
         restored: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     let content = Content::Browser(Browser::waiting(unloaded, By::Person));
     Tab::Single(Pane {

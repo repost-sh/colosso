@@ -71,9 +71,11 @@ to Chromium's sources after CEF's own, and builds. Section 10 lists them. Most a
 (`github.com/VictorKildahl/cra`, MIT), a macOS browser that embeds Chrome-style CEF pages
 the way Koyo does; the protocol patch is Koyo's.
 
-- **A framework says which patches it was built with**, in its
-  `Resources/koyo-patches.txt`, which `script/cef` writes and which goes wherever the
-  framework does. The host reads it before it starts the engine.
+- **A framework says which patches it was built with**, each with a hash of its content, in
+  its `Resources/koyo-build.txt`, which `script/cef` writes (`script/cef-framework`) and which
+  goes wherever the framework does. The host reads it before it starts the engine and tells
+  the app, and a release engine isn't packaged from a framework whose patches aren't the
+  checkout's (`docs/browser.md` 11.3).
 - **On CEF's own framework** (a checkout where `script/cef` hasn't run) there are no
   extension controls: no pipe is asked for, no page carries Chrome's toolbar, the row and
   the icons aren't drawn, and Koyo is as it was. An "Add to Chrome" in the Web Store still
@@ -339,7 +341,7 @@ change to a patch is the files it touches and the framework's link.
 | Path | What |
 | --- | --- |
 | `script/cef`, `script/cef-patches/` | The framework built with the patches; the patches, what each touches, Cra's licence |
-| `koyo-browser-ipc/src/extensions.rs` | An extension, an action's state and a change, as the protocol carries them (version 14) |
+| `koyo-browser-ipc/src/extensions.rs` | An extension, an action's state and a change, as the protocol carries them (since version 15) |
 | `koyo-browser-host/src/extensions.rs` | The host's part: the pipe's switches, what's asked of the engine and heard from it, the list and the actions told to the app, an action run, the page the person is on |
 | `koyo-browser-host/src/extensions/pipe.rs` | The browser-level DevTools pipe inside the process |
 | `koyo-browser-host/src/extensions/popup.rs` | Chrome's popup found and put under the icon |

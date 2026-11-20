@@ -6,6 +6,18 @@ cd "$(dirname "$0")/.."
 script/lint
 # koyo-agent's tests run the compiled host, on its fake provider.
 script/agent-host
+# The browser engine's tests run the engine packaged from the host just built.
+script/browser-engine
 # Tests keep their settings in the checkout, away from the app's own.
-KOYO_CONFIG_DIR="$PWD/koyo-rs/target/test-config" script/cargo test --workspace
+config="$PWD/koyo-rs/target/test-config"
+KOYO_CONFIG_DIR="$config" script/cargo test --workspace
+# The tests that run the real engine wait for a packaged one (--ignored). Its host never comes
+# forward, so they run while the person works; four at a time, as each starts a host of its own.
+# Two are left out: the location test waits for a person to answer macOS, and the zoom test's
+# page, out of sight, is sometimes zoomed but not laid out afresh while other hosts run
+# (devicePixelRatio doubled, innerWidth not halved; 1 run in 8 with four of it at once).
+KOYO_CONFIG_DIR="$config" script/cargo test -p koyo-browser-host --test smoke --test embedded \
+  -- --ignored --test-threads=4 --skip location::
+KOYO_CONFIG_DIR="$config" script/cargo test -p koyo --bin koyo browser::host_tests \
+  -- --ignored --test-threads=4 --skip looking::find_counts_the_matches_and_zooming
 script/bun test

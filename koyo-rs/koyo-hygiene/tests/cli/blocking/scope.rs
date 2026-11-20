@@ -115,7 +115,7 @@ fn owed(cx: &App) {
     let stats = with_debt("counted-stats", files, "koyo/src/a.rs 1\n").run(&["--stats"]);
     assert!(
         stats.stdout.ends_with(
-            "Blocking calls: 3 on a Blocking, 1 owed in 1 file (koyo-rs/blocking-debt.txt), 0 at_launch outside main.rs.\n"
+            "Blocking calls in koyo-rs/koyo/: 3 on a Blocking, 1 owed in 1 file (koyo-rs/blocking-debt.txt), 0 at_launch outside the crate root.\nBlocking calls in koyo-rs/koyo-browser-host/: 0 on a Blocking, 0 owed in 0 files (koyo-rs/blocking-debt-browser-host.txt), 0 at_launch outside the crate root.\n"
         ),
         "{}",
         stats.stdout

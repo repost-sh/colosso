@@ -1,7 +1,7 @@
 //! The app's browser host and the panes it serves. One host, in Koyo's own process
-//! (`browser/native`), serves every pane: it starts as the app launches, or with the first page
-//! where nothing launched it, and [`Browsers`] routes what it says to the pane views: page
-//! state, cursors, questions and menus.
+//! (`browser/native`), serves every pane: it starts once a page is first drawn, or an agent
+//! opens one, and [`Browsers`] routes what it says to the pane views: page state, cursors,
+//! questions and menus.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
@@ -13,11 +13,13 @@ use gpui_kit::{
     App, AppContext as _, Context, Entity, EntityId, Global, Subscription, Task, WeakEntity,
 };
 use koyo_browser_ipc::client::Connection;
-use koyo_browser_ipc::{AppRequest, PaneId};
+use koyo_browser_ipc::{AppRequest, CdpCaller, PaneId};
 
 use super::view::BrowserView;
 
 mod events;
+#[cfg(test)]
+pub(crate) mod fake;
 pub(super) mod folder;
 mod starting;
 #[cfg(test)]
@@ -263,6 +265,7 @@ impl Browsers {
         let kept = matches!(
             request,
             AppRequest::Open { .. }
+                | AppRequest::BringBack { .. }
                 | AppRequest::OpenDevTools { .. }
                 | AppRequest::Navigate { .. }
                 | AppRequest::Go { .. }
@@ -283,24 +286,26 @@ impl Browsers {
         params: serde_json::Value,
     ) -> oneshot::Receiver<CdpResult> {
         let (answer, answered) = oneshot::channel();
-        self.send_call(pane, method, params, Waiter::App(answer));
+        self.send_call(pane, (None, method), params, Waiter::App(answer));
         answered
     }
 
     /// Runs a protocol command on `pane`'s page for an agent and waits for its answer, at most
     /// `limit`, and no longer than until the page asks something that holds it up. Past it the
     /// app stops waiting, and an answer that comes later goes nowhere; the host lets go of its
-    /// own note of the command once Chromium answers or the page closes.
+    /// own note of the command once Chromium answers or the page closes. It runs in the page's
+    /// own session, or in `session`, a frame's attached under it.
     pub fn ask(
         &mut self,
         pane: PaneId,
+        session: Option<String>,
         method: &str,
         params: serde_json::Value,
         limit: Duration,
         cx: &mut Context<Self>,
     ) -> Task<Answer> {
         let (answer, answered) = oneshot::channel();
-        let call = self.send_call(pane, method, params, Waiter::Agent(answer));
+        let call = self.send_call(pane, (session, method), params, Waiter::Agent(answer));
         let late = cx.background_executor().timer(limit);
         cx.spawn(
             async move |this, cx| match future::select(answered, late).await {
@@ -319,7 +324,7 @@ impl Browsers {
     fn send_call(
         &mut self,
         pane: PaneId,
-        method: &str,
+        (session, method): (Option<String>, &str),
         params: serde_json::Value,
         waiter: Waiter,
     ) -> u64 {
@@ -331,10 +336,16 @@ impl Browsers {
         }
         self.next_call += 1;
         let call = self.next_call;
+        let caller = match waiter {
+            Waiter::App(_) => CdpCaller::App,
+            Waiter::Agent(_) => CdpCaller::Agent,
+        };
         self.calls.insert(call, (pane, waiter));
         self.send(AppRequest::Cdp {
             pane,
             call,
+            caller,
+            session,
             method: method.into(),
             params,
         });
@@ -377,6 +388,15 @@ impl Browsers {
                 self.host = host;
                 None
             }
+        }
+    }
+
+    /// The running engine, said for a person: its versions and what its framework was built
+    /// with.
+    pub fn described(&self) -> Option<String> {
+        match &self.host {
+            Host::Running { connection, .. } => Some(super::engine::described(connection)),
+            _ => None,
         }
     }
 

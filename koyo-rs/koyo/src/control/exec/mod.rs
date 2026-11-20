@@ -56,8 +56,19 @@ impl From<Result<Exec, ControlError>> for Exec {
     }
 }
 
-/// Carries out `command` for `caller`.
+/// Carries out `command` for `caller`, once Koyo checked a page it opens is one it may open
+/// (`browser/root.rs`).
 pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
+    let opens = match &command {
+        Command::BrowserNavigate(input) => Some(input.url.clone()),
+        Command::TabOpen(input) => input.url.clone(),
+        Command::PaneSplit(input) => input.url.clone(),
+        _ => None,
+    };
+    browser::opening(caller, opens, cx, move |caller, cx| carry_out(caller, command, cx))
+}
+
+fn carry_out(caller: &Caller, command: Command, cx: &mut App) -> Exec {
     use Command as C;
     match command {
         C::AppStatus(_) => Exec::Ready(status_value(cx)),
@@ -119,6 +130,9 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::BrowserScroll(input) => browser::scroll(caller, input, cx).into(),
         C::BrowserViewport(input) => browser::viewport(caller, &input, cx).into(),
         C::BrowserDialog(input) => browser::dialog(caller, &input, cx).into(),
+        C::BrowserConsole(input) => browser::console(caller, &input, cx).into(),
+        C::BrowserNetwork(input) => browser::network(caller, &input, cx).into(),
+        C::BrowserUpload(input) => browser::upload(caller, input, cx).into(),
         C::DesktopOpen(input) => desktop::open(caller, input, cx),
         C::DesktopWindows(_) => desktop::windows(cx),
         C::DesktopScreenshot(input) => desktop::screenshot(&input, cx).into(),

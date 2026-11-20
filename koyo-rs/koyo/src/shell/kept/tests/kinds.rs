@@ -1,5 +1,5 @@
 //! Each kind of pane kept as what it shows, and brought back showing it: a page, an agent's
-//! page as an agent's, a terminal by its handle, a chat by its thread and one with nothing
+//! page as an agent's with the history and scroll it had, a terminal by its handle, a chat by its thread and one with nothing
 //! sent, a file, the diffs and a device; never the agent desktop or a page's `DevTools`. A file
 //! and the diffs not opened yet are kept as what they will open.
 
@@ -22,6 +22,14 @@ fn each_kind_of_pane_is_kept_as_what_it_shows_and_comes_back_so(cx: &mut TestApp
             url: "https://agent.example/".into(),
             title: "Agent".into(),
             by_agent: true,
+            session: koyo_browser_ipc::Session {
+                back: vec![koyo_browser_ipc::SessionEntry {
+                    url: "https://agent.example/start".into(),
+                    title: "Start".into(),
+                }],
+                forward: Vec::new(),
+                scroll: koyo_browser_ipc::Scroll { x: 0, y: 300 },
+            },
         }),
         KeptTree::Pane(KeptPane::Terminal {
             handle: Handle("term_kinds".into()),

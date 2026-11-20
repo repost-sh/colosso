@@ -5,6 +5,7 @@ use koyo_browser_ipc::client::Incoming;
 use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId};
 
 use super::Browsers;
+use crate::browser::downloads::{self, Downloads};
 use crate::browser::view::{BrowserEvent, BrowserView};
 
 impl Browsers {
@@ -44,8 +45,8 @@ impl Browsers {
     }
 
     /// What the host says of extensions (`docs/extensions.md`): a profile's, what one set
-    /// its toolbar action to, and the tabs they open and ask for in front. What changes what a
-    /// page shows builds that page's view again, and no other.
+    /// its toolbar action to, and the tabs they and pages open and ask for in front. What
+    /// changes what a page shows builds that page's view again, and no other.
     fn extension_event(&mut self, event: HostEvent, cx: &mut Context<Self>) {
         match event {
             HostEvent::Extensions { profile, extensions } => {
@@ -65,7 +66,8 @@ impl Browsers {
                 }
             }
             HostEvent::TabOpened { pane, opener, url, active } => {
-                let heard = self.update_view(opener, cx, |_, cx| {
+                let heard = self.update_view(opener, cx, |view, cx| {
+                    let active = active && view.shows_what_it_opens(cx);
                     cx.emit(BrowserEvent::Adopted { pane, url, active });
                 });
                 if heard.is_none() {
@@ -108,7 +110,17 @@ impl Browsers {
 
     fn event(&mut self, event: HostEvent, cx: &mut Context<Self>) {
         match event {
-            HostEvent::Ready { .. } | HostEvent::CdpEvent { .. } => {}
+            HostEvent::Ready { .. } => {}
+            HostEvent::CdpEvent {
+                pane,
+                session,
+                method,
+                params,
+            } => {
+                self.update_view(pane, cx, |view, _| {
+                    view.heard.heard(session.as_deref(), &method, &params);
+                });
+            }
             HostEvent::CdpReply {
                 call,
                 result,
@@ -122,35 +134,17 @@ impl Browsers {
                     });
                 }
             }
-            HostEvent::Page { pane, state } => {
-                self.first_page_loading(state.loading);
-                self.update_view(pane, cx, |view, cx| view.page_changed(state, cx));
-            }
-            HostEvent::Favicon { pane, url, png } => {
-                self.update_view(pane, cx, |view, cx| view.favicon_fetched(&url, png, cx));
-            }
-            HostEvent::Fullscreen { pane, on } => {
-                self.update_view(pane, cx, |view, cx| view.fullscreen_changed(on, cx));
-            }
-            HostEvent::SiteSettings { pane, settings } => {
-                self.update_view(pane, cx, |view, cx| view.site_settings(settings, cx));
-            }
-            HostEvent::Cursor { pane, cursor } => {
-                self.update_view(pane, cx, |view, cx| view.cursor_changed(cursor, cx));
-            }
-            HostEvent::Found {
-                pane,
-                count,
-                active,
-            } => {
-                self.update_view(pane, cx, |view, cx| view.found(count, active, cx));
-            }
-            HostEvent::Gone { pane, reason } => {
-                self.update_view(pane, cx, |view, cx| view.gone(reason, cx));
-            }
-            HostEvent::Typed { pane } => {
-                self.update_view(pane, cx, BrowserView::typed);
-            }
+            event @ (HostEvent::Page { .. }
+            | HostEvent::Progress { .. }
+            | HostEvent::Tone { .. }
+            | HostEvent::Session { .. }
+            | HostEvent::Favicon { .. }
+            | HostEvent::Fullscreen { .. }
+            | HostEvent::SiteSettings { .. }
+            | HostEvent::Cursor { .. }
+            | HostEvent::Found { .. }
+            | HostEvent::Gone { .. }
+            | HostEvent::Typed { .. }) => self.page_event(event, cx),
             HostEvent::Closed { pane } => self.page_closed(pane, cx),
             event @ (HostEvent::Extensions { .. }
             | HostEvent::ExtensionAction { .. }
@@ -158,10 +152,15 @@ impl Browsers {
             | HostEvent::TabActivated { .. }
             | HostEvent::TabClosed { .. }) => self.extension_event(event, cx),
             HostEvent::OpenUrl { pane, url, front } => {
-                let open = if front { BrowserEvent::GoToTab(url) } else { BrowserEvent::OpenTab(url) };
-                self.update_view(pane, cx, |_, cx| cx.emit(open));
+                self.update_view(pane, cx, |view, cx| {
+                    let front = front && view.shows_what_it_opens(cx);
+                    cx.emit(if front { BrowserEvent::GoToTab(url) } else { BrowserEvent::OpenTab(url) });
+                });
             }
             HostEvent::DevTools { pane, ask } => self.devtools_asked(pane, ask, cx),
+            event @ (HostEvent::DownloadAsked { .. }
+            | HostEvent::Download { .. }
+            | HostEvent::PdfSaved { .. }) => self.download_event(event, cx),
             HostEvent::Error { pane, message } => {
                 if let Some(pane) = pane {
                     self.update_view(pane, cx, |view, cx| view.failed(message, cx));
@@ -206,6 +205,72 @@ impl Browsers {
                     });
                 }
             }
+        }
+    }
+
+    /// What a page says of itself: its state, how much has loaded, its tone, history, icon,
+    /// full screen, permissions, pointer, matches found, its renderer gone, a key pressed in it.
+    fn page_event(&mut self, event: HostEvent, cx: &mut Context<Self>) {
+        match event {
+            HostEvent::Page { pane, state } => {
+                self.first_page_loading(state.loading);
+                self.update_view(pane, cx, |view, cx| view.page_changed(state, cx));
+            }
+            HostEvent::Progress { pane, percent } => {
+                self.update_view(pane, cx, |view, cx| view.progressed(percent, cx));
+            }
+            HostEvent::Tone { pane, tone } => {
+                self.update_view(pane, cx, |view, cx| view.toned(tone, cx));
+            }
+            HostEvent::Session { pane, session } => {
+                self.update_view(pane, cx, |view, cx| view.session_changed(session, cx));
+            }
+            HostEvent::Favicon { pane, url, png } => {
+                self.update_view(pane, cx, |view, cx| view.favicon_fetched(&url, png.0, cx));
+            }
+            HostEvent::Fullscreen { pane, on } => {
+                self.update_view(pane, cx, |view, cx| view.fullscreen_changed(on, cx));
+            }
+            HostEvent::SiteSettings { pane, settings } => {
+                self.update_view(pane, cx, |view, cx| view.site_settings(settings, cx));
+            }
+            HostEvent::Cursor { pane, cursor } => {
+                self.update_view(pane, cx, |view, cx| view.cursor_changed(cursor, cx));
+            }
+            HostEvent::Found {
+                pane,
+                count,
+                active,
+            } => {
+                self.update_view(pane, cx, |view, cx| view.found(count, active, cx));
+            }
+            HostEvent::Gone { pane, reason } => {
+                self.update_view(pane, cx, |view, cx| view.gone(reason, cx));
+            }
+            HostEvent::Typed { pane } => {
+                self.update_view(pane, cx, BrowserView::typed);
+            }
+            _ => {}
+        }
+    }
+
+    /// What the host says of what pages save (`downloads.rs`): a download asking where it
+    /// goes, which the person is asked only on a page they're at, how one stands, a PDF saved.
+    fn download_event(&self, event: HostEvent, cx: &mut Context<Self>) {
+        let list = Downloads::global(cx);
+        match event {
+            HostEvent::DownloadAsked { pane, download, name, .. } => {
+                let view = self.view(pane);
+                let at = downloads::at(view.as_ref().map(|view| view.read(cx)));
+                list.update(cx, |list, cx| list.asked(pane, download, &name, at, cx));
+            }
+            HostEvent::Download { pane, download } => {
+                list.update(cx, |list, cx| list.updated(pane, download, cx));
+            }
+            HostEvent::PdfSaved { path, saved, .. } => {
+                list.update(cx, |list, cx| list.pdf_saved(&path, saved, cx));
+            }
+            _ => {}
         }
     }
 

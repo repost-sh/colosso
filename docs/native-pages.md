@@ -82,15 +82,29 @@ engine's helper apps running the browser host's binary, so what the host does in
   framework, so it can't be added; nothing has needed it. `[proven]`
 - **Run loop.** GPUI runs `[NSApp run]`. CEF is started with `external_message_pump`, and a
   run-loop timer in the common modes runs `cef_do_message_loop_work` when CEF asks, at the
-  latest every 1/30 s (`embedded/pump.rs`). CEF is started from that timer, never inside
-  GPUI's frame, and what edits a page is done from it too. `[proven]` The 1/30 s holds while a
-  page is on screen or the app waits on the engine; while pages are open and none is, the
-  latest is 1/10 s, and with none, 1 s (`embedded/pump.rs` says why). Not measured live yet.
-- **Started when a page is needed**, as a page view is made (`BrowserView::ensure_open`). The
-  hello, loading CEF and readying its root cache run on the thread that starts it; CEF's own
-  start (`adopt_app`, `cef_initialize`) runs from the run loop. One log line says how long each
-  step took (`the browser engine's start in the app: ...`), and `stall` what it held the main
-  thread for.
+  latest a while on (`embedded/pump.rs`). CEF is started from that timer, never inside GPUI's
+  frame, and what edits a page is done from it too. `[proven]` The while is CEF's net for work
+  it has without saying so: work put off from within its own turn, as Chromium's timers on the
+  main thread are, never asks for a turn (with no net, work put off for 200 ms hadn't run 3 s
+  on). It's 1/30 s after a turn someone asked for, or one that ran out of CEF's 10 ms, while a
+  page is on screen (1/10 s while pages are open and none is, 1 s with none), and doubles with
+  each turn nobody asked for, up to 1 s; while the app waits on the engine, or a window of
+  Chrome's own is open, it stays 1/30 s. What's put off from a turn someone asked for runs late
+  by less than it was put off for and 1/30 s (`tests/embedded/pump.rs`); what's put off from a
+  turn nobody asked for, as each link of a chain of timers is after the first, runs late by up
+  to the net after that turn, so by up to 1 s however little it was put off for
+  (`embedded/pump/tests.rs`): CEF says nothing of work put off within a turn, so the pump can't
+  keep the net short for it. Measured on a debug build on the agent desktop
+  (2026-11-19), before the net backed off: one static page shown rather than hidden cost Koyo
+  about 0.6 s of CPU a minute, 140 wakeups and 440 syscalls a second more; the main thread
+  waited 98% of the time, and CEF's work from the pump was about 1.2% of it. `[proven]` In the
+  engine's test app since, an idle page on screen wakes the main thread once a second, where
+  it woke it over 29 times a second in each of twenty two-second windows. `[proven]`
+- **Started when a page is needed**: once a page is first drawn, or an agent opens one out of
+  sight (`BrowserView::ensure_open`), not as the app launches. The hello, loading CEF and
+  readying its root cache run on the thread that starts it; CEF's own start (`adopt_app`,
+  `cef_initialize`) runs from the run loop. One log line says how long each step took (`the
+  browser engine's start in the app: ...`), and `stall` what it held the main thread for.
 - **Koyo must run from a bundle that holds the engine.** Run as a bare binary with the engine
   elsewhere (`koyo-rs/target/debug/koyo`), every helper exits at once (GPU process
   `exit_code=5`, then "GPU process isn't usable"). Run from
@@ -166,6 +180,11 @@ is one: the spike was the active app after its first native page without anyone 
 and wasn't in an off-screen run of the same script. Seen, not isolated; Cra reports the same
 and has its `NSApp` refuse activation while a page's window is shown; Koyo's now does the
 same (`embedded/nsapp.rs`), and stayed behind while pages were made, with the screen locked.
+Isolated since in the host process of the engine's tests, whose `NSApp` had no such refusal:
+each page it made had `activateIgnoringOtherApps:` sent from Chromium inside the holder's
+`show()` (`native.rs`, `window_created`), which took the keyboard from whatever app the person
+was in. That `NSApp` now refuses every activation (`mac_app.rs`), nothing showing its pages.
+`[proven]` 2026-11-19, the call caught with its stack and the app in front unchanged.
 
 ## 4. A crash [proven] [owner]
 
@@ -195,8 +214,9 @@ the input, the input method or accessibility. `[read]`
 
 ## 5. Pages out of sight [proven]
 
-Today a page no pane draws is hidden for the engine unless an agent used it in the last 90 s
-(`docs/app-control.md` 11, `view/sight.rs`). Native pages do the same. A page whose tab wasn't shown, asked over the `DevTools` protocol
+Today a page no pane draws, or drawn in a window nobody sees, is hidden for the engine unless
+an agent's command on it runs or ended in the last 5 s (`docs/app-control.md` 11,
+`view/sight.rs`; 90 s after any use until 2026-11-19). Native pages do the same. A page whose tab wasn't shown, asked over the `DevTools` protocol
 (`.superpowers/native/probe/cdp.out`, `q3.sh`):
 
 | Where its views are | `visibilityState` | Animation frames | Script | Screenshot | Protocol click |
@@ -221,6 +241,26 @@ screen was locked, and an agent's page stopped getting frames. `[proven]`: with 
 locked, a page opened in the background answered `visible` with frames running, and took
 `browser_eval`, `browser_click`, `browser_type`, `browser_navigate`, `browser_screenshot`,
 `browser_dialog` and `browser_viewport` (390 × 844, read back from the page).
+
+Hidden this way is hidden as Chrome hides a tab in the background (2026-11-19,
+`tests/smoke/sight.rs`, the host's own process): a timer every 10 ms ticked 200 times in two
+seconds on screen and 2 or 3 out of sight, and the first animation frame once it was shown
+again came 16-19 ms after the host was told. `[proven]` CEF's own `WasHidden` isn't a way:
+for a Chrome-style page it does nothing (`chrome_browser_host_impl.cc`, `NOTIMPLEMENTED`).
+
+A hidden page's holder stays shown, parked or over its pane, with nothing in it. Ordered out
+as well (CEF's `Window::Hide`, which suspends the holder's compositor), four hidden pages of
+1400 × 900 cost the same: the host and its helpers 0.13 s of CPU in 20 s against 0.12-0.17 s,
+the GPU process 152.8 MB against 144-157 MB, and the first frame back 14-42 ms against
+12-70 ms (`.superpowers/perf/r4/g7/`). `[proven]` So it isn't done: a holder with no views in
+it draws nothing already, and showing it again is one more thing to go wrong as a page comes
+back.
+
+The windows Chromium ties to a holder (autofill's lists and bubbles, the passkey dialog, an
+extension's popup) would open under Koyo's window, as the holder is a level down. While the
+page is in Koyo's window, a holder hands each to that window instead (its
+`addChildWindow:ordered:` and `removeChildWindow:`, `native/holder.rs`), and as the page's views
+move, the windows shown for it move with them (`rehome`). `[built]`, not yet seen on screen.
 
 The off-screen path wasn't needed for pages out of sight, and is gone (2026-11-15).
 
@@ -260,7 +300,7 @@ Two things are out of step in such a drag, and each has its own answer.
    holds the picture a frame of its own, the picture's size, at the view's top left
    (the harness's `layers`). What shows beside it in a pane made wider is what's behind the
    page, which is now the colour the page's own canvas is painted (the root's background,
-   else the body's, else white; asked with the page's tone, `tone.rs`), where it was white
+   else the body's, else white; said with the page's tone, `tone.rs`), where it was white
    whatever the page. A dark page no longer flashes a white strip at the edge.
 
 `[proven]` on the agent desktop, software compositing: a split's divider dragged 200 points
@@ -465,7 +505,7 @@ Checked means run in the debug build as a bundle, through the host: on screen
 (`.superpowers/native/test/`), or, where it says so, on Koyo's agent desktop
 (`.superpowers/native/desk/`), both 2026-11-14. A window on the agent desktop isn't on
 screen: there the harness has GPUI draw it (`tick`), a page counts as out of sight unless a
-browser tool used it in the last 90 s (and is hidden again once a press makes it the
+browser tool used it in the last 90 s (5 s after its last command since 2026-11-19; and is hidden again once a press makes it the
 person's), and the pointer's moves are handed to the views (`hover`), as no tracking area
 gets them. Captures need software compositing, under which a page in a window that isn't on
 screen often took neither moves nor presses: what the pointer does was checked with the GPU
@@ -483,7 +523,7 @@ on, what a page shows with it off.
 | Find bar | the host's `Find`; the bar is GPUI's, over the page | checked |
 | `DevTools` | a native page of the frontend, same bridge; since `docs/browser.md` 13, its own dock menu, × and device toggle, and no bar of Koyo's | checked, docked, with Koyo's bar; since, its own toolbar seen with no bar of Koyo's, its dock menu and × at work not yet |
 | Responsive mode | Chromium's emulated size and scale | checked: 390 × 844 at 40 %, a click at the scaled place, a tool's screenshot at full size |
-| `window.open` | the host's `OnBeforePopup`: the same pane goes there | checked |
+| Links to a new tab, `window.open`, popups | Chrome makes the page (`OnBeforePopup`), which keeps its opener, in a pane of its own beside the opener's; ⌘-, ⇧- and middle-clicks through `OnOpenURLFromTab`; a popup with no gesture stays blocked (`pane/popups.rs`) | checked: `tests/smoke/popups.rs` |
 | Browser tools: eval, click, type, navigate, back, reload, screenshot, dialog, viewport | the protocol through the host | checked, shown and out of sight |
 | Page out of sight, awake for an agent | views parked in the holder | checked |
 | Closing a tab | browser closed, holder destroyed | checked |
@@ -499,7 +539,7 @@ on, what a page shows with it off.
 | Permissions | the host's handlers, in Koyo's process now; Koyo's own prompt | checked, agent desktop: notifications asked, Allow, the page told `granted`; put away, `denied`. Location and the camera asked and blocked, the page told so. Allowed, those two go on to macOS's own prompt, which shows on the person's screen: not tried. `script/bundle` and `script/dev-bundle` give Koyo the usage reasons macOS asks for |
 | Passkeys | the host's bridge, as off screen | checked, agent desktop: turned down at once (`NotAllowedError` in 2 ms), as an unsigned build does (`docs/browser.md` 9). The sheet itself needs a signed build |
 | Trackpad swipe back, pinch | Chromium's own | not checked |
-| The bar's glass dark or light by the page | the page says how light it is: once a second while drawn, the background colour at a 12 by 8 grid of its points, through its session (`browser/tone.rs`). Pictures and gradients read as what's behind them | checked: the bar changed tone over a page turned dark |
+| The bar's glass dark or light by the page | the page says how light it is: the background colour at a 12 by 8 grid of its points, worked out by a watcher in its renderer as it first shows and after what could change it (the document changing, a scroll, a transition or animation ending, a resize, the system's appearance, the page shown again), at most once a second, never while hidden, and told only when it changed (`koyo-browser-host/src/tone/renderer.rs`, `browser/tone.rs`). A page left alone is asked nothing. Pictures and gradients read as what's behind them | checked: the bar changed tone over a page turned dark |
 | The person "has" a page by typing in it | the host says a key of the person's was pressed (`Typed`) | checked: after typing with no press, an agent's command was told the person has the page |
 | Clearing browsing data | every profile to a fresh folder, pages closed and opened again (section 3) | checked: a cookie, `localStorage` and a granted permission gone, the page back at its address; the old folder deleted at the next start |
 | A window moved | GPUI draws the window again, and the holder is put over the pane | checked, agent desktop: the window moved 80 by 45 points, the holder with it |
@@ -564,8 +604,17 @@ without one).
 The engine's own tests (`koyo-browser-host/tests/smoke`) run the host as a process of its
 own, from the engine's bundle, speaking the same protocol: its pages are in holders parked
 off the screen, which is how a page out of sight is kept (section 5), so they load, run
-script, draw and answer the `DevTools` protocol with no window of Koyo's to be in.
-`[proven]`: the suite's seven tests pass so, in 3.5 s.
+script, draw and answer the `DevTools` protocol with no window of Koyo's to be in. That host
+never comes forward (section 3.3), so they run while the person works.
+`koyo-browser-host/tests/embedded` runs the engine as Koyo does: in the test's own process,
+run from an app it lays out round itself with the engine inside (section 3.1), CEF's work
+pumped from the run loop `NSApp` runs, and a page loads and draws there, an idle page on screen
+wakes the main thread about once a second, and work Chromium puts off runs once it's due.
+`script/check`
+packages the engine and runs both, and `koyo/src/browser/host_tests`, all but the location
+and zoom tests (`script/check` says why). `[proven]` 2026-11-19: ten smoke tests, the
+embedded one and nineteen host tests in about 16 s, three runs in a row, with the app in front
+the same before, during and after each.
 
 ## 10. Where it lives
 
@@ -574,6 +623,8 @@ script, draw and answer the `DevTools` protocol with no window of Koyo's to be i
 | `koyo-browser-host/src/lib.rs`, `main.rs` | The host as a library, and the binary made of it: CEF's helpers, and a host process of its own for the engine's tests |
 | `koyo-browser-host/src/embedded.rs` | The host's start and end in Koyo's process; CEF found in the engine; Chrome's saved sessions dropped |
 | `koyo-browser-host/src/embedded/pump.rs` | CEF's work run from the app's run loop |
+| `koyo-browser-host/src/host/outgoing.rs` | What the host tells the app, serialized once and written on a thread of its own, never the main thread's |
+| `koyo-browser-host/src/blocking.rs` | The host's `Blocking`, as the app's: koyo-hygiene holds the host to it, with `koyo-rs/blocking-debt-browser-host.txt` |
 | `koyo-browser-host/src/embedded/nsapp.rs` | Chromium's `NSApp` protocols on the app's class; activation turned down while a page's window shows |
 | `koyo-browser-host/src/native.rs` | A pane's page: its browser view, its holder, where its views are, which tell the app's keyboard as they move |
 | `koyo-browser-host/src/native/holder.rs`, `parts.rs` | The holder's window made inert, and its answer to Chromium's full screen request; the delegates; the client of browsers Chrome makes on its own |
@@ -583,6 +634,7 @@ script, draw and answer the `DevTools` protocol with no window of Koyo's to be i
 | `koyo-browser-host/src/pane/keys.rs` | Keys a page leaves, handed to the app's view; the person's keys told to the app; Escape out of full screen |
 | `koyo-browser-host/src/host/panes.rs` | Panes from open to closed; profiles' folders by how often they were cleared; clearing without stopping |
 | `koyo-browser-host/tests/smoke/` | The engine's tests, against the host as a process of its own |
+| `koyo-browser-host/tests/embedded/` | The engine started in the test's own process as Koyo starts it, from an app the test lays out round itself |
 | `koyo-browser-ipc/src/client.rs` | `Connection::start_embedded`, and `start` for a host process |
 | `koyo/src/browser/native/mod.rs` | The host started in the app; a page's view in its pane |
 | `koyo/src/browser/native_off.rs` | The same call in tests, which start a host process, and off macOS, where there are no pages |
@@ -594,7 +646,7 @@ script, draw and answer the `DevTools` protocol with no window of Koyo's to be i
 | `koyo/src/native/surface.rs` | A view in a native surface; a pane's bounds on whole points, as a page takes them |
 | `koyo/src/surfaces.rs` | Rings of shared surfaces, which the simulator's and the agent desktop's pictures come as (a page's no longer do) |
 | `koyo/src/browser/responsive/` | The size and scale a page is told |
-| `koyo/src/browser/tone.rs`, `lightness.rs` | How light a page says it is, for the glass over it, and its canvas's colour, for what's behind it |
+| `koyo/src/browser/tone.rs`, `lightness.rs`, `koyo-browser-host/src/tone.rs` | How light a page says it is, for the glass over it, and its canvas's colour, for what's behind it; the host's watcher in the page's renderer that says it |
 | `script/dev-bundle`, `script/dev` | The debug build as a bundle round the engine; the hot-reload build with the engine put in the bundle `dx` runs it from |
 
 ## 11. Koyo doesn't fork itself [proven]

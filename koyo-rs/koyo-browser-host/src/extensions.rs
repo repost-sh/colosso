@@ -55,9 +55,11 @@ thread_local! {
 }
 
 /// Makes the pipe as Chromium's command line is put together, and answers the switch value
-/// that names its ends (`--remote-debugging-io-pipes`); none where the engine is CEF's own,
-/// or the pipe couldn't be made, and then there are no extension controls.
+/// that names its ends (`--remote-debugging-io-pipes`); none where the engine's framework
+/// wasn't built with Koyo's patches for it (`framework.rs`), as CEF's own isn't, or the pipe
+/// couldn't be made, and then there are no extension controls.
 pub(crate) fn pipe_switch() -> Option<String> {
+    let patched = crate::framework::patched;
     if !(patched("devtools-pipe-descriptors") && patched("devtools-pipe-embedder")) {
         log::info!("extensions: the engine is CEF's own, without Koyo's patches; their icons and popups are off");
         return None;
@@ -67,18 +69,6 @@ pub(crate) fn pipe_switch() -> Option<String> {
         log::warn!("extensions: no DevTools pipe to the engine; their icons and popups are off");
     }
     switch
-}
-
-/// Whether the engine's framework was built with Koyo's patch `patch`
-/// (`script/cef-patches/`): `script/cef` lists the patches it applied in the framework's
-/// `Resources/koyo-patches.txt`, which goes wherever the framework does.
-fn patched(patch: &str) -> bool {
-    crate::own_bundle()
-        .and_then(|engine| {
-            let framework = crate::embedded::framework(std::path::Path::new(&engine));
-            std::fs::read_to_string(framework.join("Resources/koyo-patches.txt")).ok()
-        })
-        .is_some_and(|list| list.lines().any(|line| line.trim() == patch))
 }
 
 /// Whether an extension's popup is expected or open.

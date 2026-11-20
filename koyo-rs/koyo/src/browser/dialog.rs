@@ -46,8 +46,9 @@ impl BrowserView {
         self.dialog_opened(1, origin, question, cx);
     }
 
-    /// The page asks something. File choosers open the system panel; every other question
-    /// waits for the dialog.
+    /// The page asks something. A file chooser is the agent's that holds the page
+    /// (`agent/choosing.rs`), else it opens the system's panel; every other question waits for
+    /// the dialog.
     pub(super) fn dialog_opened(
         &mut self,
         id: u64,
@@ -56,10 +57,15 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) {
         if let Dialog::File {
-            mode, default_path, ..
+            mode,
+            default_path,
+            title,
+            accept,
         } = &question
         {
-            self.choose_files(id, *mode, default_path, cx);
+            if !self.chooser_for_agent(id, (*mode, title, accept), cx) {
+                self.choose_files(id, *mode, default_path, cx);
+            }
             return;
         }
         self.dialogs.push_back(Question {
@@ -74,6 +80,7 @@ impl BrowserView {
     /// itself.
     pub(super) fn dialog_closed(&mut self, id: u64, cx: &mut Context<Self>) {
         self.dialogs.retain(|question| question.id != id);
+        self.chooser_withdrawn(id);
         self.put_away(id, cx);
         cx.notify();
     }
@@ -140,7 +147,7 @@ impl BrowserView {
         cx.notify();
     }
 
-    fn send_answer(&self, dialog: u64, answer: Answer, cx: &mut Context<Self>) {
+    pub(super) fn send_answer(&self, dialog: u64, answer: Answer, cx: &mut Context<Self>) {
         let pane = self.pane;
         self.send_to_page(
             AppRequest::Answer {

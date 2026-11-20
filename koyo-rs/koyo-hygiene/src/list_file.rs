@@ -22,8 +22,10 @@ pub struct Entry<T> {
 }
 
 /// A list kept in the checkout that only shrinks, as `module-edges.txt` and
-/// `blocking-debt.txt` are: its text, blank lines and `#` lines among it, and its entries.
+/// `blocking-debt.txt` are: its path in the checkout, its text, blank lines and `#` lines among
+/// it, and its entries.
 pub struct List<T> {
+    file: String,
     text: String,
     pub entries: Vec<Entry<T>>,
 }
@@ -38,9 +40,13 @@ pub enum Edit {
 
 impl<T: Line> List<T> {
     pub fn read(root: &Path) -> Result<Self, Failure> {
-        let file = T::FILE;
+        Self::read_at(root, T::FILE)
+    }
+
+    /// The list at `file` in the checkout at `root`, one of several of its kind.
+    pub fn read_at(root: &Path, file: &str) -> Result<Self, Failure> {
         match fs::read_to_string(root.join(file)) {
-            Ok(text) => Self::parse(text, file),
+            Ok(text) => Self::parse(text, file, file),
             Err(failure) if failure.kind() == io::ErrorKind::NotFound => Err(Failure::new(
                 file,
                 format!("missing: restore it from git, as `git checkout HEAD -- {file}` does"),
@@ -51,13 +57,18 @@ impl<T: Line> List<T> {
 
     /// The list as the last commit holds it, or `None` before the commit that adds it.
     pub fn at_head(root: &Path) -> Result<Option<Self>, Failure> {
-        let name = format!("HEAD:{}", T::FILE);
+        Self::at_head_at(root, T::FILE)
+    }
+
+    /// The list at `file` as the last commit holds it, or `None` before the commit that adds it.
+    pub fn at_head_at(root: &Path, file: &str) -> Result<Option<Self>, Failure> {
+        let name = format!("HEAD:{file}");
         if git_lookup(root, &["rev-parse", "--verify", "-q", &name])?.is_none() {
             return Ok(None);
         }
         let blob = git(Some(root), &["cat-file", "blob", &name])?;
         let text = String::from_utf8(blob).map_err(|failure| Failure::new(&name, failure))?;
-        Self::parse(text, &name).map(Some)
+        Self::parse(text, file, &name).map(Some)
     }
 
     /// The list with each entry `edit` drops taken off and each it writes anew rewritten,
@@ -81,14 +92,16 @@ impl<T: Line> List<T> {
                 }
             }
         }
-        Ok((Self::parse(text, T::FILE)?, changed))
+        Ok((Self::parse(text, &self.file, &self.file)?, changed))
     }
 
     pub fn write(&self, root: &Path) -> Result<(), Failure> {
-        fs::write(root.join(T::FILE), &self.text).map_err(|failure| Failure::new(T::FILE, failure))
+        fs::write(root.join(&self.file), &self.text)
+            .map_err(|failure| Failure::new(&self.file, failure))
     }
 
-    fn parse(text: String, name: &str) -> Result<Self, Failure> {
+    /// The list at `file` whose text is `text`, its failures placed in `name`.
+    fn parse(text: String, file: &str, name: &str) -> Result<Self, Failure> {
         let mut entries = Vec::new();
         for (index, line) in text.lines().enumerate() {
             let content = line.trim();
@@ -110,6 +123,10 @@ impl<T: Line> List<T> {
                 line: index + 1,
             });
         }
-        Ok(Self { text, entries })
+        Ok(Self {
+            file: file.to_owned(),
+            text,
+            entries,
+        })
     }
 }

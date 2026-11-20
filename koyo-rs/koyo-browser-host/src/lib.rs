@@ -14,10 +14,13 @@
     reason = "cef's wrap_* macros transmute references in what they expand to"
 )]
 mod app;
+mod blocking;
 mod devtools;
 mod dialogs;
+mod downloads;
 mod extensions;
 pub mod embedded;
+mod framework;
 mod host;
 mod location;
 mod mac_app;
@@ -26,6 +29,9 @@ pub mod native;
 mod pane;
 mod passkeys;
 mod pending;
+mod printing;
+mod session;
+mod tone;
 
 use std::process::ExitCode;
 
@@ -99,7 +105,7 @@ pub fn main() -> ExitCode {
         return u8::try_from(code.max(0)).map_or(ExitCode::FAILURE, ExitCode::from);
     }
 
-    match host::run(&args) {
+    match blocking::at_launch(|may| host::run(may, &args)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("koyo-browser-host: {error}");

@@ -1,10 +1,17 @@
 //! End to end against a packaged engine: start the host as a process of its own, where its
-//! pages are in holders parked off the screen, open a page, and ask it things.
+//! pages are in holders parked off the screen, open a page, and ask it things. The host never
+//! comes forward (`mac_app.rs`), so they run while the person works.
+//!
+//! They wait for an engine `script/browser-engine` packaged from the host just built, which
+//! `script/check` packages before it runs them; `KOYO_BROWSER_ENGINE` names another:
 //!
 //! ```sh
-//! KOYO_BROWSER_ENGINE=<data>/browser-engine/current \
-//!   script/cargo test -p koyo-browser-host --test smoke -- --ignored
+//! script/browser-engine
+//! script/cargo test -p koyo-browser-host --test smoke -- --ignored --skip location::
 //! ```
+//!
+//! The location test waits for the person to answer macOS's prompt the first time, so
+//! `script/check` leaves it out.
 #![cfg(target_os = "macos")]
 #![expect(
     clippy::expect_used,
@@ -17,7 +24,11 @@ mod extensions;
 mod location;
 mod media;
 mod passkeys;
+mod popups;
+mod saves;
+mod sight;
 mod support;
+mod tone;
 
 use koyo_browser_ipc::client::Connection;
 use koyo_browser_ipc::{AppRequest, HostEvent, Viewport};
@@ -163,6 +174,37 @@ fn a_page_goes_full_screen_and_back_and_the_host_still_quits() {
 
 #[test]
 #[ignore = "Needs a packaged browser engine; see the module docs"]
+fn a_page_whose_renderer_crashes_is_gone_and_the_host_serves_on() {
+    let launch = launch("crash");
+    let mut session = Session::start(&launch);
+    open(&mut session, "data:text/html,<title>doomed</title>", "doomed");
+    agents::cdp(&mut session, 900, "Page.crash", serde_json::json!({}));
+    let mut gone = None;
+    session.wait("the page to be gone", |event| match event {
+        HostEvent::Gone { pane: 1, reason } => {
+            gone = Some(reason.clone());
+            true
+        }
+        _ => false,
+    });
+    let reason = gone.expect("a reason");
+    assert!(!reason.is_empty(), "the person is told why the page went");
+    (session.host)
+        .send(&AppRequest::Open {
+            pane: 2,
+            url: "data:text/html,<title>next</title>".into(),
+            viewport: support::VIEWPORT,
+            profile: "smoke".into(),
+        })
+        .expect("open");
+    session.wait("the next page to load", |event| {
+        matches!(event, HostEvent::Page { pane: 2, state } if state.title == "next" && !state.loading)
+    });
+    close(session, &launch);
+}
+
+#[test]
+#[ignore = "Needs a packaged browser engine; see the module docs"]
 fn a_host_left_holding_the_profiles_gives_way_to_the_next() {
     let launch = launch("left");
     let first = Session::start(&launch);
@@ -182,4 +224,5 @@ fn a_host_left_holding_the_profiles_gives_way_to_the_next() {
     assert_ne!(next.pid(), stuck);
     drop(first);
     next.shutdown(Duration::from_secs(5));
+    let _ = std::fs::remove_dir_all(launch.profiles.parent().expect("scratch"));
 }

@@ -3,6 +3,10 @@
 //! fresh folders, and the old ones go as the host next starts (`docs/native-pages.md` 3).
 
 use std::path::Path;
+use std::sync::Mutex;
+use std::thread::JoinHandle;
+
+use crate::blocking::{self, Blocking};
 
 /// A profile's folder in the root: `profile-<name>`, and once the profiles were cleared
 /// `profile-<name>.g<times>`, a fresh one (a name has no dot in it).
@@ -126,8 +130,45 @@ fn unlist(root: &Path, profiles: &[String]) {
     }
 }
 
-/// Keeps that the profiles in `root` were cleared `times` times.
+/// The writes of how many times the profiles were cleared that may be under way, which the
+/// host waits for as it stops ([`kept`]).
+static KEEPING: Mutex<Vec<JoinHandle<()>>> = Mutex::new(Vec::new());
+
+/// The lock a write of how many times the profiles were cleared takes.
+static WRITING: Mutex<()> = Mutex::new(());
+
+/// Keeps that the profiles in `root` were cleared `times` times, on a thread of its own: a
+/// clear is asked on the main thread.
 pub(super) fn keep_generation(root: &Path, times: u32) {
+    let root = root.to_owned();
+    match blocking::thread("profiles-cleared", move |may| write_generation(may, &root, times)) {
+        Ok(writing) => {
+            if let Ok(mut keeping) = KEEPING.lock() {
+                keeping.retain(|write| !write.is_finished());
+                keeping.push(writing);
+            }
+        }
+        Err(error) => log::warn!("couldn't keep that the profiles were cleared: {error}"),
+    }
+}
+
+/// Waits for what [`keep_generation`] was asked to keep to be kept: as the host stops.
+pub(crate) fn kept() {
+    let writes = KEEPING.lock().map(|mut keeping| std::mem::take(&mut *keeping));
+    for write in writes.unwrap_or_default() {
+        let _ = write.join();
+    }
+}
+
+/// Writes that the profiles in `root` were cleared `times` times, unless the root says more
+/// already: a later clear's write may land first.
+fn write_generation(_: Blocking<'_>, root: &Path, times: u32) {
+    let Ok(_alone) = WRITING.lock() else {
+        return;
+    };
+    if generation(root) > times {
+        return;
+    }
     if let Err(error) = std::fs::write(root.join(GENERATION), times.to_string()) {
         log::warn!("couldn't keep that the profiles were cleared: {error}");
     }
@@ -166,7 +207,7 @@ mod tests {
         }});
         std::fs::write(root.join("Local State"), listed.to_string()).unwrap();
         assert_eq!(generation(root), 0);
-        keep_generation(root, 2);
+        blocking::in_test(|may| write_generation(may, root, 2));
         assert_eq!(generation(root), 2);
 
         drop_cleared(root);
@@ -184,11 +225,24 @@ mod tests {
         assert!(profile.get("last_used").is_none());
     }
 
+    /// Clears asked one after another are kept as the last of them, once the host has waited
+    /// for them as it stops, though each is written on a thread of its own.
+    #[test]
+    fn the_last_of_clears_asked_together_is_kept() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        for times in 1..=20 {
+            keep_generation(root, times);
+        }
+        kept();
+        assert_eq!(generation(root), 20);
+    }
+
     #[test]
     fn a_deleted_profiles_folders_go_as_the_host_next_starts() {
         let root = tempfile::tempdir().unwrap();
         let root = root.path();
-        keep_generation(root, 1);
+        blocking::in_test(|may| write_generation(may, root, 1));
         for name in [
             "profile-work-1.g1",
             "profile-work-1",

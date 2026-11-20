@@ -3,15 +3,20 @@
 `script/cef` applies every `*.patch` here, in name order, to Chromium's sources (CEF's own
 checkout is `cef/` inside them) after CEF's own patches, and builds the framework with them.
 What each is for, and what extensions get from it, is `docs/extensions.md` 10. The framework
-lists the patches it was built with in `Resources/koyo-patches.txt`; the host
-(`koyo-rs/koyo-browser-host/src/extensions.rs`) reads that before it asks the engine for
-anything a patch adds.
+lists the patches it was built with, each with a hash of its content, in
+`Resources/koyo-build.txt` (`script/cef-framework`); the host
+(`koyo-rs/koyo-browser-host/src/framework.rs`) reads that before it asks the engine for
+anything a patch adds, and `script/browser-engine` packages a release engine only from a
+framework built with exactly these. The sources keep a copy of each patch applied
+(`out/koyo-patches`), so a patch changed or removed here stops `script/cef` with how to take
+the old one out, rather than building it beside the new.
 
 | Patch | From | Touches |
 | --- | --- | --- |
 | `devtools-pipe-descriptors` | Koyo | `content/browser/devtools/devtools_agent_host_impl.cc` |
 | `devtools-pipe-embedder` | Koyo | `chrome/browser/devtools/chrome_devtools_manager_delegate.cc`, `remote_debugging_server.cc` |
 | `dialog-without-parent-titlebar` | Koyo | `ui/views/widget/native_widget_mac.mm` |
+| `external-pump-idle-work` | CEF upstream `b7f5636` (issue 4332), not yet in 156.0.14 | `cef/libcef/browser/browser_message_loop.cc`: an external pump runs idle work whenever no immediate work is left, which accepting an autofill suggestion waits on |
 | `extension-current-window-last-active` | Koyo | `chrome/browser/extensions/window_controller_list.cc` |
 | `extension-install-ui-null-tab` | Cra | `chrome/browser/ui/extensions/extension_install_ui_desktop.cc` |
 | `extension-popup-browser-info` | Cra | `cef/libcef/browser/browser_info_manager.cc` |

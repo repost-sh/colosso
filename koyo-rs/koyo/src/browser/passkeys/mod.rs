@@ -6,9 +6,9 @@
 //!
 //! macOS answers a browser's passkey requests for any site only when the app is signed with
 //! Apple's browser-passkey entitlement ([`ENTITLEMENT`]). Without it the app tells the host
-//! so as it starts it, and the host turns every request down at once, so a page goes
-//! straight to its other ways of signing in (`docs/browser.md` says how Koyo gets signed for
-//! it).
+//! so as it starts it, and the host hands each request to Chromium's own `WebAuthn`, which
+//! reaches a security key or a phone without it, and turns down at once one only this Mac's
+//! passkeys could answer (`docs/browser.md` 9.3 says how, and how Koyo gets signed).
 //!
 //! A page has one request at a time; it waits until its pane is drawn, so the sheet comes up
 //! over the window that shows the page.
@@ -36,7 +36,7 @@ pub fn entitled() -> bool {
         let entitled = has_entitlement(ENTITLEMENT);
         if !entitled {
             log::info!(
-                "passkeys are turned down: the app isn't signed with {ENTITLEMENT} (docs/browser.md)"
+                "this Mac's passkeys are turned down, security keys and phones left to the engine: the app isn't signed with {ENTITLEMENT} (docs/browser.md)"
             );
         }
         entitled

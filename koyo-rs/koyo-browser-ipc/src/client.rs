@@ -6,7 +6,8 @@
 //! nothing shows: the engine's tests use it. Events from a reader thread are handed to the
 //! caller's sink as they arrive.
 use crate::{
-    AppRequest, ENV_PROFILE_ROOT, ENV_SOCKET_FD, ENV_TOKEN, Hello, HostEvent, PROTOCOL, inherit,
+    AppRequest, ENV_PROFILE_ROOT, ENV_SOCKET_FD, ENV_TOKEN, Framework, Hello, HostEvent, PROTOCOL,
+    inherit,
 };
 use std::io;
 use std::os::unix::net::UnixStream;
@@ -71,13 +72,29 @@ pub struct Connection {
     pub engine: String,
     /// The Chromium version the engine embeds.
     pub chromium: String,
+    /// What the engine's framework was built with.
+    pub framework: Framework,
 }
 
-/// A secret no other process can guess: 24 random bytes, in hex.
+/// What the host says of its engine as it's ready ([`HostEvent::Ready`]).
+#[derive(Debug, PartialEq)]
+struct Engine {
+    version: String,
+    chromium: String,
+    framework: Framework,
+}
+
+/// A secret no other process can guess: 24 random bytes from the kernel's generator
+/// (`getentropy`, which opens no file and doesn't block), in hex.
+///
+/// # Errors
+/// When the kernel gives no random bytes.
 pub fn token() -> io::Result<String> {
     let mut bytes = [0u8; 24];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| io::Read::read_exact(&mut f, &mut bytes))?;
+    // SAFETY: a buffer of the length given, under getentropy's limit of 256.
+    if unsafe { libc::getentropy(bytes.as_mut_ptr().cast(), bytes.len()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
     Ok(bytes.iter().fold(String::with_capacity(48), |mut hex, b| {
         use std::fmt::Write;
         let _ = write!(hex, "{b:02x}");
@@ -85,13 +102,9 @@ pub fn token() -> io::Result<String> {
     }))
 }
 
-/// Sends [`Hello`] and returns the engine and Chromium versions. A host that
+/// Sends [`Hello`] and returns what the host says of its engine. A host that
 /// exits first closes its end, which ends the wait.
-fn handshake(
-    stream: &mut UnixStream,
-    token: String,
-    passkeys: bool,
-) -> io::Result<(String, String)> {
+fn handshake(stream: &mut UnixStream, token: String, passkeys: bool) -> io::Result<Engine> {
     say_hello(stream, token, passkeys)?;
     hear_ready(stream)
 }
@@ -107,8 +120,8 @@ fn say_hello(stream: &mut UnixStream, token: String, passkeys: bool) -> io::Resu
     )
 }
 
-/// The host's hello, the engine's versions in it, or why it refused.
-fn hear_ready(stream: &mut UnixStream) -> io::Result<(String, String)> {
+/// The host's hello, what it says of its engine in it, or why it refused.
+fn hear_ready(stream: &mut UnixStream) -> io::Result<Engine> {
     koyo_frame::hello(
         stream,
         START_TIMEOUT,
@@ -119,7 +132,15 @@ fn hear_ready(stream: &mut UnixStream) -> io::Result<(String, String)> {
                 protocol,
                 engine,
                 chromium,
-            }) => Ok(Some((protocol, (engine, chromium)))),
+                framework,
+            }) => Ok(Some((
+                protocol,
+                Engine {
+                    version: engine,
+                    chromium,
+                    framework,
+                },
+            ))),
             Some(HostEvent::Error { message, .. }) => Err(io::Error::other(message)),
             _ => Ok(None),
         },
@@ -168,8 +189,8 @@ impl Connection {
             .env(ENV_TOKEN, &token)
             .env(ENV_PROFILE_ROOT, &launch.profiles);
         let mut child = inherit::spawn(command, host_end)?;
-        let versions = match handshake(&mut stream, token, launch.passkeys) {
-            Ok(versions) => versions,
+        let engine = match handshake(&mut stream, token, launch.passkeys) {
+            Ok(engine) => engine,
             Err(e) => {
                 let exited = child.try_wait().ok().flatten();
                 let _ = child.kill();
@@ -187,7 +208,7 @@ impl Connection {
                 });
             }
         };
-        Self::connected(stream, versions, Some(child), None, sink)
+        Self::connected(stream, engine, Some(child), None, sink)
     }
 
     /// Starts the host in the app's own process and completes the handshake, as
@@ -205,14 +226,14 @@ impl Connection {
         let (mut stream, host_end, token) = Self::begin(launch)?;
         say_hello(&mut stream, token.clone(), launch.passkeys)?;
         (embedded.start)(host_end, token);
-        let versions = hear_ready(&mut stream).map_err(|e| {
+        let engine = hear_ready(&mut stream).map_err(|e| {
             if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) {
                 io::Error::new(io::ErrorKind::TimedOut, "the browser engine did not start")
             } else {
                 e
             }
         })?;
-        Self::connected(stream, versions, None, Some(embedded.finish), sink)
+        Self::connected(stream, engine, None, Some(embedded.finish), sink)
     }
 
     /// What both starts begin with: the profiles freed of a host left behind, the socket
@@ -228,7 +249,7 @@ impl Connection {
     /// The connection once the host has said hello, its events going to `sink`.
     fn connected(
         stream: UnixStream,
-        (engine, chromium): (String, String),
+        engine: Engine,
         child: Option<Child>,
         finish: Option<Box<dyn FnOnce(Duration) + Send>>,
         sink: impl Sink,
@@ -246,8 +267,9 @@ impl Connection {
             child,
             finish,
             exited,
-            engine,
-            chromium,
+            engine: engine.version,
+            chromium: engine.chromium,
+            framework: engine.framework,
         })
     }
 
@@ -304,7 +326,7 @@ mod tests {
     use super::*;
 
     /// The handshake with a host that answers `answer`, once it has heard the app's hello.
-    fn handshake_with(answer: &HostEvent) -> io::Result<(String, String)> {
+    fn handshake_with(answer: &HostEvent) -> io::Result<Engine> {
         let (mut app, mut host) = UnixStream::pair()?;
         crate::write_frame(&mut host, answer)?;
         let said = handshake(&mut app, "secret".into(), true);
@@ -318,15 +340,36 @@ mod tests {
         said
     }
 
+    /// A token is 24 bytes in hex, and no two are alike.
+    #[test]
+    fn a_token_is_48_hex_digits_and_no_two_are_alike() {
+        let (first, second) = (token().unwrap(), token().unwrap());
+        for made in [&first, &second] {
+            assert_eq!(made.len(), 48, "{made}");
+            assert!(made.bytes().all(|b| b.is_ascii_hexdigit()), "{made}");
+        }
+        assert_ne!(first, second);
+    }
+
     #[test]
     fn a_host_is_ready_only_in_this_protocol_and_says_why_it_isnt() {
+        let framework = Framework {
+            codecs: true,
+            patches: vec!["devtools-pipe-descriptors".into()],
+        };
         let ready = |protocol| HostEvent::Ready {
             protocol,
             engine: "1.0".into(),
             chromium: "140".into(),
+            framework: framework.clone(),
         };
-        let versions = handshake_with(&ready(PROTOCOL)).unwrap();
-        assert_eq!(versions, ("1.0".into(), "140".into()));
+        let engine = handshake_with(&ready(PROTOCOL)).unwrap();
+        let expected = Engine {
+            version: "1.0".into(),
+            chromium: "140".into(),
+            framework: framework.clone(),
+        };
+        assert_eq!(engine, expected);
         let refused = handshake_with(&ready(PROTOCOL + 1)).unwrap_err();
         let mismatch = refused.get_ref().and_then(|inner| inner.downcast_ref::<Mismatch>());
         let expected = Mismatch {

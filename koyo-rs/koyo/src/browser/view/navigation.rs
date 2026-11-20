@@ -6,11 +6,11 @@
 //! the history keeps too.
 
 use gpui_kit::{App, Context};
-use koyo_browser_ipc::{AppRequest, Go};
+use koyo_browser_ipc::{AppRequest, Go, Scroll, Session, SessionEntry};
 
 use super::{BrowserEvent, BrowserView, Notice};
 use crate::browser::control::{Leased as _, Mode};
-use crate::browser::{Address, read_address, search_url};
+use crate::browser::{Address, read_address};
 use crate::history::How;
 
 /// A page the pane loaded, as the history keeps it: `how` it came, or `None` when it was gone
@@ -41,11 +41,10 @@ impl BrowserView {
     /// What the buttons can do for the page now.
     pub fn controls(&self, cx: &App) -> Controls {
         let open = self.is_open(cx);
-        let crashed = matches!(self.notice, Some(Notice::Gone(_)));
         Controls {
             back: open && self.page.can_go_back,
             forward: open && self.page.can_go_forward,
-            reload: open || crashed,
+            reload: open,
             loading: self.page.loading,
         }
     }
@@ -81,6 +80,40 @@ impl BrowserView {
         self.came = None;
     }
 
+    /// The page's history around it and its scroll, as the window keeps them.
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+    /// The page the pane opens first is one brought back with `session`: it opens with those
+    /// pages behind and ahead of it, scrolled where it was (`docs/browser.md` 7).
+    pub fn bring_back(&mut self, session: Session) {
+        self.session = session;
+    }
+
+    /// The page, brought back with a history, is sent to `url` before it was opened, as an
+    /// agent may send one whose tab wasn't shown: the page it would have opened at goes behind
+    /// it in the history it opens with, as a page left does, and what was ahead of that goes.
+    fn leave_unopened(&mut self, url: &str) {
+        let left = self.target.clone();
+        if !left.is_empty() && left != url {
+            self.session.back.push(SessionEntry {
+                url: left,
+                title: String::new(),
+            });
+        }
+        self.session.forward.clear();
+        self.session.scroll = Scroll::default();
+    }
+
+    /// The host says the page's history around it, or its scroll, changed.
+    pub(in crate::browser) fn session_changed(&mut self, session: Session, cx: &mut Context<Self>) {
+        if self.session != session {
+            self.session = session;
+            cx.emit(BrowserEvent::SessionChanged);
+        }
+    }
+
     /// Goes where the person typed `text` in the address: to the page, or a search for it.
     pub(in crate::browser) fn go_to_typed(&mut self, text: &str, cx: &mut Context<Self>) {
         if let Some(address) = read_address(text) {
@@ -96,7 +129,7 @@ impl BrowserView {
         match address {
             Address::Page(url) => self.navigate_typed(url, cx),
             Address::Search(words) => {
-                let url = search_url(&words);
+                let url = crate::settings::get(cx).search_engine.results(&words);
                 cx.emit(BrowserEvent::Searched(words));
                 self.navigate(url, cx);
             }
@@ -110,9 +143,12 @@ impl BrowserView {
         }
         self.came = Some(came);
         self.notice = None;
+        if !self.opened_now(cx) && !self.session.is_empty() {
+            self.leave_unopened(&url);
+        }
         self.target.clone_from(&url);
         self.page.url.clone_from(&url);
-        (self.page.loading, self.page.progress) = (true, 0);
+        (self.page.loading, self.progress) = (true, 0);
         self.send_or_open(
             AppRequest::Navigate {
                 pane: self.pane,
@@ -125,20 +161,21 @@ impl BrowserView {
     }
 
     /// The person moves through the page's history, reloads or stops it: from the page's toolbar,
-    /// or the Arc sidebar's buttons.
+    /// the Arc sidebar's buttons, or the notice over a page whose renderer went away. The host
+    /// still has that page's browser, which Chromium gives a new renderer as it loads a page,
+    /// told again what responsive mode emulates.
     pub(crate) fn go(&mut self, to: Go, cx: &mut Context<Self>) {
         self.person_acts(Mode::Implicit, cx);
-        if to == Go::Reload && matches!(self.notice, Some(Notice::Gone(_))) {
-            self.notice = None;
-            self.opened = None;
-            self.ensure_open(cx);
-            return;
-        }
         if matches!(to, Go::Back | Go::Forward) {
             self.goes_through_history();
         }
         let pane = self.pane;
         self.send_to_page(AppRequest::Go { pane, to }, cx);
+        if to != Go::Stop && matches!(self.notice, Some(Notice::Gone(_))) {
+            self.notice = None;
+            self.session_opened(cx);
+            cx.notify();
+        }
     }
 
     /// The page goes back or forward through its history, which is no new visit.

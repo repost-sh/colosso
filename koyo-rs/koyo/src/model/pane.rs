@@ -149,6 +149,12 @@ impl Pane {
         self.page()?.unloaded_address()
     }
 
+    /// The history around a browser pane's page and its scroll, as the window keeps them;
+    /// none for another kind.
+    pub fn session(&self, cx: &App) -> koyo_browser_ipc::Session {
+        self.page().map(|page| page.session(cx)).unwrap_or_default()
+    }
+
     /// The address a browser pane shows, or opens once its tab is shown; `None` for another
     /// kind.
     pub fn address(&self) -> Option<&str> {

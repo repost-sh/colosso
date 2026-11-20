@@ -113,6 +113,12 @@ pub fn init(cx: &mut App) {
 }
 
 impl Terminals {
+    /// The daemon tells of `record`, as it does of a terminal that opened.
+    #[cfg(test)]
+    pub(crate) fn heard_of(&mut self, record: &koyo_term_control::TerminalRecord) {
+        self.states.upsert(record);
+    }
+
     /// The daemon's client, made on first use: the daemon is this executable run as
     /// `koyo termd`, started when none runs.
     pub(crate) fn client(&mut self) -> Option<Arc<TermClient>> {

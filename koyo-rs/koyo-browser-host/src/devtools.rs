@@ -20,6 +20,7 @@
 //! The frontend's own controls (its dock menu, its ×, its device toolbar
 //! toggle) are on, and a shim in its page passes what they ask to the app
 //! (`embedder`, `docs/browser.md` 13).
+use crate::blocking::{self, Blocking};
 use crate::host;
 use cef::{
     Browser, DevToolsMessageObserver, ImplDevToolsMessageObserver, WrapDevToolsMessageObserver,
@@ -39,6 +40,7 @@ use std::time::Duration;
 use tungstenite::{Message, WebSocket};
 
 pub(crate) mod embedder;
+pub(crate) mod message;
 mod session;
 #[cfg(test)]
 mod tests;
@@ -92,16 +94,14 @@ impl Bridge {
         let stop = Arc::new(AtomicBool::new(false));
         let path = format!("/{token}");
         let stopping = stop.clone();
-        std::thread::Builder::new()
-            .name(format!("devtools-{pane}"))
-            .spawn(move || {
-                let ends = Ends {
-                    outgoing,
-                    woken,
-                    stop: stopping,
-                };
-                serve(pane, &listener, &path, &ends);
-            })?;
+        blocking::thread(&format!("devtools-{pane}"), move |may| {
+            let ends = Ends {
+                outgoing,
+                woken,
+                stop: stopping,
+            };
+            serve(may, pane, &listener, &path, &ends);
+        })?;
         Ok(Self {
             port,
             token,
@@ -129,7 +129,7 @@ struct Ends {
 }
 
 /// Accepts the frontend, one connection at a time, until stopped.
-fn serve(pane: PaneId, listener: &TcpListener, path: &str, ends: &Ends) {
+fn serve(may: Blocking<'_>, pane: PaneId, listener: &TcpListener, path: &str, ends: &Ends) {
     while !ends.stop.load(Ordering::Relaxed) {
         let Ok((stream, _)) = listener.accept() else {
             return;
@@ -139,7 +139,7 @@ fn serve(pane: PaneId, listener: &TcpListener, path: &str, ends: &Ends) {
         }
         while ends.outgoing.try_recv().is_ok() {}
         if let Some(socket) = handshake(stream, path) {
-            connection(pane, socket, ends);
+            connection(may, pane, socket, ends);
         }
     }
 }
@@ -182,7 +182,7 @@ fn only_path(path: &str, request: &Request, response: Response) -> Result<Respon
 /// One frontend connection: what it sends goes to the page on the UI
 /// thread, what the page answers goes back to it. Between the two it
 /// sleeps, waking for nothing while nothing happens (`wait`).
-fn connection(pane: PaneId, mut socket: WebSocket<TcpStream>, ends: &Ends) {
+fn connection(may: Blocking<'_>, pane: PaneId, mut socket: WebSocket<TcpStream>, ends: &Ends) {
     loop {
         match socket.read() {
             Ok(Message::Text(text)) => host::from_frontend(pane, text.to_string()),
@@ -192,7 +192,7 @@ fn connection(pane: PaneId, mut socket: WebSocket<TcpStream>, ends: &Ends) {
                 let Some(unsent) = send_waiting(&mut socket, &ends.outgoing) else {
                     return;
                 };
-                if !wait(socket.get_ref(), &ends.woken, unsent) {
+                if !wait(may, socket.get_ref(), &ends.woken, unsent) {
                     break;
                 }
             }
@@ -231,7 +231,7 @@ fn send_waiting(socket: &mut WebSocket<TcpStream>, outgoing: &Receiver<String>) 
 /// Sleeps until the frontend sends something, the bridge hands something
 /// on (`woken`), or, while some is `unsent`, the socket takes more: whether
 /// the connection goes on, which it doesn't once the bridge is gone.
-fn wait(socket: &TcpStream, mut woken: &UnixStream, unsent: bool) -> bool {
+fn wait(_: Blocking<'_>, socket: &TcpStream, mut woken: &UnixStream, unsent: bool) -> bool {
     let out = if unsent { libc::POLLOUT } else { 0 };
     let mut ready = [
         libc::pollfd {

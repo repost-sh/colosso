@@ -113,6 +113,10 @@ impl BrowserView {
             }
         };
         let page = matches!(request, AppRequest::Open { .. });
+        if page && !self.session.is_empty() {
+            let session = self.session.clone();
+            self.send(AppRequest::BringBack { pane: self.pane, session }, cx);
+        }
         self.opened = Some(epoch);
         self.visible = None;
         self.seen = false;
@@ -143,6 +147,7 @@ impl BrowserView {
         if self.opened.is_some_and(|opened| opened != epoch) {
             self.opened = None;
             self.dialogs.clear();
+            self.chooser = None;
             self.forget_passkey();
             self.menu_request = None;
             self.open_menu = None;

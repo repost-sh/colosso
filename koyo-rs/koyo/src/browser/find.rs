@@ -1,6 +1,7 @@
-//! Looking at a page: zoomed a step at a time, Chrome's steps, the zoom shown in the toolbar
-//! until it's back to the page's own size; and searched for text in a bar over the page's
-//! top right, the matches counted, Return going to the next and Shift-Return back.
+//! Looking at a page: zoomed a step at a time, Chrome's steps, for the page's whole site as in
+//! Chrome, the zoom shown in the toolbar until it's back to the page's own size; and searched
+//! for text in a bar over the page's top right, the matches counted, Return going to the next
+//! and Shift-Return back.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
@@ -10,7 +11,7 @@ use gpui_kit::{
     AppContext as _, Context, Div, Entity, Focusable as _, InteractiveElement as _, KeyDownEvent,
     ParentElement as _, Styled as _, Subscription, Window, div, px,
 };
-use koyo_browser_ipc::{AppRequest, ViewAction};
+use koyo_browser_ipc::{AppRequest, ViewAction, Zoom};
 
 use super::view::BrowserView;
 use crate::shell::{glass, icon_button};
@@ -65,10 +66,11 @@ impl BrowserView {
         }
     }
 
-    /// Tells the host the pane's zoom. Chromium keeps a zoom per site, so it's told again
-    /// whenever a page loads.
+    /// Tells the host the page's zoom, which Chromium keeps for the page's site, with the
+    /// profile: every page of the site takes it, now and after the app restarts, and the host
+    /// says so of each (`PageState::zoom`).
     pub(super) fn send_zoom(&self, cx: &mut Context<Self>) {
-        let level = (f64::from(self.zoom) / 100.).ln() / 1.2_f64.ln();
+        let level = Zoom(self.zoom).level();
         let (pane, action) = (self.pane, ViewAction::Zoom { level });
         self.send_to_page(AppRequest::View { pane, action }, cx);
     }

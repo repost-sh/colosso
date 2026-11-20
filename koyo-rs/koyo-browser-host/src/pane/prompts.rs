@@ -8,14 +8,15 @@ use cef::{
     FileDialogCallback, FileDialogMode, Frame, ImplDialogHandler, ImplJsdialogHandler,
     ImplMediaAccessCallback, ImplPermissionHandler, ImplRequestHandler, JsdialogCallback, JsdialogHandler, JsdialogType,
     MediaAccessCallback, PermissionHandler, PermissionPromptCallback, PermissionRequestResult,
-    RequestHandler, Sslinfo, TerminationStatus, WrapDialogHandler, WrapJsdialogHandler,
+    RequestHandler, Sslinfo, TerminationStatus, WindowOpenDisposition, WrapDialogHandler, WrapJsdialogHandler,
     WrapPermissionHandler, WrapRequestHandler, rc::Rc, wrap_dialog_handler, wrap_jsdialog_handler,
     wrap_permission_handler, wrap_request_handler,
 };
 use koyo_browser_ipc::{Dialog, PaneId, Permission};
 use std::os::raw::c_int;
 
-/// The handler for `pane`'s network requests: sign-ins, certificate errors, a renderer gone.
+/// The handler for `pane`'s network requests: sign-ins, certificate errors, a renderer gone,
+/// and a link opened a way of the person's own (`popups.rs`).
 pub(super) fn requests(pane: PaneId) -> RequestHandler {
     PaneRequests::new(pane)
 }
@@ -35,20 +36,51 @@ pub(super) fn permissions(pane: PaneId) -> PermissionHandler {
     PanePermissions::new(pane)
 }
 
+/// Why a page's renderer went away, in words for the person, as Chrome's crashed tab
+/// tells a crash from running out of memory and from being killed. The status and its code
+/// go to the log.
+fn why_gone(status: TerminationStatus) -> &'static str {
+    match status {
+        TerminationStatus::PROCESS_CRASHED => "This page crashed.",
+        TerminationStatus::PROCESS_OOM => "This page ran out of memory.",
+        TerminationStatus::PROCESS_WAS_KILLED => "This page was stopped by macOS or another app.",
+        TerminationStatus::LAUNCH_FAILED => "This page couldn't be started.",
+        TerminationStatus::INTEGRITY_FAILURE => "This page failed a code integrity check.",
+        _ => "This page quit unexpectedly.",
+    }
+}
+
 wrap_request_handler! {
     struct PaneRequests {
         pane: PaneId,
     }
 
     impl RequestHandler {
+        fn on_open_urlfrom_tab(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            target_url: Option<&CefString>,
+            target_disposition: WindowOpenDisposition,
+            user_gesture: c_int,
+        ) -> c_int {
+            let url = text(target_url);
+            c_int::from(super::popups::from_tab(self.pane, &url, target_disposition, user_gesture != 0))
+        }
+
         fn on_render_process_terminated(
             &self,
             _browser: Option<&mut Browser>,
             status: TerminationStatus,
             error_code: c_int,
-            _error_string: Option<&CefString>,
+            error_string: Option<&CefString>,
         ) {
-            host::renderer_gone(self.pane, format!("{status:?} ({error_code})"));
+            log::warn!(
+                "pane {}'s renderer went away: {status:?}, code {error_code} {}",
+                self.pane,
+                text(error_string)
+            );
+            host::renderer_gone(self.pane, why_gone(status).to_owned());
         }
 
         fn auth_credentials(
@@ -291,5 +323,28 @@ wrap_permission_handler! {
         ) {
             dialogs::prompt_dismissed(self.pane, prompt_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_page_gone_is_told_in_words_of_its_own_for_each_way_it_goes() {
+        let statuses = [
+            TerminationStatus::ABNORMAL_TERMINATION,
+            TerminationStatus::PROCESS_WAS_KILLED,
+            TerminationStatus::PROCESS_CRASHED,
+            TerminationStatus::PROCESS_OOM,
+            TerminationStatus::LAUNCH_FAILED,
+            TerminationStatus::INTEGRITY_FAILURE,
+        ];
+        let told: std::collections::HashSet<&str> = statuses.map(why_gone).into();
+        assert_eq!(told.len(), statuses.len(), "{told:?}");
+        assert!(
+            told.iter().all(|why| why.starts_with("This page ") && !why.contains("TS_")),
+            "{told:?}"
+        );
     }
 }

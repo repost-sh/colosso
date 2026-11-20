@@ -185,7 +185,7 @@ fn dialogs_and_answers_have_stable_wire_names() {
 #[test]
 fn a_page_icon_travels_as_its_address_then_its_png() {
     let page: PageState = serde_json::from_value(serde_json::json!({
-        "url": "https://example.com/", "title": "", "loading": false, "progress": 100,
+        "url": "https://example.com/", "title": "", "loading": false,
         "canGoBack": false, "canGoForward": false,
     }))
     .expect("an older page state, without an icon");
@@ -194,13 +194,55 @@ fn a_page_icon_travels_as_its_address_then_its_png() {
     let icon = HostEvent::Favicon {
         pane: 3,
         url: "https://example.com/favicon.ico".into(),
-        png: vec![0x89, b'P', b'N', b'G'],
+        png: Bytes(vec![0x89, b'P', b'N', b'G']),
     };
+    let json = serde_json::to_value(&icon).expect("json");
+    assert_eq!(json["png"], "iVBORw", "the icon's bytes travel as base64, as JSON carries bytes");
     write_frame(&mut buf, &icon).expect("write");
     assert_eq!(
         read_frame::<HostEvent>(&mut buf.as_slice()).expect("read"),
         Some(icon)
     );
+}
+
+#[test]
+fn a_pages_tone_progress_and_whose_command_have_stable_wire_names() {
+    use serde_json::json;
+    let tone = HostEvent::Tone {
+        pane: 3,
+        tone: Tone {
+            lightness: vec![1.; Tone::ACROSS * Tone::DOWN],
+            canvas: [18, 18, 18],
+        },
+    };
+    let json = serde_json::to_value(&tone).expect("json");
+    assert_eq!(json["type"], "tone");
+    assert_eq!(json["tone"]["canvas"], json!([18, 18, 18]));
+    assert_eq!(json["tone"]["lightness"].as_array().map(Vec::len), Some(96));
+    let progress = HostEvent::Progress { pane: 3, percent: 40 };
+    assert_eq!(
+        serde_json::to_value(&progress).expect("json"),
+        json!({"type": "progress", "pane": 3, "percent": 40})
+    );
+    let cdp = AppRequest::Cdp {
+        pane: 3,
+        call: 7,
+        caller: CdpCaller::Agent,
+        session: None,
+        method: "Runtime.enable".into(),
+        params: serde_json::Value::Null,
+    };
+    let sent = serde_json::to_value(&cdp).expect("json");
+    assert_eq!(sent["caller"], "agent");
+    assert_eq!(sent.get("session"), None, "the page's own session goes unnamed");
+    let in_frame = json!({"type": "cdpEvent", "pane": 3, "session": "AB12", "method": "Page.frameResized", "params": {}});
+    let heard: HostEvent = serde_json::from_value(in_frame).expect("a frame's event");
+    assert!(matches!(heard, HostEvent::CdpEvent { session: Some(session), .. } if session == "AB12"));
+    for message in [tone, progress] {
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &message).expect("write");
+        assert_eq!(read_frame::<HostEvent>(&mut buf.as_slice()).expect("read"), Some(message));
+    }
 }
 
 #[test]
@@ -294,4 +336,67 @@ fn extensions_have_stable_wire_names() {
         serde_json::to_value(HostEvent::TabClosed { pane: 3 }).unwrap(),
         json!({ "type": "tabClosed", "pane": 3 })
     );
+}
+
+#[test]
+fn downloads_and_printing_have_stable_wire_names() {
+    use serde_json::json;
+    let asked = HostEvent::DownloadAsked {
+        pane: 4,
+        download: 9,
+        name: "report.pdf".into(),
+        url: "https://example.com/report".into(),
+    };
+    assert_eq!(
+        serde_json::to_value(&asked).unwrap(),
+        json!({ "type": "downloadAsked", "pane": 4, "download": 9, "name": "report.pdf",
+                "url": "https://example.com/report" })
+    );
+    let going = HostEvent::Download {
+        pane: 4,
+        download: Download {
+            id: 9,
+            url: "https://example.com/report".into(),
+            path: "/Users/me/Downloads/report.pdf".into(),
+            received: 512,
+            total: None,
+            state: DownloadState::Failed { reason: "The network went away.".into() },
+        },
+    };
+    let wire = serde_json::to_value(&going).unwrap();
+    assert_eq!(
+        wire,
+        json!({ "type": "download", "pane": 4, "download": {
+            "id": 9, "url": "https://example.com/report", "path": "/Users/me/Downloads/report.pdf",
+            "received": 512, "total": null,
+            "state": { "kind": "failed", "reason": "The network went away." } } })
+    );
+    assert_eq!(serde_json::from_value::<HostEvent>(wire).unwrap(), going);
+    assert_eq!(
+        serde_json::to_value(HostEvent::PdfSaved { pane: 4, path: "/tmp/a.pdf".into(), saved: true })
+            .unwrap(),
+        json!({ "type": "pdfSaved", "pane": 4, "path": "/tmp/a.pdf", "saved": true })
+    );
+
+    let save = AppRequest::Download {
+        pane: 4,
+        download: 9,
+        act: DownloadAct::SaveTo { path: "/Users/me/Downloads/report (1).pdf".into() },
+    };
+    assert_eq!(
+        serde_json::to_value(&save).unwrap(),
+        json!({ "type": "download", "pane": 4, "download": 9,
+                "act": { "type": "saveTo", "path": "/Users/me/Downloads/report (1).pdf" } })
+    );
+    assert_eq!(save.pane(), Some(4));
+    let print = AppRequest::Print { pane: 4, print: Print::Pdf { path: "/tmp/a.pdf".into() } };
+    assert_eq!(
+        serde_json::to_value(&print).unwrap(),
+        json!({ "type": "print", "pane": 4, "print": { "type": "pdf", "path": "/tmp/a.pdf" } })
+    );
+    assert_eq!(
+        serde_json::to_value(AppRequest::Print { pane: 4, print: Print::Preview }).unwrap(),
+        json!({ "type": "print", "pane": 4, "print": { "type": "preview" } })
+    );
+    assert_eq!(print.pane(), Some(4));
 }

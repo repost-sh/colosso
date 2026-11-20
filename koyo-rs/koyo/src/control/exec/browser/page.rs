@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use super::super::{Caller, Exec, output};
 use super::pages::{self, Found, Page};
-use super::{refusals, script};
+use super::{refusals, root, script};
 use crate::browser::agent::{self, Actor, AgentError, Answer, Go, Mode, NotOpen, Refused};
 use crate::browser::{self, BrowserView};
 
@@ -97,21 +97,49 @@ pub(super) async fn call(
     params: Value,
     cx: &mut AsyncApp,
 ) -> Result<Value, ControlError> {
-    call_within(page, caller, method, params, CALL_LIMIT, cx).await
+    call_within(page, caller, (None, method), params, CALL_LIMIT, cx).await
 }
 
 const _: () = {
     assert!(CALL_LIMIT.as_millis() < PROMISE_LIMIT.as_millis());
     assert!(PROMISE_LIMIT.as_millis() < koyo_app_control::CALL_TIMEOUT.as_millis());
-    assert!(PROMISE_LIMIT.as_millis() <= agent::AWAKE_FOR.as_millis());
-    assert!(Duration::from_millis(MAX_TIMEOUT_MS).as_millis() <= agent::AWAKE_FOR.as_millis());
 };
 
-/// As [`call`], waiting `limit` at most.
+/// As [`call`], waiting `limit` at most, in the page's own session or the frame's `session`:
+/// the one way every browser tool reaches a page, so a page showing a file its caller may not
+/// be shown is refused here (`root.rs`), before the command and again once it's answered if the
+/// page moved meanwhile.
 pub(super) async fn call_within(
     page: &Page,
     caller: Option<&Caller>,
-    method: &str,
+    (session, method): (Option<&str>, &str),
+    params: Value,
+    limit: Duration,
+    cx: &mut AsyncApp,
+) -> Result<Value, ControlError> {
+    let shown = shown_to_caller(page, cx).await?;
+    let answer = command(page, caller, (session, method), params, limit, cx).await;
+    if cx.update(|cx| address(page, cx)).is_ok_and(|now| now != shown) {
+        shown_to_caller(page, cx).await?;
+    }
+    answer
+}
+
+/// The address `page` shows, once its caller may be shown it.
+async fn shown_to_caller(page: &Page, cx: &mut AsyncApp) -> Result<String, ControlError> {
+    let shown = cx.update(|cx| address(page, cx))?;
+    root::shown_to(page.caller(), shown.clone(), cx).await?;
+    Ok(shown)
+}
+
+fn address(page: &Page, cx: &App) -> Result<String, ControlError> {
+    Ok(page.view()?.read(cx).url().to_owned())
+}
+
+async fn command(
+    page: &Page,
+    caller: Option<&Caller>,
+    (session, method): (Option<&str>, &str),
     params: Value,
     limit: Duration,
     cx: &mut AsyncApp,
@@ -120,7 +148,8 @@ pub(super) async fn call_within(
     let asked = cx.update(|cx| {
         page.still(cx)?;
         let view = page.view()?;
-        agent::cdp(&view, actor.as_ref(), method, params, limit, cx)
+        let session = session.map(str::to_owned);
+        agent::cdp(&view, actor.as_ref(), session, method, params, limit, cx)
             .map_err(|error| refusals::failed(error, page.pane()))
     });
     match asked?.await {
@@ -149,6 +178,7 @@ pub(super) fn now(page: &Page, cx: &App) -> Result<PageOutput, ControlError> {
         url: facts.url,
         title: facts.title,
         loaded: None,
+        dialog: facts.dialog,
     })
 }
 
@@ -177,7 +207,7 @@ pub(crate) fn navigate(
     input: &BrowserNavigateInput,
     cx: &mut App,
 ) -> Result<Exec, ControlError> {
-    let url = browser::address_to_url(&input.url)
+    let url = browser::address_to_url(&input.url, crate::settings::get(cx).search_engine)
         .ok_or_else(|| ControlError::invalid_input("`url` is empty."))?;
     let limit = (input.wait != Some(WaitUntil::None)).then(|| timeout(input.timeout_ms));
     steer(caller, input.pane, limit, cx, |view, actor, cx| {
@@ -286,7 +316,7 @@ fn condition(until: WaitFor, value: &str) -> Option<String> {
     Some(match until {
         WaitFor::Url => return None,
         WaitFor::Load => "document.readyState === 'complete'".to_owned(),
-        WaitFor::Selector => format!("!!document.querySelector({})", script::quote(value)),
+        WaitFor::Selector => format!("!!{}", script::find(value)),
         WaitFor::Text => format!(
             "(document.body ? document.body.innerText : '').includes({})",
             script::quote(value)

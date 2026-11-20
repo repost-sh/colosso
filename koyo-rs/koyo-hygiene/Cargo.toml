@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Holds Koyo's source to three rules with a real parser, and tells an agent how to fix each finding: no plain comments in Rust and TypeScript (deleted on --fix); no import that closes a new cycle between the koyo crate's top-level modules (koyo-rs/module-edges.txt lists today's, and only shrinks); and no file, process or wait call in the koyo crate's shipped build where no `Blocking` is in scope, in a function that takes one or a closure lent one (koyo-rs/blocking-debt.txt lists the files that still make them, and only shrinks)."
+description = "Holds Koyo's source to three rules with a real parser, and tells an agent how to fix each finding: no plain comments in Rust and TypeScript (deleted on --fix); no import that closes a new cycle between the koyo crate's top-level modules (koyo-rs/module-edges.txt lists today's, and only shrinks); and no file, process or wait call in the shipped build of the koyo crate or the browser host where no `Blocking` is in scope, in a function that takes one or a closure lent one (koyo-rs/blocking-debt.txt and koyo-rs/blocking-debt-browser-host.txt list the files that still make them, and only shrink)."
 
 [dependencies]
 tree-sitter = "0.26"

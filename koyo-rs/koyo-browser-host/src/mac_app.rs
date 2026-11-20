@@ -2,6 +2,11 @@
 //! on macOS needs `NSApp` to implement its app protocol, so it knows when an event is being
 //! dispatched. Its pages are in holders parked off the screen (`native.rs`); it has no dock
 //! icon and no menu bar. Inside Koyo, `NSApp` is Koyo's (`embedded/nsapp.rs`).
+//!
+//! It never comes forward. Chromium activates the app each time it shows one of its windows,
+//! and each page's holder is one: the host took the keyboard from the app the person was in
+//! whenever a test opened a page. Nothing shows this host's pages, so its `NSApp` turns every
+//! activation down, where Koyo's turns down only those a page's window brings.
 use cef::application_mac::{CefAppProtocol, CrAppControlProtocol, CrAppProtocol};
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, NSObjectProtocol};
@@ -28,6 +33,12 @@ define_class!(
             }
             HANDLING_SEND_EVENT.store(previous, Ordering::Relaxed);
         }
+
+        #[unsafe(method(activateIgnoringOtherApps:))]
+        fn activate_ignoring_other_apps(&self, _ignoring: Bool) {}
+
+        #[unsafe(method(activate))]
+        fn activate(&self) {}
     }
 
     unsafe impl NSObjectProtocol for HostApplication {}

@@ -18,6 +18,8 @@ use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::{self as ipc, HostEvent};
 
+use crate::blocking::{self, Blocking};
+
 mod nsapp;
 pub(crate) mod pump;
 
@@ -45,14 +47,23 @@ pub(crate) fn engine() -> Option<&'static Path> {
     ENGINE.get().map(PathBuf::as_path)
 }
 
-/// Starts the host in this process, off the main thread, the app's hello already on the
-/// socket: here the hello is read, CEF loaded and the profiles' folder readied, then on the
-/// main thread, from the run loop, CEF starts and the host says so on the socket as a host
-/// process would. A start that fails says why there too.
+/// Starts the host in this process, the app's hello already on the socket: on a thread of the
+/// host's own the hello is read, CEF loaded and the profiles' folder readied, then on the main
+/// thread, from the run loop, CEF starts and the host says so on the socket as a host process
+/// would. A start that fails says why there too.
 pub fn start(start: Start) {
+    let started = blocking::thread("browser-engine-start", move |may| begin(may, start));
+    if let Err(error) = started {
+        log::error!("no thread to start the browser engine on: {error}");
+    }
+}
+
+/// What of the host's start in this process is done off the main thread, then hands the rest
+/// to it.
+fn begin(may: Blocking<'_>, start: Start) {
     let began = Instant::now();
     crate::host::drop_cleared(&start.profiles);
-    forget_sessions(&start.profiles);
+    forget_sessions(may, &start.profiles);
     let cleared = began.elapsed();
     if ENGINE.set(start.engine.clone()).is_err() {
         let mut stream = start.stream;
@@ -65,7 +76,7 @@ pub fn start(start: Start) {
         );
         return;
     }
-    let Ok(readied) = crate::host::ready_embedded(start, cleared) else {
+    let Ok(readied) = crate::host::ready_embedded(may, start, cleared) else {
         return;
     };
     on_main(move || {
@@ -87,6 +98,7 @@ pub fn finish(grace: Duration) {
     }
     let began = Instant::now();
     let deadline = began + grace;
+    crate::host::kept();
     crate::extensions::stopping();
     crate::native::close_strays();
     let closed = || crate::host::all_closed() && crate::native::none_left();
@@ -121,7 +133,7 @@ fn say(what: &str) {
 /// it left cleanly. A Chrome-style page is a Chrome browser, which Chrome saves with its
 /// session; after a run that didn't quit cleanly it restores that session into windows of its
 /// own the moment the first browser is made. Koyo brings its own tabs back (`docs/browser.md`).
-fn forget_sessions(root: &Path) {
+fn forget_sessions(_: Blocking<'_>, root: &Path) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };

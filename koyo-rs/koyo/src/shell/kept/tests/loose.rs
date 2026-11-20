@@ -16,6 +16,7 @@ fn kept(url: &str, title: &str, project: &str) -> KeptLoose {
         url: url.into(),
         title: title.into(),
         project: project.into(),
+        session: koyo_browser_ipc::Session::default(),
     }
 }
 

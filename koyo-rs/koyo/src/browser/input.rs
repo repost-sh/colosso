@@ -12,8 +12,8 @@ use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go};
 use super::control::{Leased as _, Mode};
 use super::view::BrowserView;
 use super::{
-    Back, Copy, Cut, Forward, Paste, Redo, Reload, SelectAll, ToggleDevTools, ToggleResponsive,
-    Undo,
+    Back, Copy, Cut, Forward, Paste, Print, Redo, Reload, SelectAll, ToggleDevTools,
+    ToggleResponsive, Undo,
 };
 
 impl BrowserView {
@@ -51,11 +51,12 @@ impl BrowserView {
     }
 }
 
-/// The edits Koyo binds (⌘C and the rest), done in the page. All a page hears of the keyboard
-/// through GPUI: `AppKit` hands it its keys itself, GPUI hearing only the shortcuts it's asked
-/// about first.
+/// The edits Koyo binds (⌘C and the rest), done in the page, and ⌘P, which prints it. All a
+/// page hears of the keyboard through GPUI: `AppKit` hands it its keys itself, GPUI hearing
+/// only the shortcuts it's asked about first.
 pub(super) fn edits(page: Stateful<Div>, cx: &mut Context<BrowserView>) -> Stateful<Div> {
-    page.on_action(cx.listener(|this, _: &Copy, _, cx| this.edit(ipc::Edit::Copy, cx)))
+    page.on_action(cx.listener(|this, _: &Print, _, cx| this.print(cx)))
+        .on_action(cx.listener(|this, _: &Copy, _, cx| this.edit(ipc::Edit::Copy, cx)))
         .on_action(cx.listener(|this, _: &Cut, _, cx| this.edit(ipc::Edit::Cut, cx)))
         .on_action(cx.listener(|this, _: &Paste, _, cx| this.edit(ipc::Edit::Paste, cx)))
         .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.edit(ipc::Edit::SelectAll, cx)))

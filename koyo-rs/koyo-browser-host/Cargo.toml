@@ -46,5 +46,12 @@ objc2-core-location = { version = "0.3", default-features = false, features = ["
 [dev-dependencies]
 tempfile = "3"
 
+# The engine started in the test's own process, as Koyo starts it: CEF once, on the main
+# thread, which the test owns (tests/embedded/main.rs).
+[[test]]
+name = "embedded"
+path = "tests/embedded/main.rs"
+harness = false
+
 [lints]
 workspace = true

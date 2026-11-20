@@ -114,17 +114,19 @@ signing_ready() {
 }
 signing_ready
 
-script/cargo build -p koyo --release
-# A device's host: a plain executable beside the app's own, holding no grant (docs/devices.md 3).
-script/cargo build -p koyo-device-host --release
-script/agent-host
-# Packaged afresh, so the one version here is the lockfile's CEF.
+# The browser engine first: it's packaged only from the framework script/cef builds from this
+# checkout's patches, with H.264 and AAC, and refuses any other before the app's long build
+# (script/browser-engine). Packaged afresh, so the one version here is the lockfile's CEF.
 rm -rf "$engine"
 if [ -n "$identity" ]; then
   script/browser-engine --release --out "$PWD/$engine" --sign "$identity"
 else
   script/browser-engine --release --out "$PWD/$engine"
 fi
+script/cargo build -p koyo --release
+# A device's host: a plain executable beside the app's own, holding no grant (docs/devices.md 3).
+script/cargo build -p koyo-device-host --release
+script/agent-host
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"

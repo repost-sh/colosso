@@ -62,6 +62,14 @@ impl Page {
         self.pane
     }
 
+    /// Who the call is for.
+    pub(super) fn caller(&self) -> &Caller {
+        match &self.admitted {
+            Admission::Checkout(caller) => caller,
+            Admission::Persons(admitted) => admitted.caller(),
+        }
+    }
+
     /// Its page, while it's open.
     pub(super) fn view(&self) -> Result<Entity<BrowserView>, ControlError> {
         self.view.upgrade().ok_or_else(|| {
@@ -116,11 +124,7 @@ impl Page {
             Ok(()) => return answer,
             Err(ended) => ended,
         };
-        let caller = match &self.admitted {
-            Admission::Checkout(caller) => caller,
-            Admission::Persons(admitted) => admitted.caller(),
-        };
-        let actor = caller.actor();
+        let actor = self.caller().actor();
         let left = view.read(cx).agent_holding() == Some(&actor);
         if left && !grants::covered(self.pane, &view, cx) {
             view.update(cx, |view, cx| view.agent_releases(&actor, cx));

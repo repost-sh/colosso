@@ -205,7 +205,7 @@ fn sent(key: u64, op: &str, options: &str, cancel: u64) -> u64 {
         let mut bridges = cell.try_borrow_mut().ok()?;
         let id = match op {
             "cancel" => cancel,
-            "create" | "get" | "available" | "capabilities" => bridges.next(),
+            "create" | "get" | "available" | "capabilities" | "engine" => bridges.next(),
             _ => return None,
         };
         let sender = bridges.contexts.iter_mut().find(|b| b.key == key)?;

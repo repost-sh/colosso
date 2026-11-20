@@ -1,7 +1,9 @@
-//! A page's passkeys, in the real engine: without the entitlement every request is turned
-//! down at once, so a site moves on to its other ways of signing in; with it, what the
-//! system's sheet answers reaches the page as a `PublicKeyCredential`. A test stands in for
-//! the sheet, which needs the entitlement to come up.
+//! A page's passkeys, in the real engine: without the entitlement a request only this Mac's
+//! passkeys could answer is turned down at once, so a site moves on to its other ways of
+//! signing in (any other goes to the engine's own `WebAuthn`, for a security key or a phone,
+//! which waits on its dialog, so isn't asked here); with it, what the system's sheet answers
+//! reaches the page as a `PublicKeyCredential`. A test stands in for the sheet, which needs
+//! the entitlement to come up.
 
 use std::path::PathBuf;
 
@@ -28,9 +30,13 @@ fn page(name: &str) -> Option<String> {
     ))
 }
 
-/// What a page tries without the entitlement, timing each request.
+/// What a page tries without the entitlement, timing each request: what only this Mac's
+/// passkeys could answer, a new one of the platform's and a sign-in with passkeys that live on
+/// a device's own authenticator only. Not the engine's `getClientCapabilities`, whose hybrid
+/// answer may reach for Bluetooth.
 const REFUSED: &str = "
     const challenge = new Uint8Array(32);
+    const mine = [{ type: 'public-key', id: new Uint8Array([1, 2, 3]), transports: ['internal'] }];
     const timed = async (promise) => {
         const start = performance.now();
         try { await promise; return 'resolved'; }
@@ -40,13 +46,14 @@ const REFUSED: &str = "
     const out = {};
     out.platform = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
     out.conditional = await PublicKeyCredential.isConditionalMediationAvailable();
-    out.hybrid = (await PublicKeyCredential.getClientCapabilities()).hybridTransport;
     out.create = await timed(navigator.credentials.create({ publicKey: {
         rp: { name: 'Test' }, user, challenge,
-        pubKeyCredParams: [{ type: 'public-key', alg: -7 }] } }));
-    out.get = await timed(navigator.credentials.get({ publicKey: { challenge } }));
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform' } } }));
+    out.get = await timed(navigator.credentials.get({
+        publicKey: { challenge, allowCredentials: mine } }));
     out.otherSite = await timed(navigator.credentials.get({
-        publicKey: { challenge, rpId: 'example.com' } }));
+        publicKey: { challenge, rpId: 'example.com', allowCredentials: mine } }));
     out.noChallenge = await timed(navigator.credentials.get({ publicKey: {} }));
     const aborting = new AbortController();
     const autofill = timed(navigator.credentials.get({
@@ -128,7 +135,7 @@ fn refused_within(out: &serde_json::Value, key: &str, name: &str) -> u64 {
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn without_the_entitlement_a_pages_passkey_requests_are_turned_down_at_once(
+fn without_the_entitlement_what_only_this_macs_passkeys_could_answer_is_turned_down_at_once(
     cx: &mut TestAppContext,
 ) {
     let port = serve(page);
@@ -140,9 +147,8 @@ fn without_the_entitlement_a_pages_passkey_requests_are_turned_down_at_once(
     let out = finished(cx, &view);
     eprintln!("the page saw {out}");
     assert_eq!(out["bridged"], true, "the bridge answers for the engine");
-    assert_eq!(out["platform"], false);
+    assert_eq!(out["platform"], false, "the engine has no platform authenticator here");
     assert_eq!(out["conditional"], false);
-    assert_eq!(out["hybrid"], false);
     for key in ["create", "get"] {
         let ms = refused_within(&out, key, "NotAllowedError");
         assert!(ms < 500, "{key} was turned down in {ms} ms");

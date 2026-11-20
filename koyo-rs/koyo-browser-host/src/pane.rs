@@ -19,6 +19,7 @@ use std::os::raw::c_int;
 
 mod favicon;
 mod keys;
+mod popups;
 mod prompts;
 
 /// The client a pane's browser is created with; `devtools` for a `DevTools`
@@ -64,6 +65,9 @@ wrap_client! {
         fn frame_handler(&self) -> Option<FrameHandler> {
             Some(PaneFrames::new(self.pane))
         }
+        fn download_handler(&self) -> Option<cef::DownloadHandler> {
+            Some(crate::downloads::handler(self.pane))
+        }
         fn keyboard_handler(&self) -> Option<cef::KeyboardHandler> {
             Some(keys::keys(self.pane))
         }
@@ -83,6 +87,11 @@ wrap_client! {
                     host::send(&HostEvent::TabActivated { pane: self.pane });
                 }
                 return c_int::from(asked);
+            }
+            if crate::session::from_renderer(self.pane, message)
+                || crate::tone::from_renderer(self.pane, message)
+            {
+                return 1;
             }
             c_int::from(crate::passkeys::from_renderer(self.pane, browser, frame, message))
         }
@@ -184,8 +193,11 @@ wrap_display_handler! {
             use cef::ImplFrame;
             if frame.is_some_and(|f| f.is_main() == 1) {
                 let url = text(url);
+                host::page_changed(self.pane, |page| page.url.clone_from(&url));
+                if let Some(browser) = browser.as_deref() {
+                    crate::session::history_changed(self.pane, browser);
+                }
                 crate::location::opened(browser, &url);
-                host::page_changed(self.pane, |page| page.url = url);
             }
         }
 
@@ -196,13 +208,16 @@ wrap_display_handler! {
                 reason = "clamped to 0 through 100 first"
             )]
             let percent = (progress.clamp(0., 1.) * 100.).round() as u8;
-            host::page_changed(self.pane, |page| page.progress = percent);
+            host::progressed(self.pane, percent);
         }
 
-        fn on_title_change(&self, _browser: Option<&mut Browser>, title: Option<&CefString>) {
+        fn on_title_change(&self, browser: Option<&mut Browser>, title: Option<&CefString>) {
             host::page_changed(self.pane, |page| {
                 page.title = title.map(ToString::to_string).unwrap_or_default();
             });
+            if let Some(browser) = browser {
+                crate::session::history_changed(self.pane, browser);
+            }
         }
 
         fn on_favicon_urlchange(
@@ -216,6 +231,14 @@ wrap_display_handler! {
             if let (true, Some(browser)) = (named, browser) {
                 favicon::fetch(self.pane, browser, urls);
             }
+        }
+
+        fn on_contents_bounds_change(
+            &self,
+            _browser: Option<&mut Browser>,
+            _new_bounds: Option<&Rect>,
+        ) -> c_int {
+            1
         }
 
         fn on_fullscreen_mode_change(&self, _browser: Option<&mut Browser>, fullscreen: c_int) {
@@ -243,20 +266,20 @@ wrap_load_handler! {
     impl LoadHandler {
         fn on_loading_state_change(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             is_loading: c_int,
             can_go_back: c_int,
             can_go_forward: c_int,
         ) {
             host::page_changed(self.pane, |page| {
-                if is_loading != 0 && !page.loading {
-                    page.progress = 0;
-                }
                 page.loading = is_loading != 0;
                 page.can_go_back = can_go_back != 0;
                 page.can_go_forward = can_go_forward != 0;
             });
             host::loading_changed(self.pane, is_loading != 0);
+            if let Some(browser) = browser {
+                crate::session::history_changed(self.pane, browser);
+            }
         }
 
         fn on_load_start(
@@ -267,6 +290,9 @@ wrap_load_handler! {
         ) {
             if let (Some(browser), Some(frame)) = (browser, frame) {
                 crate::passkeys::load_started(self.pane, browser, frame);
+                if cef::ImplFrame::is_main(frame) == 1 {
+                    crate::session::left(self.pane);
+                }
             }
         }
     }
@@ -283,11 +309,11 @@ wrap_life_span_handler! {
             &self,
             _browser: Option<&mut Browser>,
             _frame: Option<&mut Frame>,
-            _popup_id: c_int,
+            popup_id: c_int,
             target_url: Option<&CefString>,
             _target_frame_name: Option<&CefString>,
             target_disposition: WindowOpenDisposition,
-            _user_gesture: c_int,
+            user_gesture: c_int,
             _popup_features: Option<&PopupFeatures>,
             _window_info: Option<&mut WindowInfo>,
             client: Option<&mut Option<Client>>,
@@ -297,30 +323,23 @@ wrap_life_span_handler! {
         ) -> c_int {
             let extension_tab = (extra_info.as_deref().and_then(Option::as_ref))
                 .is_some_and(|info| info.has_key(Some(&"koyo_extension_tab".into())) != 0);
+            let url = text(target_url);
             if extension_tab {
-                if let (Some(url), Some(client)) = (target_url, client)
-                    && let Some(tab) = crate::native::adopt(
-                        self.pane,
-                        &url.to_string(),
-                        target_disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB,
-                    )
-                {
-                    *client = Some(tab);
-                    return 0;
+                let front = target_disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB;
+                return c_int::from(!popups::take(self.pane, popup_id, &url, front, client));
+            }
+            if self.devtools {
+                if popups::web(&url) {
+                    host::send(&HostEvent::OpenUrl { pane: self.pane, url, front: false });
                 }
                 return 1;
             }
-            match target_url {
-                Some(url) if self.devtools && url.to_string().starts_with("devtools://") => {}
-                Some(url) if self.devtools => host::send(&HostEvent::OpenUrl {
-                    pane: self.pane,
-                    url: url.to_string(),
-                    front: false,
-                }),
-                Some(url) => host::navigate_later(self.pane, url.to_string()),
-                None => {}
-            }
-            1
+            let opening = popups::opening(target_disposition, user_gesture != 0);
+            c_int::from(!popups::before_popup(self.pane, popup_id, url, opening, client))
+        }
+
+        fn on_before_popup_aborted(&self, _browser: Option<&mut Browser>, popup_id: c_int) {
+            crate::native::abandoned(self.pane, popup_id);
         }
 
         fn on_after_created(&self, browser: Option<&mut Browser>) {

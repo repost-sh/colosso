@@ -15,6 +15,8 @@ macro_rules! leased {
 
 mod act;
 mod duplicate;
+mod heard;
+mod upload;
 mod viewport;
 
 use schemars::JsonSchema;
@@ -28,6 +30,11 @@ pub use act::{
     GoAction, Lease, MouseButton, PageInput, WaitUntil,
 };
 pub use duplicate::{BrowserDuplicate, BrowserDuplicateInput};
+pub use heard::{
+    BrowserConsole, BrowserConsoleOutput, BrowserHeardInput, BrowserNetwork,
+    BrowserNetworkOutput, ConsoleLevel, ConsoleMessage, KEPT, NetworkRequest,
+};
+pub use upload::{BrowserUpload, BrowserUploadInput};
 pub use viewport::{
     BrowserViewport, BrowserViewportInput, BrowserViewportOutput, DeviceName, FitWord,
     OpenViewport, Orientation, Viewport, ViewportMode, ViewportZoom,
@@ -56,6 +63,10 @@ pub struct PageOutput {
     /// finished loading in that time. Absent when they didn't wait.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loaded: Option<bool>,
+    /// What the page asks and waits on now, as `browser_list` gives it: a file chooser an act
+    /// opened, say. Absent when nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialog: Option<PageDialog>,
 }
 
 impl PageOutput {
@@ -157,7 +168,9 @@ pub enum Consent {
 pub struct PageDialog {
     /// What it is. `alert`, `confirm`, `prompt` and `leave` (the page has unsaved changes and
     /// asks before it's left) hold the page up, and `browser_dialog` answers them; `signIn`,
-    /// `permission` and `certificate` are the person's to answer.
+    /// `permission` and `certificate` are the person's to answer. `fileChooser`, the page
+    /// asking for files while you hold it, holds nothing up: `browser_upload` gives it files,
+    /// `browser_dialog` with `dismiss` cancels it.
     pub kind: DialogKind,
     /// What the page says; for a sign-in, the site asking; for a permission, what it asks for.
     pub message: String,
@@ -177,6 +190,7 @@ pub enum DialogKind {
     SignIn,
     Permission,
     Certificate,
+    FileChooser,
 }
 
 impl DialogKind {

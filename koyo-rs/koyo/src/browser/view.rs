@@ -10,9 +10,9 @@ use std::time::Instant;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
-    Point, Subscription, Task, WeakEntity, Window,
+    Point, Subscription, WeakEntity, Window,
 };
-use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Viewport};
+use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Session, Viewport};
 
 use super::control::Lease;
 use super::dialog::Question;
@@ -47,9 +47,11 @@ pub enum BrowserEvent {
     Undock(Entity<BrowserView>),
     /// The host closed this browser: `DevTools` whose page went away.
     Closed,
-    /// An extension opened a tab from this page (`chrome.tabs.create`): its page is made
-    /// already, as the host's pane `pane`, and wants a tab beside this one, in front when
-    /// `active` (`docs/extensions.md` 3).
+    /// This page opened a page in a tab or a window of its own (a link to a new tab,
+    /// `window.open`, a sign-in's popup), or an extension opened a tab from it
+    /// (`chrome.tabs.create`, `docs/extensions.md` 3): its page is made already, as the host's
+    /// pane `pane`, keeping this one as its opener, and wants a tab beside this one, in front
+    /// when `active`.
     Adopted {
         pane: PaneId,
         url: String,
@@ -64,6 +66,9 @@ pub enum BrowserEvent {
     Searched(String),
     /// A page loaded, as the history keeps it (`navigation.rs`).
     Visited(Visit),
+    /// The pages back and forward of the page, or where it's scrolled, changed: what the
+    /// window keeps of it to bring it back (`docs/browser.md` 7).
+    SessionChanged,
 }
 
 /// What a pane's browser shows.
@@ -117,15 +122,16 @@ pub struct BrowserView {
     pub(super) viewport: Option<Viewport>,
     /// The host epoch the page was opened in.
     opened: Option<u64>,
+    /// The page that opened this one in a tab or a window of its own, which the person goes
+    /// back to when this one closes itself in front of them, as a sign-in's popup does.
+    opener: Option<WeakEntity<BrowserView>>,
     /// Whether the glass of the bar over the page is dark, as the page under it last said; none
     /// while it's the theme's.
     pub(super) bar_dark: Option<bool>,
-    /// How light the page is, as it last said, and the task that asks it while it's drawn, and
-    /// how many times that's woken, for a test to read (`tone.rs`).
+    /// How light the page is, as it last said (`tone.rs`).
     pub(super) tone: Option<super::tone::Tone>,
-    pub(super) tone_watch: Option<Task<()>>,
-    #[cfg(test)]
-    pub(super) tone_turns: usize,
+    /// How much of the loading page has loaded, in percents, as the host last said.
+    pub(super) progress: u8,
     /// What the page's site is allowed and blocked from, as the host last said, the button
     /// its popover opens from, and when its address was last copied (`site.rs`).
     pub(super) site: Option<Vec<koyo_browser_ipc::SiteSetting>>,
@@ -144,9 +150,12 @@ pub struct BrowserView {
     /// Whether the page's window is on screen: minimized or on another desktop it draws
     /// nothing, so the page isn't seen however its pane is laid out (`sight.rs`).
     pub(super) window_visible: bool,
-    /// Until when the page is on screen for the engine though no pane draws it, an agent
-    /// having used it, and the task that ends that then (`sight.rs`).
-    pub(super) awake: Option<(Instant, Task<()>)>,
+    /// An agent's use of the page, which keeps it on screen for the engine (`sight.rs`).
+    pub(super) awake: sight::Awake,
+    /// What agents hear of the page (`agent/heard.rs`).
+    pub(super) heard: super::agent::Heard,
+    /// The file chooser the page waits on, an agent's (`agent/choosing.rs`).
+    pub(super) chooser: Option<super::agent::Chooser>,
     pub(super) cursor: Cursor,
     pub(super) focus: FocusHandle,
     pub(super) address: Entity<InputState>,
@@ -170,9 +179,13 @@ pub struct BrowserView {
     pub(super) dock_drag: Option<f32>,
     /// A press on back or forward, until it's a click or a hold that lists the pages.
     pub(super) history_hold: Option<super::history::Hold>,
-    /// The find bar, while it's open, and the zoom, in percent.
+    /// The find bar, while it's open, and the zoom, in percent: the engine's for the page's
+    /// site, as the host last said, or as the person just set it.
     pub(super) find: Option<FindBar>,
     pub(super) zoom: u32,
+    /// The page's history around it and its scroll, as the host last said; or, until it
+    /// says, as the page brought back had them (`navigation.rs`).
+    pub(super) session: Session,
     /// The page's own icon, once the host has fetched it.
     pub(super) favicon: Option<Arc<Image>>,
     /// How the page being opened came, which the history's visit of it says, `None` back or
@@ -285,11 +298,10 @@ impl BrowserView {
             target: url,
             viewport: None,
             opened: None,
+            opener: None,
             bar_dark: None,
             tone: None,
-            tone_watch: None,
-            #[cfg(test)]
-            tone_turns: 0,
+            progress: 0,
             site: None,
             site_trigger: super::site::trigger(pane),
             link_copied: None,
@@ -299,7 +311,9 @@ impl BrowserView {
             visible: None,
             seen: false,
             window_visible: window.is_visible(),
-            awake: None,
+            awake: sight::Awake::default(),
+            heard: super::agent::Heard::default(),
+            chooser: None,
             cursor: Cursor::Arrow,
             focus,
             address,
@@ -316,6 +330,7 @@ impl BrowserView {
             history_hold: None,
             find: None,
             zoom: ACTUAL_SIZE,
+            session: Session::default(),
             favicon: None,
             came: Some(How::Followed),
             visited: None,
@@ -367,10 +382,13 @@ impl BrowserView {
     pub(super) fn page_changed(&mut self, page: PageState, cx: &mut Context<Self>) {
         let gone = self.favicon_named(&page.favicon);
         let loaded = self.page.loading && !page.loading;
+        if page.loading && !self.page.loading {
+            self.progress = 0;
+        }
         let moved = page.url != self.page.url;
         let changed = gone || loaded || moved || page.title != self.page.title;
-        if loaded && self.zoom != ACTUAL_SIZE {
-            self.send_zoom(cx);
+        if page.zoom != self.page.zoom {
+            self.zoom = page.zoom.0;
         }
         self.responsive.reload_hint &= !page.loading;
         self.page = page;
@@ -385,6 +403,13 @@ impl BrowserView {
             self.loaded(cx);
         }
         cx.notify();
+    }
+
+    /// How much of the loading page has loaded, which the toolbar's line shows.
+    pub(super) fn progressed(&mut self, percent: u8, cx: &mut Context<Self>) {
+        if std::mem::replace(&mut self.progress, percent) != percent {
+            cx.notify();
+        }
     }
 
     pub(super) fn cursor_changed(&mut self, cursor: Cursor, cx: &mut Context<Self>) {

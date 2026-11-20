@@ -189,6 +189,13 @@ pub enum ViewportRefused {
 }
 
 impl BrowserView {
+    /// How far a point of the page, in CSS pixels, is from the view's corner per CSS pixel,
+    /// as the protocol's input takes it: by how much of its true size the page's session was
+    /// told to show it at (`Emulation.setDeviceMetricsOverride`'s `scale`), else 1.
+    pub fn input_scale(&self) -> f64 {
+        (self.responsive.emulated.shown).map_or(1., |shown| f64::from(shown.fit))
+    }
+
     /// A point of the window as a point of the page, in its own logical pixels.
     pub(in crate::browser) fn page_point(&self, position: Point<Pixels>) -> Point<Pixels> {
         to_page(position, self.origin, self.responsive.fit)

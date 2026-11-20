@@ -8,7 +8,7 @@ use gpui_kit::{AnyWindowHandle, App, Context, WeakEntity, Window};
 
 use super::Kind;
 use super::rows::Act;
-use crate::browser::{Address, search_url};
+use crate::browser::Address;
 use crate::history::{self, Place};
 use crate::keyboard::Intent;
 use crate::new_worktree;
@@ -81,7 +81,8 @@ fn act_on(
         }
         Act::Search(words) => {
             history::used(history::Kind::Search, &words, place, cx);
-            shell.open_browser(Some(search_url(&words)), window, cx);
+            let results = crate::settings::get(cx).search_engine.results(&words);
+            shell.open_browser(Some(results), window, cx);
         }
         Act::Switch(pane) => {
             shell.focus_pane(pane, Intent::Launcher, window, cx);

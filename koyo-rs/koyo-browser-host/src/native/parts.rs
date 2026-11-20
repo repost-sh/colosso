@@ -45,13 +45,13 @@ wrap_browser_view_delegate! {
             &self,
             _browser_view: Option<&mut BrowserView>,
             _settings: Option<&BrowserSettings>,
-            _client: Option<&mut Client>,
+            client: Option<&mut Client>,
             is_devtools: c_int,
         ) -> Option<BrowserViewDelegate> {
             if is_devtools != 0 {
                 return None;
             }
-            adopting().map(|pane| PageViewDelegate::new(pane, self.toolbar))
+            adopting(client?).map(|pane| PageViewDelegate::new(pane, self.toolbar))
         }
 
         fn on_popup_browser_view_created(

@@ -84,7 +84,8 @@ made key (SKILL.md, Keyboard focus) before any probe click.
 ## Gotchas
 
 - A page shown in no window draws nothing. `onScreen: false` in `browser_list` means the page
-  isn't drawn by a pane, and only an agent's command keeps it awake for 90 s.
+  isn't drawn by a pane, and only an agent's command keeps it awake: while it runs and 5 s
+  after (`AWAKE_AFTER`).
 - Without `viewport`, a page an agent opens is in responsive mode at 1440 × 900, scaled into the
   pane. Pass `"viewport":{"fill":true}` for a page that fills its pane, as a person's does.
 - The probe's `eval` takes the engine's host pane id from `probe pages`, which isn't

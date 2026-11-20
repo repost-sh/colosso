@@ -140,7 +140,7 @@ fn an_agent_sees_and_answers_the_dialogs_its_click_opens(cx: &mut TestAppContext
     );
     let next = cx.update(|_, cx| {
         let params = json!({"expression": "1"});
-        agent::cdp(&view, None, "Runtime.evaluate", params, PATIENCE, cx)
+        agent::cdp(&view, None, None, "Runtime.evaluate", params, PATIENCE, cx)
     });
     assert!(
         matches!(next, Err(AgentError::Asking(_))),

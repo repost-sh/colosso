@@ -1,7 +1,8 @@
 //! What the app asks of the host: panes opened, sized and closed, and what the person asks
 //! of their pages. A page's pointer, wheel and keys are `AppKit`'s to hand it, not the app's.
 use crate::{
-    Answer, DevToolsDock, ExtensionChange, PaneId, PasskeyAnswer, Permission, Point, Viewport,
+    Answer, DevToolsDock, ExtensionChange, PaneId, PasskeyAnswer, Permission, Point, Session,
+    Viewport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,15 @@ pub enum AppRequest {
         /// The profile (cookies, storage, cache) the pane uses; one per
         /// project, so projects never share logins.
         profile: String,
+    },
+    /// The page `pane` opens next ([`Self::Open`], sent just after) is one brought back, with
+    /// the history and scroll it had: it opens with that history behind and ahead of it,
+    /// scrolled where it was.
+    BringBack {
+        /// The pane.
+        pane: PaneId,
+        /// Its history and scroll.
+        session: Session,
     },
     /// The size of a page no pane draws, as an agent sizes one out of sight. A page a pane
     /// draws is the size of the pane.
@@ -144,14 +154,21 @@ pub enum AppRequest {
     },
     /// Run a Chrome `DevTools` protocol command on `pane`'s page, in the
     /// page's own session (an open `DevTools` frontend has a session of its
-    /// own). Answered with [`HostEvent::CdpReply`] for `call`. From the
-    /// first command on, the page's events in that session come as
-    /// [`HostEvent::CdpEvent`].
+    /// own), or in `session`, one of a frame attached under it. Answered with
+    /// [`HostEvent::CdpReply`] for `call`. An agent's `<Domain>.enable` has the
+    /// page's events of that domain come as [`HostEvent::CdpEvent`], until its
+    /// `<Domain>.disable`; its `Target.setAutoAttach` so has the `Target` domain's.
     Cdp {
         /// The page.
         pane: PaneId,
         /// The app's number for the call, echoed in the reply.
         call: u64,
+        /// Whose command it is.
+        caller: CdpCaller,
+        /// The session of a frame attached under the page's own
+        /// (`Target.attachedToTarget`), for a command to run there; none for the page's own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session: Option<String>,
         /// The protocol method, such as `Runtime.evaluate`.
         method: String,
         /// Its parameters: a JSON object.
@@ -189,6 +206,23 @@ pub enum AppRequest {
         /// The page.
         pane: PaneId,
     },
+    /// Print the page: Chrome's print preview, or the page as a PDF.
+    Print {
+        /// The page.
+        pane: PaneId,
+        /// What printing it makes.
+        print: crate::Print,
+    },
+    /// Where a download of the page's goes ([`crate::HostEvent::DownloadAsked`]), or that it's
+    /// canceled.
+    Download {
+        /// The page that started it.
+        pane: PaneId,
+        /// The engine's number for it.
+        download: u32,
+        /// What's done with it.
+        act: crate::DownloadAct,
+    },
     /// Forget what every profile keeps (cookies, sign-ins, caches, site storage) without
     /// stopping: every pane closes ([`HostEvent::Closed`]) and a page opened from then on is of
     /// a fresh profile. For a host in the app's own process, which can't be stopped and
@@ -204,6 +238,7 @@ impl AppRequest {
     pub fn pane(&self) -> Option<PaneId> {
         match self {
             Self::Open { pane, .. }
+            | Self::BringBack { pane, .. }
             | Self::OpenDevTools { pane, .. }
             | Self::Resize { pane, .. }
             | Self::Navigate { pane, .. }
@@ -220,10 +255,23 @@ impl AppRequest {
             | Self::MenuCommand { pane, .. }
             | Self::ExtensionAct { pane, .. }
             | Self::Active { pane }
+            | Self::Print { pane, .. }
+            | Self::Download { pane, .. }
             | Self::Cdp { pane, .. } => Some(*pane),
             Self::ChangeExtension { .. } | Self::ClearData | Self::Shutdown => None,
         }
     }
+}
+
+/// Whose a protocol command on a page is ([`AppRequest::Cdp`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CdpCaller {
+    /// The app's own, for the person: a page's history read, a screenshot taken. It hears
+    /// its answer and nothing else.
+    App,
+    /// An agent's, through the browser tools: the domains it enables send their events.
+    Agent,
 }
 
 /// How a page is looked at.
