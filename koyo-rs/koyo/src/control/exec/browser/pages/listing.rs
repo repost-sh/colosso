@@ -173,11 +173,9 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
         let owner = Owner::Persons(Spot::Pinned);
         add(&mut pages, &pinned.tab, (&owner, Some(&pinned.home)), cx);
     }
-    for (space, loose, _) in workspace.loose_by_space() {
+    for (space, page) in workspace.loose_filed() {
         let owner = Owner::Persons(Spot::Loose(space));
-        for page in loose {
-            add(&mut pages, &page.tab, (&owner, None), cx);
-        }
+        add(&mut pages, &page.tab, (&owner, None), cx);
     }
     let shown = (workspace.shown_tab())
         .and_then(|at| workspace.tab(at))

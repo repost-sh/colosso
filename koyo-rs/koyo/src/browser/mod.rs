@@ -60,6 +60,9 @@ pub(crate) use host::STARTS_AGAIN;
 #[cfg(test)]
 pub(crate) use host::fake::FakeHost;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
+pub use downloads::{CameOrWent, DownloadsButton, ToggleDownloads};
+#[cfg(feature = "visual-check")]
+pub use downloads::check as check_downloads;
 pub use lightness::glass_dark;
 pub use menu::handle_actions;
 pub use responsive::{Responsive, devices};

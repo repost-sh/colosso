@@ -104,7 +104,8 @@ impl NativePage {
         })
     }
 
-    /// Puts the page over `bounds`, as much as `clip` shows, and its holder over it on screen.
+    /// Puts the page over `bounds`, as much as `clip` shows, rounding the corners `rounded` says,
+    /// and its holder over it on screen.
     ///
     /// On whole points, whatever the pane's are: a page is a whole number of points in size,
     /// as its holder, a window, and Chromium's own layout are. In a view half a point
@@ -115,22 +116,16 @@ impl NativePage {
     /// pixels a point, a pointer is on half points. Where the page reaches the edge of what
     /// shows it, it goes out to the next whole point and `clip` trims it, so nothing behind
     /// it shows beside it.
-    pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) {
+    pub fn place(
+        &self,
+        bounds: Bounds<Pixels>,
+        clip: Bounds<Pixels>,
+        rounded: gpui_kit::Corners<bool>,
+        window: &Window,
+    ) {
         let bounds = crate::native::surface::on_whole_points(bounds, clip);
         self.surface.place(bounds, clip, window);
-        let card = crate::theme::card::prepainted();
-        let corners = card.map_or_else(gpui_kit::Corners::default, |card| {
-            let near = |page: Pixels, card: Pixels| (page - card).abs() <= gpui_kit::px(1.);
-            let (left, right) = (near(bounds.left(), card.left()), near(bounds.right(), card.right()));
-            let (top, bottom) = (near(bounds.top(), card.top()), near(bounds.bottom(), card.bottom()));
-            gpui_kit::Corners {
-                top_left: left && top,
-                top_right: right && top,
-                bottom_right: right && bottom,
-                bottom_left: left && bottom,
-            }
-        });
-        self.surface.round(corners, f64::from(crate::theme::CARD_RADIUS));
+        self.surface.round(rounded, f64::from(crate::theme::CARD_RADIUS));
         if self.size.replace(Some(bounds.size)).is_some_and(|was| was != bounds.size) {
             self.resized.set(Some(std::time::Instant::now()));
         }

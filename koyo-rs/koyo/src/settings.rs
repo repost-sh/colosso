@@ -21,6 +21,8 @@ mod devices;
 mod file;
 mod fonts;
 mod language_servers;
+mod layout;
+mod loose_pages;
 mod migration;
 mod picks;
 mod project_scripts;
@@ -42,6 +44,8 @@ pub use fonts::{
     CHAT_SIZES, Fonts, SetChatTextSize, SetCodeFont, SetInterfaceFont, chat_size_menu,
 };
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
+pub use layout::{Layout, SetLayout};
+pub use loose_pages::{LoosePages, SetLoosePages};
 pub use picks::{SetBranchPrefix, SetMostLanguageServers, SetPreviewFiles};
 pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use save_scope::{SaveScope, SetSaveScope};
@@ -54,43 +58,6 @@ use crate::theme::{self, ThemePreference};
 const FILE: &str = "settings.json";
 /// How long changes must settle before they are written, so a drag saves once.
 pub(crate) const SAVE_DELAY: Duration = Duration::from_millis(500);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-pub enum Layout {
-    #[default]
-    Orca,
-    Arc,
-}
-
-/// Switches the window to a layout, from a menu or a key.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = settings, no_json)]
-pub struct SetLayout(pub Layout);
-
-impl Layout {
-    pub const ALL: [Layout; 2] = [Layout::Orca, Layout::Arc];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Layout::Orca => "Orca",
-            Layout::Arc => "Arc",
-        }
-    }
-
-    pub fn other(self) -> Self {
-        match self {
-            Layout::Orca => Layout::Arc,
-            Layout::Arc => Layout::Orca,
-        }
-    }
-
-    /// A menu of the layouts with `self` checked.
-    pub fn menu(self) -> NativeMenu {
-        checked_menu(Layout::ALL, self, Layout::label, |layout| {
-            Box::new(SetLayout(layout))
-        })
-    }
-}
 
 /// A menu of `choices` with `current` checked, each named by `label` and, picked, setting
 /// itself through `action`.
@@ -159,6 +126,8 @@ pub struct Settings {
     /// Whether the person put the Arc sidebar's empty zone for pinned tabs away
     /// (`docs/arc-sidebar.md` 11): it shows again only while a page's tab is dragged.
     pub pinned_zone_dismissed: bool,
+    /// Whether each space lists loose pages of its own or every space the same ones.
+    pub loose_pages: LoosePages,
     /// Where new worktrees go, in a folder per project. Unset, they go in
     /// `~/koyo/workspaces`.
     pub worktrees_dir: Option<PathBuf>,
@@ -291,6 +260,7 @@ impl Default for Settings {
             space: 0,
             project_looks: crate::spaces::ProjectLooks::new(),
             pinned_zone_dismissed: false,
+            loose_pages: LoosePages::default(),
             worktrees_dir: None,
             branch_prefix: BranchPrefix::default(),
             most_language_servers: None,
@@ -395,6 +365,9 @@ pub fn init(cx: &mut App, may: Blocking<'_>) {
     );
     cx.on_action(|SetSaveScope(scope): &SetSaveScope, cx| {
         update(cx, |settings| settings.save_scope = *scope);
+    });
+    cx.on_action(|SetLoosePages(pages): &SetLoosePages, cx| {
+        update(cx, |settings| settings.loose_pages = *pages);
     });
     cx.on_action(
         |SetMostLanguageServers(most): &SetMostLanguageServers, cx| {

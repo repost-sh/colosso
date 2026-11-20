@@ -1,7 +1,8 @@
 //! The switches the browser process starts with: Chrome's own windows and prompts turned off,
-//! a page hidden only by the app, the work Chrome does for its metrics turned off, which a
-//! build of Koyo's never sends, and what Chrome fetches in the background for its omnibox,
-//! its AI and translate features and autofill's server, which no page of Koyo's shows.
+//! a page hidden only by the app, and its timers run at least once a second while hidden, the
+//! work Chrome does for its metrics turned off, which a build of Koyo's never sends, and what
+//! Chrome fetches in the background for its omnibox, its AI and translate features and
+//! autofill's server, which no page of Koyo's shows.
 
 use cef::{CefString, CommandLine, ImplCommandLine};
 
@@ -24,6 +25,13 @@ const CHROME_UI: [&str; 7] = [
 /// getting frames (`docs/native-pages.md` 5). CEF's own `WasHidden` does nothing for a
 /// Chrome-style page, so the views are how.
 const COVERED_IS_SHOWN: &str = "disable-backgrounding-occluded-windows";
+
+/// Chrome's throttling of a silent hidden page's timers to once a minute, a minute after it
+/// was hidden (five if it hadn't painted yet; `third_party/blink/common/features.cc`). A page
+/// in another space or tab is hidden, and a player there that went silent between songs or
+/// while it buffers must still fetch and retry: its timers run once a second, as every hidden
+/// page's do (`tests/smoke/sight.rs`).
+const WAKE_UPS_EACH_SECOND: [&str; 1] = ["IntensiveWakeUpThrottling"];
 
 /// Chrome's sampling of its threads' stacks for its metrics. A Chromium-branded build has no
 /// release channel, so Chrome takes it for a developer's and samples on every launch: the
@@ -66,6 +74,7 @@ const AUTOFILL_SERVER_OFF: [&str; 1] = ["AutofillServerCommunication"];
 fn features_off() -> impl Iterator<Item = &'static str> {
     METRICS_OFF
         .into_iter()
+        .chain(WAKE_UPS_EACH_SECOND)
         .chain(OMNIBOX_OFF)
         .chain(GUIDE_OFF)
         .chain(TRANSLATE_OFF)
@@ -152,6 +161,20 @@ mod tests {
         }
         let given: Vec<&str> = switches().collect();
         for switch in NEVER_SWITCHED {
+            assert!(!given.contains(&switch), "no --{switch}");
+        }
+    }
+
+    /// What Chrome does with a hidden page that Koyo keeps: its timers at once a second, and its
+    /// renderer at the priority of a page in the background.
+    const HIDDEN_RESTS: [&str; 2] = ["disable-background-timer-throttling", "disable-renderer-backgrounding"];
+
+    #[test]
+    fn a_hidden_pages_timers_run_each_second_not_each_minute() {
+        let off: Vec<&str> = features_off().collect();
+        assert!(off.contains(&"IntensiveWakeUpThrottling"), "no timers once a minute");
+        let given: Vec<&str> = switches().collect();
+        for switch in HIDDEN_RESTS {
             assert!(!given.contains(&switch), "no --{switch}");
         }
     }

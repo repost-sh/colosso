@@ -104,7 +104,9 @@ beside `history.json`:
   never written again and is left where it is, for a build that still reads it.
 
 - **Loose pages** (`docs/arc-sidebar.md` 11), the pages open in a space that are no
-  project's, are in this file too, under `spaces`, left out while there are none:
+  project's, are in this file too, under `spaces`, left out while there are none, in the
+  order of their rows as they're listed shared, each run of pages filed under one space an
+  entry of its own:
 
   ```json
   "spaces": [
@@ -115,11 +117,15 @@ beside `history.json`:
   ```
 
   `space` is the space's `id` in `settings.json`, which stays its own whatever its place
-  among the spaces; `shown` the place of the loose page the space showed, left out when it
-  showed its project's tab; each of `tabs` a page's address, its title, and the project
-  whose browsing profile it keeps (section 15), `no-project` for a page opened outside any. They come
-  back as the window opens, waiting for no checkout: `Shell::restore_pages`. Those of a
-  space the settings no longer have are the space shown's.
+  among the spaces; `shown` the place in the entry of the loose page the space showed, left
+  out when it showed its project's tab or a page of another entry; each of `tabs` a page's
+  address, its title, and the project whose browsing profile it keeps (section 15),
+  `no-project` for a page opened outside any, and `shown_in` the other spaces that show it,
+  as one may while loose pages are shared, left out with none. A space may have several
+  entries; they're read in order, each after the last. They come back as the window opens,
+  waiting for no checkout: `Shell::restore_pages`. Those of a space the settings no longer
+  have are the space shown's. A build from before `shown_in` reads every page into its
+  space, and a space that showed another's page shows its project's tab there.
 - **Pinned pages** (`docs/arc-sidebar.md` 11) aren't in this file: they're no checkout's and
   no space's. They have a file of their own beside it, section 10.
 
@@ -300,7 +306,7 @@ the agent desktop (the checks are at the end).
 | `koyo/src/shell/kept/shape.rs` | A tab as it's kept, and both ways between that and the tab |
 | `koyo/src/shell/kept/before.rs` | Reading `browser-tabs.json`, the file the builds before kept |
 | `koyo/src/shell/kept/pinned.rs`, `tests/pinned.rs` | `pinned-tabs.json`: the pinned pages kept, read tolerantly, and brought back |
-| `koyo/src/shell/kept/loose.rs`, `tests/loose.rs` | Each space's loose pages in `window.json`, and `restore_pages` |
+| `koyo/src/shell/kept/loose.rs`, `tests/loose.rs` | The loose pages in `window.json`, by the space each is filed under, and `restore_pages` |
 | `koyo/src/shell/kept/tests.rs`, `tests/back.rs` | The file, the rule, what waits for a checkout, the old file; the window coming back, content made when shown, terminals and chats gone meanwhile |
 | `koyo/src/browser/tabs.rs` | A page as it's brought back, and `make_shown_browsers` |
 | `koyo/src/terminals/restore.rs` | The daemon's list settling the terminal panes brought back, and tabs for the rest |
@@ -1413,11 +1419,35 @@ person's list names the agent. The agent's own tools don't list downloads yet; `
 ### 16.3 The list [decided]
 
 The app keeps one list of what this run downloaded and saved as PDFs, oldest first, gone at
-quit. A downloads button at the end of every page's address field (the toolbar's, or the Arc
-sidebar's) is there once something was downloaded, accent while something comes in, with a bar
-under it as far as it has come. It opens the list, the latest eight: each file's name, how much
-has come of how much, a Cancel while it comes, and once it's done, Show in Finder, and a press
-on the row opens the file. Clear takes off what has ended.
+quit. It's shown as Safari shows its downloads (`koyo/src/browser/downloads/button.rs`,
+`panel.rs`):
+
+- **The button** is in the window's top bar, right of the sidebar's toggle, in both layouts
+  (in the Arc layout the row with the traffic lights and back, forward and reload). It's there
+  while the list has a download, an agent's too, and goes when Clear empties it. While
+  something comes in its arrow is accent, in a ring as full as what's coming has come (empty
+  while the server hasn't said how much). As each download starts, the arrow drops into the
+  button and fades in (0.45 s; at once with Reduce Motion on). No page's address field has a
+  downloads button.
+- **Nothing opens by itself.** A press on the button or ⌥⌘L (Safari's Show Downloads) opens
+  the list under it, and again closes it; with nothing listed ⌥⌘L does nothing.
+- **The list** is a callout on the site controls' glass (`site/panel.rs`, `Tones`), the latest
+  eight, newest first. Each row has the mark of its file's kind (a document, an image, an
+  archive, audio, video, a sheet, code, or a plain file), its name, and how it stands: how much
+  has come of how much and a bar while it comes, `1.2 MB · Done`, `Failed · ` and why,
+  `Canceled`; and the agent's name for an agent's. Show in Finder is there while the file is
+  (coming in or done), Cancel while it comes in; a press on a done row opens the file. Clear
+  takes off what has ended.
+- **Sizes** are the Finder's: 1 KB is 1000 bytes, `1.3 KB` for 1,280 bytes.
+
+`--visual-check-downloads` draws the button and the open list in both layouts and themes
+(`koyo/src/browser/downloads/visual.rs`).
+
+Chromium's own download bubble, which Chrome style pops over the page as a download ends with
+Chrome's units (`1,280 B • Done`), stays down: the host sets Chrome's "Show downloads when
+they're done" (`download_bubble.partial_view_enabled`) false on each profile's request context
+as it's made (`koyo-browser-host/src/host/panes.rs`), and the bubble opens otherwise only from
+Chrome's toolbar button, which no page shows (`koyo-browser-host/tests/embedded/downloads.rs`).
 
 ### 16.4 Printing [decided]
 

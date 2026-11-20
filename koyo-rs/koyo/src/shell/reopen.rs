@@ -54,7 +54,9 @@ impl Shell {
             }
             (ClosedFrom::Checkout(_), Spot::Pinned | Spot::Loose(_)) => return None,
             (ClosedFrom::Loose { project, .. }, back @ (Spot::Pinned | Spot::Loose(_))) => {
-                if let Spot::Loose(space) = back {
+                if let Spot::Loose(space) = back
+                    && !self.workspace.lists_loose_of(space)
+                {
                     self.show_space_known_by(space, cx);
                 }
                 self.workspace.add_loose(Loose { tab, project }, at, true);

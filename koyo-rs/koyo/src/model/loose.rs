@@ -1,10 +1,11 @@
 //! Loose pages (`docs/arc-sidebar.md` 11): pages open in a space that are no project's, listed
-//! under the pinned pages and over the open project. Each space has its own, in the order of
-//! their rows, and shows again the one it showed last when it's come back to. A loose page shown
-//! is the tab shown in place of the selected checkout's, until a tab of a checkout is; a pinned
-//! page shown is shown over both. Only pages are loose; one's `DevTools`, detached, split its tab
-//! as they split any page's. A page's tab moves between a checkout's tabs, the loose pages and
-//! the pinned ones.
+//! under the pinned pages and over the open project. Each is filed under a space; a space lists
+//! its own, or every space's while the settings share them (`settings::LoosePages`), in the
+//! order of their rows, and shows again the one it showed last when it's come back to. A loose
+//! page shown is the tab shown in place of the selected checkout's, until a tab of a checkout
+//! is; a pinned page shown is shown over both. Only pages are loose; one's `DevTools`, detached,
+//! split its tab as they split any page's. A page's tab moves between a checkout's tabs, the
+//! loose pages and the pinned ones.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -30,56 +31,77 @@ impl Loose {
     }
 }
 
-/// A space's loose pages, and the one it shows.
-#[derive(Clone, Debug, Default)]
-struct SpacePages {
-    pages: Vec<Loose>,
-    /// The one shown in place of the selected checkout's tab, by its place among them.
-    shown: Option<usize>,
+/// A loose page with the space it's filed under: the one it was opened in or brought to, or
+/// that took it from a space deleted.
+#[derive(Clone, Debug)]
+struct Filed {
+    space: u64,
+    page: Loose,
 }
 
-impl SpacePages {
-    fn shown(&self) -> Option<usize> {
-        self.shown.filter(|at| *at < self.pages.len())
-    }
-
-    /// Takes the page at `at` out. Shown, the one before it shows in its place when `closed`,
-    /// or the one after when it was the first; taken elsewhere, none does.
-    fn take(&mut self, at: usize, closed: bool) -> Option<Loose> {
-        if at >= self.pages.len() {
-            return None;
-        }
-        let shown = self.shown();
-        let taken = self.pages.remove(at);
-        self.shown = match shown {
-            Some(shown) if shown == at && closed && !self.pages.is_empty() => {
-                Some(at.saturating_sub(1))
-            }
-            Some(shown) if shown == at => None,
-            Some(shown) if shown > at => Some(shown - 1),
-            shown => shown,
-        };
-        Some(taken)
-    }
-}
-
-/// The pages that are no checkout's: the pinned ones, common to every space, and each space's
-/// loose ones, by the space's id.
+/// The pages that are no checkout's: the pinned ones, common to every space, and the loose ones,
+/// each filed under a space. A space lists those filed under it, or every one while they're
+/// shared; which it lists is only a view, so sharing them and not loses or moves none.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Apart {
     pub(super) pins: Pins,
-    spaces: BTreeMap<u64, SpacePages>,
+    /// Every loose page, in the order of their rows in any space that lists them.
+    loose: Vec<Filed>,
+    /// The loose page each space shows in place of the selected checkout's tab, by the space's
+    /// id: its page's key. Shared, a space may show one filed under another.
+    shown: BTreeMap<u64, u64>,
     /// The space shown, by its id.
     space: u64,
+    /// Whether every space lists every loose page.
+    shared: bool,
 }
 
 impl Apart {
-    fn here(&self) -> Option<&SpacePages> {
-        self.spaces.get(&self.space)
+    /// The loose pages the space shown lists, in order, with their places among them all.
+    fn listed(&self) -> impl Iterator<Item = (usize, &Filed)> {
+        let lists = move |filed: &Filed| self.shared || filed.space == self.space;
+        (self.loose.iter().enumerate()).filter(move |(_, filed)| lists(filed))
     }
 
-    fn here_mut(&mut self) -> &mut SpacePages {
-        self.spaces.entry(self.space).or_default()
+    /// The place among them all of the listed page at `at`, or the one after the last listed
+    /// when there's none there: where a page put at `at` goes.
+    fn place(&self, at: usize) -> usize {
+        let mut listed = self.listed().map(|(place, _)| place);
+        let last = listed.by_ref().take(at).last();
+        listed
+            .next()
+            .unwrap_or_else(|| last.map_or(self.loose.len(), |last| last + 1))
+    }
+
+    /// The place among those listed of the one the space shown shows.
+    fn shown_at(&self) -> Option<usize> {
+        let key = *self.shown.get(&self.space)?;
+        self.listed().position(|(_, filed)| filed.page.key() == key)
+    }
+
+    /// The space shown shows the listed page at `at`. False when there's none there.
+    fn show(&mut self, at: usize) -> bool {
+        let key = self.listed().nth(at).map(|(_, filed)| filed.page.key());
+        if let Some(key) = key {
+            self.shown.insert(self.space, key);
+            self.pins.leave();
+        }
+        key.is_some()
+    }
+
+    /// Takes the listed page at `at` out, and no space shows it. Shown by the space shown, the
+    /// one before it shows in its place when `closed`, or the one after when it was the first;
+    /// taken elsewhere, none does.
+    fn take(&mut self, at: usize, closed: bool) -> Option<Loose> {
+        let (place, _) = self.listed().nth(at)?;
+        let shown = self.shown_at() == Some(at);
+        let taken = self.loose.remove(place).page;
+        self.shown.retain(|_, key| *key != taken.key());
+        let next = self.listed().nth(at.saturating_sub(1));
+        if let Some((_, next)) = next.filter(|_| shown && closed) {
+            self.shown.insert(self.space, next.page.key());
+        }
+        Some(taken)
     }
 
     /// The page shown in place of the selected checkout's tab, with the project whose profile
@@ -90,9 +112,8 @@ impl Apart {
             Some((&pinned.tab, pinned.project.as_path()))
         };
         let loose = || {
-            let here = self.here()?;
-            let page = here.pages.get(here.shown()?)?;
-            Some((&page.tab, page.project.as_path()))
+            let (_, filed) = self.listed().nth(self.shown_at()?)?;
+            Some((&filed.page.tab, filed.page.project.as_path()))
         };
         pinned().or_else(loose)
     }
@@ -106,23 +127,21 @@ impl Apart {
     /// is.
     pub(super) fn leave(&mut self) {
         self.pins.leave();
-        if let Some(here) = self.spaces.get_mut(&self.space) {
-            here.shown = None;
-        }
+        self.shown.remove(&self.space);
     }
 
     /// Every page that's no checkout's, with the project whose profile it keeps: the pinned,
-    /// then each space's loose ones.
+    /// then the loose ones.
     fn pages(&self) -> impl Iterator<Item = (&Tab, &Path)> {
         let pinned = (self.pins.tabs.iter()).map(|pinned| (&pinned.tab, pinned.project.as_path()));
-        let loose = self.spaces.values().flat_map(|space| &space.pages);
+        let loose = self.loose.iter().map(|filed| &filed.page);
         pinned.chain(loose.map(|page| (&page.tab, page.project.as_path())))
     }
 
     fn tabs_mut(&mut self) -> impl Iterator<Item = &mut Tab> {
         let pinned = self.pins.tabs.iter_mut().map(|pinned| &mut pinned.tab);
-        let loose = self.spaces.values_mut().flat_map(|space| &mut space.pages);
-        pinned.chain(loose.map(|page| &mut page.tab))
+        let loose = self.loose.iter_mut().map(|filed| &mut filed.page.tab);
+        pinned.chain(loose)
     }
 }
 
@@ -135,109 +154,138 @@ impl Workspace {
         changed
     }
 
+    /// Every space lists every loose page from now on when `shared`, else each the ones filed
+    /// under it. Whether that's a change.
+    pub fn share_loose(&mut self, shared: bool) -> bool {
+        let changed = self.apart.shared != shared;
+        self.apart.shared = shared;
+        changed
+    }
+
+    /// Whether the space shown lists the loose pages filed under the space known by `space`:
+    /// its own, or every space's while they're shared.
+    pub fn lists_loose_of(&self, space: u64) -> bool {
+        self.apart.shared || space == self.apart.space
+    }
+
     /// The space shown, by its id.
     pub fn space_shown(&self) -> u64 {
         self.apart.space
     }
 
-    /// The loose pages of the space shown, in the order of their rows.
-    pub fn loose(&self) -> &[Loose] {
-        self.apart.here().map_or(&[], |here| &here.pages)
+    /// The loose pages the space shown lists, in the order of their rows.
+    pub fn loose(&self) -> Vec<&Loose> {
+        self.apart.listed().map(|(_, filed)| &filed.page).collect()
     }
 
-    /// Each space's loose pages, by its id, with the place of the one it shows: what the
+    /// Every loose page, with the space it's filed under, in the order of their rows: what the
     /// window keeps.
-    pub fn loose_by_space(&self) -> impl Iterator<Item = (u64, &[Loose], Option<usize>)> {
-        (self.apart.spaces.iter())
-            .map(|(space, here)| (*space, here.pages.as_slice(), here.shown()))
+    pub fn loose_filed(&self) -> impl Iterator<Item = (u64, &Loose)> {
+        (self.apart.loose.iter()).map(|filed| (filed.space, &filed.page))
     }
 
-    /// The loose page that's the tab shown, by its place among the space's: none while a pinned
-    /// page is shown over it.
+    /// The loose page each space shows, as the space's id and the page's key.
+    pub fn loose_shown_by(&self) -> impl Iterator<Item = (u64, u64)> + '_ {
+        self.apart.shown.iter().map(|(space, key)| (*space, *key))
+    }
+
+    /// The loose page that's the tab shown, by its place among those listed: none while a
+    /// pinned page is shown over it.
     pub fn loose_shown(&self) -> Option<usize> {
         let over = self.apart.pins.shown().is_some();
-        self.apart.here()?.shown().filter(|_| !over)
+        self.apart.shown_at().filter(|_| !over)
     }
 
-    /// Where the loose page known by `key` is among the space shown's.
+    /// Where the loose page known by `key` is among those the space shown lists.
     pub fn loose_at(&self, key: u64) -> Option<usize> {
-        self.loose().iter().position(|page| page.key() == key)
+        (self.apart.listed()).position(|(_, filed)| filed.page.key() == key)
     }
 
-    /// Adds `page` to the space shown's loose pages at `place`, or after them, shown when
-    /// `shown`, in place of whatever was: where it is among them.
+    /// Adds `page` to the loose pages, filed under the space shown, at `place` among those it
+    /// lists or after them, shown when `shown`, in place of whatever was: where it is among
+    /// them.
     pub fn add_loose(&mut self, page: Loose, place: usize, shown: bool) -> usize {
-        let here = self.apart.here_mut();
-        let was = here.shown().map(|at| here.pages[at].key());
-        let place = place.min(here.pages.len());
-        here.pages.insert(place, page);
-        here.shown = was.and_then(|key| here.pages.iter().position(|page| page.key() == key));
+        let key = page.key();
+        let space = self.apart.space;
+        let at = self.apart.place(place);
+        self.apart.loose.insert(at, Filed { space, page });
+        let listed = self.loose_at(key).unwrap_or_default();
         if shown {
-            here.shown = Some(place);
-            self.apart.pins.leave();
+            self.apart.show(listed);
         }
-        place
+        listed
     }
 
-    /// Adds `pages` after the loose pages of the space known by `space`, the one at `shown`
-    /// shown: as the window brings them back.
+    /// Adds `pages` after every loose page, filed under the space known by `space`, which shows
+    /// the one at `shown`: as the window brings them back.
     pub fn bring_back_loose(&mut self, space: u64, pages: Vec<Loose>, shown: Option<usize>) {
-        let here = self.apart.spaces.entry(space).or_default();
-        let before = here.pages.len();
-        here.pages.extend(pages);
-        here.shown = shown.map(|at| before + at).or(here.shown);
+        if let Some(page) = shown.and_then(|at| pages.get(at)) {
+            self.apart.shown.insert(space, page.key());
+        }
+        let filed = pages.into_iter().map(|page| Filed { space, page });
+        self.apart.loose.extend(filed);
     }
 
-    /// Shows the loose page at `at` of the space shown, in place of the selected checkout's tab
+    /// The space known by `space` shows the loose page known by `key` once it's shown, as it
+    /// did when the window was kept: one filed under another space, which shared pages allow.
+    pub fn bring_back_loose_shown(&mut self, space: u64, key: u64) {
+        if self.apart.loose.iter().any(|filed| filed.page.key() == key) {
+            self.apart.shown.insert(space, key);
+        }
+    }
+
+    /// Shows the loose page at `at` of those listed, in place of the selected checkout's tab
     /// or a pinned page. False when there's none there.
     pub fn show_loose(&mut self, at: usize) -> bool {
-        let here = self.apart.here_mut();
-        let there = at < here.pages.len();
-        if there {
-            here.shown = Some(at);
-            self.apart.pins.leave();
-        }
-        there
+        self.apart.show(at)
     }
 
-    /// Moves the loose page in place `from` to place `to` among the space shown's, the others
-    /// closing up; the one shown stays shown. False when there's no such place.
+    /// Moves the loose page in place `from` to place `to` among those listed, the others
+    /// closing up; the one shown stays shown, and it stays filed where it was. False when
+    /// there's no such place.
     pub fn move_loose(&mut self, from: usize, to: usize) -> bool {
-        let here = self.apart.here_mut();
-        if from >= here.pages.len() {
+        let Some((place, _)) = self.apart.listed().nth(from) else {
             return false;
-        }
-        let shown = here.shown().map(|at| here.pages[at].key());
-        let moved = here.pages.remove(from);
-        let to = to.min(here.pages.len());
-        here.pages.insert(to, moved);
-        here.shown = shown.and_then(|key| here.pages.iter().position(|page| page.key() == key));
+        };
+        let moved = self.apart.loose.remove(place);
+        let to = self.apart.place(to);
+        self.apart.loose.insert(to, moved);
         true
     }
 
-    /// Closes the loose page at `at` of the space shown, handing it back: shown, the one before
+    /// Closes the loose page at `at` of those listed, handing it back: shown, the one before
     /// it shows in its place, the one after when it was first, and the selected checkout's tab
     /// when it was the only one.
     pub fn close_loose(&mut self, at: usize) -> Option<Loose> {
-        self.apart.here_mut().take(at, true)
+        self.apart.take(at, true)
     }
 
-    /// Takes every loose page of the space known by `from`, which is gone: they're the last of
-    /// the space known by `to`'s, or handed back to close when there's none to take them.
+    /// Takes every loose page filed under the space known by `from`, which is gone: they're
+    /// filed under the space known by `to`, after every page, or handed back to close when
+    /// there's none to take them.
     pub fn hand_on_loose(&mut self, from: u64, to: Option<u64>) -> Vec<Loose> {
-        let gone = self.apart.spaces.remove(&from).unwrap_or_default();
+        let apart = &mut self.apart;
+        let (gone, kept) = (std::mem::take(&mut apart.loose).into_iter())
+            .partition::<Vec<_>, _>(|filed| filed.space == from);
+        apart.loose = kept;
+        apart.shown.remove(&from);
         match to {
             Some(to) if to != from => {
-                self.bring_back_loose(to, gone.pages, None);
+                let handed = gone.into_iter().map(|filed| Filed { space: to, ..filed });
+                apart.loose.extend(handed);
                 Vec::new()
             }
-            _ => gone.pages,
+            _ => {
+                let pages: Vec<Loose> = gone.into_iter().map(|filed| filed.page).collect();
+                (apart.shown).retain(|_, key| pages.iter().all(|page| page.key() != *key));
+                pages
+            }
         }
     }
 
-    /// Moves the tab at `at`, as `(project, branch, tab)`, among the space shown's loose pages,
-    /// at `place` or after them, and shows it there. False, and nothing changes, unless its
-    /// single pane is a page.
+    /// Moves the tab at `at`, as `(project, branch, tab)`, among the loose pages the space shown
+    /// lists, at `place` or after them, filed under that space, and shows it there. False, and
+    /// nothing changes, unless its single pane is a page.
     pub fn loosen_tab(&mut self, at: (usize, usize, usize), place: usize) -> bool {
         let Some((tab, project)) = self.take_page_tab(at) else {
             return false;
@@ -246,21 +294,21 @@ impl Workspace {
         true
     }
 
-    /// Moves the loose page at `at` of the space shown to the checkout `to`, as
+    /// Moves the loose page at `at` of those listed to the checkout `to`, as
     /// `(project, branch)`, at `place` among its tabs or after them, and shows it there. False,
     /// and nothing changes, when either isn't there.
     pub fn settle_loose(&mut self, at: usize, to: (usize, usize), place: usize) -> bool {
         self.settle(to, place, |workspace| {
-            Some(workspace.apart.here_mut().take(at, false)?.tab)
+            Some(workspace.apart.take(at, false)?.tab)
         })
     }
 
-    /// Pins the loose page at `at` of the space shown at the address `home`, after the pages
+    /// Pins the loose page at `at` of those listed at the address `home`, after the pages
     /// pinned already: it goes on showing if it was the tab shown. Where it is among the
     /// pinned.
     pub fn pin_loose(&mut self, at: usize, home: String) -> Option<usize> {
         let shown = self.loose_shown() == Some(at);
-        let page = self.apart.here_mut().take(at, false)?;
+        let page = self.apart.take(at, false)?;
         let pinned = Pinned {
             tab: page.tab,
             home,
@@ -271,7 +319,8 @@ impl Workspace {
     }
 
     /// Unpins the page at `at` among the pinned: it's a loose page of the space shown, at
-    /// `place` among them or after them, and shows there. False when there's none there.
+    /// `place` among those listed or after them, and shows there. False when there's none
+    /// there.
     pub fn loosen_pinned(&mut self, at: usize, place: usize) -> bool {
         let Some(unpinned) = self.remove_pinned(at) else {
             return false;

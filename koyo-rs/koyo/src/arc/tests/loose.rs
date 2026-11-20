@@ -9,18 +9,18 @@ use gpui_kit::{
 };
 
 use super::{act, arc_shell, chat, drag, drag_onto, drawn, let_go_on, listed, take_up};
-use crate::arc::actions::{CopyToWorktree, NewSpace, PreviousSpace};
+use crate::arc::actions::{CopyToWorktree, NewSpace, NextSpace, PreviousSpace};
 use crate::arc::pinned::Menu;
 use crate::files::tests::{dialog, press};
 use crate::launcher::{Launcher, NewTab};
-use crate::settings;
+use crate::settings::{self, LoosePages};
 use crate::shell::{CloseTab, ReopenClosedTab, Shell};
 use crate::test_support::{click, draw, open_page};
 
 /// The loose pages of the space shown, by the addresses they show, in the order of their rows.
 fn loose(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
     cx.read(|cx| {
-        (shell.read(cx).workspace.loose().iter())
+        (shell.read(cx).workspace.loose().into_iter())
             .map(|page| page.tab.first().address().unwrap_or_default().to_owned())
             .collect()
     })
@@ -249,4 +249,41 @@ fn a_pinned_or_a_loose_page_is_copied_into_the_selected_worktree_from_its_menu(
     assert!(!menu(cx).worktree, "greyed out");
     act(window, CopyToWorktree(pinned), cx);
     assert_eq!(tabs(cx).len(), 2);
+}
+
+#[gpui_kit::test]
+fn shared_loose_pages_are_the_same_in_every_space_and_each_goes_back_to_its_own(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell, _) = arc_shell(&["arc-loose-shared"], cx);
+    let (one, two) = ("https://one.example/", "https://two.example/");
+    act(window, NewSpace, cx);
+    open_page(window, &shell, Some(one), cx);
+    act(window, PreviousSpace, cx);
+    assert!(loose(&shell, cx).is_empty(), "each space's own, at first");
+    let space = |cx: &TestAppContext| cx.read(|cx| settings::get(cx).space);
+    let set = |pages: LoosePages, cx: &mut TestAppContext| {
+        cx.update(|cx| settings::update(cx, |settings| settings.loose_pages = pages));
+        draw(window, cx);
+    };
+
+    set(LoosePages::Shared, cx);
+    assert_eq!(loose(&shell, cx), [one]);
+    assert!(drawn(window, "arc-loose-0", cx).is_some(), "its row");
+    click(window, "arc-loose-0", cx);
+    assert_eq!(shown(&shell, cx), (Some(one.into()), true));
+    assert_eq!(space(cx), 0, "shown where it's listed");
+    open_page(window, &shell, Some(two), cx);
+    assert_eq!(loose(&shell, cx), [one, two]);
+    act(window, NextSpace, cx);
+    assert_eq!(loose(&shell, cx), [one, two], "the same in the other space");
+
+    set(LoosePages::PerSpace, cx);
+    assert_eq!(loose(&shell, cx), [one]);
+    act(window, PreviousSpace, cx);
+    assert_eq!(
+        loose(&shell, cx),
+        [two],
+        "opened while the first space was shown"
+    );
 }

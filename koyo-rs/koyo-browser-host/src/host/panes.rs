@@ -3,8 +3,9 @@
 use super::inspect::{cdp_failed, frontend_loaded, to_page};
 use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
-    Browser, ImplBrowser, ImplBrowserHost, ImplFrame, ImplRequestContextHandler, RequestContext,
-    RequestContextHandler, RequestContextSettings, WrapRequestContextHandler, rc::Rc,
+    Browser, CefString, ImplBrowser, ImplBrowserHost, ImplFrame, ImplPreferenceManager,
+    ImplRequestContextHandler, ImplValue, RequestContext, RequestContextHandler,
+    RequestContextSettings, WrapRequestContextHandler, rc::Rc, value_create,
     wrap_request_context_handler,
 };
 use koyo_browser_ipc::{
@@ -36,9 +37,28 @@ wrap_request_context_handler! {
     }
 
     impl RequestContextHandler {
-        fn on_request_context_initialized(&self, _request_context: Option<&mut RequestContext>) {
+        fn on_request_context_initialized(&self, request_context: Option<&mut RequestContext>) {
+            if let Some(context) = request_context {
+                no_downloads_bubble(context);
+            }
             crate::native::context_ready(&self.profile);
         }
+    }
+}
+
+/// Chrome's own downloads bubble, which pops up from its toolbar over the page as a download
+/// ends, stays down: the app shows its downloads itself (`docs/browser.md` 16.3). It's
+/// Chrome's "Show downloads when they're done", off; the bubble opens otherwise only from
+/// the toolbar's button, which no page of Koyo's shows.
+fn no_downloads_bubble(context: &RequestContext) {
+    let name = CefString::from("download_bubble.partial_view_enabled");
+    let Some(mut off) = value_create() else {
+        return;
+    };
+    off.set_bool(0);
+    let mut error = CefString::from("");
+    if context.set_preference(Some(&name), Some(&mut off), Some(&mut error)) == 0 {
+        log::warn!("Chrome's downloads bubble stays on: {error}");
     }
 }
 
@@ -125,7 +145,7 @@ pub(super) fn view(pane: PaneId, action: ViewAction) {
             }
         }
         ViewAction::Find { text, forward } => {
-            let text = cef::CefString::from(text.as_str());
+            let text = CefString::from(text.as_str());
             host.find(Some(&text), i32::from(forward), 0, 1);
         }
         ViewAction::StopFind { clear } => host.stop_finding(i32::from(clear)),
@@ -308,7 +328,7 @@ fn settle_address(pane: PaneId) {
     let Some(frame) = browser_of(pane).and_then(|browser| browser.main_frame()) else {
         return;
     };
-    let committed = cef::CefString::from(&frame.url()).to_string();
+    let committed = CefString::from(&frame.url()).to_string();
     let url = if committed.is_empty() { BLANK.to_owned() } else { committed };
     page_changed(pane, |page| page.url = url);
 }

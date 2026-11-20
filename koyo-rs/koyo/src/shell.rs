@@ -112,6 +112,8 @@ pub struct Shell {
     pub(crate) arc_hover: arc::Hover,
     /// The Arc sidebar's controls and address bar for the page shown.
     pub(crate) arc_top: arc::Top,
+    /// The top bar's downloads button, beside the sidebar's toggle.
+    downloads: Entity<crate::browser::DownloadsButton>,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
     /// The worktree being dragged among its project's in the Arc sidebar.
@@ -124,7 +126,7 @@ pub struct Shell {
     pub locations: Option<Entity<Locations>>,
     /// What the walks that let go of what's gone went by when they last ran (`gone`).
     let_go_at: gone::Keys,
-    _subscriptions: [Subscription; 13],
+    _subscriptions: [Subscription; 14],
 }
 
 impl Shell {
@@ -137,6 +139,7 @@ impl Shell {
         let chat_tabs = ChatTabs::new(cx);
         Self::keep_on_the_way_out(cx);
         let status_bar = StatusBar::new(cx);
+        let downloads = cx.new(crate::browser::DownloadsButton::new);
         let _subscriptions = [
             settings::observe(cx),
             cx.observe_window_bounds(window, |_, window, cx| {
@@ -186,6 +189,7 @@ impl Shell {
                 this.rails.servers = *any;
                 cx.notify();
             }),
+            cx.subscribe(&downloads, |_, _, _: &crate::browser::CameOrWent, cx| cx.notify()),
         ];
         Self::guard_closing(window, cx);
         let mut workspace = Workspace::new(&settings::get(cx).projects);
@@ -211,6 +215,7 @@ impl Shell {
             rails_menu_at: Point::default(),
             arc_hover: arc::Hover::default(),
             arc_top: arc::Top::new(cx),
+            downloads,
             tab_hand: Rc::default(),
             worktree_hand: Rc::default(),
             tile_hand: Rc::default(),

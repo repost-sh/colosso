@@ -9,7 +9,7 @@ use gpui_kit::{App, Context, Window};
 use super::Shell;
 use crate::model::{ClosedFrom, ClosedTab, Loose};
 use crate::navigation::Route;
-use crate::settings::{self, Layout};
+use crate::settings::{self, Layout, LoosePages};
 
 impl Shell {
     /// Whether a browser tab opened now is a loose page: the person is in no worktree, as a
@@ -130,9 +130,13 @@ impl Shell {
         }
     }
 
-    /// The loose pages follow the space the settings show, however it came to be shown.
+    /// The loose pages follow the space the settings show, however it came to be shown, and
+    /// whether the settings share them among the spaces.
     pub(crate) fn follow_space_pages(&mut self, cx: &mut Context<Self>) {
-        if (self.workspace).show_pages_of(settings::get(cx).shown_space_id()) {
+        let settings = settings::get(cx);
+        let shared = settings.loose_pages == LoosePages::Shared;
+        let space = (self.workspace).show_pages_of(settings.shown_space_id());
+        if self.workspace.share_loose(shared) || space {
             cx.notify();
         }
     }

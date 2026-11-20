@@ -117,12 +117,14 @@ impl Shell {
     }
 
     /// Makes the tab holding pane `id` the one shown, wherever it is, a loose page's space
-    /// coming to show with it. Whether there's such a tab.
+    /// coming to show with it unless the space shown lists it. Whether there's such a tab.
     fn select_tab_holding(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
         let Some(located) = self.workspace.locate(|pane| pane.id == id) else {
             return false;
         };
-        if let Spot::Loose(space) = located.spot {
+        if let Spot::Loose(space) = located.spot
+            && !self.workspace.lists_loose_of(space)
+        {
             self.show_space_known_by(space, cx);
         }
         let shown = self.workspace.show_tab(located.spot, located.tab);

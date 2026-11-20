@@ -135,7 +135,7 @@ fn middle(name: &str) -> Result<Point<Pixels>> {
 fn loose(drawn: &Drawn) -> (Vec<String>, Option<usize>) {
     drawn.cx.read(|cx| {
         let workspace = &drawn.shell.read(cx).workspace;
-        let titles = (workspace.loose().iter())
+        let titles = (workspace.loose().into_iter())
             .map(|page| page.tab.first().title.to_string())
             .collect();
         (titles, workspace.loose_shown())

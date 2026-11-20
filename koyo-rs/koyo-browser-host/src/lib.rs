@@ -31,6 +31,7 @@ mod passkeys;
 mod pending;
 mod printing;
 mod session;
+mod sight;
 mod tone;
 
 use std::process::ExitCode;

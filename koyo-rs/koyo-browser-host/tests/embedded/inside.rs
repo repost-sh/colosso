@@ -51,7 +51,7 @@ const PATIENCE: Duration = Duration::from_secs(30);
 type Step = fn(&mut Connection, &Receiver<Incoming>) -> Result<(), String>;
 
 /// The tests, by name, each with what it has the page do.
-pub const TESTS: [(&str, Step); 5] = [
+pub const TESTS: [(&str, Step); 7] = [
     (
         "a_page_loads_and_draws_in_the_engine_started_in_this_process",
         load_and_draw,
@@ -71,6 +71,14 @@ pub const TESTS: [(&str, Step); 5] = [
     (
         "a_page_leaving_the_app_window_turns_hidden_once",
         crate::sight::left,
+    ),
+    (
+        "a_download_ending_opens_no_window_of_chromes",
+        crate::downloads::no_bubble,
+    ),
+    (
+        "a_page_playing_and_hidden_says_each_change_once_in_the_log",
+        crate::heard::each_change_once,
     ),
 ];
 

@@ -17,7 +17,7 @@ fn with_pages(addresses: &[&str]) -> Workspace {
 fn listed(workspace: &Workspace) -> Vec<String> {
     let titles = workspace
         .loose()
-        .iter()
+        .into_iter()
         .map(|page| page.tab.first().title.to_string());
     titles.collect()
 }
@@ -47,10 +47,12 @@ fn each_space_has_its_own_loose_pages_and_shows_the_one_it_showed_last() {
         (listed(&workspace), shown(&workspace)),
         (vec!["a".into(), "b".into()], "a".into())
     );
-    let by_space: Vec<_> = (workspace.loose_by_space())
-        .map(|(space, pages, shown)| (space, pages.len(), shown))
-        .collect();
-    assert_eq!(by_space, [(1, 2, Some(0)), (2, 1, Some(0))]);
+    let by_space: Vec<_> = workspace.loose_filed().map(|(space, _)| space).collect();
+    assert_eq!(by_space, [1, 1, 2]);
+    let a = workspace.loose()[0].key();
+    let c = workspace.loose_filed().last().map(|(_, page)| page.key());
+    let shown_by: Vec<_> = workspace.loose_shown_by().collect();
+    assert_eq!(shown_by, [(1, a), (2, c.expect("c"))]);
 
     workspace.select_tab(0, 0, 0);
     assert_eq!(
@@ -174,4 +176,53 @@ fn a_deleted_spaces_loose_pages_go_where_its_projects_do() {
         (listed(&workspace), shown(&workspace)),
         (vec!["c".into(), "d".into(), "e".into()], "e".into())
     );
+}
+
+#[test]
+fn shared_every_space_lists_every_loose_page_and_each_goes_back_to_its_own_space() {
+    let mut workspace = with_pages(&[]);
+    workspace.add_loose(loose("a"), usize::MAX, true);
+    workspace.add_loose(loose("b"), usize::MAX, false);
+    workspace.show_pages_of(2);
+    workspace.add_loose(loose("c"), usize::MAX, true);
+
+    assert!(workspace.share_loose(true));
+    assert!(!workspace.share_loose(true), "shared already");
+    assert_eq!(
+        (listed(&workspace), shown(&workspace)),
+        (vec!["a".into(), "b".into(), "c".into()], "c".into()),
+        "the panes go on showing what they showed"
+    );
+    workspace.show_pages_of(1);
+    assert_eq!(
+        (listed(&workspace), shown(&workspace)),
+        (vec!["a".into(), "b".into(), "c".into()], "a".into()),
+        "the same pages in another space, which shows what it showed last"
+    );
+    workspace.add_loose(loose("d"), usize::MAX, false);
+    assert!(workspace.move_loose(2, 0));
+    assert!(workspace.show_loose(0));
+    assert_eq!(listed(&workspace), ["c", "a", "b", "d"]);
+    workspace.show_pages_of(2);
+    assert_eq!(listed(&workspace), ["c", "a", "b", "d"]);
+
+    assert!(workspace.share_loose(false));
+    assert_eq!(
+        (listed(&workspace), shown(&workspace)),
+        (vec!["c".into()], "c".into())
+    );
+    workspace.show_pages_of(1);
+    assert_eq!(
+        listed(&workspace),
+        ["a", "b", "d"],
+        "d was opened while the space known by 1 was shown"
+    );
+    assert_eq!(
+        (workspace.loose_shown(), shown(&workspace).as_str()),
+        (None, "New chat"),
+        "it showed c, which is the other space's"
+    );
+    workspace.share_loose(true);
+    assert_eq!(listed(&workspace), ["c", "a", "b", "d"], "in their order");
+    assert_eq!(shown(&workspace), "c");
 }

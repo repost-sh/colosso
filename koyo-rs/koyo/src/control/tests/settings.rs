@@ -6,7 +6,7 @@ use koyo_app_control::{Command, ErrorCode};
 use serde_json::json;
 
 use super::{call, controlled, terminal};
-use crate::settings::{self, BranchPrefix, SaveScope};
+use crate::settings::{self, BranchPrefix, LoosePages, SaveScope};
 use crate::test_support::repo;
 use crate::theme::ThemePreference;
 
@@ -27,10 +27,12 @@ fn settings_set_changes_the_allowlisted_settings_only(cx: &mut TestAppContext) {
         "{keys:?}"
     );
     assert_eq!(read["worktreesDir"], json!(rig.worktrees));
+    assert_eq!(read["loosePages"], json!("per_space"));
     let set = json!({
         "appearance": "dark",
         "previewFiles": false,
         "saveScope": "all",
+        "loosePages": "shared",
         "branchPrefix": { "custom": " fs " },
         "sidebarWidth": 300,
         "mostLanguageServers": null,
@@ -40,11 +42,13 @@ fn settings_set_changes_the_allowlisted_settings_only(cx: &mut TestAppContext) {
     assert_eq!(after["appearance"], json!("dark"));
     assert_eq!(after["branchPrefix"], json!({ "custom": "fs" }));
     assert_eq!(after["devtools"]["dock"], json!("right"));
+    assert_eq!(after["loosePages"], json!("shared"));
     cx.read(|cx| {
         let settings = settings::get(cx);
         assert_eq!(settings.appearance, ThemePreference::Dark);
         assert!(!settings.preview_files);
         assert_eq!(settings.save_scope, SaveScope::All);
+        assert_eq!(settings.loose_pages, LoosePages::Shared);
         assert_eq!(settings.branch_prefix, BranchPrefix::Custom("fs".into()));
         assert!((settings.sidebar_width - 300.).abs() < f32::EPSILON);
     });

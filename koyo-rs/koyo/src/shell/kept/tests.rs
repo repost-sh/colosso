@@ -425,6 +425,7 @@ fn the_pages_a_window_brings_back_are_each_checkouts_each_spaces_and_the_pinned_
             title: "C".into(),
             project: root.to_owned(),
             session: koyo_browser_ipc::Session::default(),
+            shown_in: Vec::new(),
         }],
     }];
     let path = file("kept-addresses", &kept);

@@ -112,13 +112,17 @@ fn persons(shell: &Shell, focused: Option<u64>, cx: &App) -> PersonsTabs {
         let selected = shown == Some(tab.first().id);
         tab_info(shell, (index, tab), selected, focused.filter(|_| selected), cx)
     };
+    let mut places = std::collections::BTreeMap::<u64, usize>::new();
     PersonsTabs {
         pinned: (workspace.pinned().iter().enumerate())
             .map(|(index, pinned)| listed((index, &pinned.tab)))
             .collect(),
-        loose: (workspace.loose_by_space())
-            .flat_map(|(_, pages, _)| pages.iter().enumerate())
-            .map(|(index, page)| listed((index, &page.tab)))
+        loose: (workspace.loose_filed())
+            .map(|(space, page)| {
+                let place = places.entry(space).or_default();
+                *place += 1;
+                listed((*place - 1, &page.tab))
+            })
             .collect(),
     }
 }

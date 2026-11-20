@@ -14,11 +14,13 @@ use gpui_kit::base::motion::{Spring, spring};
 use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnimationPhase, App, Context, Div, ParentElement as _, StatefulInteractiveElement as _,
+    AnimationPhase, App, Context, Div, InteractiveElement as _, ParentElement as _,
+    StatefulInteractiveElement as _,
     Styled as _, Window, div, px,
 };
 
 use super::{Shell, ToggleSidebar, action_button, drag_area};
+use crate::browser::DownloadsButton;
 use crate::navigation::{GoBack, GoForward};
 use crate::settings::Layout;
 use crate::theme;
@@ -149,6 +151,7 @@ impl Shell {
                 ToggleSidebar,
                 cx,
             )
+            .debug_selector(|| "toggle-sidebar".to_owned())
         };
         rail(Edge::Top, theme::TITLE_BAR_HEIGHT, shown.open, || {
             let row = div().flex().items_center().gap_1().pr(px(theme::GUTTER));
@@ -165,12 +168,14 @@ impl Shell {
                         .pr(px(theme::GUTTER))
                         .child(lights_area(hover))
                         .child(toggle())
+                        .children(DownloadsButton::in_bar(&self.downloads, cx))
                         .child(drag_area("arc-lights-title").flex_1())
                         .child(self.arc_top.controls()),
                 )
             } else {
                 row.child(lights_area(hover))
                     .child(toggle())
+                    .children(DownloadsButton::in_bar(&self.downloads, cx))
                     .children(crate::accounts::button(cx))
                     .child(
                         action_button("back", IconName::ArrowLeft, "Back", GoBack, cx)

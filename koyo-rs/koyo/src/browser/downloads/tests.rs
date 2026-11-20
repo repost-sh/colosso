@@ -9,6 +9,8 @@ use koyo_browser_ipc::{self as ipc, AppRequest, DownloadAct, DownloadState, Host
 use super::*;
 use crate::browser::host::fake::FakeHost;
 
+mod top_bar;
+
 const PAGE: PaneId = 7;
 
 /// A host of the test's own, and the list's folder, a scratch folder with `report.pdf` in it.

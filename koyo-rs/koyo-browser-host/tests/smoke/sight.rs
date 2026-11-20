@@ -1,5 +1,6 @@
 //! A page out of sight is hidden to Chromium, which slows it down as it does a tab in the
-//! background, and draws at once when it's back.
+//! background, never to fewer than a tick of its timers a second, and draws at once when it's
+//! back.
 
 use koyo_browser_ipc::AppRequest;
 use std::time::{Duration, Instant};
@@ -53,5 +54,36 @@ fn a_page_out_of_sight_runs_its_timers_slowly_and_draws_at_once_when_back() {
     assert_eq!(drawn, "visible", "the first frame back is of a visible page");
     let shown = ticks(&mut session);
     assert!(shown > 100, "{shown} ticks in two seconds back on screen");
+    close(session, &launch);
+}
+
+/// A page whose timer of a second keeps when each tick came, and that never paints anything
+/// contentful: Chromium takes it to be loading still, which is what its grace before it
+/// throttles a hidden page's timers to once a minute is set by (`grace_period_seconds`). A
+/// page that painted waits a fixed minute.
+const EACH_SECOND: &str = "data:text/html,<title>each second</title>\
+    <script>window.at=[];setInterval(()=>at.push(performance.now()),1000)</script>";
+
+/// The longest the page's timer went without running in the last `seconds`, up to now: the
+/// gaps between its ticks, and the time since the last.
+const LONGEST: &str = "((seconds) => { const now = performance.now(); \
+    const ticks = at.filter(t => t > now - seconds * 1000).concat([now]); \
+    return Math.max(...ticks.slice(1).map((t, i) => t - ticks[i])) / 1000; })(20)";
+
+/// Chromium's grace is five seconds here, which it takes only while its throttling is on:
+/// past it, the hidden page's timer still ticks each second, where it waited for the minute.
+#[test]
+#[ignore = "Needs a packaged browser engine; see the module docs"]
+fn a_silent_page_out_of_sight_past_chromes_grace_still_runs_its_timer_each_second() {
+    let launch = launch("wake-ups");
+    let grace = "enable-features=IntensiveWakeUpThrottling:grace_period_seconds/5";
+    let mut session = Session::start_with(&launch, &[("KOYO_NATIVE_SWITCHES", grace)]);
+    open(&mut session, EACH_SECOND, "each second");
+    (session.host.send(&AppRequest::Visible { pane: 1, visible: false })).expect("visible");
+    becomes(&mut session, "hidden");
+    session.pump(Instant::now() + Duration::from_secs(30), |_| false);
+    let longest = evaluate(&mut session, LONGEST).as_f64().expect("seconds");
+    eprintln!("the longest the timer of a second waited, 10 to 30 s out of sight: {longest:.2} s");
+    assert!(longest < 2.5, "the timer of a second waited {longest:.2} s out of sight");
     close(session, &launch);
 }

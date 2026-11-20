@@ -215,6 +215,12 @@ fn browser_of(pane: PaneId) -> Option<Browser> {
     with_pane(pane, |p| p.browser.clone()).flatten()
 }
 
+/// The address of `pane`'s page, once its browser is made.
+pub(crate) fn address_of(pane: PaneId) -> Option<String> {
+    let frame = browser_of(pane)?.main_frame()?;
+    Some(cef::CefString::from(&frame.url()).to_string())
+}
+
 /// CEF's identifier of `pane`'s browser, once it's made: how Chromium is told of a page
 /// (`extensions.rs`).
 pub(crate) fn browser_id(pane: PaneId) -> Option<i32> {

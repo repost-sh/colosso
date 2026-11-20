@@ -29,6 +29,17 @@ pub enum SaveScope {
     All,
 }
 
+/// Which loose pages the Arc sidebar lists, the pages under the pinned ones that are no
+/// worktree's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LoosePages {
+    /// Each space lists its own.
+    PerSpace,
+    /// Every space lists them all.
+    Shared,
+}
+
 /// What new worktrees' branches are named under: `"githubUser"`, `"none"`, or
 /// `{"custom": "<prefix>"}`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -92,6 +103,8 @@ pub struct SettingsValues {
     pub appearance: Appearance,
     /// The window's layout: `orca` or `arc`.
     pub layout: Layout,
+    /// Which loose pages the Arc sidebar lists: `per_space` or `shared`.
+    pub loose_pages: LoosePages,
     /// Whether a file picked in the tree opens in a preview tab the next one takes over.
     pub preview_files: bool,
     /// What ⌘S saves: `shown` or `all`.
@@ -124,7 +137,7 @@ impl Operation for SettingsGet {
     const NAME: &'static str = "settings_get";
     const TITLE: &'static str = "Read settings";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "The settings an agent may read and change: appearance, layout, editor behaviour, worktree naming and folder, language server limits, sidebar width, DevTools placement.";
+    const DESCRIPTION: &'static str = "The settings an agent may read and change: appearance, layout, whether the Arc sidebar's loose pages are each space's or shared, editor behaviour, worktree naming and folder, language server limits, sidebar width, DevTools placement.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = SettingsValues;
@@ -144,6 +157,9 @@ pub struct SettingsSetInput {
     /// The window's layout: `orca` or `arc`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<Layout>,
+    /// Which loose pages the Arc sidebar lists: `per_space` or `shared`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loose_pages: Option<LoosePages>,
     /// Whether a file picked in the tree opens in a preview tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_files: Option<bool>,

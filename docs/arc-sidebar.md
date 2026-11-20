@@ -343,8 +343,9 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   through app control moves its tile too.
 - The pinned pages are no space's and no project's: they're kept in a file of their own in the
   data folder, `pinned-tabs.json` (section 11, `docs/browser.md` 10). `settings.json` keeps only
-  whether their empty zone was put away (`pinned_zone_dismissed`). A space's loose pages are
-  open tabs, kept with the window (`window.json`, `docs/browser.md` 2).
+  whether their empty zone was put away (`pinned_zone_dismissed`), and whether the spaces share
+  their loose pages (`loose_pages`, section 11.3). A space's loose pages are open tabs, kept
+  with the window (`window.json`, `docs/browser.md` 2).
 - The browsing profiles, and the one each project is on, are a file of their own too,
   `browser-profiles.json`, so a build that doesn't know them can't drop them from
   `settings.json` (`docs/browser.md` 15).
@@ -380,7 +381,7 @@ From the top: **[asked]**
 2. **The pinned pages**, as tiles. The same in every space: they're outside what swipes, and
    stay where they are as a space goes out and the next comes in.
 3. **The space's loose pages**, as rows: the pages open in this space that are no project's.
-   Each space has its own.
+   Each space has its own, unless Settings → General → Unpinned pages shares them (11.3).
 4. **The open project**: its name and its worktrees with their tabs (sections 4, 5). The
    loose pages and the project scroll together, between the pinned pages and the tiles.
 5. **The space's projects**, as tiles (section 3).
@@ -435,6 +436,26 @@ project's name would be (section 4). **[asked]**
   rows like a worktree's tabs: the page's icon and title, the one shown a pill, a × at its
   end on hover and on the one shown. Another space lists its own, and a space shown again
   shows the loose page it showed last. **[asked: per space]**
+- **Or shared** (2026-11-20, the owner: "have the unpinned tabs be either shared per project
+  or not (in options)"). Settings → General → **Unpinned pages** is **Per space**, the
+  default, as above, or **Shared**: every space lists every loose page, one list in one
+  order, whichever space or project is shown (`settings.json` `loose_pages`, `PerSpace` or
+  `Shared`; app control's `loosePages`). It's the Arc layout's alone, as the Orca layout
+  lists no loose pages. The pinned pages are every space's either way. **[asked]**
+  - Each loose page is filed under a space whichever is chosen: the one it was opened in,
+    dragged or unpinned into, or that took it from a space deleted. Shared, a page opened
+    is filed under the space shown then, wherever it goes in the list. The setting only says
+    which a space lists, so changing it closes, moves and loses nothing: shared, every
+    space's pages show together, in the order they had; back to per space, each space lists
+    those filed under it, in the order the shared list had them. **[ours: filed where it was
+    opened rather than where it was last seen]**
+  - Each space still shows the loose page it showed last. Shared, that can be one filed
+    under another space; back to per space, such a space shows its project's tab instead,
+    and the page is in its own space's list. Changing the setting leaves the page shown as
+    it is otherwise. **[ours: a space's own memory, rather than one page shown in every
+    space, as a pinned page is]**
+  - Picked where it's listed, by its row or ⌃⇥, a shared page shows in the space shown,
+    which doesn't change; ⌘⇧T brings one back among the space shown's. **[ours]**
 - **Only pages.** No chat, terminal or file is loose: each needs a worktree to be in.
   **[asked, for now]**
 - **How a page comes to be one:** **[asked]**
@@ -493,7 +514,8 @@ project's name would be (section 4). **[asked]**
   their tabs are a page and its `DevTools`, nothing more; a link from one opens a loose page;
   they keep their own profile's project; and app control's reach, below. A link from a loose
   page's `DevTools` now opens beside the page, as from the page, not after every loose page.
-- A loose page shown is its space's: another space shows what it showed last.
+- A loose page shown is its space's: another space shows what it showed last, shared or not
+  (11.3).
 - Picking a tab of a worktree, or a project's tile, leaves a pinned or a loose page for that;
   so does anything else that shows a worktree's tab: ⌃⇥ picking one, a file opened, ⌘⇧T, a
   worktree's +, app control selecting a tab, worktree or project, ⌥← and ⌥→ (⌘⌥← and ⌘⌥→)
@@ -596,17 +618,21 @@ menu is Arc's.
 - Written 500 ms after a change and on the way out, through the file's one writer
   (`kept_file::Writers`), only when it differs from what the file holds. Read tolerantly: see
   `docs/browser.md` 10. **[asked]**
-- **Loose pages** are open tabs, so they're kept with the window, in `window.json`, by their
-  space's `id` (`docs/browser.md` 2): each comes back in its space, in order, at the address
-  it showed, titled as it was, of the profile it had, the one the space showed shown. Those
-  of a space the settings no longer have are the space shown's, rather than lost. **[ours]**
+- **Loose pages** are open tabs, so they're kept with the window, in `window.json`, by the
+  `id` of the space each is filed under (`docs/browser.md` 2): each comes back in its space,
+  in order, at the address it showed, titled as it was, of the profile it had, the one each
+  space showed shown. The file lists them in the order of the shared list, a run of pages of
+  one space at a time, so they come back in that order shared and each in its space per
+  space, and a build from before the setting reads every page into its space. Those of a
+  space the settings no longer have are the space shown's, rather than lost. **[ours]**
 
 ### 11.8 Where it lives
 
 | Path | What |
 | --- | --- |
 | `koyo/src/model/pinned.rs` | The pinned pages on the workspace: pinning, moving, closing, the pinned address, unpinning, removing |
-| `koyo/src/model/loose.rs` | Each space's loose pages, the tab shown among pinned, loose and a worktree's, and a page's tab moving between the three |
+| `koyo/src/model/loose.rs` | The loose pages, each filed under a space, which a space lists (its own, or all of them shared), the tab shown among pinned, loose and a worktree's, and a page's tab moving between the three |
+| `koyo/src/settings/loose_pages.rs`, `settings_view/general.rs` | Unpinned pages, per space or shared, and its row in Settings → General |
 | `koyo/src/shell/pinned.rs` | The shell's side of the pinned pages: what a pin takes, picking, closing, the pinned address |
 | `koyo/src/shell/loose.rs` | The shell's side of the loose pages: opening one, closing, moving |
 | `koyo/src/shell/browser_tabs.rs`, `shell/closing.rs`, `shell/keys.rs` | A page's events, closing a pane and showing a tab, one way for a worktree's, a pinned and a loose page (`Workspace::locate`, `Shell::show_tab_holding`) |
@@ -620,5 +646,5 @@ menu is Arc's.
 | `koyo/src/shell/reorder.rs`, `reorder/hand.rs` | The loose rows' list, and a tab off its list (`TabHand::left_list`, `taken_at`) |
 | `koyo/src/spaces.rs` | A space's `id` |
 | `koyo/src/launcher/here.rs` | The launcher where no checkout is selected: a page only |
-| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs` | The tests |
+| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `settings/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs`, `control/tests/settings.rs` | The tests |
 | `koyo/src/arc/visual/pins.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`) |

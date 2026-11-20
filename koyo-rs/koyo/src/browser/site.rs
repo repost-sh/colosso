@@ -123,8 +123,7 @@ pub const FADE: Duration = Duration::from_millis(150);
 /// where the layout has no toolbar for them (`extensions::pinned`). None when there's
 /// neither. Their icons are `tint`. They're there while the pointer is over the field,
 /// `hovered` of the way in (`theme::hover::eased`), as a tab's close button is; and whatever
-/// the pointer does while the popover is up or the address was just copied. After them, there
-/// whatever the pointer does, the downloads button, once something was downloaded.
+/// the pointer does while the popover is up or the address was just copied.
 pub fn buttons(
     page: &BrowserView,
     view: &Entity<BrowserView>,
@@ -133,14 +132,9 @@ pub fn buttons(
     pinned: Vec<AnyElement>,
     cx: &App,
 ) -> Option<AnyElement> {
-    let downloads = super::downloads::button(page.pane, tint, cx);
-    let with_downloads = |row: Option<Div>| {
-        let ends = div().flex().items_center().flex_shrink_0().gap(px(2.));
-        (row.is_some() || downloads.is_some()).then(|| ends.children(row).children(downloads).into_any_element())
-    };
     if !page.has_site() {
         let row = div().flex().items_center().flex_shrink_0().gap(px(2.)).opacity(hovered);
-        return with_downloads((!pinned.is_empty()).then(|| row.children(pinned)));
+        return (!pinned.is_empty()).then(|| row.children(pinned).into_any_element());
     }
     let p = theme::palette(cx);
     let number = page.pane;
@@ -179,7 +173,7 @@ pub fn buttons(
     };
     let shown = if open || copied { 1. } else { hovered };
     let row = div().flex().items_center().flex_shrink_0().gap(px(2.)).opacity(shown);
-    with_downloads(Some(row.children(pinned).child(copy).child(controls)))
+    Some(row.children(pinned).child(copy).child(controls).into_any_element())
 }
 
 /// A button in the address field.

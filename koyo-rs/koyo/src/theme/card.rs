@@ -5,7 +5,7 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, BoxShadow, Div, ElementId, EmptyView, Hsla,
+    AnyElement, App, AppContext as _, Bounds, BoxShadow, Corners, Div, ElementId, EmptyView, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled as _, canvas, deferred, div, px,
 };
@@ -59,9 +59,22 @@ thread_local! {
 }
 
 /// The island being prepainted: the one what's prepainted now is in, if it's in one.
-#[cfg_attr(test, expect(dead_code, reason = "a page's view is what asks, and tests show none"))]
 pub fn prepainted() -> Option<Bounds<Pixels>> {
     PREPAINTED.get()
+}
+
+/// Which of the corners of what fills `bounds` are the corners of the island over `island` too,
+/// to a point either way: those a native view over `bounds` rounds as the island rounds its own.
+pub fn shared_corners(bounds: Bounds<Pixels>, island: Bounds<Pixels>) -> Corners<bool> {
+    let near = |inner: Pixels, outer: Pixels| (inner - outer).abs() <= px(1.);
+    let (left, right) = (near(bounds.left(), island.left()), near(bounds.right(), island.right()));
+    let (top, bottom) = (near(bounds.top(), island.top()), near(bounds.bottom(), island.bottom()));
+    Corners {
+        top_left: left && top,
+        top_right: right && top,
+        bottom_right: right && bottom,
+        bottom_left: left && bottom,
+    }
 }
 
 /// Whether the layout puts each part on an island of its own: Arc's does; Orca's has one card.
@@ -204,4 +217,41 @@ fn handle<T: Clone + 'static>(id: SharedString, row: bool, payload: T) -> Statef
             }
         })
         .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::{Bounds, Corners, point, px, size};
+
+    use super::shared_corners;
+
+    fn bounds(x: f32, y: f32, w: f32, h: f32) -> Bounds<gpui_kit::Pixels> {
+        Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
+    }
+
+    /// Corners from the top left round, as CSS lists them.
+    fn corners([top_left, top_right, bottom_right, bottom_left]: [bool; 4]) -> Corners<bool> {
+        Corners {
+            top_left,
+            top_right,
+            bottom_right,
+            bottom_left,
+        }
+    }
+
+    #[test]
+    fn a_page_shares_the_corners_of_its_island_it_reaches_to_a_point_either_way() {
+        let island = bounds(10., 40., 800., 600.);
+        assert_eq!(shared_corners(island, island), corners([true, true, true, true]), "filling it");
+        let under_header = bounds(10., 72., 800., 568.);
+        assert_eq!(shared_corners(under_header, island), corners([false, false, true, true]), "under a header");
+        let on_half_points = bounds(9.5, 72., 801., 568.5);
+        assert_eq!(shared_corners(on_half_points, island), corners([false, false, true, true]), "half a point out");
+        let left_half = bounds(10., 40., 400., 600.);
+        assert_eq!(shared_corners(left_half, island), corners([true, false, false, true]), "its left half");
+        let centred = bounds(200., 100., 390., 400.);
+        assert_eq!(shared_corners(centred, island), Corners::default(), "a device centred in it");
+        let two_points_in = bounds(12., 42., 796., 596.);
+        assert_eq!(shared_corners(two_points_in, island), Corners::default(), "two points in");
+    }
 }

@@ -43,6 +43,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
+        KeyBinding::new("alt-cmd-l", browser::ToggleDownloads, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
         KeyBinding::new("cmd-w", CloseTab, None),
         KeyBinding::new("ctrl-tab", SwitchTab, None),
@@ -92,6 +93,9 @@ impl Shell {
                 }),
             )
             .on_action(cx.listener(Self::toggle_sidebar))
+            .on_action(cx.listener(|this, _: &browser::ToggleDownloads, window, cx| {
+                browser::DownloadsButton::toggle(&this.downloads, window, cx);
+            }))
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
