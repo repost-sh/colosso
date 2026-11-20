@@ -60,7 +60,9 @@ pub(super) fn clear_data() {
 }
 
 /// Opens `pane`'s page at `url`, with `session`'s history and scroll when it's one brought
-/// back.
+/// back. A pane the host holds already is left as it is: the app opens each pane once in a
+/// host, again only once the host said it closed, and has a page whose renderer went away
+/// reload (`Go::Reload`), which Chromium loads in a new renderer.
 pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str, session: Session) {
     if with(|host| host.shutting_down || host.panes.contains_key(&pane)) != Some(false) {
         return;
