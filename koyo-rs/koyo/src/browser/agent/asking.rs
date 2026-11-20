@@ -21,6 +21,10 @@ pub enum Unanswered {
     NothingAsked,
     /// The page asks the person, as `kind`.
     PersonAnswers(DialogKind),
+    /// The page asks for files, which only `browser_upload` gives it.
+    FilesAsked,
+    /// The page asks for files anew since the agent read what it asked.
+    AskedAnew,
 }
 
 /// What `dialog` is to an agent; a file chooser, which the system's panel asks, is nothing.
@@ -56,9 +60,10 @@ fn as_agents_see(question: &Question) -> Option<PageDialog> {
 }
 
 impl BrowserView {
-    /// What the page asks and waits on, the first of its questions.
+    /// What the page asks and waits on, the first of its questions; else the file chooser
+    /// it waits on for an agent.
     pub fn dialog(&self) -> Option<PageDialog> {
-        self.dialogs.front().and_then(as_agents_see)
+        (self.dialogs.front().and_then(as_agents_see)).or_else(|| self.chooser_dialog())
     }
 
     /// Whether the page takes an agent's command now: the engine has it open, and it waits
@@ -86,7 +91,16 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) -> Result<(), Unanswered> {
         (self.agent_claims(actor.clone(), false, None, cx)).map_err(Unanswered::Refused)?;
-        let question = self.dialogs.front().ok_or(Unanswered::NothingAsked)?;
+        let Some(question) = self.dialogs.front() else {
+            return match (self.chooser.is_some(), action) {
+                (false, _) => Err(Unanswered::NothingAsked),
+                (true, DialogAction::Dismiss) => {
+                    self.chooser_dismissed(cx);
+                    Ok(())
+                }
+                (true, DialogAction::Accept) => Err(Unanswered::FilesAsked),
+            };
+        };
         let kind = kind(&question.asked).ok_or(Unanswered::NothingAsked)?;
         if !kind.holds_up() {
             return Err(Unanswered::PersonAnswers(kind));

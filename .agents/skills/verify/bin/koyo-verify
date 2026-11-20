@@ -101,7 +101,7 @@ config     $C
 logs       $L/Koyo.log
 probe      $P
 tmp        $T   (koyo app / koyo mcp only: the app gets the per-user temporary folder)
-fixture    $FIX/repo, file://$FIX/focus.html
+fixture    $FIX/repo, file://$FIX/focus.html, file://$FIX/popups.html, file://$FIX/saves.html
 evidence   $EV/<stamp>-<label>/   (current: $(run_dir))
 socket     $SOCK   (${#SOCK} bytes of at most 100)
 desktop_open input: {"app": "$APP", "args": $ARGS}
@@ -152,8 +152,8 @@ cmd_prepare() {
   } > "$APP/Contents/Resources/verify-stamp"
 
   # A fresh instance.
-  rm -rf "$D" "$C" "$L" "$P" "$T" "$S" "$FIX"
-  mkdir -p "$D" "$C" "$L" "$P" "$T" "$S" "$FIX/repo" "$V/worktrees"
+  rm -rf "$D" "$C" "$L" "$P" "$T" "$S" "$FIX" "$V/downloads"
+  mkdir -p "$D" "$C" "$L" "$P" "$T" "$S" "$FIX/repo" "$V/worktrees" "$V/downloads"
   git -C "$FIX/repo" init -q -b main
   printf '# verify fixture\n\nA repository for the test Koyo to show.\n' > "$FIX/repo/README.md"
   git -C "$FIX/repo" add README.md
@@ -173,13 +173,73 @@ cmd_prepare() {
 </script>
 </body>
 HTML
+  cat > "$FIX/popups.html" <<'HTML'
+<!doctype html>
+<title>verify popups</title>
+<body style="font: 20px -apple-system; margin: 24px">
+<p><a id="blank" href="?tab" target="_blank">a link to a new tab</a></p>
+<p><a id="plain" href="?plain">a plain link, to ⌘-click</a></p>
+<p><button id="popup">sign in in a popup</button></p>
+<p>heard: <span id="heard"></span></p>
+<script>
+  if (location.search === "?popup") {
+    document.title = "verify popup";
+    setTimeout(() => { opener.postMessage("signed in", "*"); close(); }, 1000);
+  } else if (location.search !== "") {
+    document.title = "verify " + location.search.slice(1);
+  } else {
+    window.heard = [];
+    addEventListener("message", (event) => {
+      window.heard.push(event.data);
+      document.getElementById("heard").textContent = window.heard.join(" ");
+    });
+    window.unasked = window.open("?unasked") === null;
+    document.getElementById("popup").onclick = () => {
+      window.handed = window.open("?popup", "signin", "width=400,height=500") !== null;
+    };
+  }
+</script>
+</body>
+HTML
+  cat > "$FIX/saves.html" <<'HTML'
+<!doctype html>
+<title>verify saves</title>
+<body style="font: 20px -apple-system; margin: 24px">
+<p><a id="text" href="data:text/plain;charset=utf-8,downloaded%20by%20the%20verify%20page%0A"
+  download="verify note.txt">a download</a> (again: <code>verify note (1).txt</code>)</p>
+<p><button id="big">a 40 MB download</button> <button id="two">two downloads at once</button></p>
+<p><button id="print">window.print()</button></p>
+<p>printed: <span id="printed">0</span></p>
+<script>
+  window.printed = 0;
+  addEventListener("beforeprint", () => {
+    window.printed += 1;
+    document.getElementById("printed").textContent = window.printed;
+  });
+  const save = (name, parts) => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob(parts));
+    link.download = name;
+    link.click();
+  };
+  document.getElementById("big").onclick = () => save("verify big.bin", [new Uint8Array(40e6)]);
+  document.getElementById("two").onclick = () => {
+    save("verify one.txt", ["one\n"]);
+    save("verify two.txt", ["two\n"]);
+  };
+  document.getElementById("print").onclick = () => window.print();
+</script>
+</body>
+HTML
   # Settings: the fixture project, the agent desktop off (a test Koyo must never make a desktop
   # of its own), the Mac's Claude login left alone (accounts.manage), quitting ends what runs,
-  # worktrees inside the checkout, and app control on for this helper's client alone, its MCP
+  # worktrees and downloads inside the checkout, and app control on for this helper's client alone, its MCP
   # server on a port the system picks so it never answers on the owner's 6272. `desktop` and
   # `devices` aren't granted.
-  jq -n --arg repo "$FIX/repo" --arg wt "$V/worktrees" --arg layout "$layout" --arg client "$CLIENT" '{
-    projects: [$repo], layout: $layout, worktrees_dir: $wt, agent_desktop: false, on_quit: "End",
+  jq -n --arg repo "$FIX/repo" --arg wt "$V/worktrees" --arg dl "$V/downloads" --arg layout "$layout" \
+    --arg client "$CLIENT" '{
+    projects: [$repo], layout: $layout, worktrees_dir: $wt, downloads_dir: $dl, agent_desktop: false,
+    on_quit: "End",
     accounts: { manage: false, autoSwitch: false },
     externalControl: { enabled: true, port: 0, showWhatAgentsOpen: false, pagesOpenAt: "fill",
       clients: [{ name: $client, approvedAt: 0,
@@ -432,7 +492,7 @@ cmd_stop() {
   find "$D" -maxdepth 3 -name '*.log' -not -path '*/browser/*' -exec cp -p {} "$keep_logs/logs/" \; 2>/dev/null || true
   record "## $(now) stopped; logs in $keep_logs/logs"
   if [ "$keep" = no ]; then
-    rm -rf "$D" "$C" "$L" "$P" "$T" "$S" "$FIX" "$V/worktrees"
+    rm -rf "$D" "$C" "$L" "$P" "$T" "$S" "$FIX" "$V/worktrees" "$V/downloads"
     echo "instance folders removed; the bundle and $EV stay"
   else
     rm -f "$S/pid" "$S/tick"

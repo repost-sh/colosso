@@ -1,7 +1,7 @@
 use super::support::checkout;
 
 /// The line `--stats` ends with for a crate that blocks nowhere.
-const NO_BLOCKING: &str = "Blocking calls: 0 on a Blocking, 0 owed in 0 files (koyo-rs/blocking-debt.txt), 0 at_launch outside main.rs.\n";
+const NO_BLOCKING: &str = "Blocking calls in koyo-rs/koyo/: 0 on a Blocking, 0 owed in 0 files (koyo-rs/blocking-debt.txt), 0 at_launch outside the crate root.\nBlocking calls in koyo-rs/koyo-browser-host/: 0 on a Blocking, 0 owed in 0 files (koyo-rs/blocking-debt-browser-host.txt), 0 at_launch outside the crate root.\n";
 
 #[test]
 fn stats_count_the_graph_and_name_the_cheapest_cuts() {

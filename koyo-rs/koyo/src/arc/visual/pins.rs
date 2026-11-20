@@ -200,6 +200,7 @@ fn pin_by_drop(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
                     address: address.into(),
                     favicon: (at == 0).then(|| icon.clone()),
                     restored: true,
+                    session: koyo_browser_ipc::Session::default(),
                 };
                 let pane = Pane {
                     title: title.into(),

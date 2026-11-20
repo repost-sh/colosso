@@ -21,10 +21,13 @@ pub use super::responsive::{
     Change as ViewportChange, Choice, SetBy, ViewportRefused, Zoom, opening,
 };
 use super::view::BrowserView;
-pub(crate) use super::view::sight::AWAKE_FOR;
 
 mod asking;
+mod choosing;
+mod heard;
 pub use asking::Unanswered;
+pub use choosing::Chooser;
+pub use heard::Heard;
 pub(in crate::browser) use asking::holds_up;
 
 /// Why a protocol command didn't run for an agent.
@@ -249,6 +252,11 @@ impl BrowserView {
     pub fn agent_clicked(&mut self, cx: &mut Context<Self>) {
         self.pointer_clicked(cx);
     }
+
+    /// What agents hear of the page: its console, its requests, its frames of other sites.
+    pub fn heard(&mut self) -> &mut Heard {
+        &mut self.heard
+    }
 }
 
 /// `portrait`, or `landscape` when wider than tall.
@@ -263,10 +271,12 @@ fn orientation(landscape: bool) -> Orientation {
 /// Runs a protocol command on `view`'s page: under its lease for `actor` when it acts, freely
 /// when it only reads (`actor` is `None`). Its answer comes from the returned task, which
 /// waits for it at most `limit`, and no longer than until the page asks something that holds
-/// it up ([`Browsers::ask`]).
+/// it up ([`Browsers::ask`]). It runs in the page's own session, or in `session`, a frame's of
+/// another site attached under it ([`Heard`]).
 pub fn cdp(
     view: &Entity<BrowserView>,
     actor: Option<&Actor>,
+    session: Option<String>,
     method: &str,
     params: serde_json::Value,
     limit: Duration,
@@ -280,7 +290,7 @@ pub fn cdp(
         .map_err(AgentError::Refused)?;
     }
     let pane = view.update(cx, |view, cx| {
-        view.agent_uses(cx);
+        view.agent_command_starts(limit, cx);
         view.pane
     });
     #[cfg(target_os = "macos")]
@@ -288,7 +298,13 @@ pub fn cdp(
         koyo_seam::heard::engine_input(pane);
     }
     let browsers = Browsers::global(cx);
-    Ok(browsers.update(cx, |browsers, cx| {
-        browsers.ask(pane, method, params, limit, cx)
+    let asked = browsers.update(cx, |browsers, cx| {
+        browsers.ask(pane, session, method, params, limit, cx)
+    });
+    let view = view.downgrade();
+    Ok(cx.spawn(async move |cx| {
+        let answer = asked.await;
+        let _ = view.update(cx, BrowserView::agent_command_ends);
+        answer
     }))
 }

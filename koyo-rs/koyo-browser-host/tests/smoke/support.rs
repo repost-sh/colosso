@@ -5,16 +5,30 @@ use koyo_browser_ipc::client::{Connection, Incoming, Launch};
 use koyo_browser_ipc::{AppRequest, HostEvent, Viewport};
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::agents::cdp;
 
+/// The engine the tests run: the one `KOYO_BROWSER_ENGINE` names, else the newest
+/// `script/browser-engine` packaged in the checkout.
+fn engine() -> PathBuf {
+    if let Some(folder) = std::env::var_os("KOYO_BROWSER_ENGINE") {
+        return PathBuf::from(folder);
+    }
+    let packaged = Path::new(env!("KOYO_TARGET_DIR")).join("browser-engine");
+    let mut engines: Vec<PathBuf> = std::fs::read_dir(&packaged)
+        .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
+        .unwrap_or_default();
+    engines.retain(|folder| folder.join("engine.json").is_file());
+    engines.sort();
+    engines
+        .pop()
+        .expect("an engine packaged in the checkout: run script/browser-engine")
+}
+
 pub fn launch(test: &str) -> Launch {
-    let engine = PathBuf::from(
-        std::env::var("KOYO_BROWSER_ENGINE")
-            .expect("KOYO_BROWSER_ENGINE points at an installed engine"),
-    );
+    let engine = engine();
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(engine.join("engine.json")).expect("engine.json"))
             .expect("json");

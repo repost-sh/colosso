@@ -20,6 +20,8 @@ pub struct State {
     pub status: Status,
     pub reason: String,
     pub control: Control,
+    /// The process the terminal runs, its shell or its command, while it runs.
+    pub pid: Option<u32>,
 }
 
 impl State {
@@ -33,6 +35,7 @@ impl State {
             status: record.status,
             reason: record.status_reason.clone(),
             control: record.control.clone(),
+            pid: record.pid,
         }
     }
 
@@ -124,6 +127,14 @@ impl States {
             }
             EventKind::Renamed { name, .. } => {
                 name.clone_into(&mut state.name);
+                Change::Nothing
+            }
+            EventKind::Spawned { pid, .. } => {
+                state.pid = Some(*pid);
+                Change::Nothing
+            }
+            EventKind::Exited { .. } => {
+                state.pid = None;
                 Change::Nothing
             }
             EventKind::Control { change, control } => {

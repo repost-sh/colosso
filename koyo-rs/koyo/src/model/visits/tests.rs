@@ -119,6 +119,7 @@ fn a_tab_keeps_its_place_as_it_moves_and_leaves_once_closed() {
         address: "b".into(),
         favicon: None,
         restored: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     assert!(workspace.close_pinned_page(0, "b".into(), closed));
     assert_eq!(latest(&workspace, 5), ["New chat", "a"]);

@@ -48,6 +48,44 @@ pub(crate) enum Waiting {
 // resolved from any thread; the host resolves them on the UI thread.
 unsafe impl Send for Waiting {}
 
+/// What kind of question a [`Waiting`] callback is, which an answer has to fit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Asked {
+    Script,
+    Auth,
+    Prompt,
+    Media,
+    Certificate,
+    File,
+}
+
+impl Waiting {
+    fn asked(&self) -> Asked {
+        match self {
+            Waiting::Script(_) => Asked::Script,
+            Waiting::Auth(_) => Asked::Auth,
+            Waiting::Prompt { .. } => Asked::Prompt,
+            Waiting::Media { .. } => Asked::Media,
+            Waiting::Certificate(_) => Asked::Certificate,
+            Waiting::File(_) => Asked::File,
+        }
+    }
+}
+
+/// Whether `answer` answers a question of kind `asked`: no answers any, and each other answer
+/// only its own kind, so files never allow a camera or a certificate, whatever question
+/// number they come back with.
+fn fits(asked: Asked, answer: &Answer) -> bool {
+    matches!(
+        (asked, answer),
+        (_, Answer::Dismiss)
+            | (Asked::Script, Answer::Accept | Answer::Text { .. })
+            | (Asked::Auth, Answer::Credentials { .. })
+            | (Asked::Prompt | Asked::Media | Asked::Certificate, Answer::Accept)
+            | (Asked::File, Answer::Files { .. })
+    )
+}
+
 static DIALOGS: Mutex<Pending<Waiting>> = Mutex::new(Pending::new());
 
 fn with<R>(f: impl FnOnce(&mut Pending<Waiting>) -> R) -> R {
@@ -67,9 +105,15 @@ pub(crate) fn ask(pane: PaneId, origin: &str, question: Dialog, waiting: Waiting
     });
 }
 
-/// The person answered.
+/// The person answered: an answer that doesn't fit the question says no.
 pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
     if let Some(waiting) = with(|dialogs| dialogs.remove(pane, dialog)) {
+        let answer = if fits(waiting.asked(), &answer) {
+            answer
+        } else {
+            log::warn!("pane {pane}'s question {dialog} was answered as another kind; said no");
+            Answer::Dismiss
+        };
         if let Waiting::Media { bits, origin, .. } = &waiting
             && !matches!(answer, Answer::Dismiss)
         {
@@ -330,6 +374,34 @@ mod tests {
         assert_eq!(origin_of("http://localhost:3000"), "http://localhost:3000");
         assert_eq!(origin_of("data:text/html,<p>hi"), "data:text/html");
         assert_eq!(origin_of("about:blank"), "about:blank");
+    }
+
+    #[test]
+    fn an_answer_holds_only_for_its_own_kind_of_question() {
+        let files = Answer::Files {
+            paths: vec!["/w/a.png".into()],
+        };
+        let text = Answer::Text { text: "hi".into() };
+        let signed_in = Answer::Credentials {
+            username: "a".into(),
+            password: "b".into(),
+        };
+        for asked in [Asked::Script, Asked::Auth, Asked::Prompt, Asked::Media, Asked::Certificate] {
+            assert!(!fits(asked, &files), "files answer no {asked:?}");
+        }
+        assert!(fits(Asked::File, &files));
+        for answer in [&Answer::Accept, &text, &signed_in] {
+            assert!(!fits(Asked::File, answer), "{answer:?} chooses no files");
+        }
+        for asked in [Asked::Prompt, Asked::Media, Asked::Certificate] {
+            assert!(fits(asked, &Answer::Accept));
+            assert!(!fits(asked, &text) && !fits(asked, &signed_in), "{asked:?}");
+        }
+        assert!(fits(Asked::Script, &Answer::Accept) && fits(Asked::Script, &text));
+        assert!(fits(Asked::Auth, &signed_in) && !fits(Asked::Auth, &Answer::Accept));
+        for asked in [Asked::Script, Asked::Auth, Asked::Prompt, Asked::Media, Asked::Certificate, Asked::File] {
+            assert!(fits(asked, &Answer::Dismiss), "no answers any {asked:?}");
+        }
     }
 
     #[test]

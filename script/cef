@@ -9,11 +9,13 @@
 # page, and nothing Koyo sets brings them back: why, and what this costs, is docs/browser.md
 # 11. And extensions' icons, popups and installs need changes to Chromium no setting makes:
 # script/cef-patches/*.patch, applied in name order over CEF's own patches
-# (docs/extensions.md 10, and the README there). The framework says which it was built with,
-# in its Resources/koyo-patches.txt, and the host asks for nothing a framework without them
-# hasn't got. The framework is built at the commit of the distribution in place, so the
-# headers, the C++ wrapper and the cef crate's bindings stay as they are and only the
-# framework is swapped.
+# (docs/extensions.md 10, and the README there). The framework says how it was built, in its
+# Resources/koyo-build.txt: the codec switches and each patch with a hash of its content
+# (script/cef-framework). The host asks for nothing a framework without a patch hasn't got and
+# tells the app what it has, and script/browser-engine packages a release engine only from a
+# framework built so from this checkout's patches. The framework is built at the commit of the
+# distribution in place, so the headers, the C++ wrapper and the cef crate's bindings stay as
+# they are and only the framework is swapped.
 # To have CEF's own back, remove .superpowers/cef/<version>/cef_macos_<arch>: the next build
 # of koyo-browser-host fetches it again.
 #
@@ -120,37 +122,30 @@ if [ ! -f "$src/$out/args.gn" ]; then
 fi
 
 # Koyo's patches, in name order. One that's in already is passed over; one that neither
-# applies nor is in stops the build with its name: the sources moved under it.
-patches="$PWD/script/cef-patches"
-applied=""
-for patch in "$patches"/*.patch; do
-  name=$(basename "$patch" .patch)
-  if git -C "$src" apply --check "$patch" 2> /dev/null; then
-    git -C "$src" apply "$patch"
-    echo "Applied $name"
-  elif ! git -C "$src" apply --check --reverse "$patch" 2> /dev/null; then
-    fail "$name.patch neither applies to $src nor is applied there"
-  fi
-  applied="$applied$name
-"
-done
+# applies nor is in stops the build with its name: the sources moved under it. The sources keep
+# a copy of each applied, and a patch they carry that this checkout hasn't, or has in another
+# version, stops the build too, saying how to take it out (script/cef-framework).
+script/cef-framework patch "$src"
 
 # The build of cefclient, which holds the framework. It carries on with one that stopped.
 (cd "$src" && autoninja -C "$out" cefclient)
 
 # The framework it built, in place of CEF's own: the folder CEF's distributions carry as
-# theirs (make_distrib.py). Only one newer than the one in place, so that a run with nothing
-# to build leaves cargo and the package alone; script/browser-engine packages again once the
-# distribution's archive.json is newer than its package.
+# theirs (make_distrib.py), with what it was built with, the build's codec switches and the
+# patches the sources carry, in its Resources/koyo-build.txt. Only one newer than the one in
+# place, or built otherwise, so that a run with nothing to build leaves cargo and the package
+# alone; script/browser-engine packages again once the distribution's archive.json is newer
+# than its package.
 built="$dir/chromium/src/out/Release_GN_$cpu/cefclient.app/Contents/Frameworks/$FRAMEWORK/Versions/A"
 binary="Chromium Embedded Framework"
+manifest="Resources/koyo-build.txt"
 [ -f "$built/$binary" ] || fail "the build left no framework at $built"
+says=$(script/cef-framework manifest "$src/$out/args.gn" "$src/out/koyo-patches")
 if [ "$built/$binary" -nt "$dist/$FRAMEWORK/$binary" ] ||
-  [ "$(cat "$dist/$FRAMEWORK/Resources/koyo-patches.txt" 2> /dev/null)" != "$(printf %s "$applied")" ]; then
-  rm -rf "$dist/$FRAMEWORK"
+  [ "$(cat "$dist/$FRAMEWORK/$manifest" 2> /dev/null)" != "$says" ]; then
+  rm -rf "${dist:?}/$FRAMEWORK"
   cp -cR "$built" "$dist/$FRAMEWORK"
-  # Which patches it was built with, where the host reads it (its `extensions.rs`).
-  printf %s "$applied" > "$dist/$FRAMEWORK/Resources/koyo-patches.txt"
+  printf '%s\n' "$says" > "$dist/$FRAMEWORK/$manifest"
   touch "$dist/archive.json"
 fi
 echo "CEF $full with H.264, AAC and Koyo's patches is in place at $dist"

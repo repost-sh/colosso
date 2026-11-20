@@ -1,0 +1,16 @@
+# The files of the browser host's shipped build (koyo-browser-host, the library the app runs the
+# engine with on its main thread) that still read files, probe paths, make or wait on sockets,
+# start or wait on processes, or wait on a park where no `Blocking` is in scope (a function that
+# takes one, or the closure koyo-browser-host/src/blocking.rs's thread, at_launch or in_test lends
+# one to), one `path count` line each, as koyo-rs/blocking-debt.txt is the app's. It only
+# shrinks, as that list does: koyo-hygiene fails on a call the list doesn't allow, and on a line
+# the last commit's list lacks or allows less; `script/cargo run -q -p koyo-hygiene -- --prune`
+# lowers a line once its file makes fewer. Seeded 2026-11-19 at what was left once the start,
+# the socket's threads and the profiles' generation took a `Blocking`: a socket's type in a
+# struct or on the main thread (devtools.rs, embedded.rs, host/start.rs), and the profiles'
+# folders the app asks of the host from its own threads (host/profiles.rs), whose `Blocking`
+# it can't lend this crate.
+koyo-browser-host/src/devtools.rs 3
+koyo-browser-host/src/embedded.rs 1
+koyo-browser-host/src/host/profiles.rs 10
+koyo-browser-host/src/host/start.rs 2

@@ -49,6 +49,7 @@ fn noun(kind: DialogKind) -> &'static str {
         DialogKind::SignIn => "sign-in",
         DialogKind::Permission => "permission request",
         DialogKind::Certificate => "certificate warning",
+        DialogKind::FileChooser => "file chooser",
     }
 }
 
@@ -95,6 +96,14 @@ pub(super) fn unanswered(why: Unanswered, pane: u64) -> ControlError {
         Unanswered::Refused(why) => refused(why),
         Unanswered::NothingAsked => ControlError::not_found(format!(
             "Pane {pane}'s page isn't asking anything; browser_list shows a page's dialog."
+        )),
+        Unanswered::AskedAnew => ControlError::invalid_input(format!(
+            "Pane {pane}'s page asked for files anew as they were checked: call browser_upload \
+             again for what it asks now."
+        )),
+        Unanswered::FilesAsked => ControlError::invalid_input(format!(
+            "Pane {pane}'s page asks for files: browser_upload gives them, and browser_dialog \
+             with dismiss cancels."
         )),
         Unanswered::PersonAnswers(kind) => ControlError::new(
             ErrorCode::PersonHasControl,

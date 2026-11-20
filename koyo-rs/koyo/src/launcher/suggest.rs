@@ -1,8 +1,8 @@
 //! What the search engine suggests for what's typed in a browser launcher, as Firefox asks it
-//! (`docs/new-tab.md` 4.6): Google's suggest endpoint in Firefox's format, once typing pauses,
-//! given half a second, without cookies, and not for an address. Fetched with the system's
-//! `curl`, as the language servers are (koyo-lsp's `install.rs`), so the app links no TLS stack
-//! of its own for it.
+//! (`docs/new-tab.md` 4.6): the engine the person picked, at its endpoint in Firefox's format
+//! (`browser/search.rs`), once typing pauses, given half a second, without cookies, and not for
+//! an address. Fetched with the system's `curl`, as the language servers are (koyo-lsp's
+//! `install.rs`), so the app links no TLS stack of its own for it.
 
 use std::io::Read as _;
 use std::process::{Child, Command, Stdio};
@@ -13,8 +13,6 @@ use gpui_kit::{App, Task};
 use crate::blocking::{self, Blocking};
 use crate::{browser, settings};
 
-/// Google's suggestions in Firefox's format: `["query", ["suggestion", …], …]`.
-const ENDPOINT: &str = "https://www.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&q=";
 /// How long typing pauses before it's asked, so a word typed fast is asked about once.
 const PAUSE: Duration = Duration::from_millis(50);
 /// How long an answer has, Firefox's `browser.search.suggest.timeout`; how often `curl` is looked
@@ -48,10 +46,10 @@ pub fn is_address(typed: &str) -> bool {
 /// wants.
 pub fn fetch(query: String, cx: &App) -> Task<Option<Vec<String>>> {
     let executor = cx.background_executor().clone();
+    let url = settings::get(cx).search_engine.suggestions(&query);
     cx.background_executor().spawn(async move {
         executor.timer(PAUSE).await;
-        let encoded: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
-        let mut asking = blocking::spawn(&executor, move |may| ask(&encoded, may)).await?;
+        let mut asking = blocking::spawn(&executor, move |may| ask(&url, may)).await?;
         let mut polls = 0;
         let status = loop {
             if let Some(status) = asking.0.try_wait().ok()? {
@@ -72,14 +70,14 @@ pub fn fetch(query: String, cx: &App) -> Task<Option<Vec<String>>> {
 /// `curl` asking: stopped if it's still at it when what wanted its answer goes.
 struct Asking(Child);
 
-/// `curl` started to ask what's suggested for the URL-encoded `encoded`.
-fn ask(encoded: &str, _: Blocking<'_>) -> Option<Asking> {
+/// `curl` started to ask `url` what's suggested.
+fn ask(url: &str, _: Blocking<'_>) -> Option<Asking> {
     let child = Command::new("curl")
         .arg("--disable")
         .args(["--fail", "--silent", "--compressed", "--proto", "=https"])
         .args(["--max-time", TIMEOUT])
         .args(["--header", "Accept: application/json"])
-        .arg(format!("{ENDPOINT}{encoded}"))
+        .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -98,7 +96,8 @@ impl Drop for Asking {
     }
 }
 
-/// The suggestions in Firefox's format, if they answer `query`: the first element has to be it.
+/// The suggestions in Firefox's format, `["query", ["suggestion", …], …]`, if they answer
+/// `query`: the first element has to be it.
 pub fn parse(query: &str, body: &[u8]) -> Option<Vec<String>> {
     let json: serde_json::Value = serde_json::from_slice(body).ok()?;
     let answered = json.get(0)?.as_str()?;

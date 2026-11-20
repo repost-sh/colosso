@@ -8,6 +8,8 @@ use cef::{
 };
 use std::os::raw::c_int;
 
+mod switches;
+
 wrap_app! {
     pub(crate) struct HostApp;
 
@@ -20,18 +22,7 @@ wrap_app! {
             let (None, Some(command_line)) = (process_type, command_line) else {
                 return;
             };
-            for switch in [
-                "disable-background-mode",
-                "no-default-browser-check",
-                "no-first-run",
-                "disable-chrome-login-prompt",
-                "no-startup-window",
-                "disable-session-crashed-bubble",
-                "hide-crash-restore-bubble",
-                "disable-backgrounding-occluded-windows",
-            ] {
-                command_line.append_switch(Some(&switch.into()));
-            }
+            switches::browser(command_line);
             if crate::mock_keychain() {
                 command_line.append_switch(Some(&"use-mock-keychain".into()));
             }
@@ -77,6 +68,8 @@ wrap_render_process_handler! {
             context: Option<&mut V8Context>,
         ) {
             if let (Some(frame), Some(context)) = (frame, context) {
+                crate::session::renderer::context_created(frame, context);
+                crate::tone::renderer::context_created(frame, context);
                 crate::passkeys::renderer::context_created(frame, context);
             }
         }

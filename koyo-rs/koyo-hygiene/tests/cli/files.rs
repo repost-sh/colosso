@@ -133,7 +133,9 @@ fn git_checkout(name: &str) -> Scratch {
     scratch.write(".gitignore", "ignored.rs\n");
     scratch.write("koyo-rs/module-edges.txt", "");
     scratch.write("koyo-rs/blocking-debt.txt", "");
+    scratch.write("koyo-rs/blocking-debt-browser-host.txt", "");
     scratch.write("koyo-rs/koyo/src/main.rs", "fn main() {}\n");
+    scratch.write("koyo-rs/koyo-browser-host/src/lib.rs", "");
     scratch.write("koyo-rs/koyo/src/a.rs", "// a\n");
     scratch.write("koyo-rs/koyo/src/ignored.rs", "// ignored\n");
     scratch.write("koyo-rs/koyo/src/gone.rs", "// gone\n");

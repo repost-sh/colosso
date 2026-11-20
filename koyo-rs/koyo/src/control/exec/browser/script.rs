@@ -1,6 +1,7 @@
 //! JavaScript run in a page: evaluating an expression for its value, finding an element by
-//! a snapshot's ref or a selector, the page as text, Markdown or HTML, and the snapshot that
-//! marks elements with refs.
+//! a selector through open shadow roots and same-origin frames, the page as text, Markdown or
+//! HTML, and the snapshot that marks elements with refs, and the frames of other sites, whose
+//! own snapshots `frames.rs` fetches in their sessions.
 
 use gpui_kit::AsyncApp;
 use koyo_app_control::ControlError;
@@ -10,8 +11,10 @@ use super::super::Caller;
 use super::page::{CALL_LIMIT, PROMISE_LIMIT, call_within};
 use super::pages::Page;
 
-/// The attribute a snapshot marks elements with, `eN`.
-const REF_ATTRIBUTE: &str = "data-koyo-ref";
+/// The attribute a snapshot marks elements with, `eN`, or `f1eN` in the frame marked `f1`.
+pub(super) const REF_ATTRIBUTE: &str = "data-koyo-ref";
+/// The attribute a snapshot marks a frame of another site with, `fN`, or `f1fN` in `f1`.
+pub(super) const FRAME_ATTRIBUTE: &str = "data-koyo-frame";
 
 /// `text` as a JavaScript string literal.
 pub(super) fn quote(text: &str) -> String {
@@ -27,6 +30,18 @@ pub(super) async fn evaluate(
     await_promise: bool,
     cx: &mut AsyncApp,
 ) -> Result<Value, ControlError> {
+    evaluate_in(page, caller, None, expression, await_promise, cx).await
+}
+
+/// As [`evaluate`], in the frame of another site whose session is `session`.
+pub(super) async fn evaluate_in(
+    page: &Page,
+    caller: Option<&Caller>,
+    session: Option<&str>,
+    expression: &str,
+    await_promise: bool,
+    cx: &mut AsyncApp,
+) -> Result<Value, ControlError> {
     let params = json!({
         "expression": expression,
         "returnByValue": true,
@@ -38,7 +53,7 @@ pub(super) async fn evaluate(
     } else {
         CALL_LIMIT
     };
-    let answer = call_within(page, caller, "Runtime.evaluate", params, limit, cx).await?;
+    let answer = call_within(page, caller, (session, "Runtime.evaluate"), params, limit, cx).await?;
     if let Some(exception) = answer.get("exceptionDetails") {
         let text = (exception.pointer("/exception/description"))
             .or_else(|| exception.get("text"))
@@ -54,22 +69,57 @@ pub(super) async fn evaluate(
         .unwrap_or(Value::Null))
 }
 
-/// An expression for the element `element` (a snapshot's ref) or `selector` names, or `null`.
-pub(super) fn element(
-    element: Option<&str>,
-    selector: Option<&str>,
-) -> Result<String, ControlError> {
-    match (element, selector) {
-        (Some(reference), _) => Ok(format!(
-            "document.querySelector({})",
-            quote(&format!("[{REF_ATTRIBUTE}=\"{reference}\"]"))
-        )),
-        (None, Some(selector)) => Ok(format!("document.querySelector({})", quote(selector))),
-        (None, None) => Err(ControlError::invalid_input(
-            "Name the element with `ref` (from browser_snapshot) or `selector`.",
-        )),
-    }
+/// Finds what a selector matches in the document, its open shadow roots and its same-origin
+/// frames, theirs too, the document's first: `deep(selector)`, the first match or `null`.
+const DEEP: &str = r"
+const frameDoc = (el) => {
+  if (el.tagName !== 'IFRAME' && el.tagName !== 'FRAME') return null;
+  try { return el.contentDocument; } catch (e) { return null; }
+};
+const roots = (root, out) => {
+  out.push(root);
+  for (const el of root.querySelectorAll('*')) {
+    if (el.shadowRoot) roots(el.shadowRoot, out);
+    const doc = frameDoc(el);
+    if (doc) roots(doc, out);
+  }
+  return out;
+};
+const deep = (selector) => {
+  for (const root of roots(document, [])) { const found = root.querySelector(selector); if (found) return found; }
+  return null;
+};
+const styleOf = (el) => el.ownerDocument.defaultView.getComputedStyle(el);
+";
+
+/// An expression for the first element `selector` matches (`DEEP`), or `null`.
+pub(super) fn find(selector: &str) -> String {
+    format!("(() => {{ {DEEP} return deep({}); }})()", quote(selector))
 }
+
+/// An expression running `body` on the first element `selector` matches, as `el`, with
+/// `DEEP`'s helpers at hand, if there is one: `null` if not.
+pub(super) fn with_element(selector: &str, body: &str) -> String {
+    format!(
+        "(() => {{ {DEEP} const el = deep({}); if (!el) return null; {body} }})()",
+        quote(selector)
+    )
+}
+
+/// What adds the offset of each same-origin frame `el` is in to a point of its frame's: as far
+/// as the frame of another site it may be in, whose own offset `frames.rs` adds.
+pub(super) const ORIGIN: &str = r"
+const origin = (el) => {
+  let x = 0, y = 0, win = el.ownerDocument.defaultView;
+  while (win && win.frameElement) {
+    const frame = win.frameElement, box = frame.getBoundingClientRect(), style = styleOf(frame);
+    x += box.left + frame.clientLeft + parseFloat(style.paddingLeft);
+    y += box.top + frame.clientTop + parseFloat(style.paddingTop);
+    win = win.parent;
+  }
+  return [x, y];
+};
+";
 
 /// Why an element wasn't found, said to the agent.
 pub(super) fn missing(element: Option<&str>, selector: Option<&str>) -> ControlError {
@@ -137,20 +187,28 @@ const md = (node) => {
 };
 ";
 
-/// An expression for the page's tree of meaningful elements as text, each line a role, a
-/// name and, for what can be clicked, typed into or scrolled to, `[ref=eN]`; only those with
-/// `interactive`. Marks the elements for `element` to find again.
-pub(super) fn snapshot(interactive: bool) -> String {
+/// An expression for the tree of meaningful elements of the frame it runs in as text, through
+/// open shadow roots and same-origin frames, each line a role, a name and, for what can be
+/// clicked, typed into or scrolled to, `[ref=<mark>eN]`; only those with `interactive`. A frame
+/// of another site is a line `[frame=<mark>fN]`, its own tree `frames.rs`'s to fetch. The tree
+/// starts `depth` deep. Marks the elements and the frames, all others' marks gone, for
+/// `find` to find again. Its value: `{ tree, frames }`, the frames' marks.
+pub(super) fn snapshot(interactive: bool, mark: &str, depth: usize) -> String {
     format!(
-        "(() => {{ const ONLY = {interactive}; const ATTR = {attr}; {SNAPSHOT} }})()",
-        attr = quote(REF_ATTRIBUTE)
+        "(() => {{ const ONLY = {interactive}; const ATTR = {attr}; const FRAME = {frame}; \
+         const MARK = {mark}; const DEPTH = {depth}; {DEEP} {SNAPSHOT} }})()",
+        attr = quote(REF_ATTRIBUTE),
+        frame = quote(FRAME_ATTRIBUTE),
+        mark = quote(mark),
     )
 }
 
 const SNAPSHOT: &str = r"
-document.querySelectorAll('[' + ATTR + ']').forEach((el) => el.removeAttribute(ATTR));
+for (const root of roots(document, [])) {
+  root.querySelectorAll('[' + ATTR + '],[' + FRAME + ']').forEach((el) => { el.removeAttribute(ATTR); el.removeAttribute(FRAME); });
+}
 let next = 0;
-const lines = [];
+const lines = [], frames = [];
 const ROLES = { a: 'link', button: 'button', select: 'combobox', textarea: 'textbox', h1: 'heading', h2: 'heading',
   h3: 'heading', h4: 'heading', h5: 'heading', h6: 'heading', img: 'img', nav: 'navigation', main: 'main',
   header: 'banner', footer: 'contentinfo', form: 'form', ul: 'list', ol: 'list', li: 'listitem', table: 'table',
@@ -162,7 +220,7 @@ const roleOf = (el) => {
   if (tag === 'input') {
     const type = (el.getAttribute('type') || 'text').toLowerCase();
     return { checkbox: 'checkbox', radio: 'radio', button: 'button', submit: 'button', reset: 'button',
-      range: 'slider', search: 'searchbox' }[type] || 'textbox';
+      file: 'button', range: 'slider', search: 'searchbox' }[type] || 'textbox';
   }
   if (tag === 'a' && !el.hasAttribute('href')) return null;
   return ROLES[tag] || null;
@@ -171,10 +229,30 @@ const actionable = (el, role) => ['link', 'button', 'textbox', 'searchbox', 'com
   'slider', 'tab', 'menuitem', 'option', 'switch'].includes(role) || el.isContentEditable
   || el.hasAttribute('onclick') || el.tabIndex >= 0 && el.hasAttribute('tabindex');
 const visible = (el) => {
+  const style = styleOf(el);
+  if (style.display === 'contents') return true;
   const box = el.getBoundingClientRect();
   if (box.width === 0 && box.height === 0) return false;
-  const style = getComputedStyle(el);
   return style.visibility !== 'hidden' && style.display !== 'none';
+};
+const kids = (el) => {
+  if (el.shadowRoot) return Array.from(el.shadowRoot.children);
+  if (el.tagName === 'SLOT') { const slotted = el.assignedElements(); if (slotted.length) return slotted; }
+  return Array.from(el.children);
+};
+const frame = (el, depth) => {
+  const title = el.getAttribute('title') || el.getAttribute('name') || '';
+  const line = '  '.repeat(depth) + '- iframe' + (title ? ' ' + JSON.stringify(title.slice(0, 100)) : '');
+  const doc = frameDoc(el);
+  if (doc) {
+    lines.push(line);
+    if (doc.body) walk(doc.body, depth + 1);
+    return;
+  }
+  const mark = MARK + 'f' + (frames.length + 1);
+  el.setAttribute(FRAME, mark);
+  frames.push(mark);
+  lines.push(line + ' [frame=' + mark + ']');
 };
 const nameOf = (el) => {
   const label = el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title')
@@ -183,8 +261,9 @@ const nameOf = (el) => {
   return text.replace(/\s+/g, ' ').trim().slice(0, 100);
 };
 const walk = (el, depth) => {
-  if (!(el instanceof Element) || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(el.tagName)) return;
-  if (!visible(el) && el !== document.body) return;
+  if (el.nodeType !== 1 || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(el.tagName)) return;
+  if (!visible(el) && el !== el.ownerDocument.body) return;
+  if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') return frame(el, depth);
   const role = roleOf(el);
   const acts = role ? actionable(el, role) : false;
   let shown = false;
@@ -196,17 +275,18 @@ const walk = (el, depth) => {
     if ('value' in el && el.value && role !== 'button') line += ' value=' + JSON.stringify(String(el.value).slice(0, 100));
     if (el.checked) line += ' [checked]';
     if (el.disabled) line += ' [disabled]';
-    if (acts) { const ref = 'e' + (++next); el.setAttribute(ATTR, ref); line += ' [ref=' + ref + ']'; }
+    if (acts) { const ref = MARK + 'e' + (++next); el.setAttribute(ATTR, ref); line += ' [ref=' + ref + ']'; }
     lines.push(line);
     shown = true;
     if (acts && role !== 'list' && !['form', 'dialog'].includes(role)) return;
   }
-  for (const child of el.children) walk(child, shown ? depth + 1 : depth);
-  if (!ONLY && !role && el.children.length === 0) {
+  const children = kids(el);
+  for (const child of children) walk(child, shown ? depth + 1 : depth);
+  if (!ONLY && !role && children.length === 0) {
     const text = (el.innerText || '').replace(/\s+/g, ' ').trim();
     if (text) lines.push('  '.repeat(depth) + '- text ' + JSON.stringify(text.slice(0, 200)));
   }
 };
-walk(document.body, 0);
-return lines.join('\n');
+if (document.body) walk(document.body, DEPTH);
+return { tree: lines.join('\n'), frames };
 ";

@@ -1,0 +1,192 @@
+#!/bin/sh
+# Keeps Koyo's CEF framework what it says it is, from the sources script/cef builds it from to
+# the engine script/browser-engine packages (docs/browser.md 11):
+#
+#   script/cef-framework patch <src> [--patches <dir>]
+#   script/cef-framework manifest <args.gn> <dir>
+#   script/cef-framework check <framework> [--release] [--patches <dir>]
+#
+# patch applies Koyo's patches (script/cef-patches/*.patch, in name order) to Chromium's sources
+# at <src>, and keeps a copy of each it applied in <src>/out/koyo-patches: what the sources
+# carry. A patch they carry that the checkout hasn't, or carry in another version, stops it
+# before anything is applied or built, saying how to take it out: sources several checkouts
+# build from (script/cef --dir) would otherwise build a mix of patches that none of them lists.
+# A patch found applied where no copy was kept, by a script/cef of before, is taken for the
+# checkout's own.
+#
+# manifest prints what a framework built from those sources says of itself, in its
+# Resources/koyo-build.txt: the codec switches of the build's args.gn and each patch in <dir>
+# (the copies patch kept) with the SHA-256 of its content.
+#
+#   ffmpeg_branding="Chrome"
+#   proprietary_codecs=true
+#   patch devtools-pipe-descriptors 3f6c...
+#
+# The host reads it (koyo-browser-host's framework.rs), and tells the app what it has.
+#
+# check compares a framework's manifest with the checkout's patches, by name and hash, and asks
+# for both codec switches. With --release a framework that differs fails it, saying why: a
+# bundle to keep has to play H.264 and AAC and carry the patches (script/bundle). Without, it
+# says so and passes: a debug engine (script/dev) is CEF's own wherever script/cef hasn't run.
+set -eu
+export LC_ALL=C
+
+MANIFEST=Resources/koyo-build.txt
+CODECS='ffmpeg_branding="Chrome" proprietary_codecs=true'
+
+fail() {
+  echo "script/cef-framework: $*" >&2
+  exit 1
+}
+
+# Each patch in the folder, in name order, with its content's hash.
+patch_lines() {
+  for patch in "$1"/*.patch; do
+    [ -f "$patch" ] || continue
+    printf 'patch %s %s\n' "$(basename "$patch" .patch)" "$(shasum -a 256 < "$patch" | cut -d' ' -f1)"
+  done
+}
+
+print_manifest() {
+  [ -f "$1" ] || fail "no build arguments at $1"
+  sed -n -E -e 's/[[:space:]]//g' -e '/^(proprietary_codecs|ffmpeg_branding)=/p' "$1" | sort
+  patch_lines "$2"
+}
+
+apply_patches() {
+  src=$1
+  [ -d "$src" ] || fail "no sources at $src"
+  carried="$src/out/koyo-patches"
+  mkdir -p "$carried"
+  stale=""
+  for copy in "$carried"/*.patch; do
+    [ -f "$copy" ] || continue
+    name=$(basename "$copy")
+    if [ ! -f "$patches/$name" ] || ! cmp -s "$copy" "$patches/$name"; then
+      stale="$stale$name
+"
+    fi
+  done
+  if [ -n "$stale" ]; then
+    {
+      echo "script/cef-framework: the sources at $src carry patches this checkout doesn't:"
+      for name in $stale; do
+        if [ -f "$patches/$name" ]; then
+          echo "  $name, in another version than this checkout's"
+        else
+          echo "  $name, which this checkout hasn't"
+        fi
+      done
+      echo "A script/cef with other patches applied them, and building now would make a framework"
+      echo "of a mix no checkout lists. Take them out, last first:"
+      for name in $(printf %s "$stale" | sort -r); do
+        echo "  git -C \"$src\" apply --reverse \"$carried/$name\" && rm \"$carried/$name\""
+      done
+      echo "and run script/cef again, which applies this checkout's. Checkouts that build from these"
+      echo "sources and have the old ones stop the same way. Or build in a folder of this checkout's"
+      echo "own: script/cef --dir <folder>."
+    } >&2
+    exit 1
+  fi
+  for patch in "$patches"/*.patch; do
+    [ -f "$patch" ] || continue
+    name=$(basename "$patch")
+    if git -C "$src" apply --check "$patch" 2> /dev/null; then
+      git -C "$src" apply "$patch"
+      echo "Applied ${name%.patch}"
+    elif ! git -C "$src" apply --check --reverse "$patch" 2> /dev/null; then
+      fail "$name neither applies to $src nor is applied there: the sources moved under it"
+    fi
+    cp "$patch" "$carried/$name"
+  done
+}
+
+check_framework() {
+  framework=$1
+  wrong=""
+  if [ ! -f "$framework/$MANIFEST" ]; then
+    wrong="  it has no $MANIFEST: it's CEF's own build, without H.264, AAC or Koyo's patches,
+  or one script/cef made before it wrote that
+"
+  else
+    for switch in $CODECS; do
+      grep -qxF "$switch" "$framework/$MANIFEST" ||
+        wrong="$wrong  its build hadn't $switch, without which no H.264 or AAC plays
+"
+    done
+    expected=$(patch_lines "$patches")
+    while read -r _ name hash; do
+      [ -n "$name" ] || continue
+      if grep -qxF "patch $name $hash" "$framework/$MANIFEST"; then
+        continue
+      elif grep -q "^patch $name " "$framework/$MANIFEST"; then
+        wrong="$wrong  it has another version of $name.patch
+"
+      else
+        wrong="$wrong  it hasn't $name.patch
+"
+      fi
+    done << EXPECTED
+$expected
+EXPECTED
+    while read -r name; do
+      [ -n "$name" ] || continue
+      printf '%s\n' "$expected" | grep -q "^patch $name " ||
+        wrong="$wrong  it has $name.patch, which $shown hasn't
+"
+    done << BUILT
+$(sed -n 's/^patch \([^ ]*\) .*/\1/p' "$framework/$MANIFEST")
+BUILT
+  fi
+  [ -z "$wrong" ] && return
+  {
+    if [ "$release" = yes ]; then
+      echo "script/cef-framework: a release engine can't be packaged from the framework at"
+    else
+      echo "script/cef-framework: warning: the framework at"
+    fi
+    echo "$framework, which isn't the one script/cef builds from this checkout:"
+    printf %s "$wrong"
+    if [ "$release" = yes ]; then
+      echo "Build it with script/cef, which applies every patch in $shown and builds"
+      echo "the framework with H.264 and AAC (docs/browser.md 11), then package again."
+    else
+      echo "Packaged anyway, as a debug engine may be: its pages play no H.264 or AAC, and"
+      echo "extensions have no icons or popups. script/cef builds the framework a bundle carries."
+    fi
+  } >&2
+  [ "$release" = yes ] && exit 1
+  return 0
+}
+
+[ $# -ge 2 ] || fail "usage: script/cef-framework patch <src> | manifest <args.gn> <dir> | check <framework> [--release]"
+command=$1
+target=$2
+shift 2
+patches="$(cd "$(dirname "$0")" && pwd)/cef-patches"
+shown=script/cef-patches
+release=no
+dir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --patches) patches="$2"; shown="$2"; shift ;;
+    --release) release=yes ;;
+    *)
+      if [ "$command" != manifest ] || [ -n "$dir" ]; then
+        fail "unknown option $1"
+      fi
+      dir="$1"
+      ;;
+  esac
+  shift
+done
+
+case "$command" in
+  patch) apply_patches "$target" ;;
+  manifest)
+    [ -n "$dir" ] || fail "manifest needs the folder of the patches applied"
+    print_manifest "$target" "$dir"
+    ;;
+  check) check_framework "$target" ;;
+  *) fail "unknown command $command" ;;
+esac

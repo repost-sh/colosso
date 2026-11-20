@@ -4,6 +4,7 @@
 //! tabs or among the space's loose pages, or removed. What a pinned page's own events do goes
 //! as a checkout's page's do (`browser_tabs.rs`).
 
+use koyo_browser_ipc::Session;
 use gpui_kit::{App, Context, SharedString};
 
 use super::Shell;
@@ -111,10 +112,11 @@ impl Shell {
         let (title, favicon) = if page.address() == Some(address.as_str()) {
             (page.title.clone(), page.favicon())
         } else {
-            let rested = browser::page_brought_back(&address, "", By::Person, cx);
+            let rested = browser::page_brought_back(&address, "", By::Person, Session::default(), cx);
             (rested.title.clone(), rested.favicon())
         };
-        (title, Unloaded { address, favicon, restored: true })
+        let session = Session::default();
+        (title, Unloaded { address, favicon, restored: true, session })
     }
 
     /// Whether the pinned page known by `key` has something to close: a page open, or, brought

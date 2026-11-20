@@ -317,6 +317,22 @@ fn the_pinned_tabs_zone_shows_until_a_person_puts_it_away_which_is_kept() {
 }
 
 #[test]
+fn the_search_engine_is_google_until_a_person_picks_another_which_is_kept() {
+    use crate::browser::SearchEngine;
+    let missing: Settings = serde_json::from_str("{}").unwrap();
+    assert_eq!(missing.search_engine, SearchEngine::Google, "a file from before");
+    for engine in SearchEngine::ALL {
+        let picked = Settings {
+            search_engine: engine,
+            ..Settings::default()
+        };
+        let json = serde_json::to_value(&picked).unwrap();
+        assert_eq!(json["search_engine"], format!("{engine:?}"));
+        assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), picked);
+    }
+}
+
+#[test]
 fn worktrees_go_in_a_folder_per_project() {
     let settings = Settings {
         worktrees_dir: Some("/work".into()),

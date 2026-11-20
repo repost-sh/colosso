@@ -1,5 +1,6 @@
-//! The site controls' popover (`docs/browser.md` 12.2): a row of the page's actions, what its
-//! site is allowed and blocked from, and how it's connected.
+//! The site controls' popover (`docs/browser.md` 12.2): a row of the page's actions (printing
+//! among them, `docs/browser.md` 16), what its site is allowed and blocked from, and how it's
+//! connected.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
@@ -39,24 +40,24 @@ const PER_LINE: usize = 7;
 /// dark or light with the theme and thicker than a menu's: what's behind tints it, as in Arc,
 /// and what's on it still reads over a white page.
 #[derive(Clone, Copy)]
-pub(super) struct Tones {
+pub(in crate::browser) struct Tones {
     /// The glass itself.
-    pub(super) glass: Hsla,
+    pub(in crate::browser) glass: Hsla,
     /// An action's button, and its edge.
-    pub(super) button: Hsla,
-    pub(super) edge: Hsla,
+    pub(in crate::browser) button: Hsla,
+    pub(in crate::browser) edge: Hsla,
     /// Under the pointer.
-    pub(super) hover: Hsla,
+    pub(in crate::browser) hover: Hsla,
     /// The round of a setting that's allowed and what's drawn on it; of one that's blocked.
-    pub(super) on: Hsla,
-    pub(super) on_mark: Hsla,
-    pub(super) off: Hsla,
-    pub(super) text: Hsla,
-    pub(super) muted: Hsla,
+    pub(in crate::browser) on: Hsla,
+    pub(in crate::browser) on_mark: Hsla,
+    pub(in crate::browser) off: Hsla,
+    pub(in crate::browser) text: Hsla,
+    pub(in crate::browser) muted: Hsla,
 }
 
 impl Tones {
-    pub(super) fn of(p: Palette) -> Tones {
+    pub(in crate::browser) fn of(p: Palette) -> Tones {
         if p.text.l > 0.5 {
             Tones {
                 glass: theme::gray(0.2, 0.62),
@@ -104,6 +105,8 @@ pub(super) struct SitePanel {
 enum Act {
     Share,
     Picture,
+    Print,
+    Pdf,
     Find,
     Tools,
 }
@@ -153,6 +156,8 @@ impl SitePanel {
         let _ = self.parent.update(cx, |_, window, cx| match act {
             Act::Share => share(&page.read(cx).address(), at, window, cx),
             Act::Picture => page.update(cx, BrowserView::copy_picture),
+            Act::Print => page.update(cx, BrowserView::print),
+            Act::Pdf => page.update(cx, BrowserView::save_as_pdf),
             Act::Find => page.update(cx, |page, cx| page.open_find(window, cx)),
             Act::Tools => page.update(cx, |page, cx| page.inspect(None, cx)),
         });
@@ -163,6 +168,8 @@ impl SitePanel {
         let acts = [
             ("site-share", IconName::Share, "Share", Act::Share),
             ("site-picture", IconName::Camera, "Copy a picture of the page", Act::Picture),
+            ("site-print", IconName::Printer, "Print", Act::Print),
+            ("site-pdf", IconName::FileDown, "Save as PDF", Act::Pdf),
             ("site-find", IconName::Search, "Find in page", Act::Find),
             ("site-tools", IconName::Inspector, "Developer tools", Act::Tools),
         ];

@@ -179,15 +179,16 @@ fn is_bubble(window: &NSWindow) -> bool {
 }
 
 /// Whether `bubble`, a new bubble of Chromium's, is the popup of the page in `holder`.
-/// Chromium makes a bubble a child of its page's window, the holder; but only once that
-/// window is on the Space shown, so on another desktop the bubble has no parent, and is told
-/// by lying over its page.
+/// Chromium makes a bubble a child of its page's window, the holder, which hands it to the
+/// app's window the page is in (`native/holder.rs`); but only once that window is on the
+/// Space shown, so on another desktop the bubble has no parent, and is told by lying over its
+/// page.
 fn is_popup_of(bubble: &NSWindow, holder: Option<&NSWindow>) -> bool {
     let Some(holder) = holder else {
         return false;
     };
     match bubble.parentWindow() {
-        Some(parent) => std::ptr::eq(&raw const *parent, std::ptr::from_ref(holder)),
+        Some(_) => crate::native::tied_to(bubble, holder),
         None => overlap(bubble.frame(), holder.frame()),
     }
 }

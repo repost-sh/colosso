@@ -31,7 +31,8 @@ pub struct ClientInfo {
     pub version: String,
 }
 
-/// The client's first frame.
+/// The client's first frame, all of it as the client says: Koyo checks that a chat or terminal
+/// it names exists, not that the caller runs there.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hello {

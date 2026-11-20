@@ -29,6 +29,7 @@ fn page(url: &str, title: &str) -> KeptTree {
         url: url.into(),
         title: title.into(),
         by_agent: false,
+        session: koyo_browser_ipc::Session::default(),
     })
 }
 
@@ -126,6 +127,7 @@ fn an_agents_page_is_kept_as_one_and_any_other_as_before() {
         url: "https://agent.example/".into(),
         title: "Agent".into(),
         by_agent: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     let json = serde_json::to_value(&agents).unwrap();
     assert_eq!(json["byAgent"], true);
@@ -134,6 +136,7 @@ fn an_agents_page_is_kept_as_one_and_any_other_as_before() {
         url: "https://mail.example/".into(),
         title: "Mail".into(),
         by_agent: false,
+        session: koyo_browser_ipc::Session::default(),
     };
     let persons = serde_json::to_value(persons).unwrap();
     assert!(persons.get("byAgent").is_none(), "{persons}");
@@ -421,6 +424,7 @@ fn the_pages_a_window_brings_back_are_each_checkouts_each_spaces_and_the_pinned_
             url: "https://c.example/".into(),
             title: "C".into(),
             project: root.to_owned(),
+            session: koyo_browser_ipc::Session::default(),
         }],
     }];
     let path = file("kept-addresses", &kept);

@@ -1,12 +1,13 @@
 //! Whether the page is on screen for the engine: while its pane draws it with nothing over it
-//! (`page.rs`, `Shown`), and while an agent uses it, drawn or not, so a page out of sight works
-//! for the browser tools as if shown (`docs/app-control.md` 5): its animation frames run,
-//! input lands at once and screenshots answer. Hidden, Chromium paints nothing, slows its
+//! (`page.rs`, `Shown`), and while an agent's command on it runs and a few seconds after,
+//! drawn or not, so a page out of sight works for the browser tools as if shown
+//! (`docs/app-control.md` 5): its animation frames run, input lands at once and screenshots
+//! answer. Hidden, Chromium paints nothing, slows its
 //! timers, and holds back what waits on a frame; a page nobody draws or uses is hidden.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use gpui_kit::{Context, WeakEntity};
+use gpui_kit::{App, Context, Task, WeakEntity};
 use koyo_browser_ipc::AppRequest;
 
 use super::BrowserView;
@@ -37,32 +38,76 @@ impl Shown {
     }
 }
 
-/// How long a page out of sight stays on screen for the engine after an agent last used it:
-/// longer than any one browser tool's call takes (its longest command, a script whose
-/// promise is awaited, waits 90 s), so a page never goes out of sight while one is under
-/// way; and longer than an agent takes between its commands, so a page it works on doesn't
-/// flicker in and out of sight, and what the page goes on with after a command (a submit
-/// that navigates at the next frame, a transition) gets its frames.
-pub(crate) const AWAKE_FOR: Duration = Duration::from_secs(90);
+/// How long a page out of sight stays on screen for the engine after an agent's command on it
+/// ended, or after an agent used it otherwise (claimed it, opened it): long enough for what
+/// the page goes on with after a command to get its frames (a submit that navigates at the
+/// next frame, a transition), short enough that a page an agent left doesn't run on as if
+/// shown. Each command wakes the page again before it runs.
+pub(crate) const AWAKE_AFTER: Duration = Duration::from_secs(5);
+
+/// How long after an agent last used a page out of sight what the page opens is the agent's,
+/// and opens behind ([`BrowserView::shows_what_it_opens`]): longer than an agent takes
+/// between its commands, so a page that opens a tab a while after the agent's click (a
+/// sign-in's) doesn't bring it in front of the person.
+const AGENTS_FOR: Duration = Duration::from_secs(90);
+
+/// An agent's use of a page, which keeps it on screen for the engine though no pane draws it.
+#[derive(Default)]
+pub(crate) struct Awake {
+    /// When the page rests, while it's awake, and the task that rests it then.
+    until: Option<(Instant, Task<()>)>,
+    /// The agents' commands on the page under way.
+    commands: usize,
+    /// When an agent last used the page.
+    used: Option<Instant>,
+}
 
 impl BrowserView {
-    /// An agent uses the page: it's on screen for the engine, drawn or not, until no agent
-    /// has used it for [`AWAKE_FOR`].
+    /// An agent uses the page: it's on screen for the engine, drawn or not, for
+    /// [`AWAKE_AFTER`] at least.
     pub(crate) fn agent_uses(&mut self, cx: &mut Context<Self>) {
-        let until = cx.background_executor().now() + AWAKE_FOR;
-        if let Some((deadline, _)) = &mut self.awake {
-            *deadline = until;
+        let now = cx.background_executor().now();
+        self.awake.used = Some(now);
+        self.wake_until(now + AWAKE_AFTER, cx);
+    }
+
+    /// An agent's command on the page starts, which waits `limit` at most: the page is on
+    /// screen for the engine until [`AWAKE_AFTER`] after the last command under way ends
+    /// ([`Self::agent_command_ends`]), or after it could have, if it's never heard to.
+    pub(crate) fn agent_command_starts(&mut self, limit: Duration, cx: &mut Context<Self>) {
+        let now = cx.background_executor().now();
+        self.awake.commands += 1;
+        self.awake.used = Some(now);
+        self.wake_until(now + limit + AWAKE_AFTER, cx);
+    }
+
+    /// An agent's command on the page ended, answered or not.
+    pub(crate) fn agent_command_ends(&mut self, cx: &mut Context<Self>) {
+        self.awake.commands = self.awake.commands.saturating_sub(1);
+        if self.awake.commands > 0 || self.awake.until.is_none() {
+            return;
+        }
+        self.awake.until = None;
+        let now = cx.background_executor().now();
+        self.wake_until(now + AWAKE_AFTER, cx);
+    }
+
+    /// Keeps the page on screen for the engine until `at` at least, and rests it then.
+    fn wake_until(&mut self, at: Instant, cx: &mut Context<Self>) {
+        if let Some((until, _)) = &mut self.awake.until {
+            *until = (*until).max(at);
             return;
         }
         let task = cx.spawn(async move |this, cx| {
-            if sleep_until(&this, |this| Some(this.awake.as_ref()?.0), cx).await {
+            if sleep_until(&this, |this| Some(this.awake.until.as_ref()?.0), cx).await {
                 let _ = this.update(cx, |this, cx| {
-                    this.awake = None;
+                    this.awake.until = None;
+                    this.awake.commands = 0;
                     this.tell_sight(cx);
                 });
             }
         });
-        self.awake = Some((until, task));
+        self.awake.until = Some((at, task));
         self.tell_sight(cx);
     }
 
@@ -71,9 +116,18 @@ impl BrowserView {
         self.shown.is_some() && (self.window_visible || crate::sight::unseen_counts())
     }
 
-    /// Whether the page is on screen for the engine: drawn, or used by an agent lately.
+    /// Whether the page is on screen for the engine: drawn, or used by an agent just now.
     pub(in crate::browser) fn on_screen(&self) -> bool {
-        self.drawn() || self.awake.is_some()
+        self.drawn() || self.awake.until.is_some()
+    }
+
+    /// Whether a tab the page opens in front is shown: it is, unless an agent used the page
+    /// out of the person's sight in the last [`AGENTS_FOR`], when it's what an agent opened,
+    /// shown only if the person set what agents open to show (`docs/app-control.md`).
+    pub(in crate::browser) fn shows_what_it_opens(&self, cx: &App) -> bool {
+        let now = cx.background_executor().now();
+        let agents = (self.awake.used).is_some_and(|used| now.saturating_duration_since(used) < AGENTS_FOR);
+        self.drawn() || !agents || crate::control::policy(cx).show_what_agents_open
     }
 
     /// Tells the host whether the page is on screen ([`BrowserView::on_screen`]), and, as
@@ -83,11 +137,6 @@ impl BrowserView {
     pub(in crate::browser) fn tell_sight(&mut self, cx: &mut Context<Self>) {
         self.set_visible(self.on_screen(), cx);
         let drawn = self.drawn();
-        if drawn {
-            self.watch_tone(cx);
-        } else {
-            self.tone_watch = None;
-        }
         if drawn && !std::mem::replace(&mut self.seen, drawn) {
             self.tell_active(cx);
         }
@@ -103,3 +152,6 @@ impl BrowserView {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

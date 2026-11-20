@@ -522,7 +522,7 @@ Started from main.rs:248 when `KOYO_NATIVE_PROBE` names a folder; it polls `<fol
 | src/browser/input.rs:43-45, browser/host/events.rs:85-87 | `HostEvent::Typed`, sent by koyo-browser-host/src/pane/keys.rs:34 when a key-down has a non-null `os_event`, at most twice a second per pane. | `person_acts(Implicit)`. |
 | src/browser/control.rs:106-140 | The lease: `Human { mode }` refuses every agent; `Implicit` lapses 5 s (`IMPLICIT_HOLD`) after the last act; `Explicit` (Take control, toolbar.rs:192) stays. | Agents' browser commands. |
 | src/browser/menu.rs:306, history.rs:200, view/navigation.rs:95, 130 | A menu pick, a history step, a GPUI navigation action are the person's. | `person_acts(Implicit)`. |
-| src/browser/view/sight.rs:52-87 | A page is on screen if drawn in a visible window, or used by an agent within 90 s (`AWAKE_FOR`). | Whether the engine paints the page. |
+| src/browser/view/sight.rs | A page is on screen if drawn in a visible window, or while an agent's command on it runs and `AWAKE_AFTER` (5 s) after. | Whether the engine paints the page. |
 | src/browser/native/probe.rs:331-437 | Probe input is `NSEvent`s handed to `sendEvent:`, never posted to the system; `escape` alone goes into the app queue. | Not a decision. These inputs reach the keyboard hooks and GPUI as presses. |
 | src/control/exec/browser/pages/consent.rs:1-30 | A pinned or loose page is the person's by where it is (`Spot`), and reaches a client only with the person's grant. | Consent. Ownership by place, not by input. |
 | src/browser/control.rs:248 (`Leased::person_acts`, for the agent desktop and each device) | The person's act on the agent desktop's tab or a device tab, heard through GPUI. | Those surfaces' own leases. Not the native seam. |

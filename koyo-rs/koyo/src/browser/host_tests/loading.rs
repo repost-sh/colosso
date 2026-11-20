@@ -22,7 +22,7 @@ fn a_loading_page_shows_how_far_it_got_until_it_is_done(cx: &mut gpui_kit::TestA
     let port = serve(slow);
     let (view, cx, scratch) = open("progress", &format!("http://127.0.0.1:{port}/slow"), cx);
     wait_for(cx, &view, "the page partly loaded", |view| {
-        view.page.loading && view.page.progress > 0 && view.page.progress < 100
+        view.page.loading && view.progress > 0 && view.progress < 100
     });
     assert!(
         cx.debug_bounds("browser-progress").is_some(),

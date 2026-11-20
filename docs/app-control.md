@@ -104,9 +104,18 @@ what the caller says it is, marked as said ("An agent saying it's from the chat 
 The person's own pages). This reaches the destructive confirmations too (12.2), not only
 the person's pages. In place against it: the person's consent for one of their pages is
 bound to the connection that asked for it, and a page they turned down isn't asked about
-again for 10 minutes, whoever asks. Proposed, not built: a per-session secret Koyo mints
-for each chat and terminal it starts, passed in their environment and checked at hello, so
-Koyo can tell its own agents from processes claiming to be them.
+again for 10 minutes, whoever asks.
+
+**A caller's worktree.** The browser tools hand a page an agent's files (`browser_upload`)
+and show it `file:` pages (5, Browser) only from one folder of the person's: the worktree of
+the Koyo chat or terminal the caller names, as Koyo has that chat or terminal, never the
+folder its hello names. A caller that names neither has no worktree, and those tools refuse
+it and say why. This keeps an agent's mistakes, and a page's words steering a well-meaning
+agent, inside its own worktree. It is no boundary against an agent set on reaching the
+person's other files: anything may name any chat or terminal (above), and Koyo's tools let an
+agent run commands in any worktree (`tab_open` or `terminal_open` with a `command`,
+`chat_create`) and see the agent desktop. A secret per chat or terminal checked at hello
+wouldn't change that while those tools run commands, so Koyo checks none.
 
 Scopes:
 
@@ -157,12 +166,16 @@ agent. `project_add`, `worktree_create`, `tab_open`, `pane_split`, `file_open`,
   the keyboard. On, the window switches to it as the person's own menus would.
 - `select: true` or `select: false` gets what it says, whatever the setting. Agents are told
   to pass `true` only when the person asked to see the thing.
+- A tab a page opens in front (a link to a new tab, a sign-in's popup) while an agent uses the
+  page out of the person's sight is one the agent opened: it follows the switch, and opens
+  behind while the switch is off. A page the person sees opens its tabs as Chrome would,
+  whoever clicked (`BrowserView::shows_what_it_opens`).
 - What opens out of sight works as if shown: a terminal starts, a file's editor is ready,
   a browser page opens in the engine at once (11) so the browser tools drive it. While an
   agent uses a page no pane draws, never shown or shown and left, the engine has it on
-  screen: its animation frames run, clicks and keys land at once, screenshots answer. 90 s
-  after the agent's last command it's out of sight for the engine too, and the next command
-  brings it back (11, 2026-11-12).
+  screen: its animation frames run, clicks and keys land at once, screenshots answer. 5 s
+  after the agent's last command ended it's out of sight for the engine too, and the next
+  command brings it back first (11; 90 s until 2026-11-19).
 - For every caller: agents in Koyo's terminals, external clients and `koyo app`. The
   person's own menus and dialogs are unaffected, and so are terminals an agent opens with
   `terminal_open`, which already come as tabs that aren't shown.
@@ -373,6 +386,69 @@ says which way: a page they're only using (they clicked or typed in it) comes ba
 own 5 s after their last act, so wait and retry; a page they took with Take control is
 theirs until they give it back: don't retry or wait, open another page.
 
+An agent's commands go to the host as an agent's (`CdpCaller::Agent`). A domain one enables
+(`Runtime.enable`, `Network.enable`) has the page's events of that domain come to the app as
+`HostEvent::CdpEvent`, until it's disabled, and its `Target.setAutoAttach` the `Target`
+domain's. The app's own commands on a page (its history read, a screenshot) hear only their
+answers, and what the page's `DevTools` enable in the same session reaches only them. The app
+keeps what agents hear of each page (`browser/agent/heard.rs`) [built 2026-11-19]:
+
+- **Console and requests.** `browser_console` enables `Runtime` and `Log`, `browser_network`
+  `Network`, on every call (the engine takes it as often as it's told, so a page the engine
+  opened again still tells); the page's messages and requests are kept from the first call on
+  that page, the last 500 of each (`dropped` counts the rest), until it closes, and `clear`
+  lets go of what a call answered. The console's first call also has the messages the page
+  logged before, which Chromium replays as `Runtime` is enabled; the requests start with it.
+  Both are the page's own session's: a frame of another site, which runs apart, keeps its own.
+- **Frames and shadow roots.** A snapshot (`control/exec/browser/script.rs`) walks the page as
+  it's drawn: into open shadow roots (slotted elements under their slot) and same-origin
+  frames, whose refs are plain `eN`. A frame of another site is a line `- iframe [frame=f1]`;
+  the snapshot has the engine attach such frames (`Target.setAutoAttach`, flattened, as
+  `DevTools` and Puppeteer do), finds which session holds which by its frame's owner
+  (`DOM.getFrameOwner`, `DOM.describeNode`), runs in that session, and puts the frame's tree
+  under its line, its refs `f1eN` and its own frames `f1f1`, 20 frames at most
+  (`control/exec/browser/frames.rs`). An act on such a ref runs in the frame's session, its
+  point moved by where each frame that holds it starts. A selector (`browser_read`,
+  `browser_wait`, an act's `selector`) matches in the document, its open shadow roots and its
+  same-origin frames, the document's first; not in a frame of another site.
+- **Clicks at the page's scale.** `Input.dispatchMouseEvent` takes a point of the view, so a
+  click's CSS point is scaled by what the page's session was told to show it at in responsive
+  mode (`BrowserView::input_scale`), else lands off by it.
+- **File choosers** [built 2026-11-19]. A file chooser the page opens while an agent holds it,
+  as an agent's click on a file input does, never opens the system's panel on the person's
+  screen: it's the agent's (`browser/agent/choosing.rs`), listed as the page's `dialog`
+  (`fileChooser`, which holds nothing up) and in an act's answer. `browser_upload` without a
+  ref answers it with files, `browser_dialog` `dismiss` cancels it, and it's cancelled when the
+  agent lets the page go or the person takes it, as Chromium opens one at a time. With a
+  `ref` or `selector`, `browser_upload` sets the files on that `<input type=file>` as if
+  chosen there (`DOM.setFileInputFiles`). Either way each path is checked, off the main thread,
+  to exist in the caller's own worktree's checkout, links followed, and a folder's every entry
+  with it: an agent gives a page only the files it works on, nothing else of the person's. The
+  worktree is that of the Koyo chat or terminal the caller names, as Koyo has it (4, A
+  caller's worktree); a client naming neither gives no files, whatever folder its hello names.
+  Each file must be a regular file (a pipe or a device is refused without waiting on it), on
+  the worktree's own volume, with no other name elsewhere (a hard link). The page is given
+  copies, made in Koyo's data folder (`browser/uploads/<pid>/`, a folder made new for each
+  upload, this run's gone as it quits and a run that ended's as the next upload starts), as
+  Chromium reads a file when the page does, long after the check. A copy is an APFS clone of
+  what was checked where the data folder is on the worktree's volume; elsewhere it's read,
+  2 GiB at most per upload, and a folder gives 10,000 files at most, which Koyo chose, as
+  Chromium sets no bound of its own. A chooser the page opened anew since the agent read it gets
+  none (`control/exec/browser/upload/given.rs`).
+- **`file:` pages** [built 2026-11-19]. An agent opens a `file:` page (`browser_navigate`,
+  `tab_open`, `pane_split`) only of its worktree, links followed, and every browser tool that
+  reads or acts on a page refuses one whose address is a `file:` page, or its source, outside
+  it, checked before each protocol command and again once it's answered if the page moved, so
+  a `file:` page going to another doesn't get round it (`control/exec/browser/root.rs`). A
+  file that isn't there, or has another name elsewhere (a hard link), counts as outside, and
+  an address is read as Chromium reads it, tabs and line breaks in it dropped, so
+  `view-sou\trce:` is a page's source too. A caller that names no chat or terminal is
+  refused every `file:` page. Like uploads, this guards against an agent's mistakes and a
+  page's steering, not an agent bent on other files (4, A caller's worktree). The person's
+  own `file:` pages are the person's to browse as before. Not checked: what a `file:` page of
+  the worktree shows of other files in itself, an image or a frame, which Chromium lets one
+  `file:` page do; and tools outside the browser's, which this doesn't govern.
+
 The person sees an agent at work (`browser/pointer.rs`): a glow inside the page's edges
 while an agent holds it, and for `browser_click` the agent's pointer, a navigation arrow
 that travels to the point along an arc of an ellipse, easing in and out, its heading the
@@ -388,12 +464,14 @@ browser_list     [read] R {} → { pages: [{ pane, url, title, loading, open, on
                    then the person's own: the pinned (a tile with no page open is listed as
                    a tab not shown yet is, `open: false`), then every space's loose pages
 browser_navigate [browser] C { pane?, url, wait?: "load"|"none" (default load), timeoutMs? }
-                   → { pane, url, title, loaded? }; an open page's, it never opens one
+                   → { pane, url, title, loaded?, dialog? }; an open page's, it never opens
+                   one; every act answers so, `dialog` what the page asks now
 browser_go       [browser] C { pane?, action: "back"|"forward"|"reload" } → as navigate
 browser_read     [read] R { pane?, format?: "text"|"markdown"|"html" (default text),
                    selector?, limit? } → { url, title, content, truncated }
 browser_snapshot [read] R { pane?, interactive?: bool } → { url, title, tree: text with
-                   `[ref=eN]` markers }; refs stay valid until the next snapshot or navigation
+                   `[ref=eN]` markers, `f1eN` in a frame of another site }; refs stay valid
+                   until the next snapshot or navigation
 browser_screenshot [read] R { pane?, fullPage?: bool, format?: "png"|"jpeg" } → image block
 browser_eval     [browser] C { pane?, expression, awaitPromise?: bool } → { value }
 browser_click    [browser] C { pane?, ref? | selector? | x?, y?, button?, clickCount? }
@@ -407,7 +485,14 @@ browser_claim    [browser] I { pane?, takeover?, reason? } ; browser_release [br
 browser_duplicate [browser] C { pane, reason? } → { pane, tab, worktree }; asks the person
                    for a copy of their page in the caller's worktree
 browser_dialog   [browser] C { pane?, action: "accept"|"dismiss", text? } → the page's; answers
-                   the alert, confirm, prompt or leave-page question it waits on
+                   the alert, confirm, prompt or leave-page question it waits on; dismiss
+                   cancels its file chooser
+browser_upload   [browser] C { pane?, paths: [path], ref? | selector? } → the page's; sets
+                   files of the caller's worktree on a file input, or answers its file chooser
+browser_console  [read] R { pane?, clear?: bool } → { pane, url, messages: [{ level, source,
+                   text, url?, line?, timestamp }], dropped }
+browser_network  [read] R { pane?, clear?: bool } → { pane, url, requests: [{ id, method, url,
+                   resourceType?, status?, mimeType?, failed?, finished, timestamp }], dropped }
 browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?, touch?,
                    userAgent?, orientation?, zoom?, fill?: true, screenshot?: bool }
                    → { viewport, settled } (+ image block with `screenshot`); responsive mode,
@@ -766,7 +851,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (90 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (94 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`, the agent desktop's in
@@ -814,10 +899,13 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 - On screen for the engine (2026-11-12): a page is on screen while its pane draws it with no
   notice over it, frame or not (`browser/page.rs`), in a window on screen, and while an agent
   uses it
-  (`browser/view/sight.rs`): opening it out of sight, each command through `agent::cdp`, each
-  act that claims it and each look of `browser_wait` keep it on screen for `AWAKE_FOR`, 90 s,
-  longer than any one tool call takes. Past that a page no pane draws is hidden (Chromium's `WasHidden`: no frames, timers
-  slowed, `visibilityState` `hidden`) until the next command. The host applies what it's
+  (`browser/view/sight.rs`): each command through `agent::cdp` keeps it on screen while it
+  runs (at most its limit, if its end is never heard) and `AWAKE_AFTER`, 5 s, after it ends;
+  opening it out of sight, each act that claims it and each look of `browser_wait` keep it on
+  screen 5 s. Past that a page no pane draws is hidden (its views out of every window and its
+  holder ordered out, `docs/native-pages.md` 5: no frames, timers slowed to a tick a second,
+  `visibilityState` `hidden`) until the next command. What a page opens stays the agent's,
+  opened behind, for 90 s after an agent last used it (`shows_what_it_opens`). The host applies what it's
   told before the page's browser exists once the browser arrives
   (`koyo-browser-host/src/host/panes.rs` `browser_created`), so a page it has out of sight
   is one Chromium was told is hidden, and the frame clock begins frames of every other.

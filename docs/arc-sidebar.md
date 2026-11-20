@@ -540,9 +540,12 @@ menu is Arc's.
 
 ### 11.6 Links, sign-ins and agents
 
-- A link that asks for a new window (`target="_blank"`, `window.open`) loads in the page
-  itself, pinned or loose, as it does in any page tab today: the host opens no windows
-  (`koyo-browser-host/src/pane.rs`, `on_before_popup`). ⌘[ goes back. **[ours: as a page tab]**
+- A link that asks for a new tab or window (`target="_blank"`, `window.open`, a ⌘-, ⇧- or
+  middle-click) opens a loose page of the space shown, right after a loose opener or after
+  them all, as a page tab's opens a tab beside it: in front, or behind for a ⌘- or a middle
+  click, as Chrome does. A page a script opened keeps its opener, so a sign-in's popup
+  answers the page and closes itself (`koyo-browser-host/src/pane/popups.rs`).
+  **[ours: as a page tab]**
 - **Open Link in New Tab** from a pinned or a loose page's right-click menu, and a link
   opened from its `DevTools`, open a loose page of the space shown, right after a loose
   opener or after them all, without leaving the page, as a page tab's opens beside it.

@@ -2,17 +2,21 @@ use crate::support::{Run, Scratch};
 
 pub const LIST: &str = "koyo-rs/module-edges.txt";
 pub const DEBT: &str = "koyo-rs/blocking-debt.txt";
+pub const HOST_DEBT: &str = "koyo-rs/blocking-debt-browser-host.txt";
 pub const SOURCE: &str = "koyo-rs/koyo/src/";
+pub const HOST: &str = "koyo-rs/koyo-browser-host/src/";
 
-/// A git checkout with no commit yet, these files under `koyo-rs/koyo/src/`, and an empty
-/// edge list and debt list.
+/// A git checkout with no commit yet, these files under `koyo-rs/koyo/src/`, a browser host
+/// with an empty crate root, and an empty edge list and debt list.
 pub fn checkout(name: &str, files: &[(&str, &str)]) -> Scratch {
     let scratch = Scratch::new(&format!("imports-{name}"));
     for (path, text) in files {
         scratch.write(&format!("{SOURCE}{path}"), text);
     }
+    scratch.write(&format!("{HOST}lib.rs"), "");
     scratch.write(LIST, "");
     scratch.write(DEBT, "");
+    scratch.write(HOST_DEBT, "");
     scratch.git(&["init", "-q"]);
     scratch
 }

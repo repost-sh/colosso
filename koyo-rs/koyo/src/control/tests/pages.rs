@@ -7,6 +7,7 @@ use koyo_app_control::ErrorCode;
 use serde_json::json;
 
 use super::{call, controlled, read_shell, terminal};
+use crate::control::Caller;
 use crate::browser::BrowserEvent;
 use crate::test_support::{draw, repo, select};
 
@@ -85,4 +86,26 @@ fn a_tab_the_person_asked_to_go_to_is_shown_and_a_link_opened_beside_is_not(cx: 
     let there = pages.iter().find(|info| info["pane"] == now).expect("listed");
     assert_eq!(there["url"], json!("chrome://extensions/"));
     assert_eq!(pages.len(), 3);
+}
+
+#[gpui_kit::test]
+fn an_agent_gives_files_only_from_the_worktree_of_a_chat_or_terminal_koyo_knows(cx: &mut TestAppContext) {
+    let root = repo("control-upload-root", &[("README.md", "hi\n")]);
+    let rig = controlled("control-upload-root", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let says = Caller {
+        worktree: Some(root.clone()),
+        cwd: Some(root.clone()),
+        ..terminal("term_nobody")
+    };
+    let opening = json!({ "kind": "browser", "url": "https://example.com/" });
+    let pane = call(&says, "tab_open", opening, cx).unwrap()["pane"].clone();
+    let upload = json!({ "pane": pane, "paths": ["README.md"] });
+    let refused = call(&says, "browser_upload", upload, cx).unwrap_err();
+    assert_eq!(refused.code, ErrorCode::NotFound, "{}", refused.message);
+    assert!(
+        refused.message.contains("no worktree is known as yours"),
+        "the worktree its hello names is its own word: {}",
+        refused.message
+    );
 }

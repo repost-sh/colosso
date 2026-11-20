@@ -9,16 +9,23 @@
 mod acts;
 mod asker;
 mod asking;
+mod frames;
+mod heard;
 mod keys;
 mod page;
 mod pages;
 mod refusals;
+mod root;
 mod script;
+mod upload;
 mod viewport;
 
 pub(crate) use acts::{click, eval, press_key, read, screenshot, scroll, snapshot, type_text};
 pub(crate) use asking::{claim, duplicate, release};
+pub(crate) use heard::{console, network};
+pub(crate) use upload::upload;
 pub(crate) use page::{acted, dialog, go, navigate, wait};
+pub(crate) use root::opening;
 #[cfg(test)]
 pub(crate) use pages::{DECLINED_FOR, IDLE, OTHERS_WAIT, declines_kept};
 pub(crate) use pages::{joined, left, list, prune, rescope};

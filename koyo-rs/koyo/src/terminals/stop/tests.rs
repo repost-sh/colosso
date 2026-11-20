@@ -42,6 +42,7 @@ fn only_a_shell_at_its_prompt_or_a_program_that_ended_is_safe_to_end() {
         status,
         reason: reason.into(),
         control: Control::default(),
+        pid: None,
     };
     assert!(!busy(&state(Status::Idle, "prompt")));
     assert!(!busy(&state(Status::Exited, "exited 0")));

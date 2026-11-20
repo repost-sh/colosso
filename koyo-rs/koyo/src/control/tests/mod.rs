@@ -12,6 +12,7 @@ mod chat_modes;
 mod chat_set;
 mod chats;
 mod devices;
+mod heard;
 mod host;
 mod pages;
 mod panes;
@@ -25,6 +26,7 @@ mod shown;
 mod socket;
 mod tabs;
 mod viewport;
+mod worktree_files;
 mod worktrees;
 
 use std::path::{Path, PathBuf};
@@ -51,16 +53,16 @@ const CONFIRM: Duration = Duration::from_secs(5);
 /// A window under app control: the window, its shell, the channel's reading end the socket's
 /// connections and in-process clients hand their requests to, and the folder new worktrees
 /// go in.
-struct Rig {
-    window: AnyWindowHandle,
-    shell: Entity<Shell>,
+pub(crate) struct Rig {
+    pub(crate) window: AnyWindowHandle,
+    pub(crate) shell: Entity<Shell>,
     requests: UnboundedReceiver<Request>,
     worktrees: PathBuf,
 }
 
 /// The shell over `roots` under app control, without its socket: the prompts' times
 /// shortened, new worktrees named without a prefix in a scratch folder of `name`'s.
-fn controlled(name: &str, roots: &[&Path], cx: &mut TestAppContext) -> Rig {
+pub(crate) fn controlled(name: &str, roots: &[&Path], cx: &mut TestAppContext) -> Rig {
     let requests = cx.update(super::start_for_test);
     let (window, shell) = shell_with(roots, cx);
     let worktrees = scratch(&format!("{name}-worktrees"));
@@ -86,7 +88,7 @@ fn controlled(name: &str, roots: &[&Path], cx: &mut TestAppContext) -> Rig {
 }
 
 /// An agent in Koyo terminal `handle`, on a connection of its own.
-fn terminal(handle: &str) -> Caller {
+pub(crate) fn terminal(handle: &str) -> Caller {
     let caller = Caller {
         terminal: Some(handle.into()),
         ..external("koyo app")
@@ -145,7 +147,7 @@ fn hello_of(caller: &Caller) -> Hello {
 }
 
 /// Where an answer lands once it's given.
-type Slot<T> = Arc<Mutex<Option<Result<T, ControlError>>>>;
+pub(crate) type Slot<T> = Arc<Mutex<Option<Result<T, ControlError>>>>;
 
 fn slot<T: Send + 'static>() -> (Slot<T>, Answer<T>) {
     let slot: Slot<T> = Arc::new(Mutex::new(None));
@@ -157,7 +159,7 @@ fn slot<T: Send + 'static>() -> (Slot<T>, Answer<T>) {
 }
 
 /// The answer in `slot`, once given.
-fn taken<T>(slot: &Slot<T>) -> Option<Result<T, ControlError>> {
+pub(crate) fn taken<T>(slot: &Slot<T>) -> Option<Result<T, ControlError>> {
     slot.lock().unwrap().take()
 }
 
@@ -177,7 +179,7 @@ fn hello(caller: &Caller, cx: &mut TestAppContext) -> Result<Welcome, ControlErr
 }
 
 /// Makes `caller`'s call of `command`, answered or not yet.
-fn send(
+pub(crate) fn send(
     caller: &Caller,
     request_id: Option<&str>,
     command: Command,
@@ -199,7 +201,7 @@ fn send(
 
 /// Makes `caller`'s call of `operation` with `input`, and waits for what's pending: its
 /// answer.
-fn call(
+pub(crate) fn call(
     caller: &Caller,
     operation: &str,
     input: Value,
@@ -211,7 +213,7 @@ fn call(
 }
 
 /// The call of `operation` with `input`.
-fn op(operation: &str, input: Value) -> Command {
+pub(crate) fn op(operation: &str, input: Value) -> Command {
     Command::parse(operation, input).unwrap()
 }
 

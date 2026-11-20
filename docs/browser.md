@@ -28,8 +28,9 @@ Status marks: `[decided]`, `[not built]`.
   in `settings.json` already (`docs/arc-sidebar.md` 9).
 - A pane's content, by kind:
   - **Page:** at the address it showed, titled as it was until its page says otherwise, with
-    its site's icon when one is kept (`history-icons/`, `docs/new-tab.md` 4.7). A new tab
-    still on its start page comes back as one.
+    its site's icon when one is kept (`history-icons/`, `docs/new-tab.md` 4.7), the pages
+    back and forward of it, scrolled where it was (7.1). A new tab still on its start page
+    comes back as one.
   - **Terminal:** the terminal it showed, by its handle in the daemon, where its tab was,
     even on another worktree's list than its own (`docs/arc-sidebar.md` 5).
   - **Chat:** the thread it showed. A chat with nothing sent yet comes back as its tab, with
@@ -189,7 +190,8 @@ worktree gone, a project removed): every one of them changes the shell.
   the Changes tab that came back. A pane stops waiting the moment it's given its file or the
   diffs (`Pane::set_file`, `Pane::set_changes`), as a page's does with `set_view`.
 - A restored page's first load is no new visit in `history.json`, as Firefox counts none for
-  a restored session; it updates the entry's title (`docs/new-tab.md` 4.1).
+  a restored session; it updates the entry's title (`docs/new-tab.md` 4.1). Nor is a page of
+  its history brought back gone back or forward to (7.1).
 
 ## 6. Agents [decided]
 
@@ -209,11 +211,11 @@ don't make one of their own.
 
 ## 7. What doesn't come back [decided]
 
-- A page's back and forward history, its scroll position and what was typed in its forms:
-  CEF offers no way to restore them.
+- What was typed in a page's forms, and the scroll of the pages of its history other than
+  the one it showed: no engine gives them out (7.1).
 - Docked or detached `DevTools`: the page comes back without them.
 - Responsive mode (`docs/responsive.md` 1; a page an agent opened at 1440 × 900 comes back
-  filling its pane), zoom, and who held a page's lease.
+  filling its pane), and who held a page's lease.
 - Which pane of a split the person was in (`docs/arc-sidebar.md` 2): the first, until
   they're in one again.
 - A file's unsaved edits, its scroll position and whether it was a preview; the Changes
@@ -221,6 +223,73 @@ don't make one of their own.
 - The tabs closed lately, which ⌘⇧T brings back while the window lives.
 - [not built] Unloading tabs in the background during a session: a page made stays until its
   tab closes.
+
+### 7.1 A page's history, scroll and zoom [decided]
+
+Written 2026-11-19. Read from Chromium 156.0.8078.48 and CEF 8078's sources; not yet run on
+the agent desktop (the checks are at the end).
+
+- **Zoom is the site's, as in Chrome.** Zooming a page (⌘+, ⌘−, ⌘0, the toolbar's zoom)
+  zooms its site: every page of it, in every tab of the profile, and after a restart, which
+  Chromium keeps in the profile itself (`partition.per_host_zoom_levels` in its
+  `Preferences`, `ChromeZoomLevelPrefs`). The host reads the engine's zoom of each page as
+  it loads, and of every page after a zoom, and tells the app (`PageState::zoom`), whose
+  toolbar shows it. Until 2026-11-19 the app kept a zoom per pane and told the engine it
+  again after each load, which zoomed every site the pane went to and kept it so; and the
+  app's read of the host while it handed it the page panicked (`cannot read
+  koyo::browser::host::Browsers while it is already being updated`, the test
+  `a_pages_zoom_is_its_sites_and_another_site_loading_isnt_zoomed_as_the_last`). Chromium
+  tells no one of a zoom it makes itself (⌃-scroll, an extension's `tabs.setZoom`): the app
+  hears of it as the page next loads.
+- **The history comes back.** CEF has no way to give a new browser a list of pages (its
+  `CefNavigationEntry` only reads; content's `NavigationController::Restore` isn't reached),
+  and Chrome's own session restore makes windows of its own, which Koyo turns off (3.3 of
+  `docs/native-pages.md`). So the host keeps, as the engine's list changes, the web pages
+  (`http`, `https`) back and forward of the one shown, the nearest 20 each way, and tells the
+  app (`HostEvent::Session`), which keeps them with the page in `window.json` (`session`,
+  left out when there's nothing). A page brought back opens with them (`AppRequest::BringBack`
+  just before its `Open`): the host loads a stand-in for each page behind it, one after
+  another, then the page itself; with pages ahead, stand-ins for the page and those, the last
+  going back to the page's own (`koyo-browser-host/src/session/stand_in.rs`). A stand-in is a
+  `data:` page of a few lines that, gone back or forward to, replaces itself with the page it
+  stands for (`location.replace`, which keeps the history around it). So the engine's own
+  back and forward have them, and everything that goes through those does: the toolbar's
+  buttons and the list they hold (titled as the pages were), the keys, a page's own
+  `history.back()`, an agent's `browser_go`.
+  - Each stand-in is loaded by the browser, not by a page's script: Chromium's back button
+    skips the entries a script adds without a click of the person's (its history
+    manipulation intervention, `NavigationControllerImpl::SetShouldSkipOnBackForwardUIIfNeeded`),
+    and refuses a script that opens a `data:` page, but not a load or a step back.
+  - While a stand-in shows as the page is brought back, the app is shown that page, loading;
+    a stand-in gone back to later is shown as the page it stands for (`session::shown`).
+    Only a stand-in the host issued for that pane's own history, word for word, is: the host
+    keeps each pane's (`StandIns`), so a `data:` page a page, a person or an agent opens is
+    shown at its own address, never as another site with its lock, even one copied from a
+    stand-in's address, which a page's script, an extension or an agent can read.
+    Anything else loading meanwhile (the person or an agent going elsewhere, going back)
+    stops the rest; reloading or stopping loads the page brought back itself. A page whose
+    stand-in for itself loads and is never replaced (a download, say) is left as it is
+    (`session::Restore`, a step at a time). Agents' commands wait until it's in place.
+  - A page brought back and sent elsewhere before its tab was shown keeps the history it had,
+    the page it would have opened at behind it (`BrowserView::leave_unopened`).
+  - What a person notices: the page brought back starts a moment later, after its stand-ins
+    (how long each takes isn't measured yet). A page gone back to loads afresh, at its top,
+    as if it were opened, not from the engine's memory of it. Pages a page added itself
+    (`pushState`) come back as pages of their own. Pages other than web pages (`file:`,
+    `chrome:`) aren't kept in a history; one shown comes back without its history.
+- **Its scroll comes back.** As each scroll of a page ends (`scrollend`), and once it's shown
+  (`pageshow`, after Blink has put a page gone back to where it was), its renderer tells the
+  host where it is (`session/renderer.rs`), which tells the app with the history; a new page
+  starts at the top. Once a page brought back has loaded, the host scrolls it there, and
+  again as its document grows, until it's there, the person scrolls or presses a key, or ten
+  seconds have gone (`session::scroll_script`), as Blink brings a page's scroll back as it
+  lays out. Only the page's own scroll: what a page scrolls inside it is the page's.
+- Checks to run on the agent desktop: zoom a site to 125 %, open another page of it in
+  another tab (125 %), another site (100 %), quit and open the test app again (the first site
+  125 %); go through three pages, scroll the last down, quit, open again: the last page is
+  where it was, back goes to the two before (each loading afresh, titled in the list as they
+  were), and forward again; the same after going back one before quitting (forward is
+  there).
 
 ## 8. Where it lives
 
@@ -243,7 +312,10 @@ don't make one of their own.
 | `koyo/src/shell.rs` | The shell's observer, where the rule runs, and `workspace_content` |
 | `koyo/src/shell/closing.rs` | Closing a tab, its unshown pages' addresses kept for ⌘⇧T |
 | `koyo/src/control/exec/browser/page.rs` | Unshown pages in `browser_list` and the tools' refusal |
-| `koyo/src/browser/view/navigation.rs` | `mark_restored`: a restored page's first load is no visit |
+| `koyo/src/browser/view/navigation.rs` | `mark_restored`: a restored page's first load is no visit; `bring_back`, `session`: the history and scroll a page opens with and keeps |
+| `koyo-browser-ipc/src/session.rs` | `Session`: a page's history around it and its scroll, as kept and told |
+| `koyo-browser-host/src/session.rs`, `session/stand_in.rs`, `session/renderer.rs`, `session/tests.rs` | The history read from the engine, the plan of stand-ins a page brought back loads, what the app is shown meanwhile, and the scroll watcher in each page's renderer |
+| `koyo-browser-host/src/host/restoring.rs` | Each pane's session told to the app, and its stand-ins loaded one after another |
 
 ---
 
@@ -256,14 +328,17 @@ Passwords) and in their other credential providers (1Password and the like, as t
 System Settings → General → AutoFill & Passwords), a phone by QR code, and security keys,
 with their PIN. macOS shows that sheet for any site only to a browser signed with Apple's
 managed entitlement `com.apple.developer.web-browser.public-key-credential`, which Koyo
-isn't yet (9.4); until it is, every passkey request is turned down at once (9.3).
+isn't yet (9.4); until it is, a page's request goes to Chromium's own WebAuthn, which reaches
+a security key and a phone by QR code without it, and only what this Mac's own passkeys alone
+could answer is turned down at once (9.3).
 
 ### 9.1 What a page gets [decided]
 
 - `navigator.credentials.create` and `get` with `publicKey` go through a bridge every frame
   runs before its own scripts; every other kind (`password`, `federated`) goes to Chromium as
-  before. Nothing reaches Chromium's own WebAuthn, which has no window to show its dialogs
-  in, can't reach the person's passkeys, and reaches for Bluetooth.
+  before. In a build signed for passkeys nothing reaches Chromium's own WebAuthn, which can't
+  reach the person's passkeys in iCloud Keychain from Koyo's process (its Touch ID passkeys
+  need Google's keychain group, its iCloud Keychain the same entitlement).
 - The answer is a `PublicKeyCredential` (`instanceof` holds) with `id`, `rawId`, `type`,
   `authenticatorAttachment`, `getClientExtensionResults()` and `toJSON()`; its response has
   `clientDataJSON` and `attestationObject`, `getAuthenticatorData()`, `getPublicKey()`,
@@ -297,10 +372,32 @@ parents'), never from what the page's script says:
 ### 9.3 Until Koyo is signed for passkeys [decided]
 
 At start Koyo reads its own signature (`SecTaskCopyValueForEntitlement` on its own task) and
-tells the browser host whether it carries the entitlement (`Hello.passkeys`). Without it the
-host answers every `create` and `get` with `NotAllowedError` as soon as it has checked it,
-within a few milliseconds, and the availability checks say no; so a site goes straight to its
-other ways of signing in ("Try another way") instead of waiting. Builds made with
+tells the browser host whether it carries the entitlement (`Hello.passkeys`). Without it
+(2026-11-19; read from Chromium 156's and CEF 8078's sources, not yet run with a key):
+
+- A `create` or `get` goes back to Chromium's own WebAuthn (the host answers the bridge
+  `{id, engine}`, and the bridge calls the engine's method as the page did,
+  `koyo-browser-host/src/passkeys/route.rs`). Without any entitlement it reaches a security
+  key over USB (its HID path opens the device with no access check) and a phone, by the QR
+  code its dialog shows and Bluetooth (macOS asks the person once, for Koyo, which says why
+  in its `Info.plist`; turned down, the dialog says how to allow it). Not this Mac's passkeys:
+  Chromium's own (Touch ID) need Google's keychain group, iCloud Keychain this entitlement.
+- That dialog is a window Chromium ties to the page's holder, a level under Koyo's window
+  (`docs/native-pages.md` 3.2), where an extension's popup was seen to open unseen
+  (2026-11-17). Every window Chromium ties to a holder while its page is in Koyo's window is
+  made a child of that window instead, in front of it (`native/holder.rs`, `add_child`): this
+  dialog, autofill's lists and bubbles, an extension's popup.
+- What only this Mac's passkeys could answer is turned down at once with `NotAllowedError`
+  and says why ("This Mac's passkeys need Koyo to be signed with Apple's browser passkey
+  entitlement…"), after the frame's own checks (9.2), so a frame of another origin is told
+  of its origin: a new passkey asked of the platform (`authenticatorAttachment: "platform"`),
+  or a sign-in whose passkeys all live on a device's own (`internal` their only transport).
+  So a site offers its other ways at once rather than waiting.
+- `isUserVerifyingPlatformAuthenticatorAvailable()` and `getClientCapabilities()` are the
+  engine's answers. A conditional request still waits, and
+  `isConditionalMediationAvailable()` is still false.
+
+Builds made with
 `script/dev` and `script/bundle` without `--sign` are such builds, and stay so: signed ad hoc
 or by this Mac's own identity (12.7), a build never claims the entitlement, since macOS won't
 start an app that claims a managed entitlement without the provisioning profile granting it,
@@ -377,7 +474,8 @@ has shown.
 ### 9.6 Tests
 
 - `koyo-browser-host/src/passkeys/origin/tests.rs`: origins, suffixes and public suffixes.
-  `passkeys/asks.rs`, `passkeys/answers.rs`: options read, answers shaped.
+  `passkeys/asks.rs`, `passkeys/answers.rs`: options read, answers shaped. `passkeys/route.rs`:
+  without the entitlement, which requests go to the engine and which are turned down.
   `passkeys/attestation/tests.rs`: attestation objects read, keys as DER, broken ones.
 - `koyo-browser-host/tests/smoke/passkeys.rs`, the host alone against the packaged engine:
   frames of the page's origin and of another, requests asked, answered and withdrawn.
@@ -389,6 +487,12 @@ has shown.
   entitlement `create` and `get` reject with `NotAllowedError` within half a second; and, with
   a stand-in for the sheet, its answer reaches the page as a `PublicKeyCredential` and an
   aborted request is withdrawn from the app.
+- The engine tests without the entitlement (`tests/smoke/passkeys.rs` `without_passkeys_…`,
+  `host_tests/passkeys.rs` `without_the_entitlement_…`) ask what only this Mac's passkeys
+  could answer (a platform `create`, a `get` whose passkeys are all `internal`), turned down
+  at once, and for its origin in a frame of another. A request the engine answers isn't
+  asked there: it waits on the engine's dialog, and its hybrid answer may reach for
+  Bluetooth. That path is checked on the agent desktop.
 - The sheet itself can't be tested until Koyo is signed for it.
 
 ### 9.7 Where it lives
@@ -399,11 +503,52 @@ has shown.
 | `koyo-browser-host/src/passkeys/renderer.rs` | The renderer's side: the bridge run as each frame's context is made, messages to and from the browser process |
 | `koyo-browser-host/src/passkeys.rs` | The browser process: requests checked, sent to the app, answered, withdrawn |
 | `koyo-browser-host/src/passkeys/origin.rs` | Secure contexts, frames above, relying party ids and public suffixes |
+| `koyo-browser-host/src/passkeys/route.rs` | Without the entitlement: a request to the engine, or turned down saying why |
 | `koyo-browser-host/src/passkeys/answers.rs`, `attestation.rs` | Answers in `WebAuthn`'s JSON forms; a new passkey's authenticator data and public key |
 | `koyo-browser-ipc/src/passkeys.rs` | The request and answer on the wire |
 | `koyo/src/browser/passkeys/mod.rs` | The entitlement check, one request per page, the sheet over its window |
 | `koyo/src/browser/passkeys/sheet.rs` | `ASAuthorizationController`: requests, the sheet, answers and errors |
 | `script/bundle` | `--sign`/`--profile`: the signed build that claims the entitlement |
+
+### 9.8 Passwords and form autofill [not built]
+
+Written 2026-11-19, read from Chromium 156.0.8078.48's and CEF 8078's sources; nothing here
+was run.
+
+- **Chrome's are in the engine, and on.** A Chrome-style page has Chrome's password manager
+  and its address and card autofill: CEF sets none of their preferences, and Chromium's
+  defaults are on (`credentials_enable_service`, `autofill.profile_enabled`,
+  `autofill.credit_card_enabled`). What it saves is the profile's, in `Login Data` and `Web
+  Data`, encrypted with a key in the Keychain under "Koyo Browser Engine" (`host/start.rs`);
+  an engine packaged unsigned uses a fixed key instead (`use-mock-keychain`,
+  `KoyoMockKeychain` in its `Info.plist`), so an ad-hoc build doesn't ask for the Keychain
+  after every rebuild. A profile moved between the two loses what it saved: Chromium deletes
+  the passwords it can't decrypt (`kClearUndecryptablePasswords`, on for the Mac).
+- **What's missing to use them.**
+  - Their windows don't show. The save bubble and the suggestions under a field are
+    windows Chromium ties to the page's holder, a level under Koyo's window, where an
+    extension's popup was seen to open unseen; passkeys' dialog is put over the page only
+    while a request lasts (9.3). The event-driven way for all of them is the holder's
+    `addChildWindow:ordered:`: a window Chromium gives the holder as a child goes to Koyo's
+    window that draws the page instead (`native/holder.rs`, which patches the holders'
+    class already). Not built.
+  - Picking a suggestion does nothing with an external message pump, which Koyo's is: CEF
+    ran no idle work while delayed work was waiting (CEF issue 4332), fixed after the
+    commit Koyo builds (CEF `b7f5636`, 2026-11-04, one line in
+    `libcef/browser/browser_message_loop.cc`). A newer CEF, or that change as a patch of
+    Koyo's (`script/cef-patches`) and the framework built again.
+  - With the toolbar hidden the save bubble hangs from the top right of the page, and there
+    is no key in the address field to open it again once it's gone. The smallest of Koyo's
+    own: that key, shown while Chrome has a password for the page, running Chrome's own
+    command for it (`IDC_MANAGE_PASSWORDS_FOR_PAGE`); and the manager, `chrome://password-manager`,
+    as a page, as `chrome://extensions` is.
+- **Signing in to a server (HTTP auth)** never saves: the host answers CEF's
+  `GetAuthCredentials` with Koyo's own dialog (`koyo/src/browser/dialog.rs`), and Chrome's
+  password manager hears only its own prompt.
+- **macOS's own passwords.** Apple offers a browser that isn't Safari no way to fill from or
+  save to the Passwords app: none of its browser entitlements covers passwords, and the
+  iCloud Passwords extension's helper answers only the browsers on Apple's list, which Koyo
+  isn't on.
 
 ---
 
@@ -508,8 +653,9 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   (`media/media_options.gni` of Chromium 156), and on the build both play (11.5).
 - Since 2026-11-15 the same build carries Koyo's patches for extensions
   (`script/cef-patches/`, `docs/extensions.md` 10): `script/cef` runs CEF's own patching
-  once, applies Koyo's over it, and builds; the framework lists the patches it has in its
-  `Resources/koyo-patches.txt`.
+  once, applies Koyo's over it, and builds; the framework says how it was built in its
+  `Resources/koyo-build.txt`, the build's codec switches and each patch with a hash of its
+  content (11.6).
 
 ### 11.3 What it costs
 
@@ -521,8 +667,12 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
 - It all goes into one folder, in the checkout unless `--dir` names another. On the owner's
   Mac that's `~/.cache/cef-build`, beside the shared cargo build folder, so that it outlives
   a worktree: `script/cef --dir ~/.cache/cef-build`. Another worktree gets the framework by
-  running the same there, which builds nothing again and takes twenty seconds
-  **[checked 2026-11-14]**.
+  running the same there. That builds nothing only where the worktree's patches are the ones
+  the sources carry: a patch the worktree adds is applied and built (the files it touches and
+  the framework's link), and one it changed or removed stops `script/cef` before anything is
+  built, saying how to take the old one out (11.6). Taken out, the old one then stops the next
+  run of every worktree that still has it, the same way. With nothing to build a run took
+  twenty seconds before the patches **[checked 2026-11-14]** and 6 seconds with them (below).
 - **The patches, 2026-11-15.** The build with them was made in this checkout's own folder
   (`.superpowers/cef-build.noindex`), a copy-on-write copy of `~/.cache/cef-build`, which
   was left as it is: unpatched. The copy took 7 minutes and next to no room; a build folder
@@ -535,10 +685,15 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   **[checked]**. A run from nothing, fetching and all, wasn't made with the patch step
   **[not run]**: it's the order Cra's build has, CEF's hook then the patches then the
   build. `script/cef --dir ~/.cache/cef-build` would patch and build the shared folder the
-  same way; that wasn't done, as other checkouts build from it.
-- The framework an app carries is its worktree's: bundled where `script/cef` hasn't run, it
-  carries CEF's own, and installing that app takes the codecs away again. So in a worktree
-  whose app is to be installed, `script/cef` runs before `script/bundle`.
+  same way; that wasn't done then, as other checkouts build from it. **[checked 2026-11-19]**
+  It has been since: all 11 patches are applied in its sources (each reverses cleanly there),
+  and the framework in this checkout's distribution is, byte for byte, the one it built that
+  morning.
+- The framework an app carries is its worktree's, and `script/bundle` refuses any but the one
+  `script/cef` builds from the worktree's patches with the codecs (11.6): where `script/cef`
+  hasn't run, it stops before it builds the app, naming `script/cef`. A debug engine
+  (`script/dev`) is packaged from CEF's own all the same, with a warning, as every test
+  instance runs on it.
 - A later CEF version is built from scratch, from an emptied folder (the script's header
   says why), so keeping up with Chromium's security updates costs those hours each time.
 - **[not decided]** Where a built framework is kept for other Macs and for CI.
@@ -579,6 +734,44 @@ used as a person would, a page at a time:
   at once, a clip whose tab is out of sight; a format no browser plays still says so. The
   host's smoke suite and the app's host tests fare as on CEF's own build.
 - **Not seen:** a video in a WhatsApp chat, which takes the owner's sign-in.
+
+### 11.6 What a framework says it is, and who checks [decided]
+
+Written 2026-11-19, after the owner's installed app was found without the patches (its
+extensions had no icons or popups) and nothing had said so. Every step from the sources to
+the running engine now checks the one before.
+
+- **The sources.** `script/cef` applies the patches through `script/cef-framework patch`,
+  which keeps a copy of each it applied in the sources' `out/koyo-patches`. A patch the
+  sources carry that the worktree hasn't, or has in another version (one edited down to part
+  of itself used to pass for applied), stops it before anything is built, with the commands
+  that take the old one out. Sources patched before that record was kept are taken as they
+  are, once.
+- **The framework.** `script/cef` writes its `Resources/koyo-build.txt` from the build's
+  `args.gn` and that record: `ffmpeg_branding="Chrome"`, `proprietary_codecs=true`, and a
+  `patch <name> <SHA-256>` line for each patch.
+- **The package.** `script/browser-engine --release`, which `script/bundle` runs before it
+  builds the app, packages only a framework whose manifest names every patch in
+  `script/cef-patches` with the same hash, no other, and both codec switches; anything else
+  fails, saying what differs and that `script/cef` builds it. A debug engine is packaged
+  from any, the same lines said as a warning.
+- **The engine.** Once the framework is loaded, before CEF starts, the host asks it for the
+  hash of the CEF API it was built for and for its commit (`cef_api_hash`): a framework that
+  doesn't know that API, or was built at another commit than the headers', fails the start,
+  saying so. It reads the manifest then, off the main thread, and `HostEvent::Ready` carries
+  what it says (`framework`): whether H.264 and AAC play, and the patches by name.
+- **The app.** It logs that once as the engine starts, a warning in a release build without
+  either, and Settings › Browser › Engine says it: "with H.264 and AAC and 11 of Koyo's
+  patches", or what the engine is without and what that costs.
+- **The framework in place here** had only the old list of names. Its manifest was written
+  once, on 2026-11-19, from the shared folder's `args.gn` and `script/cef-patches`, since
+  its binary is the one that folder built that morning from sources carrying exactly those
+  patches, unchanged since 2026-11-17 (11.3).
+- **Checked by** `koyo-browser-host` `tests/framework.rs` (the package refuses CEF's own, a
+  patch of another version, one missing, one unlisted and a build without a codec switch;
+  sources carrying a patch edited or removed stop until it's out) and its `framework` unit
+  tests (the manifest `script/cef` writes is what the host reads; the API check against the
+  framework in the distribution, and against another commit).
 
 ## 12. Site controls
 
@@ -1133,8 +1326,8 @@ more advanced use case; by default people expect the profile to be shared, not s
   account signs in once for all of them, and never into the person's. **[ours: one, not one
   per project]**
 - **An agent's page** is one an agent's tool made, `tab_open` with `kind` `browser` or
-  `browser_duplicate`'s copy, and any page such a page opens, as a link opened beside it or
-  from its `DevTools`. It's marked so as it's made, whichever the setting (`Pane::by_agent`,
+  `browser_duplicate`'s copy, and any page such a page opens, as a link opened beside it, a
+  popup it opens (a sign-in's) or a link from its `DevTools`. It's marked so as it's made, whichever the setting (`Pane::by_agent`,
   `BrowserView::made_by`, `control/exec/open.rs` `agents_page_made`), so a later switch moves
   the right pages. The mark is kept with the window (`window.json`, `"byAgent": true`, said
   only when it is) and in what ⌘⇧T brings back, and the page is made again with it
@@ -1154,3 +1347,79 @@ more advanced use case; by default people expect the profile to be shared, not s
 - **Kept** in `browser-profiles.json` (15.5) as `agents`, `"shared"` or `"separate"`, `shared`
   when the file says nothing: not in `settings.json`, so an agent's `settings_set` can't
   change what agents' pages are signed in as; only the person does, in Settings.
+
+## 16. Downloads, printing and PDFs
+
+A page's download goes where Koyo says, the way CEF asks it (`CefDownloadHandler`); a page
+prints in Chrome's own print preview, and saves as a PDF through `CefBrowserHost::PrintToPDF`.
+Protocol 18 carries both (`koyo-browser-ipc/src/downloads.rs`).
+
+### 16.1 Where a download goes [decided]
+
+The host hears `OnBeforeDownload`, keeps CEF's callback and asks the app
+(`HostEvent::DownloadAsked`, with the name the server or page gave it). The app answers with a
+whole path (`AppRequest::Download`, `saveTo`) or cancels (`koyo/src/browser/downloads.rs`):
+
+| The page is | It goes |
+| --- | --- |
+| The person's, with Settings → Browser → Ask where to save each download off (the default) | The Downloads folder, under the first free name of `report.pdf`, `report (1).pdf`, `report (2).pdf`… (`archive (1).tar.gz` keeps its double extension), as Chrome names them. Free means no file is there and no download under way goes there; the folder is read off the main thread |
+| The person's, with that setting on | Where they pick in the system's save panel, the Downloads folder first. Cancel there cancels the download |
+| An agent's (`browser/control.rs` holder) | The Downloads folder, as above: never a save panel on the person's screen for an agent's click. The list says which agent |
+| Closed already | The Downloads folder |
+
+CEF writes a file to the path given, over one already there, with no `.crdownload` beside it,
+so a free name is the app's to find. The file gets the quarantine mark Gatekeeper reads, as
+Chrome's downloads do (checked by `tests/smoke/saves.rs`).
+
+### 16.2 How a download stands, and its page closing [decided]
+
+The host tells the app each time `OnDownloadUpdated` changes something once a download has a
+place (`HostEvent::Download`): bytes come in, with the total once the server says one, then it
+is done, canceled, or failed, with Chromium's reason said for the person
+(`koyo-browser-host/src/downloads.rs`, `why`). The host keeps each download's
+`CefDownloadItemCallback`, which the app's Cancel uses.
+
+CEF calls a page's download handler only while the page's browser is open, and a download
+whose browser closes is canceled, what had come of it deleted (the smoke test
+`saves::a_page_that_closes_itself_...`, 2026-11-19). Chrome keeps a closed tab's downloads, so
+Koyo does too: a page the app closes while its downloads come in stays open in the host, out of
+sight, muted and on `about:blank`, and closes once the last one ends (`downloads::keep_open`,
+`panes::close_asked`). Only the app's own Close does this. A page that closes itself
+(`window.close()`) can't be kept: Chrome closes its browser before CEF calls the client
+(`OnBeforeClose` comes before the holder's `CanClose`, and no `DoClose`), so its downloads end
+with it, as they do when browsing data is cleared or the app quits; the app is told each failed,
+"The page that started it closed before it finished." (`downloads::pane_closed`), so its list
+holds no download still coming in with a Cancel that does nothing. A page whose project
+moves to another profile while it downloads opens again in the new one once its downloads end.
+
+What an agent sees: its page's downloads go to the folder without a save panel, and the
+person's list names the agent. The agent's own tools don't list downloads yet; `browser_list`'s
+`PageInfo` is where they'd go, read from `Downloads::listed` by `Key::Engine { pane, .. }`.
+
+### 16.3 The list [decided]
+
+The app keeps one list of what this run downloaded and saved as PDFs, oldest first, gone at
+quit. A downloads button at the end of every page's address field (the toolbar's, or the Arc
+sidebar's) is there once something was downloaded, accent while something comes in, with a bar
+under it as far as it has come. It opens the list, the latest eight: each file's name, how much
+has come of how much, a Cancel while it comes, and once it's done, Show in Finder, and a press
+on the row opens the file. Clear takes off what has ended.
+
+### 16.4 Printing [decided]
+
+- **Print** opens Chrome's print preview for the page (`CefBrowserHost::Print`), the dialog the
+  page's own `window.print()` opens, where the person picks a printer or saves a PDF. It's in the
+  site controls' row of actions, it's ⌘P while the page has the keyboard (in the address field
+  and everywhere else ⌘P stays Go to File), and Chrome's own Print row stays in the page's
+  context menu, which prints the frame or selection pressed on.
+- **Save as PDF** asks where in the system's save panel (the page's title as its name, the
+  Downloads folder first) and has the engine write the page there as it prints, on the Mac's
+  default paper, with backgrounds (`printing.rs`). It's in the page's context menu and the site
+  controls; the file shows in the downloads list, saving, then saved.
+- Checked on the engine (`tests/smoke/saves.rs`, 2026-11-19): a page's context menu has
+  Chrome's Print row; Print starts Chrome's print of the page (its `beforeprint` fires) with
+  the page up after; the PDF is written. Whether the preview dialog shows right over the pane in
+  Koyo's window is the verify instance's to see (`saves.html` in the fixture).
+- Before protocol 18 the host stripped CEF's Print row (`MENU_ID_PRINT`, 131) from page menus.
+  That id is Alloy style's: Chrome-style menus number Chrome's commands (`IDC_PRINT`), so the
+  strip did nothing.

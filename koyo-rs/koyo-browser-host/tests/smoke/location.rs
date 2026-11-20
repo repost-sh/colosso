@@ -23,7 +23,7 @@ const ASKS: &str = "<!doctype html><title>where</title><script>\
 const ANSWER: Duration = Duration::from_secs(180);
 
 #[test]
-#[ignore = "Needs a packaged browser engine; see the module docs"]
+#[ignore = "Needs a packaged browser engine and a person to answer macOS; see the module docs"]
 fn a_page_allowed_to_know_where_it_is_hears_back() {
     let launch = launch("location");
     let mut session = Session::start(&launch);

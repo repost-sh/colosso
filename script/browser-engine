@@ -78,10 +78,11 @@ binary="koyo-rs/target/$profile/koyo-browser-host"
 dir="$out/$version"
 app="$dir/$HOST_NAME.app/Contents"
 packaged="$app/MacOS/$HOST_NAME"
-# Packaged again once the host, its icon, this script or the CEF distribution (script/cef
-# puts a framework built with H.264 and AAC in it) is newer than the package.
-if [ -f "$packaged" ] && [ -f "$dir/engine.json" ] && ! [ "$binary" -nt "$packaged" ] &&
-  ! [ "$ICON" -nt "$packaged" ] && ! [ "$0" -nt "$packaged" ] &&
+# A debug engine is packaged again once the host, its icon, this script or the CEF
+# distribution (script/cef puts a framework built with H.264 and AAC in it) is newer than the
+# package; a release engine every time, so that its framework is always checked.
+if [ "$profile" = debug ] && [ -f "$packaged" ] && [ -f "$dir/engine.json" ] &&
+  ! [ "$binary" -nt "$packaged" ] && ! [ "$ICON" -nt "$packaged" ] && ! [ "$0" -nt "$packaged" ] &&
   ! [ "$cef/archive.json" -nt "$packaged" ]; then
   echo "Browser engine $version is packaged in $dir"
   exit 0
@@ -89,6 +90,15 @@ fi
 if [ ! -d "$cef/$FRAMEWORK" ]; then
   echo "no CEF distribution at $cef: build koyo-rs/koyo-browser-host first" >&2
   exit 1
+fi
+# The framework a release engine carries is the one script/cef builds from this checkout's
+# patches, with H.264 and AAC, or nothing is packaged. A debug engine is packaged from any, the
+# check saying what it lacks: it's CEF's own wherever script/cef hasn't run, as in every test
+# instance.
+if [ "$profile" = release ]; then
+  script/cef-framework check "$cef/$FRAMEWORK" --release
+else
+  script/cef-framework check "$cef/$FRAMEWORK"
 fi
 
 # The host's Info.plist, and the helpers': background-only agents, no dock icon or menu bar

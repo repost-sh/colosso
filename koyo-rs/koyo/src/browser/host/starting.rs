@@ -81,7 +81,7 @@ impl Browsers {
     }
 
     /// The host said hello, or failed to; `Some` once it runs.
-    fn started(
+    pub(super) fn started(
         &mut self,
         started: std::io::Result<Connection>,
         cx: &mut Context<Self>,
@@ -112,12 +112,13 @@ impl Browsers {
         for request in std::mem::take(&mut self.queued) {
             let _ = requests.send(request);
         }
-        log::info!(
-            "browser engine {} (Chromium {}) serving, {} ms after it was asked for",
-            connection.engine,
-            connection.chromium,
-            self.asked_at.map_or(0, |(since, _)| since.elapsed().as_millis())
-        );
+        let asked = self.asked_at.map_or(0, |(since, _)| since.elapsed().as_millis());
+        let described = super::super::engine::described(&connection);
+        if connection.framework.is_koyos() || cfg!(debug_assertions) {
+            log::info!("browser engine serving, {asked} ms after it was asked for: {described}");
+        } else {
+            log::warn!("browser engine serving, {asked} ms after it was asked for: {described}");
+        }
         self.host = Host::Running {
             connection,
             requests,

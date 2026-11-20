@@ -3,6 +3,9 @@
 // requests (WebAuthn's navigator.credentials.create and get with publicKey) and the
 // availability checks to the browser host, which checks them against the frame's origin and
 // asks Koyo; every other kind of credential (password, federated) goes to Chromium as before.
+// In a build Apple hasn't signed for passkeys the host hands a request back to Chromium's own
+// WebAuthn instead (`{id, engine}`), which reaches a security key or a phone; the bridge then
+// calls the engine's method as the page did.
 //
 // `send(op, json, id)` is the host's native function, kept in this closure so the page never
 // sees it: it sends a request and returns its number, or 0 when it didn't go. What this
@@ -30,6 +33,7 @@
   let Assertion = null;
   const { create: objectCreate, defineProperty, getOwnPropertyDescriptor, keys } = Object;
   const { apply } = Reflect;
+  const { then } = Promise.prototype;
   const { stringify, parse } = JSON;
   const { isView } = ArrayBuffer;
   const tagOf = Object.prototype.toString;
@@ -51,8 +55,9 @@
 
   // Asks the host for what `build` makes of the page's options (a throw there, a TypeError
   // say, rejects at once); the promise settles with `make(ok)` once it answers, or with the
-  // signal's reason as soon as the page aborts.
-  const ask = (op, build, signal, make) => new Promise_((resolve, reject) => {
+  // signal's reason as soon as the page aborts; or, the host handing it back, as `engine()`,
+  // the engine's own method, settles.
+  const ask = (op, build, signal, make, engine) => new Promise_((resolve, reject) => {
     const options = build();
     if (signal && signal.aborted) {
       reject(signal.reason);
@@ -70,6 +75,14 @@
     };
     pending[id] = (answer) => {
       done();
+      if (answer.engine) {
+        try {
+          apply(then, engine(), [resolve, reject]);
+        } catch (error) {
+          reject(error);
+        }
+        return;
+      }
       if (answer.error) {
         reject(errorOf(answer.error));
         return;
@@ -90,6 +103,9 @@
     }
   });
   const nothing = () => undefined;
+
+  // Calls `method` as the page called the bridge.
+  const engineAnswers = (method, self, args) => () => apply(method, self, args);
 
   // A conditional request (passkeys offered in the page's autofill), which Koyo has no
   // autofill to offer in: it waits, as a browser with no passkeys to offer leaves it, until
@@ -232,28 +248,37 @@
     options.publicKey !== undefined;
   let chromiumCreate = null;
   let chromiumGet = null;
+  // The engine's own availability checks, by name.
+  const chromiumStatics = objectCreate(null);
   // Defaults keep each method's length at 0, as the engine's own.
   const methods = {
     create(options = undefined) {
       if (!(this instanceof Container) || !passkey(options)) {
         return apply(chromiumCreate, this, arguments);
       }
-      return ask('create', () => creation(options.publicKey), options.signal, credential);
+      const engine = engineAnswers(chromiumCreate, this, arguments);
+      return ask('create', () => creation(options.publicKey), options.signal, credential, engine);
     },
     get(options = undefined) {
       if (!(this instanceof Container) || !passkey(options)) {
         return apply(chromiumGet, this, arguments);
       }
       if (options.mediation === 'conditional') return never(options.signal);
-      return ask('get', () => request(options.publicKey), options.signal, credential);
+      const engine = engineAnswers(chromiumGet, this, arguments);
+      return ask('get', () => request(options.publicKey), options.signal, credential, engine);
     },
   };
   const statics = {
     isUserVerifyingPlatformAuthenticatorAvailable() {
-      return ask('available', nothing, null, Boolean);
+      const engine = () =>
+        apply(chromiumStatics.isUserVerifyingPlatformAuthenticatorAvailable, Credential, []);
+      return ask('available', nothing, null, Boolean, engine);
     },
     isConditionalMediationAvailable() { return Promise_.resolve(false); },
-    getClientCapabilities() { return ask('capabilities', nothing, null, clone); },
+    getClientCapabilities() {
+      const engine = () => apply(chromiumStatics.getClientCapabilities, Credential, []);
+      return ask('capabilities', nothing, null, clone, engine);
+    },
     // Signals about a site's passkeys go to the system's store only with a sheet; there's
     // nothing to tell it otherwise, and Chromium's own store isn't Koyo's.
     signalUnknownCredential() { return Promise_.resolve(); },
@@ -275,7 +300,9 @@
     try {
       chromiumCreate = replace(Container.prototype, 'create', methods.create);
       chromiumGet = replace(Container.prototype, 'get', methods.get);
-      for (const name of keys(statics)) replace(Credential, name, statics[name]);
+      for (const name of keys(statics)) {
+        chromiumStatics[name] = replace(Credential, name, statics[name]);
+      }
     } catch {
       // The page keeps the engine's own.
     }

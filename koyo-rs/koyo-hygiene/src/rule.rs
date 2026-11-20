@@ -41,34 +41,37 @@ the code so the edge closes no cycle; --prune then takes the line off.",
 
 pub static BLOCKING_CALL: Rule = Rule {
     name: "blocking call",
-    fix: "The main thread draws Koyo's frames and runs the browser engine, so the koyo crate reads
-files, probes paths, starts and waits on processes, and waits on an executor or a park only where
-a `Blocking` (koyo/src/blocking.rs) is in scope, which code on the main thread isn't handed: in a
-function that takes one, or in the closure blocking::spawn, thread, on_quit or in_test lends one
-to. Take `may: Blocking<'_>` from the caller if it has one, and the callers of yours inherit the
-rule. Otherwise start the work with blocking::spawn(cx.background_executor(), |may| ...) and show
-what it returns when it lands. A file on koyo-rs/blocking-debt.txt holds no more such calls
-outside a Blocking's scope than its line allows.",
+    fix: "The main thread draws Koyo's frames and runs the browser engine, so the koyo crate and
+the browser host read files, probe paths, start and wait on processes, and wait on an executor or
+a park only where a `Blocking` (koyo/src/blocking.rs, koyo-browser-host/src/blocking.rs) is in
+scope, which code on the main thread isn't handed: in a function that takes one, or in the
+closure blocking::spawn, thread, on_quit or in_test lends one to. Take `may: Blocking<'_>` from
+the caller if it has one, and the callers of yours inherit the rule. Otherwise start the work with
+blocking::spawn(cx.background_executor(), |may| ...), or in the browser host blocking::thread,
+and show what it returns when it lands. A file on its crate's list (koyo-rs/blocking-debt.txt,
+koyo-rs/blocking-debt-browser-host.txt) holds no more such calls outside a Blocking's scope than
+its line allows.",
 };
 
 pub static LAUNCH: Rule = Rule {
     name: "launch read",
-    fix: "blocking::at_launch holds the main thread before the first window, and only
-koyo/src/main.rs may: no debt allows it elsewhere. Take `may: Blocking<'_>` from main.rs's launch
-instead, or read with blocking::spawn once the window is up.",
+    fix: "blocking::at_launch holds the main thread before the first window, and only a crate's
+root (koyo/src/main.rs, koyo-browser-host/src/lib.rs) may: no debt allows it elsewhere. Take
+`may: Blocking<'_>` from the root's launch instead, or read with blocking::spawn once the window
+is up.",
 };
 
 pub static GONE_CALL: Rule = Rule {
     name: "gone call",
-    fix: "The file holds fewer blocking calls than koyo-rs/blocking-debt.txt allows it, so its line
-comes down, or off once it holds none: script/cargo run -q -p koyo-hygiene -- --prune",
+    fix: "The file holds fewer blocking calls than its crate's list allows it, so its line comes
+down, or off once it holds none: script/cargo run -q -p koyo-hygiene -- --prune",
 };
 
 pub static ADDED_CALL: Rule = Rule {
     name: "added call",
-    fix: "koyo-rs/blocking-debt.txt only shrinks, and the last commit's list lacks this line or
-allows the file fewer calls. Move the calls onto a `Blocking` instead; --prune then lowers the
-line.",
+    fix: "A crate's list of blocking calls only shrinks, and the last commit's list lacks this
+line or allows the file fewer calls. Move the calls onto a `Blocking` instead; --prune then lowers
+the line.",
 };
 
 pub static RULES: [&Rule; 9] = [

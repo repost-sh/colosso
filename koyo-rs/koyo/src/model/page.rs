@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use gpui_kit::{App, Entity, Image, SharedString};
+use koyo_browser_ipc::Session;
 
 use crate::browser::BrowserView;
 use crate::browser::profiles::By;
@@ -96,6 +97,7 @@ impl Browser {
                     address: made.address.clone(),
                     favicon: made.favicon.clone(),
                     restored: false,
+                    session: Session::default(),
                 };
                 self.page = Page::Unloaded(Box::new(unloaded));
             }
@@ -122,6 +124,16 @@ impl Browser {
             Page::Made(made) => Some(&made.address),
             Page::Unloaded(unloaded) => Some(&unloaded.address),
             Page::Start => None,
+        }
+    }
+
+    /// The history around its page and the scroll it has, as the window keeps them: its
+    /// page's, or what it opens with while it has no view.
+    pub fn session(&self, cx: &App) -> Session {
+        match &self.page {
+            Page::Made(made) => made.view.read(cx).session().clone(),
+            Page::Unloaded(unloaded) => unloaded.session.clone(),
+            Page::Start => Session::default(),
         }
     }
 
@@ -186,4 +198,6 @@ pub struct Unloaded {
     /// so its first load is no new visit (`BrowserView::mark_restored`). A closed tab's page
     /// brought back with ⌘⇧T isn't: its first load is one, as a page opened anew is.
     pub restored: bool,
+    /// The history around it and the scroll it had, which it opens with (`docs/browser.md` 7).
+    pub session: Session,
 }

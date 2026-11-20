@@ -10,9 +10,6 @@ use cef::{
 use koyo_browser_ipc::{HostEvent, MenuEntry, MenuTarget, PaneId};
 use std::cell::RefCell;
 
-/// Find and Print need windows the host does not have.
-const UNSUPPORTED: [i32; 2] = [130, 131];
-
 /// Chrome's own Inspect rows: they would open a `DevTools` window, which
 /// the host cannot render. The app offers its own Inspect instead.
 const CHROME_INSPECT: [&std::ffi::CStr; 2] = [
@@ -24,11 +21,9 @@ thread_local! {
     static MENUS: RefCell<Pending<RunContextMenuCallback>> = const { RefCell::new(Pending::new()) };
 }
 
-/// Drops the rows the host cannot carry out.
+/// Drops the rows the app has its own of. Chrome's Print stays: it prints what was pressed
+/// on, a frame or the selection, in Chrome's print preview (`docs/browser.md` 16).
 pub(crate) fn prepare(model: &MenuModel) {
-    for command in UNSUPPORTED {
-        model.remove(command);
-    }
     for name in CHROME_INSPECT {
         // SAFETY: `name` is a NUL-terminated string that outlives the call.
         let command = unsafe { cef::sys::cef_id_for_command_id_name(name.as_ptr()) };

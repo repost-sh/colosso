@@ -49,6 +49,7 @@ pub(super) fn tabs_kept_before(window: &Path, may: Blocking<'_>) -> Vec<KeptChec
                         url: tab.url,
                         title: tab.title,
                         by_agent: false,
+                        session: koyo_browser_ipc::Session::default(),
                     })
                 })
                 .collect(),

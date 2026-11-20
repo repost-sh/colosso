@@ -321,7 +321,7 @@ impl Shell {
             }
         }
         now.checkouts.extend(self.kept.waiting.iter().cloned());
-        now.spaces = self.kept_spaces();
+        now.spaces = self.kept_spaces(cx);
         now
     }
 

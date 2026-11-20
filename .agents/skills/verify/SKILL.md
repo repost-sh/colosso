@@ -39,8 +39,10 @@ Read these before every run. Each one protects the owner's machine.
    the agent desktop's window list, so it may have shown on the owner's screen. Open one only
    when the journey is about it, check `probe windows` for it, and close it at once with
    `$B probe escape`.
-6. **Leave the engine suites out** (`koyo-browser-host` `tests/smoke`, `host_tests`). They take
-   the owner's keyboard focus. Run them only when the owner asks.
+6. **The engine suites are `script/check`'s** (`koyo-browser-host` `tests/smoke` and
+   `tests/embedded`, `host_tests`). Their hosts never come forward, so they don't take the
+   owner's keyboard focus. If the app in front ever turns into `Koyo Browser Host` or `Koyo
+   Engine Test` while one runs, stop running them and say so.
 7. **Everything stays in the checkout.** Build with `nice -n 10`. Don't write to `~`, `/tmp` or
    global state. If a tool insists on writing outside the checkout, stop and ask. There is one
    exception, which the owner allowed on 2026-11-16: macOS gives the app the per-user temporary
@@ -74,11 +76,12 @@ Read these before every run. Each one protects the owner's machine.
    `KOYO_NATIVE_PROBE` and `KOYO_AGENT_PROVIDER=fake`. `TMPDIR` isn't set, because macOS
    replaces it (rule 7). The agent desktop starts apps with no
    environment of yours, so the bundle carries its own. The command then empties
-   `d c l p t s fixture` and seeds `c/settings.json`:
+   `d c l p t s fixture downloads` and seeds `c/settings.json`:
    - the fixture repository `.superpowers/v/fixture/repo` as the only project;
    - `agent_desktop: false` and `accounts.manage: false`;
    - `on_quit: "End"`;
-   - `worktrees_dir` inside `.superpowers/v`;
+   - `worktrees_dir` and `downloads_dir` inside `.superpowers/v`, so a page's download never
+     lands in the owner's Downloads folder;
    - app control on for the client `koyo-verify` alone, with no `desktop` or `devices` scope, and
      its MCP server on port 0, so it never takes the owner's 6272.
 
@@ -280,7 +283,7 @@ $B stop            # or: $B stop --keep   (keeps data and settings, for a relaun
    the chat agent host and the terminal daemon outlive the app. Nothing else is touched, and
    nothing is matched by name.
 3. It copies the logs into the run's `logs/`.
-4. It removes `d c l p t s fixture worktrees`.
+4. It removes `d c l p t s fixture worktrees downloads`.
 
 The bundle and `.superpowers/v/evidence/` stay. `stop` prints the evidence folder and its
 contents. `desktop_close {"pid": …}` is

@@ -6,6 +6,8 @@
 use std::path::{Path, PathBuf};
 
 use koyo_app_control::{ControlError, ErrorCode};
+
+use crate::blocking::Blocking;
 use koyo_git::Head;
 
 use super::super::Caller;
@@ -163,20 +165,36 @@ fn caller_worktree(caller: &Caller, workspace: &Workspace) -> Option<(usize, usi
 /// The checkout holding `path`, the deepest when one is inside another.
 /// Compared as written first, then with links followed, so most calls look up no folder.
 pub(crate) fn containing(workspace: &Workspace, path: &Path) -> Option<(usize, usize)> {
-    let units = || {
-        (workspace.projects.iter().enumerate()).flat_map(|(at, project)| {
-            (project.branches.iter().enumerate()).map(move |(branch, unit)| (at, branch, unit))
+    let units: Vec<(usize, usize, &Path)> = (workspace.projects.iter().enumerate())
+        .flat_map(|(at, project)| {
+            (project.branches.iter().enumerate())
+                .map(move |(branch, unit)| (at, branch, unit.worktree.path.as_path()))
         })
-    };
+        .collect();
+    let checkouts: Vec<&Path> = units.iter().map(|(_, _, checkout)| *checkout).collect();
+    let found = deepest(&checkouts, path, canonical)?;
+    units.get(found).map(|(at, branch, _)| (*at, *branch))
+}
+
+/// As [`containing`], which of `checkouts` holds `path`, off the main thread.
+pub(crate) fn holding(checkouts: &[PathBuf], path: &Path, _: Blocking<'_>) -> Option<usize> {
+    let followed = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let checkouts: Vec<&Path> = checkouts.iter().map(PathBuf::as_path).collect();
+    deepest(&checkouts, path, followed)
+}
+
+/// Which of `checkouts` holds `path`, the deepest: compared as written, then with links
+/// followed by `followed`.
+fn deepest(checkouts: &[&Path], path: &Path, followed: impl Fn(&Path) -> PathBuf) -> Option<usize> {
     let deepest = |inside: &dyn Fn(&Path) -> bool| {
-        units()
-            .filter(|(_, _, unit)| inside(&unit.worktree.path))
-            .max_by_key(|(_, _, unit)| unit.worktree.path.components().count())
-            .map(|(at, branch, _)| (at, branch))
+        (checkouts.iter().enumerate())
+            .filter(|(_, checkout)| inside(checkout))
+            .max_by_key(|(_, checkout)| checkout.components().count())
+            .map(|(at, _)| at)
     };
     deepest(&|checkout| path.starts_with(checkout)).or_else(|| {
-        let path = canonical(path);
-        deepest(&|checkout| path.starts_with(canonical(checkout)))
+        let path = followed(path);
+        deepest(&|checkout| path.starts_with(followed(checkout)))
     })
 }
 

@@ -242,6 +242,9 @@ pub trait Leased: Sized + 'static {
     fn lease_mut(&mut self) -> &mut Lease;
     /// What the log calls it.
     fn named(&self) -> &str;
+    /// The person took it from the agent that held it: what the agent left under way there
+    /// ends.
+    fn agent_displaced(&mut self, _cx: &mut Context<Self>) {}
 
     /// The person acts in the tab, or asks for it: theirs from now on, whoever drove it, and
     /// for [`IMPLICIT_HOLD`] past this act unless they asked for it.
@@ -249,6 +252,7 @@ pub trait Leased: Sized + 'static {
         let held = self.lease().control.holder.clone();
         if let Some(displaced) = self.lease_mut().control.person_takes(mode) {
             log::info!("the person took {} from {}", self.named(), displaced.label);
+            self.agent_displaced(cx);
         }
         if self.lease().control.person_using() {
             ends(self, Ends::Hold, IMPLICIT_HOLD, cx);
@@ -311,6 +315,10 @@ impl Leased for BrowserView {
     fn named(&self) -> &'static str {
         "a browser page"
     }
+
+    fn agent_displaced(&mut self, cx: &mut Context<Self>) {
+        self.chooser_dismissed(cx);
+    }
 }
 
 impl BrowserView {
@@ -343,9 +351,12 @@ impl BrowserView {
         claimed
     }
 
-    /// `actor` is done with the page.
+    /// `actor` is done with the page, and the file chooser left for it is cancelled.
     pub fn agent_releases(&mut self, actor: &Actor, cx: &mut Context<Self>) {
         self.lease.control.agent_releases(actor);
+        if self.agent_holding().is_none() {
+            self.chooser_dismissed(cx);
+        }
         cx.notify();
     }
 

@@ -8,6 +8,7 @@ use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, PaneId};
 
 use super::control::{Leased as _, Mode};
 use super::host::Browsers;
+use super::search::SearchEngine;
 use super::view::{BrowserEvent, BrowserView};
 use crate::native::menus::{self, Refusal};
 
@@ -26,6 +27,8 @@ pub enum Pick {
     DevTools,
     /// Turn responsive mode on or off.
     Responsive,
+    /// Save the page as a PDF where the person picks.
+    SavePdf,
 }
 
 /// What a page's own rows at the menu's end say: whether it's in responsive mode, and
@@ -70,8 +73,8 @@ enum Row {
     },
 }
 
-/// Rows the app adds for what was under the pointer.
-fn own_rows(target: &MenuTarget) -> Vec<Row> {
+/// Rows the app adds for what was under the pointer: selected text, a search with `engine`.
+fn own_rows(target: &MenuTarget, engine: SearchEngine) -> Vec<Row> {
     let item = |label: String, pick: Pick| Row::Item {
         label,
         disabled: false,
@@ -94,8 +97,8 @@ fn own_rows(target: &MenuTarget) -> Vec<Row> {
     }
     let query = search_text(&target.selection);
     if !target.editable && !query.is_empty() {
-        let search = Pick::OpenTab(super::search_url(&target.selection));
-        rows.push(item(format!("Search for “{query}”"), search));
+        let search = Pick::OpenTab(engine.results(&target.selection));
+        rows.push(item(format!("Search {} for “{query}”", engine.label()), search));
         rows.push(Row::Separator);
     }
     rows
@@ -120,11 +123,17 @@ fn command(entry: &MenuEntry) -> Option<Row> {
 }
 
 /// Every row of the menu, with no leading, trailing or doubled rules. A page (`Some`)
-/// ends with Responsive mode, Inspect and Show or Hide `DevTools`, as Chrome's menus end with
-/// Inspect: the page's toolbar had the switches for them, and in the Arc layout it has no
-/// toolbar (`docs/arc-sidebar.md` 2). `DevTools` (`None`) have none of them.
-fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<PageRows>) -> Vec<Row> {
-    let mut rows = own_rows(target);
+/// ends with Save as PDF, beside Chrome's own Print further up (`docs/browser.md` 16), then
+/// Responsive mode, Inspect and Show or Hide `DevTools`, as Chrome's menus end with Inspect:
+/// the page's toolbar had the switches for them, and in the Arc layout it has no toolbar
+/// (`docs/arc-sidebar.md` 2). `DevTools` (`None`) have none of them.
+fn rows(
+    entries: &[MenuEntry],
+    target: &MenuTarget,
+    page: Option<PageRows>,
+    engine: SearchEngine,
+) -> Vec<Row> {
+    let mut rows = own_rows(target, engine);
     rows.extend(entries.iter().map(|entry| match entry {
         MenuEntry::Separator => Row::Separator,
         MenuEntry::Command { .. } => command(entry).unwrap_or(Row::Separator),
@@ -134,6 +143,13 @@ fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<PageRows>) -> V
         },
     }));
     if let Some(page) = page {
+        rows.push(Row::Separator);
+        rows.push(Row::Item {
+            label: "Save as PDF…".into(),
+            disabled: false,
+            checked: None,
+            pick: Pick::SavePdf,
+        });
         rows.push(Row::Separator);
         rows.push(Row::Item {
             label: "Responsive mode".into(),
@@ -250,7 +266,8 @@ impl BrowserView {
             responsive: self.responsive.mode.is_some(),
             inspecting: self.devtools.is_some(),
         });
-        let rows = rows(&request.entries, &request.target, page);
+        let engine = crate::settings::get(cx).search_engine;
+        let rows = rows(&request.entries, &request.target, page, engine);
         if rows.is_empty() {
             self.menu_command(request.id, None, cx);
             return;
@@ -312,6 +329,7 @@ impl BrowserView {
             Pick::Inspect => self.inspect(Some(page_at), cx),
             Pick::DevTools => self.inspect(None, cx),
             Pick::Responsive => self.toggle_responsive(cx),
+            Pick::SavePdf => self.save_as_pdf(cx),
         }
         cx.notify();
     }
@@ -399,7 +417,7 @@ mod tests {
             ..MenuTarget::default()
         };
         assert_eq!(
-            picks(&rows(&entries, &target, Some(PageRows::default()))),
+            picks(&rows(&entries, &target, Some(PageRows::default()), SearchEngine::Google)),
             [
                 "OpenTab(\"https://example.com/a\")",
                 "Copy(\"https://example.com/a\")",
@@ -408,13 +426,15 @@ mod tests {
                 "-",
                 "Engine(132)",
                 "-",
+                "SavePdf",
+                "-",
                 "Responsive",
                 "Inspect",
                 "DevTools"
             ]
         );
         assert_eq!(
-            picks(&rows(&entries, &target, None))
+            picks(&rows(&entries, &target, None, SearchEngine::Google))
                 .last()
                 .map(String::as_str),
             Some("Engine(132)"),
@@ -427,6 +447,7 @@ mod tests {
                 responsive: true,
                 inspecting: true,
             }),
+            SearchEngine::Google,
         );
         assert!(
             on.iter().any(|row| matches!(
@@ -454,15 +475,20 @@ mod tests {
             selection: "  the quick\nbrown fox jumps over the lazy dog again ".into(),
             ..MenuTarget::default()
         };
-        let menu = rows(&[], &target, None);
-        let Some(Row::Item { label, .. }) = menu.first() else {
+        let menu = rows(&[], &target, None, SearchEngine::DuckDuckGo);
+        let Some(Row::Item { label, pick, .. }) = menu.first() else {
             panic!("a search row");
         };
-        assert_eq!(label, "Search for “the quick brown fox jumps over…”");
+        assert_eq!(label, "Search DuckDuckGo for “the quick brown fox jumps over…”");
+        let Pick::OpenTab(url) = pick else {
+            panic!("it opens the results in a tab: {pick:?}");
+        };
+        assert!(url.starts_with("https://duckduckgo.com/?q="), "{url}");
+        assert!(url.contains("lazy+dog+again"), "all of it, not the row's: {url}");
         let editable = MenuTarget {
             editable: true,
             ..target
         };
-        assert!(rows(&[], &editable, None).is_empty());
+        assert!(rows(&[], &editable, None, SearchEngine::Google).is_empty());
     }
 }

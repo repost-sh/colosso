@@ -5,15 +5,16 @@
 //! answer goes back to the frame in `WebAuthn`'s JSON forms (`answers`), which the bridge
 //! turns into the `PublicKeyCredential` the page gets.
 //!
-//! Chromium's own `WebAuthn` has no window to show its dialogs in here and can't reach the
-//! person's passkeys, so no page's request ever reaches it. Until the app says it can ask
-//! for passkeys ([`koyo_browser_ipc::Hello::passkeys`]) every request is turned down at once
-//! with `NotAllowedError` and the availability checks say no, so a page goes straight to its
-//! other ways of signing in.
+//! Until the app says it can ask for passkeys ([`koyo_browser_ipc::Hello::passkeys`]), as it
+//! can only once signed with Apple's browser passkey entitlement, a request goes to Chromium's
+//! own `WebAuthn` instead, which reaches a security key and a phone without it, its dialog
+//! over the page as each window Chromium shows for a page is (`native/holder.rs`); one only
+//! this Mac's passkeys could answer is turned down at once with `NotAllowedError`, saying why
+//! (`route`). The availability checks are the engine's then.
 use crate::pending::Pending;
 use cef::{Browser, CefString, Frame, ImplBrowser, ImplFrame, ImplListValue, ImplProcessMessage};
 use cef::{ProcessId, ProcessMessage, process_message_create};
-use koyo_browser_ipc::{HostEvent, PaneId, PasskeyAnswer, PasskeyError, Refusal};
+use koyo_browser_ipc::{HostEvent, PaneId, PasskeyAnswer, Refusal};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -22,6 +23,7 @@ mod asks;
 mod attestation;
 mod origin;
 pub(crate) mod renderer;
+mod route;
 
 /// The process messages' name, between a renderer's bridge and the browser process.
 const MESSAGE: &str = "koyo-passkey";
@@ -105,8 +107,9 @@ pub(crate) fn from_renderer(
         return true;
     };
     match op.as_str() {
-        "available" => reply(frame, id, Ok(serde_json::Value::Bool(enabled()))),
-        "capabilities" => reply(frame, id, Ok(answers::capabilities(enabled()))),
+        "available" | "capabilities" if !enabled() => to_engine(frame, id),
+        "available" => reply(frame, id, Ok(serde_json::Value::Bool(true))),
+        "capabilities" => reply(frame, id, Ok(answers::capabilities(true))),
         "cancel" => {
             let frame_id = text(&frame.identifier());
             withdraw(pane, |w| w.id == id && w.frame_id == frame_id);
@@ -139,7 +142,19 @@ fn ask(
     {
         ancestors.push(text(&main.url()));
     }
-    let checked = asks::read(op, options).and_then(|ask| asks::checked(ask, &address, &ancestors));
+    let asked = asks::read(op, options);
+    if !enabled() {
+        let routed = asked.and_then(|ask| match route::to_engine(&ask) {
+            Ok(()) => Ok(()),
+            Err(mac_only) => asks::checked(ask, &address, &ancestors).and(Err(mac_only)),
+        });
+        match routed {
+            Ok(()) => to_engine(frame, id),
+            Err(refusal) => reply(frame, id, Err(refusal)),
+        }
+        return;
+    }
+    let checked = asked.and_then(|ask| asks::checked(ask, &address, &ancestors));
     let (origin, ask) = match checked {
         Ok(checked) => checked,
         Err(refusal) => {
@@ -147,17 +162,6 @@ fn ask(
             return;
         }
     };
-    if !enabled() {
-        reply(
-            frame,
-            id,
-            Err(Refusal::new(
-                PasskeyError::NotAllowed,
-                "Passkeys aren't available in this build of Koyo.",
-            )),
-        );
-        return;
-    }
     let waiting = Waiting {
         frame: frame.clone(),
         frame_id: text(&frame.identifier()),
@@ -205,7 +209,8 @@ pub(crate) fn frames_changed(pane: PaneId, browser: &Browser, gone: Option<&Fram
     let gone = gone.map(|frame| text(&frame.identifier()));
     let mut list = cef::CefStringList::new();
     browser.frame_identifiers(Some(&mut list));
-    let current: Vec<String> = list.into_iter().collect();
+    let mut current: Vec<String> = list.into_iter().collect();
+    current.retain(|frame| gone.as_ref() != Some(frame));
     withdraw(pane, |w| {
         gone.as_ref() == Some(&w.frame_id)
             || w.frame.is_valid() != 1
@@ -218,6 +223,13 @@ fn withdraw(pane: PaneId, which: impl Fn(&Waiting) -> bool) {
     let gone = REQUESTS.with(|requests| requests.borrow_mut().take(|p, w| p == pane && which(w)));
     for (request, _) in gone {
         crate::host::send(&HostEvent::PasskeyWithdrawn { pane, request });
+    }
+}
+
+/// Has the engine's own `WebAuthn` answer the bridge's request `id` in `frame`: `{id, engine}`.
+fn to_engine(frame: &Frame, id: u64) {
+    if frame.is_valid() == 1 {
+        send(frame, ProcessId::RENDERER, &serde_json::json!({"id": id, "engine": true}));
     }
 }
 

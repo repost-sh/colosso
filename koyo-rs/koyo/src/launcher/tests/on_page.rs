@@ -54,6 +54,23 @@ fn open_address(
     launch_with(window, "cmd-l", cx)
 }
 
+/// Words typed on a page are searched for with the engine the person picked, as the launcher's
+/// search row says, in the page.
+#[gpui_kit::test]
+fn words_typed_on_a_page_are_searched_for_with_the_engine_picked(cx: &mut TestAppContext) {
+    let (window, _, _, view) = on_page("launcher-engine", Layout::Arc, cx);
+    let kagi = crate::browser::SearchEngine::Kagi;
+    cx.update(|cx| settings::update(cx, |settings| settings.search_engine = kagi));
+    let (launcher_window, launcher) = open_address(window, cx);
+    cx.simulate_input(launcher_window, "rust gpui");
+    let hint = cx.read(|cx| launcher.read(cx).rows[0].hint);
+    assert_eq!(hint, Some("Search with Kagi"));
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    let address = cx.read(|cx| view.read(cx).address());
+    assert_eq!(address, "https://kagi.com/search?q=rust+gpui");
+}
+
 /// What the launcher's field holds, and where what's selected in it starts and ends.
 fn field(launcher: &Entity<Launcher>, cx: &TestAppContext) -> (String, (usize, usize)) {
     cx.read(|cx| {

@@ -16,7 +16,7 @@ use super::super::agent::Answer;
 use super::super::host::{Browsers, CdpResult, HostStatus};
 use super::super::keys::key_codes;
 use super::super::view::BrowserView;
-use super::super::view::sight::AWAKE_FOR;
+use super::super::view::sight::AWAKE_AFTER;
 use super::{finish, open, pause, prepare, run, serve, tester, wait_for_title, wait_until};
 
 /// A window showing its page or not, as a tab does once another is picked.
@@ -201,7 +201,7 @@ fn a_page_opened_out_of_sight_is_visible_once_shown(cx: &mut TestAppContext) {
         document.addEventListener('visibilitychange',say)</script>";
     let (tab, view, cx, scratch) = unseen("unseen-paints", url, cx);
     view.update(cx, BrowserView::open_out_of_sight);
-    cx.executor().advance_clock(AWAKE_FOR);
+    cx.executor().advance_clock(AWAKE_AFTER);
     wait_for_title(cx, &view, "hidden");
     show(&tab, true, cx);
     wait_for_title(cx, &view, "visible");
@@ -222,7 +222,7 @@ fn an_agent_drives_a_page_opened_out_of_sight_as_if_shown(cx: &mut TestAppContex
     wait_for_title(cx, &view, "submitted");
     assert!(screenshot(cx, &view), "a screenshot answers");
 
-    cx.executor().advance_clock(AWAKE_FOR);
+    cx.executor().advance_clock(AWAKE_AFTER);
     wait_for_title(cx, &view, "hidden");
     assert!(frames_run(cx, &view), "the next command wakes it");
     wait_for_title(cx, &view, "visible");
@@ -249,7 +249,7 @@ fn a_command_the_page_never_answers_is_answered_within_its_limit(cx: &mut TestAp
     let pane = view.read_with(cx, |view, _| view.pane);
     let mut asked = browsers.update(cx, |browsers, cx| {
         let params = json!({"expression": "new Promise(() => {})", "awaitPromise": true});
-        browsers.ask(pane, "Runtime.evaluate", params, limit, cx)
+        browsers.ask(pane, None, "Runtime.evaluate", params, limit, cx)
     });
     let started = Instant::now();
     while started.elapsed() < Duration::from_secs(1) {

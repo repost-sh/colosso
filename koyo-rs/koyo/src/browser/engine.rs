@@ -15,7 +15,8 @@
 
 use std::path::{Path, PathBuf};
 
-use koyo_browser_ipc::client::Launch;
+use koyo_browser_ipc::Framework;
+use koyo_browser_ipc::client::{Connection, Launch};
 
 use crate::settings;
 
@@ -50,6 +51,39 @@ pub fn launch() -> Result<Launch, String> {
         profiles,
         passkeys: super::passkeys::entitled(),
     })
+}
+
+/// The running engine, said for a person as Settings and the log say it: its versions, and
+/// what its framework was built with.
+pub fn described(connection: &Connection) -> String {
+    format!(
+        "Chromium {}, in engine {}, {}",
+        connection.chromium,
+        connection.engine,
+        built(&connection.framework)
+    )
+}
+
+/// What the engine's framework was built with: H.264 and AAC and Koyo's patches, as
+/// `script/cef` builds it (`docs/browser.md` 11), or what it's without and what that costs.
+fn built(framework: &Framework) -> String {
+    if framework.is_koyos() {
+        return format!(
+            "with H.264 and AAC and {} of Koyo's patches",
+            framework.patches.len()
+        );
+    }
+    let mut without = Vec::new();
+    if !framework.codecs {
+        without.push("H.264 and AAC, so MP4 video doesn't play");
+    }
+    if framework.patches.is_empty() {
+        without.push("Koyo's patches, so extensions have no icons or popups");
+    }
+    format!(
+        "without {} (script/cef builds an engine with both)",
+        without.join(", and without ")
+    )
 }
 
 /// The engines `script/browser-engine` packaged in the checkout, which tests run a host
@@ -136,6 +170,25 @@ mod tests {
         );
         assert_eq!(host_in(&root.join("older")), None);
         assert_eq!(host_in(&root.join("missing")), None);
+    }
+
+    #[test]
+    fn an_engine_on_a_framework_not_koyos_says_what_it_lacks() {
+        let koyos = Framework {
+            codecs: true,
+            patches: vec!["devtools-pipe-descriptors".into(), "devtools-pipe-embedder".into()],
+        };
+        let said = built(&koyos);
+        assert!(said.contains("H.264 and AAC") && !said.contains("without"), "{said}");
+        let cef_own = built(&Framework::default());
+        assert!(cef_own.contains("without H.264 and AAC"), "{cef_own}");
+        assert!(cef_own.contains("without Koyo's patches"), "{cef_own}");
+        let no_patches = built(&Framework {
+            codecs: true,
+            patches: Vec::new(),
+        });
+        assert!(no_patches.contains("without Koyo's patches"), "{no_patches}");
+        assert!(!no_patches.contains("H.264"), "{no_patches}");
     }
 
     #[test]

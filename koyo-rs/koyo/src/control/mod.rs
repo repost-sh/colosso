@@ -22,7 +22,7 @@ mod receipts;
 mod topics;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -1,17 +1,21 @@
 //! The host's start and end: hello on the app's socket, CEF started in a process of the
 //! host's own or in the app's (`embedded.rs`), and what stops it.
-use super::{WRITER, chromium_version, engine_version, read_requests, send, with};
+use super::{chromium_version, engine_version, outgoing, read_requests, send, with};
+use crate::blocking::{self, Blocking};
 use cef::args::Args;
 use cef::{CefString, Settings};
 use koyo_browser_ipc::{self as ipc, HostEvent};
 use koyo_frame::{End, HELLO_WITHIN};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+/// How long a host process of its own waits, as it ends, for what it last told the app to be
+/// written.
+const LAST_WORDS: Duration = Duration::from_secs(2);
+
 /// Tells the app why its hello was refused, and hands that on.
-fn refuse(stream: &mut UnixStream, why: &str) -> String {
+fn refuse(_: Blocking<'_>, stream: &mut UnixStream, why: &str) -> String {
     let refused = HostEvent::Error {
         pane: None,
         message: why.to_owned(),
@@ -25,9 +29,10 @@ fn env(name: &str) -> Result<String, String> {
         .map_err(|error| format!("{name} is not set ({error}); the host is started by Koyo"))
 }
 
-/// Says hello on the app's socket: reads the app's, checks it, and keeps the socket for
-/// events. The reader's end comes back. A hello refused is refused to the app too, saying why.
-fn connect(mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
+/// Says hello on the app's socket: reads the app's, checks it, and has events written to the
+/// socket from then on (`outgoing`). The reader's end comes back. A hello refused is refused to
+/// the app too, saying why.
+fn connect(may: Blocking<'_>, mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
     let heard = koyo_frame::hello(
         &mut stream,
         HELLO_WITHIN,
@@ -37,12 +42,12 @@ fn connect(mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
     );
     let hello = match heard {
         Ok(hello) if koyo_frame::same_token(&hello.token, token) => hello,
-        Ok(_) => return Err(refuse(&mut stream, "The browser host refused the connection.")),
-        Err(error) => return Err(refuse(&mut stream, &error.to_string())),
+        Ok(_) => return Err(refuse(may, &mut stream, "The browser host refused the connection.")),
+        Err(error) => return Err(refuse(may, &mut stream, &error.to_string())),
     };
     crate::passkeys::enable(hello.passkeys);
     let reader = stream.try_clone().map_err(|e| e.to_string())?;
-    let _ = WRITER.set(Mutex::new(stream));
+    outgoing::start(may, stream).map_err(|e| e.to_string())?;
     Ok(reader)
 }
 
@@ -54,7 +59,7 @@ struct Root {
 }
 
 /// The root cache at `profiles`, readied for CEF: made, and its path and generation read.
-fn root(profiles: &Path) -> Result<Root, String> {
+fn root(_: Blocking<'_>, profiles: &Path) -> Result<Root, String> {
     std::fs::create_dir_all(profiles).map_err(|e| format!("{}: {e}", profiles.display()))?;
     let profiles = profiles
         .canonicalize()
@@ -117,11 +122,10 @@ fn serve(reader: UnixStream) -> Result<(), String> {
         protocol: ipc::PROTOCOL,
         engine: engine_version(),
         chromium: chromium_version(),
+        framework: crate::framework::built(),
     });
-    std::thread::Builder::new()
-        .name("app-socket".into())
-        .spawn(move || read_requests(reader))
-        .map(|_| ())
+    blocking::thread("app-socket", move |may| read_requests(may, reader))
+        .map(drop)
         .map_err(|e| e.to_string())
 }
 
@@ -129,6 +133,7 @@ fn serve(reader: UnixStream) -> Result<(), String> {
 pub(crate) fn teardown() {
     crate::dialogs::clear();
     crate::menus::clear();
+    crate::downloads::clear();
     crate::native::clear();
     with(|host| {
         host.panes.clear();
@@ -136,14 +141,31 @@ pub(crate) fn teardown() {
     });
 }
 
-/// The browser process's whole life.
-pub(crate) fn run(args: &Args) -> Result<(), String> {
+/// The browser process's whole life, in a process of its own.
+pub(crate) fn run(may: Blocking<'_>, args: &Args) -> Result<(), String> {
     let socket = env(ipc::ENV_SOCKET_FD)?;
     let token = env(ipc::ENV_TOKEN)?;
     let profiles = PathBuf::from(env(ipc::ENV_PROFILE_ROOT)?);
     let stream =
         ipc::inherit::take(&socket).map_err(|e| format!("the app's socket ({socket}): {e}"))?;
-    let reader = connect(stream, &token)?;
+    let reader = connect(may, stream, &token)?;
+    let ran = run_connected(may, args, &profiles, reader);
+    super::profiles::kept();
+    outgoing::flush(may, LAST_WORDS);
+    ran
+}
+
+/// The browser process's life once the app is heard, in a process of its own.
+fn run_connected(
+    may: Blocking<'_>,
+    args: &Args,
+    profiles: &Path,
+    reader: UnixStream,
+) -> Result<(), String> {
+    crate::framework::check().map_err(said)?;
+    if let Some(engine) = crate::own_bundle() {
+        crate::framework::read(may, &crate::embedded::framework(Path::new(&engine)));
+    }
     crate::mac_app::install()?;
     let mut app = crate::app::HostApp::new();
     let code = cef::execute_process(
@@ -154,8 +176,8 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
     if code >= 0 {
         return Err(format!("started as a subprocess ({code})"));
     }
-    super::profiles::drop_cleared(&profiles);
-    initialize(args, &root(&profiles)?)?;
+    super::profiles::drop_cleared(profiles);
+    initialize(args, &root(may, profiles)?)?;
     serve(reader)?;
     cef::run_message_loop();
     teardown();
@@ -190,6 +212,7 @@ pub(crate) struct Readied {
 /// a host process's, then CEF loaded from the engine and its root cache readied. What goes
 /// wrong once the app is heard is said on the socket, as a host process would say it.
 pub(crate) fn ready_embedded(
+    may: Blocking<'_>,
     start: crate::embedded::Start,
     cleared: Duration,
 ) -> Result<Readied, String> {
@@ -200,11 +223,15 @@ pub(crate) fn ready_embedded(
         engine,
     } = start;
     let mut steps = Steps(vec![("clear", cleared)]);
-    let reader = steps.time("hello", || connect(stream, &token))?;
+    let reader = steps.time("hello", || connect(may, stream, &token))?;
     let readied = (|| {
-        steps.time("load", || crate::embedded::load(&engine))?;
-        let _ = cef::api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
-        steps.time("root", || root(&profiles))
+        steps.time("load", || {
+            crate::embedded::load(&engine)?;
+            crate::framework::check()?;
+            crate::framework::read(may, &crate::embedded::framework(&engine));
+            Ok::<_, String>(())
+        })?;
+        steps.time("root", || root(may, &profiles))
     })();
     let root = readied.map_err(said)?;
     Ok(Readied {
@@ -280,12 +307,49 @@ mod tests {
         for given in [hello(ipc::PROTOCOL + 1, "secret"), hello(ipc::PROTOCOL, "secreT")] {
             let (mut app, host) = UnixStream::pair().unwrap();
             ipc::write_frame(&mut app, &given).unwrap();
-            let why = connect(host, "secret").unwrap_err();
+            let why = blocking::in_test(|may| connect(may, host, "secret")).unwrap_err();
             let told = ipc::read_frame::<HostEvent>(&mut app).unwrap();
             assert!(
                 matches!(&told, Some(HostEvent::Error { pane: None, message }) if *message == why),
                 "refused for {why:?}, the app told {told:?}"
             );
+        }
+    }
+
+    /// Telling the app something never waits for the app to read it: in Koyo's process the
+    /// host runs on the app's main thread, which hands each event to the thread that writes
+    /// it. The one test that has events written, as there is one writer in a process.
+    #[test]
+    fn telling_the_app_never_waits_for_it_to_read() {
+        let (mut app, host) = UnixStream::pair().unwrap();
+        let hello = ipc::Hello {
+            protocol: ipc::PROTOCOL,
+            token: "secret".into(),
+            passkeys: false,
+        };
+        ipc::write_frame(&mut app, &hello).unwrap();
+        blocking::in_test(|may| connect(may, host, "secret")).unwrap();
+        let said = "x".repeat(4 << 20);
+        let (told, done) = std::sync::mpsc::channel();
+        let telling = said.clone();
+        std::thread::spawn(move || {
+            for _ in 0..4 {
+                send(&HostEvent::Error {
+                    pane: None,
+                    message: telling.clone(),
+                });
+            }
+            let _ = told.send(());
+        });
+        let waited = done.recv_timeout(Duration::from_secs(2));
+        assert!(waited.is_ok(), "telling the app 16 MiB waited for it to read: {waited:?}");
+        let mut heard = 0;
+        while heard < 4 {
+            if let Some(HostEvent::Error { message, .. }) = ipc::read_frame(&mut app).unwrap()
+                && message == said
+            {
+                heard += 1;
+            }
         }
     }
 
@@ -298,7 +362,7 @@ mod tests {
             passkeys: false,
         };
         ipc::write_frame(&mut app, &hello).unwrap();
-        let _ = connect(host, "secret");
+        let _ = blocking::in_test(|may| connect(may, host, "secret"));
         let told = ipc::read_frame::<HostEvent>(&mut app).unwrap();
         let mismatch = koyo_frame::Mismatch {
             app: ipc::PROTOCOL + 1,

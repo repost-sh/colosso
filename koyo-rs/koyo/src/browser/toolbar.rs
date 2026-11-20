@@ -12,7 +12,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
     Styled as _, Window, div, point, px, relative, size,
 };
-use koyo_browser_ipc::{Go, PageState};
+use koyo_browser_ipc::Go;
 
 use super::control::{Leased as _, Mode};
 use super::host::HostStatus;
@@ -115,7 +115,7 @@ pub(super) fn toolbar(
         .gap(px(2.))
         .border_b_1()
         .border_color(p.hairline)
-        .children(progress(page, p))
+        .children(progress(page.loading, view.progress, p))
         .child(history_button(true, controls.back, cx))
         .child(history_button(false, controls.forward, cx))
         .child(
@@ -166,9 +166,9 @@ pub(super) fn toolbar(
 }
 
 /// A line over the toolbar's foot while the page loads, as long as the share loaded.
-fn progress(page: &PageState, p: Palette) -> Option<Div> {
-    page.loading.then(|| {
-        let share = f32::from(page.progress.max(8)) / 100.;
+fn progress(loading: bool, percent: u8, p: Palette) -> Option<Div> {
+    loading.then(|| {
+        let share = f32::from(percent.max(8)) / 100.;
         div()
             .debug_selector(|| "browser-progress".to_owned())
             .absolute()
@@ -290,10 +290,7 @@ pub(super) fn overlay(
         (_, HostStatus::Failed(message)) if !start => (message.clone(), None),
         (Some(Notice::Gone(reason)), _) => {
             let reload = cx.listener(|this, _: &ClickEvent, _, cx| this.go(Go::Reload, cx));
-            (
-                format!("This page stopped: {reason}"),
-                Some(("Reload", Box::new(reload))),
-            )
+            (reason.clone(), Some(("Reload", Box::new(reload))))
         }
         (Some(Notice::Failed(message)), _) => (message.clone(), None),
         (None, HostStatus::Starting) if !start && view.starting_long(cx) => {

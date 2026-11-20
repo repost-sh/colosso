@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use gpui_kit::{App, Context};
 use koyo_agent::protocol::ids::ThreadId;
+use koyo_browser_ipc::Session;
 use koyo_term_control::Handle;
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +34,10 @@ pub enum KeptPane {
             skip_serializing_if = "std::ops::Not::not"
         )]
         by_agent: bool,
+        /// The pages back and forward of it, and where it was scrolled: kept so it comes back
+        /// with them, as a browser's tab does (`docs/browser.md` 7).
+        #[serde(default, skip_serializing_if = "Session::is_empty")]
+        session: Session,
     },
     /// A terminal the daemon runs, by its handle and its name.
     Terminal {
@@ -113,6 +118,7 @@ impl Shell {
                 url: browser.address()?.to_owned(),
                 title: pane.title.to_string(),
                 by_agent: browser.by == By::Agent,
+                session: browser.session(cx),
             }),
             Content::Terminal(id) => {
                 let (handle, name) = self.terminals.kept((*id)?)?;
@@ -179,9 +185,10 @@ impl Shell {
                 url,
                 title,
                 by_agent,
+                session,
             } => {
                 let by = if *by_agent { By::Agent } else { By::Person };
-                Some(browser::page_brought_back(url, title, by, cx))
+                Some(browser::page_brought_back(url, title, by, session.clone(), cx))
             }
             KeptPane::Terminal { handle, name } => {
                 let id = self.terminals.bring_back(handle.clone(), name.clone());

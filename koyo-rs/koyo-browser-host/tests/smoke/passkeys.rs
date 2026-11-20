@@ -18,9 +18,12 @@ fn attestation_object() -> Vec<u8> {
 
 /// One page for every frame: on `localhost` it embeds a frame of its own origin and one of
 /// another (`sub.localhost`, another site, so another renderer), and keeps what each says.
-/// A frame asks with `get` as it loads and tells the page how it ended.
+/// A frame asks with `get` as it loads, for a passkey that lives on a device's own
+/// authenticator only (`internal`), and tells the page how it ended.
 const PAGE: &str = "<title>passkeys</title><script>
-    const asked = (where) => navigator.credentials.get({ publicKey: { challenge: new Uint8Array(16) } })
+    const mine = [{ type: 'public-key', id: new Uint8Array([1, 2, 3]), transports: ['internal'] }];
+    const asked = (where) => navigator.credentials.get({
+            publicKey: { challenge: new Uint8Array(16), allowCredentials: mine } })
         .then(() => 'resolved', (error) => error.name + ': ' + error.message)
         .then((how) => parent.postMessage({ where, how }, '*'));
     window.frames_said = {};
@@ -43,7 +46,7 @@ fn on_localhost(address: &str) -> String {
 
 #[test]
 #[ignore = "Needs a packaged browser engine; see the module docs"]
-fn without_passkeys_a_frame_is_turned_down_and_another_origins_refused_for_its_origin() {
+fn without_passkeys_a_mac_only_request_is_turned_down_and_another_origins_for_its_origin() {
     let launch = launch("passkeys-off");
     let mut session = Session::start(&launch);
     open(&mut session, &on_localhost(&serve(PAGE)), "passkeys");
@@ -61,8 +64,8 @@ fn without_passkeys_a_frame_is_turned_down_and_another_origins_refused_for_its_o
     );
     let own = frames["localhost"].as_str().unwrap_or_default();
     assert!(
-        own.starts_with("NotAllowedError: Passkeys aren't available"),
-        "{own}"
+        own.starts_with("NotAllowedError: This Mac's passkeys need Koyo to be signed"),
+        "only this Mac's passkeys could answer it, and the build can't ask for them: {own}"
     );
     let other = frames["sub.localhost"].as_str().unwrap_or_default();
     assert!(

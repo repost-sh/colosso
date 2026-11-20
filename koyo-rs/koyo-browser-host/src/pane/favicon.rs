@@ -36,7 +36,7 @@ fn try_next(pane: PaneId, browser: Browser, first: String, mut left: Vec<String>
 }
 
 fn send(pane: PaneId, url: String, png: Vec<u8>) {
-    host::send(&HostEvent::Favicon { pane, url, png });
+    host::send(&HostEvent::Favicon { pane, url, png: koyo_browser_ipc::Bytes(png) });
 }
 
 wrap_download_image_callback! {

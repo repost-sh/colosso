@@ -178,6 +178,13 @@ and `browser_list` shows it as the page's `dialog`. Answer it with `browser_dial
 (`accept`, with `text` for a prompt, or `dismiss`). A sign-in, permission or certificate
 question is the person's to answer.
 
+A snapshot reaches into shadow roots and frames: a frame of another site's refs read `f1e3`,
+and acts on them land in it. To upload, `browser_upload` with the file input's `ref` and
+`paths` from your worktree; a file chooser your click opened shows as the page's `dialog`
+(`fileChooser`) and takes `browser_upload` without a ref, or `browser_dialog` `dismiss`.
+`browser_console` and `browser_network` read what the page logged and requested, kept from
+your first call on it: call `browser_network` once before the load you want to see.
+
 `person_has_control` means the person holds the page, and its message says which way. A
 page they're only using (they clicked or typed in it) comes back on its own 5 s after
 their last act: wait, then retry. A page they took with Take control is theirs until they

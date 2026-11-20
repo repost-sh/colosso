@@ -5,7 +5,8 @@
 
 use std::path::PathBuf;
 
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
+use koyo_browser_ipc::Session;
 use serde::{Deserialize, Serialize};
 
 use crate::browser;
@@ -25,6 +26,9 @@ pub struct KeptLoose {
     /// The project whose profile its page keeps, or what stands for none.
     #[serde(default)]
     pub project: PathBuf,
+    /// The pages back and forward of it, and where it was scrolled (`docs/browser.md` 7).
+    #[serde(default, skip_serializing_if = "Session::is_empty")]
+    pub session: Session,
 }
 
 /// A space's loose pages.
@@ -42,7 +46,7 @@ pub struct KeptSpace {
 impl Shell {
     /// Each space's loose pages as they're kept: as their panes show them. Not a space with
     /// none.
-    pub(super) fn kept_spaces(&self) -> Vec<KeptSpace> {
+    pub(super) fn kept_spaces(&self, cx: &App) -> Vec<KeptSpace> {
         (self.workspace.loose_by_space())
             .filter(|(_, pages, _)| !pages.is_empty())
             .map(|(space, pages, shown)| {
@@ -52,6 +56,7 @@ impl Shell {
                         url: pane.address().unwrap_or_default().to_owned(),
                         title: pane.title.to_string(),
                         project: page.project.clone(),
+                        session: pane.session(cx),
                     }
                 });
                 KeptSpace {
@@ -81,6 +86,7 @@ impl Shell {
                         &tab.url,
                         &tab.title,
                         By::Person,
+                        tab.session.clone(),
                         cx,
                     )),
                     project: tab.project.clone(),

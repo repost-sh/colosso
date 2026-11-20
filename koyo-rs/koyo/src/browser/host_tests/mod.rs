@@ -1,11 +1,17 @@
 //! A browser pane in a test window against the real host of the engine `script/browser-engine`
 //! packages in the checkout, run as a process of its own, whose pages nothing shows: what the
-//! app asks of a page reaches it, and what the page does reaches the app. Ignored by default,
-//! since they need that engine:
+//! app asks of a page reaches it, and what the page does reaches the app. That host never comes
+//! forward (`koyo-browser-host`'s `mac_app.rs`), so they run while the person works. Ignored by
+//! default, since they need that engine packaged from the host just built, which `script/check`
+//! packages before it runs them:
 //!
 //! ```text
-//! script/cargo test -p koyo browser::host_tests -- --ignored
+//! script/browser-engine
+//! script/cargo test -p koyo --bin koyo browser::host_tests -- --ignored --test-threads=4
 //! ```
+//!
+//! A few at a time: each test starts a host of its own, and twenty at once kept some from
+//! quitting within the time `finish` allows.
 
 use std::io::{Read as _, Write as _};
 use std::net::{Shutdown, TcpListener, TcpStream};
@@ -23,6 +29,7 @@ use super::agent::{self, Actor, Answer};
 use super::host::{Browsers, HostStatus, TestLaunch};
 use super::view::BrowserView;
 
+mod agents;
 mod dialogs;
 mod glass;
 mod input;
@@ -117,7 +124,7 @@ fn run(
     method: &str,
     params: Value,
 ) -> Answer {
-    let sent = cx.update(|_, cx| agent::cdp(view, actor, method, params, PATIENCE, cx));
+    let sent = cx.update(|_, cx| agent::cdp(view, actor, None, method, params, PATIENCE, cx));
     let mut sent = sent.expect("the page takes commands");
     let mut ended = None;
     let answered = wait_until(cx, |_| {
@@ -169,7 +176,8 @@ fn finish(cx: &mut VisualTestContext, scratch: PathBuf) {
         connection.shutdown(Duration::from_secs(5));
         assert!(
             started.elapsed() < Duration::from_secs(5),
-            "the host quits on request"
+            "the host quits on request, in {:?}",
+            started.elapsed()
         );
     }
     let _ = std::fs::remove_dir_all(scratch);

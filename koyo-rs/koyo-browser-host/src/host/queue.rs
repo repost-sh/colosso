@@ -11,6 +11,7 @@ use koyo_browser_ipc::{self as ipc, AppRequest, PaneId};
 
 use super::inspect::{frontend_message, to_page};
 use super::{handle, with};
+use crate::blocking::Blocking;
 
 /// Work for the UI thread: the app's requests, decoded by the reader
 /// thread, and what `DevTools` frontends send.
@@ -30,6 +31,9 @@ pub(super) enum Queued {
     /// What Chromium wrote on the browser's `DevTools` pipe, read on the pipe's own thread
     /// (`extensions.rs`).
     Protocol(String),
+    /// The next page of what's brought back to `pane`, loaded once the callback that found
+    /// it has returned (`restoring.rs`).
+    Restoring { pane: PaneId, url: String },
 }
 
 /// Work waiting for the UI thread.
@@ -41,7 +45,7 @@ pub(crate) fn protocol_heard(message: String) {
 
 /// The app's requests, queued as they come until it asks the host to shut down or goes away,
 /// which asks the same.
-pub(super) fn read_requests(reader: UnixStream) {
+pub(super) fn read_requests(_: Blocking<'_>, reader: UnixStream) {
     for request in koyo_frame::frames(reader, ipc::read_frame::<AppRequest>) {
         let last = request == AppRequest::Shutdown;
         enqueue(Queued::App(request));
@@ -115,6 +119,7 @@ fn drain() {
             Queued::Frontend { pane, text } => frontend_message(pane, &text),
             Queued::ToPage { page, messages } => to_page(page, &messages),
             Queued::Protocol(message) => crate::extensions::heard(&message),
+            Queued::Restoring { pane, url } => super::restoring::load(pane, &url),
         }
     }
 }

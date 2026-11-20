@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use crate::blocking::{self, Calls, DEBT};
+use crate::blocking::{self, Calls};
 use crate::cli::{Command, Mode, Request, USAGE, parse};
 use crate::failure::Failure;
 use crate::files::{Source, checkout_root, listed_by_git, named};
@@ -84,8 +84,8 @@ fn execute(
             let (pruned, mut reports) = imports::prune(&root, &graph)?;
             writeln!(out, "Pruned {} from {LIST}.", counted(pruned, "edge"))?;
             let (lowered, debt) = blocking::prune(&root, &calls)?;
-            if lowered > 0 {
-                writeln!(out, "Lowered {} of {DEBT}.", counted(lowered, "line"))?;
+            for (list, lines) in lowered {
+                writeln!(out, "Lowered {} of {list}.", counted(lines, "line"))?;
             }
             reports.extend(debt);
             reports.sort_by(|left, right| left.path.cmp(&right.path));
@@ -105,16 +105,18 @@ fn execute(
     Ok(exit_for(&reports, failures.len()))
 }
 
-/// The koyo crate's shipped build at `root`, walked once for the two checks that read it: its
-/// import graph and its blocking calls.
+/// The shipped build at `root`, walked once for the two checks that read it: the koyo crate's
+/// import graph, and its blocking calls and the browser host's, which runs on the app's main
+/// thread too.
 fn shipped_build(root: &Path) -> Result<(Graph, Calls), Failure> {
-    let reads = shipped::walk(root, |file, text, code| {
+    let reads = shipped::walk(root, shipped::KOYO, |file, text, code| {
         (
             imports::read(file, text, code),
             blocking::read(file, text, code),
         )
     })?;
-    let (imports, calls): (Vec<_>, Vec<_>) = reads.into_iter().unzip();
+    let (imports, mut calls): (Vec<_>, Vec<_>) = reads.into_iter().unzip();
+    calls.extend(shipped::walk(root, shipped::BROWSER_HOST, blocking::read)?);
     Ok((imports::graph(imports), Calls::of(calls)))
 }
 

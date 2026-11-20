@@ -4,8 +4,8 @@
 //! The engine (`engine`) is the browser host of `koyo-rs/koyo-browser-host` with CEF beside it,
 //! packaged by `script/browser-engine` and carried in the app's bundle. The host runs in Koyo's
 //! own process (`native`), which has to run from that bundle: run as a bare binary, it shows no
-//! page. One host serves every pane of the app: `host` starts it as the app launches, so no
-//! page waits for it, and routes what it says to the pane views. A page is a [`BrowserView`]
+//! page. One host serves every pane of the app: `host` starts it once a page is first drawn,
+//! or an agent opens one, and routes what it says to the pane views. A page is a [`BrowserView`]
 //! in a tab: its views are placed where the pane lays the page out (`page`), and `AppKit`
 //! hands them the person's pointer and keys, of which the app hears a press and the edits it
 //! binds (`input`); it can be shown at a chosen size or as a device (`responsive`); its
@@ -23,6 +23,7 @@ mod budget;
 pub(crate) mod control;
 mod dialog;
 mod dock;
+mod downloads;
 mod engine;
 mod extensions;
 mod favicon;
@@ -45,6 +46,7 @@ mod passkeys;
 pub(crate) mod pointer;
 pub mod profiles;
 mod responsive;
+mod search;
 mod site;
 mod tabs;
 mod tone;
@@ -53,10 +55,13 @@ mod view;
 
 pub mod fullscreen;
 pub use dock::DOCK_MIN;
+#[cfg(test)]
+pub(crate) use host::fake::FakeHost;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use lightness::glass_dark;
 pub use menu::handle_actions;
 pub use responsive::{Responsive, devices};
+pub use search::{SearchEngine, SetSearchEngine};
 pub use extensions::pinned::icons as pinned_extensions;
 pub use site::{FADE as SITE_BUTTONS_FADE, buttons as site_buttons};
 pub(crate) use tabs::page_brought_back;
@@ -89,10 +94,11 @@ pub fn close_page(pane: koyo_browser_ipc::PaneId, cx: &mut App) {
     browsers.update(cx, |browsers, _| browsers.send(koyo_browser_ipc::AppRequest::Close { pane }));
 }
 
-/// The packaged engine's version and its Chromium's, once it runs.
-pub fn versions(cx: &App) -> Option<(String, String)> {
+/// The packaged engine, said for a person once it runs: its versions and what its framework was
+/// built with.
+pub fn described(cx: &App) -> Option<String> {
     let browsers = cx.try_global::<host::GlobalBrowsers>()?;
-    browsers.0.read(cx).versions()
+    browsers.0.read(cx).described()
 }
 
 actions!(
@@ -116,18 +122,23 @@ actions!(
         FindPrevious,
         ZoomIn,
         ZoomOut,
-        ActualSize
+        ActualSize,
+        Print
     ]
 );
 
-/// The edits a page takes while it has focus, and the keys the address bar and the find bar
-/// share with it; and where `DevTools` open, picked in settings. ⌘L isn't among them: it's the
+/// The edits a page takes while it has focus, and ⌘P, which prints it then and is Go to File
+/// anywhere else; the keys the address bar and the find bar share with it; and where
+/// `DevTools` open and the search engine, picked in settings. ⌘L isn't among them: it's the
 /// window's, heard wherever the keyboard is (`launcher::OpenAddress`).
 pub fn init(cx: &mut App, may: crate::blocking::Blocking<'_>) {
     profiles::init(cx, may);
     host::folder::drop_cleared(cx);
     cx.on_action(|SetDevtoolsDock(dock): &SetDevtoolsDock, cx| {
         crate::settings::update(cx, |settings| settings.devtools.dock = *dock);
+    });
+    cx.on_action(|SetSearchEngine(engine): &SetSearchEngine, cx| {
+        crate::settings::update(cx, |settings| settings.search_engine = *engine);
     });
     let page = Some("BrowserPage");
     cx.bind_keys([
@@ -137,6 +148,7 @@ pub fn init(cx: &mut App, may: crate::blocking::Blocking<'_>) {
         KeyBinding::new("cmd-a", SelectAll, page),
         KeyBinding::new("cmd-z", Undo, page),
         KeyBinding::new("cmd-shift-z", Redo, page),
+        KeyBinding::new("cmd-p", Print, page),
     ]);
     for context in ["BrowserPage", "BrowserAddress", "BrowserFind"] {
         let context = Some(context);
@@ -169,19 +181,19 @@ pub enum Address {
 }
 
 impl Address {
-    /// The page it loads: the page itself, or the search's results.
-    pub fn into_url(self) -> String {
+    /// The page it loads: the page itself, or `engine`'s results for the search.
+    pub fn into_url(self, engine: SearchEngine) -> String {
         match self {
             Address::Page(url) => url,
-            Address::Search(words) => search_url(&words),
+            Address::Search(words) => engine.results(&words),
         }
     }
 }
 
 /// What the person typed in the address bar, as a page to load. Hosts and local addresses
-/// load directly; anything else is a web search.
-pub fn address_to_url(text: &str) -> Option<String> {
-    read_address(text).map(Address::into_url)
+/// load directly; anything else is a search with `engine`.
+pub fn address_to_url(text: &str, engine: SearchEngine) -> Option<String> {
+    read_address(text).map(|address| address.into_url(engine))
 }
 
 /// What the person typed in the address bar: hosts and local addresses are pages, anything
@@ -228,12 +240,6 @@ pub fn read_address(text: &str) -> Option<Address> {
     Some(Address::Search(text.to_owned()))
 }
 
-/// A web search for `query`.
-pub fn search_url(query: &str) -> String {
-    let encoded: String = form_urlencoded::byte_serialize(query.as_bytes()).collect();
-    format!("https://www.google.com/search?q={encoded}")
-}
-
 /// What stands for a project where a page is none's (`docs/arc-sidebar.md` 11): a loose page
 /// opened outside any project. Such pages use Default, the person's own, in every space.
 pub const NO_PROJECT: &str = "no-project";
@@ -264,20 +270,39 @@ mod tests {
             ("about:blank", "about:blank"),
             ("  example.com  ", "https://example.com"),
         ] {
-            assert_eq!(address_to_url(typed).as_deref(), Some(url), "{typed}");
+            for engine in SearchEngine::ALL {
+                assert_eq!(address_to_url(typed, engine).as_deref(), Some(url), "{typed}");
+            }
         }
+        let google = |typed| address_to_url(typed, SearchEngine::Google);
         assert_eq!(
-            address_to_url("rust borrow checker").as_deref(),
+            google("rust borrow checker").as_deref(),
             Some("https://www.google.com/search?q=rust+borrow+checker")
         );
+        assert_eq!(google("gpui").as_deref(), Some("https://www.google.com/search?q=gpui"));
         assert_eq!(
-            address_to_url("gpui").as_deref(),
-            Some("https://www.google.com/search?q=gpui")
-        );
-        assert_eq!(
-            address_to_url("c++ & co").as_deref(),
+            google("c++ & co").as_deref(),
             Some("https://www.google.com/search?q=c%2B%2B+%26+co")
         );
-        assert_eq!(address_to_url("   "), None);
+        assert_eq!(google("   "), None);
+    }
+
+    /// Words go to the engine the person picked, its results and its suggestions both.
+    #[test]
+    fn a_search_goes_to_the_engine_picked() {
+        let searched = |engine| address_to_url("c++ & co", engine);
+        for (engine, results) in [
+            (SearchEngine::DuckDuckGo, "https://duckduckgo.com/?q=c%2B%2B+%26+co"),
+            (SearchEngine::Bing, "https://www.bing.com/search?q=c%2B%2B+%26+co"),
+            (SearchEngine::Ecosia, "https://www.ecosia.org/search?q=c%2B%2B+%26+co"),
+            (SearchEngine::Kagi, "https://kagi.com/search?q=c%2B%2B+%26+co"),
+        ] {
+            assert_eq!(searched(engine).as_deref(), Some(results));
+        }
+        assert_eq!(
+            SearchEngine::DuckDuckGo.suggestions("rust gp"),
+            "https://ac.duckduckgo.com/ac/?type=list&q=rust+gp"
+        );
+        assert_eq!(SearchEngine::default(), SearchEngine::Google);
     }
 }

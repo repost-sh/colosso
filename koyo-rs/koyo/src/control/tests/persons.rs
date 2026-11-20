@@ -109,7 +109,9 @@ fn every_browser_tool_needs_the_persons_consent_for_their_page(cx: &mut TestAppC
                 Does::Refuses,
             ),
             "browser_dialog" => (json!({ "pane": pane, "action": "accept" }), Does::Refuses),
-            "browser_read" | "browser_snapshot" | "browser_screenshot" => {
+            "browser_upload" => (json!({ "pane": pane, "paths": ["README.md"] }), Does::Refuses),
+            "browser_read" | "browser_snapshot" | "browser_screenshot" | "browser_console"
+            | "browser_network" => {
                 (json!({ "pane": pane }), Does::Refuses)
             }
             other => panic!("{other} is a browser tool this test doesn't know: say what it does with the person's page"),

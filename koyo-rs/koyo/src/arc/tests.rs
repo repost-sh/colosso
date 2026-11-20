@@ -200,6 +200,7 @@ fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
         address: "https://www.example.com/docs?page=2".into(),
         favicon: None,
         restored: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     let page = Pane {
         title: "Example".into(),

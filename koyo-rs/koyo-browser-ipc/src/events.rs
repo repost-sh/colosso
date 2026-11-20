@@ -1,7 +1,7 @@
 //! What the host tells the app: pages changing, and what each page asks.
 use crate::{
-    DevToolsAsk, Dialog, Extension, ExtensionAction, MenuEntry, MenuTarget, PaneId, PasskeyAsk,
-    Permission,
+    Bytes, DevToolsAsk, Dialog, Extension, ExtensionAction, MenuEntry, MenuTarget, PaneId,
+    PasskeyAsk, Permission, Session, Tone,
 };
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,27 @@ pub enum Cursor {
     None,
 }
 
+/// What the engine's framework was built with, as it says in its `Resources/koyo-build.txt`,
+/// which `script/cef` writes (`docs/browser.md` 11): CEF's own has neither.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Framework {
+    /// Whether its pages play H.264 and AAC: it was built with `proprietary_codecs` and
+    /// Chrome's `FFmpeg`.
+    pub codecs: bool,
+    /// Koyo's patches it was built with (`script/cef-patches`), by name, in the order applied.
+    pub patches: Vec<String>,
+}
+
+impl Framework {
+    /// Whether it's Koyo's own, as `script/cef` builds it: with H.264 and AAC, and Koyo's
+    /// patches.
+    #[must_use]
+    pub fn is_koyos(&self) -> bool {
+        self.codecs && !self.patches.is_empty()
+    }
+}
+
 /// What a pane's page is doing.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,10 +63,8 @@ pub struct PageState {
     pub url: String,
     /// The title, when the page has one.
     pub title: String,
-    /// Loading.
+    /// Loading; how much has loaded comes in [`HostEvent::Progress`].
     pub loading: bool,
-    /// How much of the page has loaded, in whole percents.
-    pub progress: u8,
     /// History has an entry behind.
     pub can_go_back: bool,
     /// History has an entry ahead.
@@ -54,6 +73,44 @@ pub struct PageState {
     /// [`HostEvent::Favicon`].
     #[serde(default)]
     pub favicon: String,
+    /// How large the engine shows the page: Chromium keeps a zoom for each site, with the
+    /// profile, so it changes as the page moves to another site, or as a page of its site is
+    /// zoomed.
+    #[serde(default)]
+    pub zoom: Zoom,
+}
+
+/// A zoom, in percent of a page's own size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Zoom(pub u32);
+
+impl Default for Zoom {
+    fn default() -> Self {
+        Zoom(100)
+    }
+}
+
+impl Zoom {
+    /// The zoom at Chromium's `level`, where 0 is the page's own size and each step of 1 is a
+    /// fifth larger.
+    #[must_use]
+    pub fn of_level(level: f64) -> Self {
+        let percent = (1.2_f64.powf(level) * 100.).round().clamp(1., 10_000.);
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "clamped to a few thousand percent first"
+        )]
+        let percent = percent as u32;
+        Zoom(percent)
+    }
+
+    /// Chromium's level for this zoom.
+    #[must_use]
+    pub fn level(self) -> f64 {
+        (f64::from(self.0.max(1)) / 100.).ln() / 1.2_f64.ln()
+    }
 }
 
 /// What a site was decided about one permission.
@@ -82,6 +139,8 @@ pub enum HostEvent {
         engine: String,
         /// The Chromium version it embeds.
         chromium: String,
+        /// What the framework it loaded was built with.
+        framework: Framework,
     },
     /// The page's address, title, loading or history changed.
     Page {
@@ -90,6 +149,30 @@ pub enum HostEvent {
         /// Its state.
         state: PageState,
     },
+    /// How much of the loading page has loaded, in whole percents: as a load first says, then
+    /// each time it moved [`HostEvent::PROGRESS_STEP`] or more, and 100; a load starts at 0.
+    Progress {
+        /// The pane.
+        pane: PaneId,
+        /// How much.
+        percent: u8,
+    },
+    /// How light the page is and what its canvas is painted: as it first shows, and as that
+    /// changes.
+    Tone {
+        /// The pane.
+        pane: PaneId,
+        /// Its tone.
+        tone: Tone,
+    },
+    /// The page's history around the page it shows changed, or where that page is scrolled
+    /// to, which the app keeps with the window ([`crate::Session`]).
+    Session {
+        /// The pane.
+        pane: PaneId,
+        /// Its history and scroll now.
+        session: Session,
+    },
     /// The page's icon at `url` was fetched, through the engine and its cache.
     Favicon {
         /// The pane.
@@ -97,7 +180,7 @@ pub enum HostEvent {
         /// Where the page said its icon is.
         url: String,
         /// The icon as a PNG, at most 64 pixels a side; empty when it couldn't be fetched.
-        png: Vec<u8>,
+        png: Bytes,
     },
     /// The page went full screen, as a video's button does (`requestFullscreen`), or left it.
     Fullscreen {
@@ -151,14 +234,16 @@ pub enum HostEvent {
         /// The pane.
         pane: PaneId,
     },
-    /// The pane asks for a page in a new tab: a link opened from `DevTools`, or the page of
-    /// a tabbed window Chrome made on its own (an extension's options, `windows.create`).
+    /// The pane asks for a page in a new tab beside it: a link the person opened a way of
+    /// their own (⌘-, ⇧- or middle-clicked), a link opened from `DevTools`, or the page of a
+    /// tabbed window Chrome made on its own (an extension's options, `windows.create`).
     OpenUrl {
         /// The pane.
         pane: PaneId,
         /// The page.
         url: String,
-        /// Whether the tab is shown, as Chrome's window would have been: not for a link.
+        /// Whether the tab is shown, as Chrome would have shown it: not for a ⌘- or a middle
+        /// click, nor for a link from `DevTools`.
         #[serde(default)]
         front: bool,
     },
@@ -242,11 +327,15 @@ pub enum HostEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
-    /// An event of the page's own `DevTools` protocol session, once the app
-    /// has sent it a command.
+    /// An event of the page's own `DevTools` protocol session, or of a frame's session attached
+    /// under it, of a domain an agent's command enabled ([`crate::CdpCaller::Agent`]): not of
+    /// one the app's own commands or the page's `DevTools` enabled.
     CdpEvent {
         /// The page.
         pane: PaneId,
+        /// The session of a frame attached under the page's own it's of; none for the page's own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session: Option<String>,
         /// The event, such as `Runtime.consoleAPICalled`.
         method: String,
         /// Its parameters.
@@ -274,9 +363,11 @@ pub enum HostEvent {
         /// What it's set to.
         action: ExtensionAction,
     },
-    /// An extension opened a tab (`chrome.tabs.create`, its options, its welcome page). Its
-    /// page is made already, as pane `pane`, a number the host gave it: the app gives it a
-    /// tab, and sizes and shows it as any pane, without opening it.
+    /// A page opened a page in a tab or a window of its own (a link to a new tab,
+    /// `window.open`, a sign-in's popup), which keeps it as its opener, or an extension opened
+    /// a tab (`chrome.tabs.create`, its options, its welcome page). Its page is made already,
+    /// as pane `pane`, a number the host gave it: the app gives it a tab, and sizes and shows
+    /// it as any pane, without opening it.
     TabOpened {
         /// The new page's pane.
         pane: PaneId,
@@ -284,7 +375,7 @@ pub enum HostEvent {
         opener: PaneId,
         /// The page it loads.
         url: String,
-        /// Whether the extension asked for it in front.
+        /// Whether it was asked for in front: not for a ⌘- or a middle click.
         active: bool,
     },
     /// The pane's page closed without the app asking: an extension closed its tab
@@ -300,6 +391,36 @@ pub enum HostEvent {
         /// The pane.
         pane: PaneId,
     },
+    /// A page's download asks where it goes, which the app decides and answers with
+    /// [`crate::AppRequest::Download`]: until then nothing of it is saved.
+    DownloadAsked {
+        /// The page that started it.
+        pane: PaneId,
+        /// The engine's number for it, as [`crate::Download::id`].
+        download: u32,
+        /// The file name the server or the page gave it, made safe for a file system.
+        name: String,
+        /// Where it comes from.
+        url: String,
+    },
+    /// How a download stands, each time that changes once it has a place: bytes coming, or how
+    /// it ended. A page closed while its downloads come in stays open in the engine, out of
+    /// sight, until the last ends, as Chrome keeps a closed tab's downloads.
+    Download {
+        /// The page that started it.
+        pane: PaneId,
+        /// How it stands.
+        download: crate::Download,
+    },
+    /// The page was saved as a PDF at `path` ([`crate::Print::Pdf`]), or couldn't be.
+    PdfSaved {
+        /// The page.
+        pane: PaneId,
+        /// The file.
+        path: String,
+        /// Whether it was written.
+        saved: bool,
+    },
     /// A request could not be carried out.
     Error {
         /// The pane it concerns, if any.
@@ -307,4 +428,10 @@ pub enum HostEvent {
         /// What went wrong.
         message: String,
     },
+}
+
+impl HostEvent {
+    /// How far a page's loading moves before the app is told ([`HostEvent::Progress`]), in
+    /// percents: about as far as its toolbar's line grows by a few points.
+    pub const PROGRESS_STEP: u8 = 5;
 }

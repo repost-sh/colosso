@@ -12,7 +12,10 @@
 //!
 //! Where the views are is also whether the page is on screen for the engine: in the app's
 //! view, or parked in the holder with the holder moved off the screen's corner, it is (frames
-//! run, as a page an agent drives out of sight needs); out of every window it's hidden.
+//! run, as a page an agent drives out of sight needs); out of every window it's hidden, as a
+//! tab in the background is: no frames, its timers a tick a second. CEF's own way to hide a
+//! page (`CefBrowserHost::WasHidden`) is for pages drawn off screen only, and does nothing for
+//! a Chrome-style one (`chrome_browser_host_impl.cc`).
 //!
 //! All of it happens on the main thread, which is CEF's UI thread here. No page's state is
 //! borrowed across a call into `AppKit` or CEF, which call back.
@@ -37,9 +40,10 @@ mod strays;
 #[cfg(test)]
 pub(crate) mod tests;
 
-pub(crate) use adopt::{adopt, holder_of, shown_window_of};
+pub(crate) use adopt::{abandoned, adopt, holder_of, shown_window_of};
 use adopt::{adopted, adopting};
 use holder::{closing, hold};
+pub(crate) use holder::tied_to;
 use parts::{HolderDelegate, PageViewDelegate};
 pub(crate) use strays::{alpha, client as stray_client, close_all as close_strays, count as strays, set_alpha};
 pub use report::describe;
@@ -219,7 +223,9 @@ fn park(holder: &NSWindow, size: NSSize) {
 /// Puts `pane`'s views where they belong now. While the page is on screen for the engine:
 /// in the app's view if a pane draws it, else parked in the holder off the screen. Else out
 /// of every window, which is what hides it: Chromium is told not to judge by what covers a
-/// window (`app.rs`), so a parked page is awake whatever is in front.
+/// window (`app.rs`), so a parked page is awake whatever is in front. The holder stays shown
+/// either way (`docs/native-pages.md` 5); the windows Chromium ties to it go where the views
+/// are ([`holder::rehome`]).
 fn settle(pane: PaneId) {
     let settled = page(pane, |entry| {
         let (_, holder) = entry.holder.clone()?;
@@ -275,6 +281,7 @@ fn settle(pane: PaneId) {
         tell_keyboard(pane, Views::Leaving);
     }
     let arriving = to_window.is_some();
+    let from_window = web.window();
     if let Some(parent) = to {
         into(&parent);
     } else {
@@ -284,6 +291,8 @@ fn settle(pane: PaneId) {
     if shown_in.is_none() {
         park(&holder, size);
     }
+    let apps = |window: &&NSWindow| !std::ptr::eq(std::ptr::from_ref(*window), &raw const *holder);
+    holder::rehome(&holder, from_window.as_deref().filter(apps), to_window.as_deref().filter(apps));
     if arriving {
         tell_keyboard(pane, Views::Arrived);
     }
@@ -336,6 +345,19 @@ pub fn release(pane: PaneId, container: &NSView) {
     if left == Some(true) {
         settle(pane);
     }
+}
+
+/// The app's window `pane`'s page is in now, its views moved there from the holder: the
+/// window Chromium's own windows for the page belong over ([`holder::rehome`]). Asked from
+/// within `AppKit`'s calls, so never while a page's state is borrowed, which isn't held across
+/// them; if it is, none.
+fn drawn_in(pane: PaneId) -> Option<Retained<NSWindow>> {
+    let (web, holder) = PAGES.with(|pages| {
+        let pages = pages.try_borrow().ok()?;
+        let entry = pages.get(&pane)?;
+        Some((entry.views.clone()?.1, entry.holder.clone()?.1))
+    })?;
+    web.window().filter(|window| !std::ptr::eq(&raw const **window, &raw const *holder))
 }
 
 /// The page is `width` by `height` points though no pane says so: an agent's size for a page

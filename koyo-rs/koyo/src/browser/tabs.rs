@@ -6,6 +6,7 @@
 use std::path::Path;
 
 use gpui_kit::{App, Context, Window};
+use koyo_browser_ipc::Session;
 
 use super::profiles::By;
 use super::toolbar::tab_title;
@@ -14,12 +15,20 @@ use crate::model::{Browser, Content, Pane, Unloaded};
 use crate::shell::Shell;
 
 /// The pane a page the window kept comes back as, `by`'s: titled as it was, with its site's
-/// icon if one is kept, and no page until its tab is shown.
-pub(crate) fn page_brought_back(url: &str, title: &str, by: By, cx: &mut App) -> Pane {
+/// icon if one is kept, and no page until its tab is shown, which then opens with `session`,
+/// the history around it and its scroll.
+pub(crate) fn page_brought_back(
+    url: &str,
+    title: &str,
+    by: By,
+    session: Session,
+    cx: &mut App,
+) -> Pane {
     let unloaded = Unloaded {
         favicon: history::icon(url, cx),
         address: url.to_owned(),
         restored: true,
+        session,
     };
     Pane {
         title: tab_title(title, url).into(),
@@ -53,6 +62,7 @@ impl Shell {
                 if page.restored {
                     view.mark_restored();
                 }
+                view.bring_back(page.session);
                 view.made_by(by);
             });
             let pane = self.workspace.pane_mut(id);

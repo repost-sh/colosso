@@ -276,6 +276,7 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
         address: "https://example.com/".into(),
         favicon: None,
         restored: true,
+        session: koyo_browser_ipc::Session::default(),
     };
     let pane = rig.shell.update(cx, |shell, cx| {
         shell.workspace.new_tab(crate::model::PaneKind::Editor);

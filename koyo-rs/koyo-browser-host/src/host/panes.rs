@@ -7,7 +7,9 @@ use cef::{
     RequestContextHandler, RequestContextSettings, WrapRequestContextHandler, rc::Rc,
     wrap_request_context_handler,
 };
-use koyo_browser_ipc::{AppRequest, Cursor, HostEvent, PageState, PaneId, ViewAction, Viewport};
+use koyo_browser_ipc::{
+    AppRequest, Cursor, HostEvent, PageState, PaneId, Session, ViewAction, Viewport,
+};
 
 /// One request context per profile, so projects never share cookies.
 fn context(profile: &str) -> Option<RequestContext> {
@@ -57,11 +59,14 @@ pub(super) fn clear_data() {
     }
 }
 
-pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str) {
+/// Opens `pane`'s page at `url`, with `session`'s history and scroll when it's one brought
+/// back.
+pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str, session: Session) {
     if with(|host| host.shutting_down || host.panes.contains_key(&pane)) != Some(false) {
         return;
     }
     with(|host| host.panes.insert(pane, Pane::new(url)));
+    let first = super::restoring::open_at(pane, url, session);
     let Some(context) = context(profile) else {
         with(|host| host.panes.remove(&pane));
         send(&HostEvent::Error {
@@ -70,15 +75,15 @@ pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str) {
         });
         return;
     };
-    crate::native::create(pane, url, viewport, Some((profile, context)));
+    crate::native::create(pane, &first, viewport, Some((profile, context)));
 }
 
 /// Where the numbers of the panes the host makes itself begin: far above the app's own, which
 /// count up from one.
 const ADOPTED: PaneId = 1 << 40;
 
-/// A pane for a page an extension opens from `opener`'s (`native::adopt`): its number, which
-/// the host gives it. None while shutting down, or with no such opener.
+/// A pane for a page `opener`'s page opens, or an extension opens from it (`native::adopt`):
+/// its number, which the host gives it. None while shutting down, or with no such opener.
 pub(crate) fn adopt(opener: PaneId, url: &str) -> Option<PaneId> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     if with(|host| host.shutting_down || !host.panes.contains_key(&opener)) != Some(false) {
@@ -87,6 +92,14 @@ pub(crate) fn adopt(opener: PaneId, url: &str) -> Option<PaneId> {
     let pane = ADOPTED + NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     with(|host| host.panes.insert(pane, Pane::new(url)));
     Some(pane)
+}
+
+/// The page a pane was given for never came (`native::abandoned`): the pane goes, and its tab
+/// with it, as a page that closed itself.
+pub(crate) fn never_made(pane: PaneId) {
+    with(|host| host.panes.remove(&pane));
+    send(&HostEvent::TabClosed { pane });
+    send(&HostEvent::Closed { pane });
 }
 
 /// The size of a page no pane draws: one out of sight, as an agent sizes it. Shown, a page is
@@ -101,7 +114,14 @@ pub(super) fn view(pane: PaneId, action: ViewAction) {
         return;
     };
     match action {
-        ViewAction::Zoom { level } => host.set_zoom_level(level),
+        ViewAction::Zoom { level } => {
+            host.set_zoom_level(level);
+            let open: Vec<PaneId> = with(|host| host.panes.keys().copied().collect())
+                .unwrap_or_default();
+            for pane in open {
+                zoom_changed(pane);
+            }
+        }
         ViewAction::Find { text, forward } => {
             let text = cef::CefString::from(text.as_str());
             host.find(Some(&text), i32::from(forward), 0, 1);
@@ -136,6 +156,24 @@ pub(super) fn navigate(pane: PaneId, url: &str) {
 /// A popup's address, loaded once the current callback has returned.
 pub(crate) fn navigate_later(pane: PaneId, url: String) {
     enqueue(Queued::App(AppRequest::Navigate { pane, url }));
+}
+
+/// The app closed `pane`'s page: it goes, unless downloads of its are still to come in, which
+/// CEF tells of only while it's open. It stays then, out of sight, until the last ends
+/// (`downloads::keep_open`).
+pub(super) fn close_asked(pane: PaneId) {
+    if let Some(browser) = browser_of(pane)
+        && crate::downloads::keep_open(pane, &browser)
+    {
+        with_pane(pane, |p| p.closing = true);
+        return;
+    }
+    close(pane);
+}
+
+/// Closes a page kept open for its downloads, once the current callback has returned.
+pub(crate) fn close_later(pane: PaneId) {
+    enqueue(Queued::App(AppRequest::Close { pane }));
 }
 
 pub(super) fn close(pane: PaneId) {
@@ -189,16 +227,15 @@ pub(crate) fn browser_closed(pane: PaneId) {
     crate::native::closed(pane);
     crate::dialogs::pane_closed(pane);
     crate::menus::pane_closed(pane);
+    crate::downloads::pane_closed(pane);
     crate::passkeys::pane_gone(pane);
     crate::extensions::pane_closed(pane);
     let (done, devtools, calls, unasked) = with(|host| {
         let mut closed = host.panes.remove(&pane);
         let unasked = !host.shutting_down
             && closed.as_ref().is_some_and(|c| !c.closing && c.inspector.is_none());
-        let mut calls: Vec<u64> = closed
-            .as_mut()
-            .and_then(|c| c.agent.take())
-            .map(|calls| calls.into_values().collect())
+        let mut calls: Vec<u64> = (closed.as_mut())
+            .map(|c| std::mem::take(&mut c.calls).into_values().collect())
             .unwrap_or_default();
         calls.extend(closed.as_mut().into_iter().flat_map(|c| {
             std::mem::take(&mut c.early)
@@ -239,11 +276,14 @@ pub(crate) fn browser_closed(pane: PaneId) {
 /// agent commands that waited for it run; a `DevTools` pane's frontend gets
 /// its shim after every load (`inspect::frontend_loaded`).
 pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
+    zoom_changed(pane);
     if loading {
         return;
     }
+    with_pane(pane, |p| p.progress = None);
+    super::restoring::loaded(pane);
     let early = with_pane(pane, |p| {
-        if p.loaded {
+        if p.loaded || p.restore.is_some() {
             return Vec::new();
         }
         p.loaded = true;
@@ -256,13 +296,46 @@ pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
     frontend_loaded(pane);
 }
 
+/// The engine's zoom of `pane`'s page may have changed: it keeps one for each site, which a
+/// page takes as it commits, and which zooming a page of the site changes for all of them.
+fn zoom_changed(pane: PaneId) {
+    if let Some(level) = host_of(pane).map(|host| host.zoom_level()) {
+        page_changed(pane, |page| page.zoom = koyo_browser_ipc::Zoom::of_level(level));
+    }
+}
+
+/// How much of `pane`'s loading page has loaded, in percents: the app is told the first of a
+/// load, then once it moved on a step from what it was told last
+/// ([`HostEvent::PROGRESS_STEP`]), and as it's all loaded.
+pub(crate) fn progressed(pane: PaneId, percent: u8) {
+    let tell = with_pane(pane, |p| {
+        let tell = moved_on(p.progress, percent);
+        if tell {
+            p.progress = Some(percent);
+        }
+        tell
+    });
+    if tell == Some(true) {
+        send(&HostEvent::Progress { pane, percent });
+    }
+}
+
+/// Whether loading at `now` percent is worth telling the app, which was told `was`.
+pub(super) fn moved_on(was: Option<u8>, now: u8) -> bool {
+    let step = HostEvent::PROGRESS_STEP;
+    was.is_none_or(|was| now.abs_diff(was) >= step || (now == 100 && was != 100))
+}
+
 /// Makes `change` to `pane`'s page, telling the app of it if it changed anything; whether
 /// it did.
 pub(crate) fn page_changed(pane: PaneId, change: impl FnOnce(&mut PageState)) -> bool {
     let state = with_pane(pane, |p| {
-        let before = p.page.clone();
         change(&mut p.page);
-        (p.page != before).then(|| p.page.clone())
+        let shown = crate::session::shown(&p.page, p.restore.as_ref(), &p.stand_ins);
+        (shown != p.shown).then(|| {
+            p.shown.clone_from(&shown);
+            shown
+        })
     })
     .flatten();
     let Some(state) = state else {
@@ -316,5 +389,6 @@ pub(crate) fn leave_fullscreen(pane: PaneId) -> bool {
 
 pub(crate) fn renderer_gone(pane: PaneId, reason: String) {
     crate::passkeys::pane_gone(pane);
+    super::restoring::abandon(pane);
     send(&HostEvent::Gone { pane, reason });
 }

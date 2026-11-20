@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{AppContext as _, Context, Entity, Window};
+use gpui_kit::{AppContext as _, Context, Entity, WeakEntity, Window};
 
 use super::Shell;
 use crate::browser::profiles::By;
@@ -139,6 +139,7 @@ impl Shell {
             }
             BrowserEvent::Visited(visit) => self.note_visit(view, visit, cx),
             BrowserEvent::Searched(words) => self.note_search(view, words, cx),
+            BrowserEvent::SessionChanged => self.keep_window(cx),
             BrowserEvent::OpenTab(url) => drop(self.open_beside(view, None, url.clone(), window, cx)),
             BrowserEvent::GoToTab(url) => {
                 let opened = self.open_beside(view, None, url.clone(), window, cx);
@@ -150,11 +151,7 @@ impl Shell {
                 self.tab_adopted(view, *pane, url.clone(), *active, window, cx);
             }
             BrowserEvent::Activate => self.tab_asked_for(view, cx),
-            BrowserEvent::ClosedItself => {
-                if let Some(pane) = self.pane_showing(view) {
-                    self.close_pane_now(pane, cx);
-                }
-            }
+            BrowserEvent::ClosedItself => self.page_closed_itself(view, cx),
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
             BrowserEvent::Closed if view.read(cx).is_inspector() => {
@@ -186,28 +183,28 @@ impl Shell {
 
     /// A page at `url` of the profile `project`'s pages have when `by` opens them, the shell
     /// hearing what it says: a new one, or with `adopted` the one the host made already under
-    /// that number, in its opener's profile.
+    /// that number, in the profile of the opener given with it.
     pub(crate) fn page_view(
         &mut self,
-        adopted: Option<koyo_browser_ipc::PaneId>,
+        adopted: Option<(koyo_browser_ipc::PaneId, WeakEntity<BrowserView>)>,
         url: String,
         (project, by): (&Path, By),
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<BrowserView> {
-        let Some(pane) = adopted else {
+        let Some(adopted) = adopted else {
             let view = self.browser_view(url, project, window, cx);
             view.update(cx, |view, _| view.made_by(by));
             return view;
         };
-        let view = cx.new(|cx| BrowserView::adopted(pane, url, (project, by), window, cx));
+        let view = cx.new(|cx| BrowserView::adopted(adopted, url, (project, by), window, cx));
         cx.subscribe_in(&view, window, Self::browser_event).detach();
         view
     }
 
-    /// An extension opened a tab from `view`'s page, which the engine made as its pane
-    /// `pane`: it gets a tab right after `view`'s, wherever that is, shown when the extension
-    /// asked for it in front.
+    /// `view`'s page opened a page in a tab or a window of its own, or an extension opened a
+    /// tab from it, which the engine made as its pane `pane`: it gets a tab right after
+    /// `view`'s, wherever that is, shown when `active`.
     pub(super) fn tab_adopted(
         &mut self,
         view: &Entity<BrowserView>,
@@ -227,6 +224,21 @@ impl Shell {
         }
     }
 
+    /// `view`'s page closed without the app asking: its tab goes, and when the person was
+    /// looking at it, they're back on the page that opened it, if it did and is still open, as
+    /// a sign-in's popup closing itself leaves them on the page they signed in to.
+    fn page_closed_itself(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
+        let Some(pane) = self.pane_showing(view) else {
+            return;
+        };
+        let shown = self.workspace.tab_shown().is_some_and(|tab| tab.has_pane(pane));
+        let opener = (view.read(cx).opener()).and_then(|opener| self.pane_showing(&opener));
+        self.close_pane_now(pane, cx);
+        if let (true, Some(opener)) = (shown, opener) {
+            self.show_tab_holding(opener, cx);
+        }
+    }
+
     /// An extension asked for `view`'s tab in front.
     pub(super) fn tab_asked_for(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         if let Some(pane) = self.pane_showing(view) {
@@ -238,8 +250,8 @@ impl Shell {
     /// it's in, without leaving it, of its opener's profile, so it's signed in as its opener
     /// is, and an agent's if its opener is: on its checkout, after its tab; from a pinned or a
     /// loose page, as a loose page of the space shown, right after a loose opener or after them
-    /// all. With `adopted`, the page is one the host made already under that number, a tab an
-    /// extension opened (`BrowserView::adopted`). The page opened, when its opener's tab was
+    /// all. With `adopted`, the page is one the host made already under that number, one a page
+    /// or an extension opened (`BrowserView::adopted`). The page opened, when its opener's tab was
     /// found.
     pub(super) fn open_beside(
         &mut self,
@@ -252,6 +264,7 @@ impl Shell {
         let located = self.locate_view(view)?;
         let Place { project, .. } = self.profile_place(located)?;
         let by = view.read(cx).inspected().unwrap_or(view).read(cx).by();
+        let adopted = adopted.map(|pane| (pane, view.downgrade()));
         let opened = self.page_view(adopted, url, (&project, by), window, cx);
         let tab = Tab::Single(Pane::browser(opened.clone(), cx));
         match located.spot {
@@ -325,6 +338,9 @@ impl Shell {
         }
     }
 }
+
+#[cfg(test)]
+mod opened;
 
 #[cfg(test)]
 mod tests {
