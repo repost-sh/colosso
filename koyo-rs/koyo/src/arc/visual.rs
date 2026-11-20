@@ -6,7 +6,8 @@
 //! following the pane pressed in, ⌘L's launcher on a page, ⌥← and ⌥→ between projects and ⌥⇧←
 //! and ⌥⇧→ between spaces, in a composer and on the shortcuts page (`keys`), the pages pinned
 //! at the sidebar's head and the space's loose pages under them, pinned and kept by a drop,
-//! dragged, shown as the space changes, closed and put away (`pins`), and a project's worktrees
+//! dragged, shown as the space changes, closed and put away (`pins`), the loose pages half-way
+//! through a swipe, each space's own and shared (`loose_swipe`), and a project's worktrees
 //! under their headers, collapsed, opened, dragged and kept (`headers`). It shows a chat, so it
 //! runs on a data folder and an agent host of its own:
 //!
@@ -36,6 +37,7 @@ use crate::visual::{Drawn, Result, checkout};
 mod acts;
 mod headers;
 mod keys;
+mod loose_swipe;
 mod pins;
 
 /// Where the pictures go, relative to the checkout.
@@ -171,6 +173,7 @@ fn draw() -> Result<Vec<String>> {
     acts::address(&mut drawn, &mut said)?;
     keys::space_keys(&mut drawn, &mut said)?;
     pins::pins(&mut drawn, &mut said)?;
+    loose_swipe::loose_swipe(&mut drawn, &mut said)?;
     acts::stop_host(&mut said);
     drawn.cx.update(|cx| {
         settings::update(cx, |settings| settings.layout = Layout::Orca);

@@ -382,8 +382,16 @@ From the top: **[asked]**
    stay where they are as a space goes out and the next comes in.
 3. **The space's loose pages**, as rows: the pages open in this space that are no project's.
    Each space has its own, unless Settings → General → Unpinned pages shares them (11.3).
-4. **The open project**: its name and its worktrees with their tabs (sections 4, 5). The
-   loose pages and the project scroll together, between the pinned pages and the tiles.
+   Its own, they're the space's and swipe with it. Shared (2026-11-20, the owner: "when the
+   unpinned tabs are shared they should not swipe with the space, they should stay there like
+   the pinned ones on space change"), they're outside what swipes, as the pinned pages are,
+   and stay where they are as a space goes out and the next comes in, by a swipe, the keys or a
+   space's mark. **[asked]** Shared, they scroll on their own once they'd take more than 40 % of
+   the sidebar's height, so the space's project and tiles keep the rest (`arc/loose.rs`
+   `still`). **[ours: the 40 %]**
+4. **The open project**: its name and its worktrees with their tabs (sections 4, 5). A
+   space's own loose pages and the project scroll together, between the pinned pages and the
+   tiles.
 5. **The space's projects**, as tiles (section 3).
 6. The foot: the accounts, the spaces' marks, the + (section 7).
 
@@ -449,11 +457,14 @@ project's name would be (section 4). **[asked]**
     space's pages show together, in the order they had; back to per space, each space lists
     those filed under it, in the order the shared list had them. **[ours: filed where it was
     opened rather than where it was last seen]**
-  - Each space still shows the loose page it showed last. Shared, that can be one filed
-    under another space; back to per space, such a space shows its project's tab instead,
-    and the page is in its own space's list. Changing the setting leaves the page shown as
-    it is otherwise. **[ours: a space's own memory, rather than one page shown in every
-    space, as a pinned page is]**
+  - Shared, a loose page shown stays shown as the space changes, as a pinned page does
+    (11.4): the panes keep it, the keyboard where it was, and with none shown the next space
+    shows its project's tab rather than the loose page it showed last. Each space still
+    remembers the one it showed last, which is the one shown when it was left; back to per
+    space, a space that showed one filed under another shows its project's tab instead, and
+    the page is in its own space's list. Changing the setting leaves the page shown as it is
+    otherwise. **[asked, 2026-11-20, replacing a space's own memory while shared: "stay there
+    like the pinned ones on space change"]**
   - Picked where it's listed, by its row or ⌃⇥, a shared page shows in the space shown,
     which doesn't change; ⌘⇧T brings one back among the space shown's. **[ours]**
 - **Only pages.** No chat, terminal or file is loose: each needs a worktree to be in.
@@ -514,8 +525,9 @@ project's name would be (section 4). **[asked]**
   their tabs are a page and its `DevTools`, nothing more; a link from one opens a loose page;
   they keep their own profile's project; and app control's reach, below. A link from a loose
   page's `DevTools` now opens beside the page, as from the page, not after every loose page.
-- A loose page shown is its space's: another space shows what it showed last, shared or not
-  (11.3).
+- Per space, a loose page shown is its space's: another space shows what it showed last.
+  Shared, it's every space's, and switching space leaves it shown as it leaves a pinned
+  page, a click on a space's mark included (11.3, `Workspace::shown_in_every_space`).
 - Picking a tab of a worktree, or a project's tile, leaves a pinned or a loose page for that;
   so does anything else that shows a worktree's tab: ⌃⇥ picking one, a file opened, ⌘⇧T, a
   worktree's +, app control selecting a tab, worktree or project, ⌥← and ⌥→ (⌘⌥← and ⌘⌥→)

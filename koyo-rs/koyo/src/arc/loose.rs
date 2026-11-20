@@ -4,7 +4,8 @@
 //! a worktree's tabs, where it's a tab of that worktree, or onto the pinned pages, where it's
 //! pinned; and a page's tab from a worktree, or a pinned page's tile, let go on them is one of
 //! them. Right-clicked, a row is copied into the selected worktree. With none, there's no list:
-//! a dotted strip takes one that's in hand.
+//! a dotted strip takes one that's in hand. Each space's own, they're part of the space, and
+//! slide with it as it changes; shared, they stay where they are with the pinned pages.
 
 use std::rc::Rc;
 
@@ -13,6 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Div, InteractiveElement as _, IntoElement, MouseButton,
     ParentElement as _, Point, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
+    relative,
 };
 
 use super::actions::CopyToWorktree;
@@ -30,15 +32,50 @@ const LIST: u64 = u64::MAX;
 const GAP: f32 = 2.;
 /// Under the last of them, before the open project's name.
 const AFTER: f32 = 8.;
+/// The most of the sidebar's height the shared ones take before they scroll, so the space's
+/// project and tiles keep the rest.
+const MOST: f32 = 0.4;
 
-/// The loose pages of the space shown, in a list they're dragged along; with none, the strip
+/// The loose pages every space shares, which stay where they are as a space slides, as the
+/// pinned pages over them do: between those and the space, scrolling on their own once they'd
+/// take more than `MOST` of the sidebar. None while each space lists its own.
+pub fn still(
+    shell: &Shell,
+    taking: bool,
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Option<Stateful<Div>> {
+    if !shell.workspace.loose_shared() {
+        return None;
+    }
+    let list = list(shell, taking, look, cx)?;
+    let still = div()
+        .id("arc-loose-still")
+        .flex_shrink_0()
+        .max_h(relative(MOST))
+        .overflow_y_scroll()
+        .child(list);
+    Some(still)
+}
+
+/// The space's own loose pages, which slide with it, over its project. None while every space
+/// shares them.
+pub fn sliding(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Option<Div> {
+    if shell.workspace.loose_shared() {
+        return None;
+    }
+    let list = list(shell, taking, look, cx)?;
+    Some(div().flex_shrink_0().pb(px(AFTER)).child(list))
+}
+
+/// The loose pages the space shown lists, in a list they're dragged along; with none, the strip
 /// that takes one while something they'd take is in hand, and nothing otherwise. `taking` says
 /// something is: a page's tab off a worktree's list, or a pinned page's tile away from the
 /// others.
-pub fn list(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Option<Div> {
+fn list(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Option<AnyElement> {
     let pages = shell.workspace.loose();
     if pages.is_empty() {
-        return taking.then(|| div().pb(px(AFTER)).child(strip(look, cx)));
+        return taking.then(|| strip(look, cx).into_any_element());
     }
     let shown = shell.workspace.loose_shown();
     let rows = (pages.iter().enumerate())
@@ -51,7 +88,7 @@ pub fn list(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) ->
     });
     let hand = shell.tab_hand.clone();
     let list = Reorder::pages(LIST, rows, hand, px(GAP), Rc::new(on_drop));
-    Some(div().flex_shrink_0().pb(px(AFTER)).child(list))
+    Some(list.into_any_element())
 }
 
 /// Has `row` take what's let go on it for the loose pages, at `place` among them: a page's tab

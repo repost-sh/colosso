@@ -1,7 +1,8 @@
 //! Loose pages (`docs/arc-sidebar.md` 11): pages open in a space that are no project's, listed
 //! under the pinned pages and over the open project. Each is filed under a space; a space lists
 //! its own, or every space's while the settings share them (`settings::LoosePages`), in the
-//! order of their rows, and shows again the one it showed last when it's come back to. A loose
+//! order of their rows. Its own, a space shows again the one it showed last when it's come back
+//! to; shared, the one shown stays shown as the space changes, as a pinned one does. A loose
 //! page shown is the tab shown in place of the selected checkout's, until a tab of a checkout
 //! is; a pinned page shown is shown over both. Only pages are loose; one's `DevTools`, detached,
 //! split its tab as they split any page's. A page's tab moves between a checkout's tabs, the
@@ -147,10 +148,19 @@ impl Apart {
 
 impl Workspace {
     /// The space known by `space` is the one shown: its loose pages are the ones listed, and
-    /// the one it showed last shows again. Whether that's another space than was shown.
+    /// the one it showed last shows again. Shared, the loose page shown stays shown there, as a
+    /// pinned one does, and with none shown, its project's tab shows. Whether that's another
+    /// space than was shown.
     pub fn show_pages_of(&mut self, space: u64) -> bool {
-        let changed = self.apart.space != space;
-        self.apart.space = space;
+        let apart = &mut self.apart;
+        let changed = apart.space != space;
+        if changed && apart.shared {
+            match apart.shown.get(&apart.space).copied() {
+                Some(key) => apart.shown.insert(space, key),
+                None => apart.shown.remove(&space),
+            };
+        }
+        apart.space = space;
         changed
     }
 
@@ -160,6 +170,17 @@ impl Workspace {
         let changed = self.apart.shared != shared;
         self.apart.shared = shared;
         changed
+    }
+
+    /// Whether every space lists every loose page.
+    pub fn loose_shared(&self) -> bool {
+        self.apart.shared
+    }
+
+    /// Whether the page shown stays shown whichever space is: a pinned page, or a loose one
+    /// while every space shares them.
+    pub fn shown_in_every_space(&self) -> bool {
+        self.apart.pins.shown().is_some() || (self.apart.shared && self.loose_shown().is_some())
     }
 
     /// Whether the space shown lists the loose pages filed under the space known by `space`:
