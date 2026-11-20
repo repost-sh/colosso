@@ -1,7 +1,8 @@
 //! Pages a page opens (`pane/popups.rs`): a link to a new tab and a sign-in's popup each get a
 //! pane of their own and the page stays where it was; the popup keeps its opener, answers it
 //! and closes itself, and can't move the window it's in; a ⌘- or a middle click opens behind
-//! and a ⇧-click in front; a popup no gesture asked for is blocked.
+//! and a ⇧-click in front; a popup no gesture asked for is blocked; a link to a `data:` address
+//! in a new tab, which Chrome blocks, leaves the tab saying the address it's at.
 
 use koyo_browser_ipc::{HostEvent, PaneId};
 use std::time::{Duration, Instant};
@@ -13,7 +14,8 @@ use crate::support::{Session, close, evaluate, launch, open, serve};
 /// wide it is and closes, and every other path is titled with itself.
 const PAGE: &str = "<title>opener</title><body style='margin:0'>\
     <a id=plain href='/plain' style='display:block;width:200px;height:40px'>plain</a>\
-    <a id=blank href='/blank' target=_blank>blank</a><script>\
+    <a id=blank href='/blank' target=_blank>blank</a>\
+    <a id=data href='data:text/html,blocked' target=_blank>data</a><script>\
     if (location.pathname === '/popup') {\
       resizeTo(160, 120); setTimeout(() => {\
         opener.postMessage(['signed in', innerWidth], '*'); setTimeout(() => close(), 100);\
@@ -153,5 +155,32 @@ fn a_page_opens_tabs_beside_it_and_a_popup_keeps_its_opener() {
     assert_eq!(evaluate(&mut session, "location.pathname"), "/", "the page stayed where it was");
     let everywhere = (opened.tabs.iter().map(|(_, url, _)| url)).chain(opened.beside.iter().map(|(url, _)| url));
     assert!(everywhere.clone().all(|url| !url.ends_with("/unasked")), "{:?}", everywhere.collect::<Vec<_>>());
+    close(session, &launch);
+}
+
+#[test]
+#[ignore = "Needs a packaged browser engine; see the module docs"]
+fn a_new_tab_whose_data_address_chrome_blocks_says_the_address_it_is_at() {
+    let launch = launch("popups-data");
+    let mut session = Session::start(&launch);
+    let address = serve(PAGE);
+    open(&mut session, &address, "opener");
+    let mut opened = Opened::default();
+    with_gesture(&mut session, &mut opened, 101, "document.getElementById('data').click()");
+    until(&mut session, &mut opened, "the link's tab", |opened| opened.tab("blocked").is_some());
+    let (tab, _) = opened.tab("blocked").expect("the link's tab");
+    let mut last = None;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let settled = session.pump(deadline, |event| {
+        opened.note(event);
+        match event {
+            HostEvent::Page { pane, state } if *pane == tab => {
+                last = Some((state.url.clone(), state.loading));
+                !state.loading && state.url == "about:blank"
+            }
+            _ => false,
+        }
+    });
+    assert!(settled, "the tab says where its page is, about:blank, as Chrome does: it said {last:?}");
     close(session, &launch);
 }

@@ -52,10 +52,11 @@ pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Connection> {
         .to_path_buf();
     let profiles = launch.profiles.clone();
     let embedded = Embedded {
-        start: Box::new(move |stream, token| {
+        start: Box::new(move |stream, token, clock| {
             koyo_browser_host::embedded::start(koyo_browser_host::embedded::Start {
                 stream,
                 token,
+                clock,
                 profiles,
                 engine,
             });

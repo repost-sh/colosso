@@ -37,12 +37,15 @@ pub use panes::{iphone, terminals_listed};
 pub use started::init_settings;
 pub use started::init;
 
-/// A folder for one test under the target folder, empty.
+/// A folder for one test under the target folder, empty, named after `name` and a number of its
+/// own: two tests that pick one name don't empty each other's folder while both run.
 #[cfg(test)]
 pub fn scratch(name: &str) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let next = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let root = Path::new(env!("KOYO_TARGET_DIR"))
         .join("test-repos")
-        .join(format!("{name}-{}", std::process::id()));
+        .join(format!("{name}-{}-{next}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     std::fs::canonicalize(root).unwrap()

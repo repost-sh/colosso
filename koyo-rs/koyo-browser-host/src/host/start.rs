@@ -202,6 +202,7 @@ impl Steps {
 /// waits for the main thread.
 pub(crate) struct Readied {
     reader: UnixStream,
+    clock: ipc::client::StartClock,
     root: Root,
     steps: Steps,
     posted: Instant,
@@ -219,6 +220,7 @@ pub(crate) fn ready_embedded(
     let crate::embedded::Start {
         stream,
         token,
+        clock,
         profiles,
         engine,
     } = start;
@@ -236,6 +238,7 @@ pub(crate) fn ready_embedded(
     let root = readied.map_err(said)?;
     Ok(Readied {
         reader,
+        clock,
         root,
         steps,
         posted: Instant::now(),
@@ -247,6 +250,7 @@ pub(crate) fn ready_embedded(
 pub(crate) fn run_embedded(readied: Readied) -> Result<(), String> {
     let Readied {
         reader,
+        clock,
         root,
         mut steps,
         posted,
@@ -256,7 +260,7 @@ pub(crate) fn run_embedded(readied: Readied) -> Result<(), String> {
     let started = (|| {
         steps.time("adopt", crate::embedded::adopt_app)?;
         let args: &'static Args = Box::leak(Box::new(Args::new()));
-        steps.time("initialize", || initialize(args, &root))?;
+        steps.time("initialize", || clock.stopped_during(|| initialize(args, &root)))?;
         crate::embedded::pump::started();
         steps.time("serve", || serve(reader))
     })();

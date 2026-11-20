@@ -1,26 +1,29 @@
 //! Files an agent gives a page (`browser_upload`): only from its own worktree's checkout, the
 //! files it works on, never anything else of the person's. Its worktree is the one of the chat
-//! or the terminal it names, as Koyo has it (`root.rs`), never the folder its hello names. That
-//! keeps an agent's mistakes, and a page steering it, inside its worktree; it doesn't hold
-//! against an agent bent on getting out, which Koyo's tools let run commands. Each path is
-//! checked off the main thread and the page given a copy (`given`): set on a file input over the
-//! protocol (`DOM.setFileInputFiles`), or given to the file chooser the page waits on for it,
-//! that same one (`browser/agent/choosing.rs`).
+//! or the terminal it names, as Koyo has it ([`Claimed`]), never the folder its hello names: a
+//! caller that names neither gives no files, and is told why. That keeps an agent's mistakes,
+//! and a page steering it, inside its worktree; it doesn't hold against an agent bent on
+//! getting out, which Koyo's tools let run commands, and anything may name any chat or
+//! terminal. Each path is checked off the main thread and the page given a copy (`given`): set
+//! on a file input over the protocol (`DOM.setFileInputFiles`), or given to the file chooser the
+//! page waits on for it, that same one (`browser/agent/choosing.rs`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui_kit::App;
+use koyo_agent::protocol::ids::ThreadId;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::BrowserUploadInput;
 use koyo_browser_ipc::FileMode;
+use koyo_term_control::Handle;
 
-use super::super::{Caller, Exec, output};
+use super::super::select::holding;
+use super::super::{Caller, Exec, main_shell, output, window_closed};
 use super::acts::on_page;
 use super::frames::{Named, set_files};
 use super::page::now;
 use super::refusals;
-use super::root::Claimed;
 use crate::blocking::{self, Blocking};
 
 mod given;
@@ -84,6 +87,58 @@ pub(crate) fn upload(
     )
 }
 
+/// Where the chat or terminal a caller names runs, as Koyo has it, and every checkout Koyo
+/// has: what its worktree is found from, off the main thread.
+struct Claimed {
+    /// Its chat's folder, or its terminal's worktree.
+    at: PathBuf,
+    checkouts: Vec<PathBuf>,
+}
+
+impl Claimed {
+    /// Where the chat or terminal `caller` names runs.
+    fn of(caller: &Caller, cx: &App) -> Result<Claimed, ControlError> {
+        let (_, shell) = main_shell(cx).ok_or_else(window_closed)?;
+        let shell = shell.read(cx);
+        let at = if let Some(id) = &caller.chat {
+            let chats = shell.chats().read(cx);
+            (chats.summary(&ThreadId(id.clone()))).map(|chat| PathBuf::from(&chat.cwd))
+        } else if let Some(handle) = &caller.terminal {
+            let named = shell.terminal_named(&Handle(handle.clone()));
+            named.and_then(|(_, worktree)| worktree.map(Path::to_path_buf))
+        } else {
+            return Err(unnamed());
+        };
+        let checkouts = (shell.workspace.projects.iter())
+            .flat_map(|project| project.branches.iter())
+            .map(|unit| unit.worktree.path.clone())
+            .collect();
+        Ok(Claimed {
+            at: at.ok_or_else(nowhere)?,
+            checkouts,
+        })
+    }
+
+    /// The checkout of the worktree.
+    fn root(&self, may: Blocking<'_>) -> Result<PathBuf, ControlError> {
+        let at = holding(&self.checkouts, &self.at, may).ok_or_else(nowhere)?;
+        Ok(self.checkouts[at].clone())
+    }
+}
+
+/// What a caller that names no Koyo chat or terminal is told.
+fn unnamed() -> ControlError {
+    ControlError::not_found(
+        "You name no Koyo chat or terminal (KOYO_CHAT, KOYO_TERMINAL), so no worktree is known as yours, and what a client says of its folder doesn't make one: browser_upload, which gives a page only your worktree's files, is refused.",
+    )
+}
+
+fn nowhere() -> ControlError {
+    ControlError::not_found(
+        "The chat or terminal you run in is in no checkout of a project Koyo has, so no worktree is known as yours: browser_upload, which gives a page only your worktree's files, is refused.",
+    )
+}
+
 fn nothing_asked(pane: u64) -> ControlError {
     ControlError::not_found(format!(
         "Pane {pane}'s page isn't asking for files: name the `<input type=file>` with `ref` or `selector`, or have the page open its file chooser first, as a browser_click on the input does."
@@ -124,5 +179,5 @@ fn data_folder(_: Blocking<'_>) -> Option<PathBuf> {
 #[cfg(test)]
 #[expect(clippy::unnecessary_wraps, reason = "the same as the shipped build's, which may have none")]
 fn data_folder(_: Blocking<'_>) -> Option<PathBuf> {
-    Some(std::path::Path::new(env!("KOYO_TARGET_DIR")).join("test-data"))
+    Some(Path::new(env!("KOYO_TARGET_DIR")).join("test-data"))
 }

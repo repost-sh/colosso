@@ -134,9 +134,9 @@ pub(crate) struct Control {
     http_error: Option<String>,
     /// The terminal daemon's client, to tell an agent's terminal is real; made on first use.
     terminal_client: Option<Arc<TermClient>>,
-    /// Terminals tests say exist, as no daemon runs in them.
+    /// The terminals tests say the daemon runs, as no daemon runs in them.
     #[cfg(test)]
-    pub(crate) test_terminals: std::collections::HashSet<String>,
+    pub(crate) test_terminals: Vec<koyo_term_control::TerminalRecord>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -247,7 +247,7 @@ fn install(cx: &mut App) -> UnboundedReceiver<Request> {
         http_error: None,
         terminal_client: None,
         #[cfg(test)]
-        test_terminals: std::collections::HashSet::new(),
+        test_terminals: Vec::new(),
         _subscriptions: vec![shells, settings],
     });
     received

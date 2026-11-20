@@ -158,6 +158,20 @@ Pick the channel by what the journey has to prove.
 `app` and `mcp` run the bundle's own `koyo app` / `koyo mcp` in a clean environment (`env -i`).
 Only `KOYO_DATA_DIR` of the test instance is set, so no `KOYO_CHAT` or `KOYO_TERMINAL` of your
 own Koyo leaks into the hello. Failures print `{"error":{code,message,retryable}}` and exit 1.
+They run in the fixture's repo, the test project, so `$B mcp terminal_open` with no worktree
+opens there.
+
+`$B app` names no chat or terminal, so it has no worktree of its own, and `browser_upload`,
+which gives a page only the caller's worktree's files, is refused. Call as a terminal of the
+test project's: open one with `$B mcp terminal_open '{"name":"verify"}'`, then pass its handle
+in `VERIFY_TERMINAL`, which `app` and `mcp` hand on as `KOYO_TERMINAL`:
+
+```sh
+VERIFY_TERMINAL=term_01… $B app browser_upload '{"pane":3,"paths":["<fixture>/notes.txt"]}'
+```
+
+`<fixture>` is the fixture repo `$B paths` names.
+
 Changing operations take `select`. Left out, nothing is shown (`showWhatAgentsOpen` is off),
 so pass `"select": true` when the journey needs the window to switch.
 
@@ -175,7 +189,7 @@ and `wait <ms>` pauses between them.
 | `pages` | one line per native page: `page <hostPane>: views in <class> visible …, drawn by a pane …, on screen for the engine …` | `<hostPane>` is the engine's id, not `tab_list`'s pane |
 | `click x y [window#]`, `rclick x y`, `rdown x y`, `move x y`, `hover x y` | `clicked`, …; `hover` prints `over <ViewClass>` | Points are window points from the top left. Use `hover` to check what is under a point before you click it |
 | `type <text>` | `typed` | Key down and up per character, to the first responder, every one with key code 0 |
-| `key <code> <chars> [cmd shift ctrl alt]` | `taken by the window as a key equivalent`, `taken by the menu as a key equivalent`, or `to the first responder` | Common codes are below |
+| `key <code> <chars> [cmd shift ctrl alt]` | `taken by the window as a key equivalent`, `taken by the menu as a key equivalent`, or `to the first responder` | `<chars>` as written, or in double quotes with `\r`, `\t`, `\e`, `\n`, `\\`. Common codes are below |
 | `shot <name> [window#]` | `saved <probe>/<name>.png` | Use `$B shot`, which moves the picture into the run |
 | `eval <hostPane> <script>` | the CDP `Runtime.evaluate` answer | Works on any page, a pinned one too |
 | `views`, `layers`, `cursor` | the view tree, the layers, the cursor | |
@@ -186,7 +200,10 @@ and `wait <ms>` pauses between them.
 
 Key codes (macOS virtual keys): Return 36, Tab 48, Escape 53, Delete 51, Space 49, A 0, L 37,
 T 17, W 13, = 24, 0 29, ← 123, → 124, ↓ 125, ↑ 126. For example, ⌘L is `key 37 l cmd`, ⌃Tab is
-`key 48 "\t" ctrl` (the chars are a tab), and Return is `key 36 "\r"`.
+`key 48 "\t" ctrl` (the chars are a tab), and Return is `key 36 "\r"`. Before 2026-11-20 the
+probe took the quotes and the backslash as characters and typed them into the page; `key 36`
+with no characters submits nothing. A Return that has to submit a page's form is proven only
+through `desktop_key` (key `return`), which the window server delivers as a keyboard's.
 
 ### Finding a point to click
 

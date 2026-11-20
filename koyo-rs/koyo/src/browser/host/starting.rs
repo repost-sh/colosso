@@ -27,7 +27,7 @@ impl Browsers {
         let launch = match launch {
             Ok(launch) => launch,
             Err(why) => {
-                self.fail(why, cx);
+                self.fail(&why, cx);
                 return;
             }
         };
@@ -93,7 +93,7 @@ impl Browsers {
         let (connection, writer) = match writer {
             Ok(started) => started,
             Err(error) => {
-                self.fail(format!("The browser engine did not start: {error}"), cx);
+                self.fail(&format!("The browser engine did not start: {error}."), cx);
                 return None;
             }
         };
@@ -129,18 +129,19 @@ impl Browsers {
     }
 
     /// The running host went away on its own. It can't be started again in this process:
-    /// the panes say so.
+    /// the panes say so, and that quitting Koyo and opening it again does.
     pub(super) fn stopped(&mut self, cx: &mut Context<Self>) {
         if matches!(self.host, Host::Running { .. }) {
-            self.fail(
-                "The browser engine stopped. Restart Koyo to bring its pages back.".into(),
-                cx,
-            );
+            self.fail("The browser engine stopped.", cx);
         }
     }
 
-    fn fail(&mut self, message: String, cx: &mut Context<Self>) {
-        log::warn!("{message}");
+    /// The engine didn't start, or stopped, for the reason `why`: its panes say so, and what
+    /// starts it again.
+    fn fail(&mut self, why: &str, cx: &mut Context<Self>) {
+        log::warn!("{why}");
+        let stop = if why.ends_with('.') { "" } else { "." };
+        let message = format!("{why}{stop} {}", super::STARTS_AGAIN);
         self.asked_at = None;
         self.drop_calls(&message);
         self.host = Host::Failed(message);

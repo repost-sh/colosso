@@ -89,7 +89,7 @@ fn watch_wakes() -> Result<(), String> {
 }
 
 /// Waits `long` on the thread that drives the engine.
-fn idle(long: Duration) {
+pub fn idle(long: Duration) {
     let (_never, tick) = mpsc::channel::<()>();
     let _ = tick.recv_timeout(long);
 }

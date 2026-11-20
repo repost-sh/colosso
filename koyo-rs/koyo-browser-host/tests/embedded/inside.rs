@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use koyo_browser_host::embedded;
 use koyo_browser_ipc::client::{Connection, Embedded, Incoming, Launch};
-use koyo_browser_ipc::{AppRequest, HostEvent, Viewport};
+use koyo_browser_ipc::{AppRequest, HostEvent, PaneId, Viewport};
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, NSObjectProtocol};
 use objc2::{ClassType, MainThreadMarker, define_class, msg_send};
@@ -51,7 +51,7 @@ const PATIENCE: Duration = Duration::from_secs(30);
 type Step = fn(&mut Connection, &Receiver<Incoming>) -> Result<(), String>;
 
 /// The tests, by name, each with what it has the page do.
-pub const TESTS: [(&str, Step); 4] = [
+pub const TESTS: [(&str, Step); 5] = [
     (
         "a_page_loads_and_draws_in_the_engine_started_in_this_process",
         load_and_draw,
@@ -67,6 +67,10 @@ pub const TESTS: [(&str, Step); 4] = [
     (
         "a_bubble_goes_with_its_page_out_of_the_app_window_and_back",
         crate::bubbles::leave_and_return,
+    ),
+    (
+        "a_page_leaving_the_app_window_turns_hidden_once",
+        crate::sight::left,
     ),
 ];
 
@@ -129,10 +133,11 @@ fn drive(scratch: &Path, step: Step) -> Result<(), String> {
     let sink = move |message| sink.send(message).err().map(|unsent| unsent.0);
     let profiles = launch.profiles.clone();
     let embedded = Embedded {
-        start: Box::new(move |stream, token| {
+        start: Box::new(move |stream, token, clock| {
             embedded::start(embedded::Start {
                 stream,
                 token,
+                clock,
                 profiles,
                 engine,
             });
@@ -155,6 +160,11 @@ fn drive(scratch: &Path, step: Step) -> Result<(), String> {
 
 /// Opens the page as pane 1 and waits for it to load.
 pub fn open(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
+    open_as(host, incoming, 1)
+}
+
+/// Opens the page as `pane` and waits for it to load.
+pub fn open_as(host: &mut Connection, incoming: &Receiver<Incoming>, pane: PaneId) -> Result<(), String> {
     let asked = Instant::now();
     let viewport = Viewport {
         width: 400,
@@ -162,15 +172,15 @@ pub fn open(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), 
         scale: 1.,
     };
     let open = AppRequest::Open {
-        pane: 1,
+        pane,
         url: PAGE.into(),
         viewport,
         profile: "embedded".into(),
     };
     host.send(&open).map_err(|error| format!("open: {error}"))?;
     wait(incoming, "the page to load", |event| {
-        let loaded = matches!(event, HostEvent::Page { pane: 1, state }
-            if state.title == "embedded" && !state.loading);
+        let loaded = matches!(event, HostEvent::Page { pane: loading, state }
+            if *loading == pane && state.title == "embedded" && !state.loading);
         loaded.then_some(())
     })?;
     eprintln!(
@@ -220,7 +230,7 @@ fn load_and_draw(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result
 }
 
 /// What the engine sends until `want` takes an event, for [`PATIENCE`] at most.
-fn wait<T>(
+pub fn wait<T>(
     incoming: &Receiver<Incoming>,
     what: &str,
     mut want: impl FnMut(&HostEvent) -> Option<T>,

@@ -9,6 +9,8 @@ use crate::browser::control::{Leased as _, Mode};
 use crate::browser::host::HostStatus;
 use crate::test_support::{draw, in_window};
 
+mod keys;
+
 /// A start page in a window of its own. A test names no engine, so the host it starts
 /// fails to.
 fn start_page(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<BrowserView>) {
@@ -33,6 +35,18 @@ fn a_new_tab_is_a_start_page_nobody_holds_until_the_person_acts(cx: &mut TestApp
     view.read_with(cx, |view, _| assert!(view.lease.control.person_holds()));
     view.update(cx, BrowserView::give_back);
     view.read_with(cx, |view, _| assert!(view.lease.control.holder.is_none()));
+}
+
+/// The engine starts once while Koyo runs, so a page whose engine didn't start says what
+/// starts it again: Koyo quit and opened again.
+#[gpui_kit::test]
+fn a_page_whose_engine_did_not_start_says_what_starts_it_again(cx: &mut TestAppContext) {
+    let (_, view) = start_page(cx);
+    let status = view.read_with(cx, BrowserView::status);
+    let HostStatus::Failed(message) = status else {
+        panic!("a test's engine never starts: {status:?}");
+    };
+    assert!(message.ends_with(crate::browser::STARTS_AGAIN), "{message}");
 }
 
 #[gpui_kit::test]

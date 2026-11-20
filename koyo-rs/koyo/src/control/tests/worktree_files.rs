@@ -1,19 +1,17 @@
-//! The one folder of the person's the browser tools let an agent hand a page or read a `file:`
-//! page from: the worktree of the chat or terminal it names, as Koyo has it, and none for a
-//! caller that names neither, whatever folder its hello gives.
+//! The one folder of the person's an agent gives a page files from (`browser_upload`): the
+//! worktree of the chat or terminal it names, as Koyo has it, and none for a caller that names
+//! neither or one Koyo doesn't know, whatever folder its hello gives.
 
 use std::path::Path;
 
 use gpui_kit::TestAppContext;
-use koyo_app_control::{ControlError, Scope};
-use koyo_browser_ipc::{AppRequest, HostEvent, PageState, PaneId};
+use koyo_app_control::{ErrorCode, Scope};
 use koyo_term_control::Status;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::{Rig, allow, call, controlled, external, op, send, taken, terminal};
-use crate::browser::FakeHost;
-use crate::control::Caller;
-use crate::test_support::{draw, repo, scratch, select, terminal_record};
+use super::{Rig, allow, call, controlled, external, hello, terminal};
+use crate::control::{Caller, Control};
+use crate::test_support::{repo, select, terminal_record};
 
 /// An agent in Koyo terminal `term_1`, which runs in the checkout at `root` as the window has it.
 fn agent_in(rig: &Rig, root: &Path, cx: &mut TestAppContext) -> Caller {
@@ -59,90 +57,46 @@ fn a_caller_naming_no_chat_or_terminal_uploads_nothing(cx: &mut TestAppContext) 
     );
 }
 
-/// A page of `agent`'s on `host`: the page's pane, and the host's number for it.
-fn page_on(host: &FakeHost, rig: &Rig, agent: &Caller, cx: &mut TestAppContext) -> (u64, PaneId) {
-    let opening = json!({ "kind": "browser", "url": "https://a.example/", "select": true });
-    let pane = call(agent, "tab_open", opening, cx).unwrap()["pane"].as_u64().unwrap();
-    draw(rig.window, cx);
-    let opened = (host.asked(cx).into_iter())
-        .find_map(|asked| match asked {
-            AppRequest::Open { pane, .. } => Some(pane),
-            _ => None,
-        })
-        .expect("the page opens in the host");
-    (pane, opened)
-}
-
-/// The page went to `url` by itself, as a page may go from one `file:` page to another.
-fn went(host: &FakeHost, opened: PaneId, url: &str, cx: &mut TestAppContext) {
-    let state = PageState {
-        url: url.into(),
-        ..PageState::default()
+#[gpui_kit::test]
+fn an_agent_gives_files_only_from_the_worktree_of_a_chat_or_terminal_koyo_knows(cx: &mut TestAppContext) {
+    let root = repo("control-upload-root", &[("README.md", "hi\n")]);
+    let rig = controlled("control-upload-root", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let says = Caller {
+        worktree: Some(root.clone()),
+        cwd: Some(root.clone()),
+        ..terminal("term_nobody")
     };
-    host.says(HostEvent::Page { pane: opened, state }, cx);
-}
-
-/// What `agent`'s `operation` on pane `pane` answers, the host answering what it's asked; and
-/// whether it asked the host anything.
-fn reads(
-    host: &FakeHost,
-    agent: &Caller,
-    (operation, input): (&str, Value),
-    cx: &mut TestAppContext,
-) -> (Result<Value, ControlError>, bool) {
-    let slot = send(agent, None, op(operation, input), cx);
-    let mut asked = false;
-    for _ in 0..10 {
-        let sent = host.answers(cx, |_, _, _| Ok(json!({ "result": { "type": "string", "value": "read" } })));
-        asked |= sent.iter().any(|sent| matches!(sent, AppRequest::Cdp { .. } | AppRequest::Navigate { .. }));
-        if let Some(answer) = taken(&slot) {
-            return (answer, asked);
-        }
-    }
-    panic!("{operation} wasn't answered");
+    let opening = json!({ "kind": "browser", "url": "https://example.com/" });
+    let pane = call(&says, "tab_open", opening, cx).unwrap()["pane"].clone();
+    let upload = json!({ "pane": pane, "paths": ["README.md"] });
+    let refused = call(&says, "browser_upload", upload, cx).unwrap_err();
+    assert_eq!(refused.code, ErrorCode::NotFound, "{}", refused.message);
+    assert!(
+        refused.message.contains("no worktree is known as yours"),
+        "the worktree its hello names is its own word: {}",
+        refused.message
+    );
 }
 
 #[gpui_kit::test]
-fn an_agent_reads_and_opens_no_file_page_outside_its_worktree(cx: &mut TestAppContext) {
-    let root = repo("control-file-pages", &[("index.html", "<p>mine</p>\n")]);
-    let outside = scratch("control-file-pages-outside");
-    std::fs::write(outside.join("id_ed25519"), "key").unwrap();
-    let rig = controlled("control-file-pages", &[&root], cx);
+fn a_terminal_the_daemon_runs_that_the_window_never_heard_of_gives_files_once_it_says_hello(
+    cx: &mut TestAppContext,
+) {
+    let root = repo("control-upload-daemons", &[("README.md", "hi\n")]);
+    let rig = controlled("control-upload-daemons", &[&root], cx);
     select(&rig.shell, &root, cx);
-    let agent = agent_in(&rig, &root, cx);
-    let host = FakeHost::serve("control-file-pages-host", cx);
-    let (pane, opened) = page_on(&host, &rig, &agent, cx);
-    let read = || ("browser_read", json!({ "pane": pane }));
-
-    let secret = format!("file://{}", outside.join("id_ed25519").display());
-    went(&host, opened, &secret, cx);
-    for tool in [read(), ("browser_eval", json!({ "pane": pane, "expression": "1" }))] {
-        let (answer, asked) = reads(&host, &agent, tool, cx);
-        let refused = answer.unwrap_err();
-        assert!(refused.message.contains("outside your worktree"), "{}", refused.message);
-        assert!(!asked, "the page is asked nothing");
-    }
-    let navigate = ("browser_navigate", json!({ "pane": pane, "url": secret, "wait": "none" }));
-    let (answer, asked) = reads(&host, &agent, navigate, cx);
-    assert!(answer.unwrap_err().message.contains("outside your worktree"));
-    assert!(!asked, "the page goes nowhere");
-
-    let mine = format!("file://{}", root.join("index.html").display());
-    went(&host, opened, &mine, cx);
-    let (answer, asked) = reads(&host, &agent, read(), cx);
-    assert!(answer.is_ok() && asked, "a page of its worktree is read: {answer:?}");
-    let navigate = ("browser_navigate", json!({ "pane": pane, "url": mine, "wait": "none" }));
-    let (answer, asked) = reads(&host, &agent, navigate, cx);
-    assert!(answer.is_ok() && asked, "and opened: {answer:?}");
-
-    let says = outsider(&root, cx);
-    let (pane, opened) = page_on(&host, &rig, &says, cx);
-    went(&host, opened, &mine, cx);
-    let (answer, asked) = reads(&host, &says, ("browser_read", json!({ "pane": pane })), cx);
-    let refused = answer.unwrap_err();
-    assert!(refused.message.contains("You name no Koyo chat or terminal"), "{}", refused.message);
-    assert!(!asked, "a caller of no worktree reads no file: page");
-    went(&host, opened, "https://a.example/", cx);
-    let (answer, _) = reads(&host, &says, ("browser_read", json!({ "pane": pane })), cx);
-    assert!(answer.is_ok(), "a web page needs no worktree: {answer:?}");
+    let record = terminal_record("term_9", &root.to_string_lossy(), Status::Idle, "");
+    cx.update(|cx| Control::get_mut(cx).test_terminals.push(record));
+    let agent = terminal("term_9");
+    hello(&agent, cx).expect("the daemon runs it");
+    let opening = json!({ "kind": "browser", "url": "https://example.com/" });
+    let pane = call(&agent, "tab_open", opening, cx).unwrap()["pane"].clone();
+    let refused = call(&agent, "browser_upload", json!({ "pane": pane, "paths": ["README.md"] }), cx)
+        .unwrap_err();
+    assert!(
+        refused.message.contains("isn't asking for files"),
+        "its worktree is known, and the page asks for none: {}",
+        refused.message
+    );
 }

@@ -25,6 +25,10 @@ mod starting;
 #[cfg(test)]
 mod tests;
 
+/// What starts the engine again once it failed to start or stopped: it starts once while Koyo
+/// runs, in Koyo's own process, which CEF can't start twice.
+pub const STARTS_AGAIN: &str = "It starts again when Koyo is quit and opened again.";
+
 /// How long a quitting host may take to close its pages.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// How long a host may take to start before its panes say so: a start this quick shows as

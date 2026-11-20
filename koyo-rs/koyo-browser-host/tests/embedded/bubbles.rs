@@ -91,7 +91,7 @@ fn holder(main: MainThreadMarker) -> Option<Retained<NSWindow>> {
 }
 
 /// A borderless window of `size`, off every screen.
-fn made(main: MainThreadMarker, size: NSSize) -> Retained<NSWindow> {
+pub fn made(main: MainThreadMarker, size: NSSize) -> Retained<NSWindow> {
     let frame = NSRect::new(AWAY, size);
     // SAFETY: `NSWindow`'s initializer, with a borderless style, a buffered backing store and
     // no deferring, on the main thread.

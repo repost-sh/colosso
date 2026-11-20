@@ -1,10 +1,13 @@
 //! A page out of sight is on screen for the engine while an agent's command on it runs, and
-//! for a few seconds after, then rests.
+//! for a few seconds after, then rests; the page of a tab the person leaves is told so once.
 
 use std::path::Path;
 use std::time::Duration;
 
-use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext, px, size};
+use gpui_kit::{
+    AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, TestAppContext,
+    VisualTestContext, px, size,
+};
 use koyo_browser_ipc::{AppRequest, HostEvent, PaneId};
 use serde_json::json;
 
@@ -12,7 +15,10 @@ use super::AWAKE_AFTER;
 use crate::browser::agent;
 use crate::browser::host::fake::FakeHost;
 use crate::browser::view::BrowserView;
-use crate::test_support::{draw, in_window, on_screen};
+use crate::settings::Layout;
+use crate::test_support::{
+    center_of, click_pane, draw, hover, in_front, in_window, on_screen, open_page_view, shell_on,
+};
 
 /// How long a command waits for the page in these tests.
 const LIMIT: Duration = Duration::from_secs(30);
@@ -107,4 +113,56 @@ fn a_page_the_person_sees_stays_on_screen_after_an_agents_command(cx: &mut TestA
     drop(answer.expect("the page takes commands"));
     cx.executor().advance_clock(LIMIT + AWAKE_AFTER + Duration::from_secs(1));
     assert_eq!(told(&host.asked(cx), pane), [false; 0], "shown, it never rests");
+}
+
+/// Two pages in tabs of their own, the second shown, its page with the keyboard: the window,
+/// the host and the two pages' panes.
+fn two_tabs(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, FakeHost, PaneId, PaneId) {
+    let (window, shell, _) = shell_on(name, Layout::Orca, cx);
+    let host = FakeHost::serve(&format!("{name}-host"), cx);
+    let first = open_page_view(window, &shell, "https://a.example/", cx);
+    let second = open_page_view(window, &shell, "https://b.example/", cx);
+    in_front(window, true, cx);
+    let shown = second.read_with(cx, |view, _| view.pane);
+    click_pane(window, shell.read_with(cx, |shell, _| shell.shown_tab_key()).expect("a tab shown"), cx);
+    host.asked(cx);
+    (window, host, first.read_with(cx, |view, _| view.pane), shown)
+}
+
+#[gpui_kit::test]
+fn the_page_of_a_tab_the_person_leaves_is_told_out_of_sight_once(cx: &mut TestAppContext) {
+    let (window, host, first, left) = two_tabs("sight-leave", cx);
+    let tab = center_of(window, "tab-0-0-0", cx);
+    hover(window, tab, cx);
+    draw(window, cx);
+    let mut visual = VisualTestContext::from_window(window, cx);
+    visual.simulate_mouse_down(tab, MouseButton::Left, Modifiers::default());
+    draw(window, cx);
+    let pressed = host.asked(cx);
+    assert_eq!(told(&pressed, left), [false; 0], "a press on a tab leaves nothing yet: {pressed:?}");
+    let mut visual = VisualTestContext::from_window(window, cx);
+    visual.simulate_mouse_up(tab, MouseButton::Left, Modifiers::default());
+    for _ in 0..3 {
+        draw(window, cx);
+    }
+    let asked = host.asked(cx);
+    assert_eq!(told(&asked, left), [false], "the page left is told once: {asked:?}");
+    assert_eq!(told(&asked, first), [true], "the page come to is told once: {asked:?}");
+}
+
+#[gpui_kit::test]
+fn the_page_of_a_tab_left_by_a_press_and_release_at_once_is_told_out_of_sight_once(
+    cx: &mut TestAppContext,
+) {
+    let (window, host, first, left) = two_tabs("sight-leave-at-once", cx);
+    let tab = center_of(window, "tab-0-0-0", cx);
+    let mut visual = VisualTestContext::from_window(window, cx);
+    visual.simulate_mouse_move(tab, None, Modifiers::default());
+    visual.simulate_click(tab, Modifiers::default());
+    for _ in 0..3 {
+        draw(window, cx);
+    }
+    let asked = host.asked(cx);
+    assert_eq!(told(&asked, left), [false], "the page left is told once: {asked:?}");
+    assert_eq!(told(&asked, first), [true], "the page come to is told once: {asked:?}");
 }

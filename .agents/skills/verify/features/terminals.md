@@ -24,12 +24,14 @@ terminals through the `terminal_*` tools.
 
 ## Driving it with koyo-verify
 
-Preconditions: the baseline. Always give a command: `["/bin/zsh","-f"]` reads no rc file and
-saves no history.
+Preconditions: the baseline. Always give a command: `/bin/zsh -f` reads no rc file and saves
+no history. `terminal_open` takes a command as an array, run as it is, or as a string. A string
+is a command line, run by the login shell as `$SHELL -lc <command>`, so the login shell's rc
+files run first. `tab_open` takes only a string, so it gets `exec /bin/zsh -f`.
 
 - **Open.** `$B mcp terminal_open '{"name":"verify","command":["/bin/zsh","-f"]}'` answers with
   the terminal's handle. `$B app tab_list '{}'` lists its tab. Alternatively,
-  `$B app tab_open '{"kind":"terminal","command":["/bin/zsh","-f"],"select":true}'`.
+  `$B app tab_open '{"kind":"terminal","command":"exec /bin/zsh -f","select":true}'`.
 - **Send and read as an agent.**
   `$B mcp terminal_send '{"terminal":"<handle>","text":"echo verify-$((6*7))","enter":true,"then":{"wait":{"for":"text","pattern":"verify-42"},"read":{"mode":"screen"}}}'`.
   The screen holds `verify-42`.

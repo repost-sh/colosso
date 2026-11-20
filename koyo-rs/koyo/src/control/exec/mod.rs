@@ -56,19 +56,8 @@ impl From<Result<Exec, ControlError>> for Exec {
     }
 }
 
-/// Carries out `command` for `caller`, once Koyo checked a page it opens is one it may open
-/// (`browser/root.rs`).
+/// Carries out `command` for `caller`.
 pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
-    let opens = match &command {
-        Command::BrowserNavigate(input) => Some(input.url.clone()),
-        Command::TabOpen(input) => input.url.clone(),
-        Command::PaneSplit(input) => input.url.clone(),
-        _ => None,
-    };
-    browser::opening(caller, opens, cx, move |caller, cx| carry_out(caller, command, cx))
-}
-
-fn carry_out(caller: &Caller, command: Command, cx: &mut App) -> Exec {
     use Command as C;
     match command {
         C::AppStatus(_) => Exec::Ready(status_value(cx)),

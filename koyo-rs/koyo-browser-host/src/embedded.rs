@@ -31,6 +31,8 @@ pub struct Start {
     pub stream: UnixStream,
     /// The token the app says hello with.
     pub token: String,
+    /// What the app times the start by, stopped while CEF starts on the main thread.
+    pub clock: ipc::client::StartClock,
     /// CEF's root cache: one folder per profile inside it.
     pub profiles: PathBuf,
     /// The engine's `Koyo Browser Host.app`, which carries CEF and its helpers. The app has

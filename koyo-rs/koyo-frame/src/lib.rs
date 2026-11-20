@@ -149,7 +149,24 @@ pub fn hello<H>(
     read_one: impl FnOnce(&mut &[u8]) -> io::Result<Option<(u32, H)>>,
 ) -> io::Result<H> {
     let at = Instant::now() + within;
-    let frame = next(&mut Deadline { stream, at }, HELLO_MAX);
+    let left = || at.saturating_duration_since(Instant::now());
+    hello_within(stream, left, us, ours, read_one)
+}
+
+/// As [`hello`], with each read given the time `left` says is left, and `left` asked again
+/// when a read runs out of it: the time it counts may have stood still meanwhile.
+///
+/// # Errors
+/// As [`hello`].
+#[cfg(unix)]
+pub fn hello_within<H>(
+    stream: &mut UnixStream,
+    left: impl FnMut() -> Duration,
+    us: End,
+    ours: u32,
+    read_one: impl FnOnce(&mut &[u8]) -> io::Result<Option<(u32, H)>>,
+) -> io::Result<H> {
+    let frame = next(&mut Deadline { stream, left }, HELLO_MAX);
     let _ = stream.set_read_timeout(None);
     let heard = match frame? {
         Some(frame) => read_one(&mut frame.as_slice())?,
@@ -175,34 +192,33 @@ pub fn hello<H>(
     }
 }
 
-/// `stream`'s reads, each given only the time left until `at`, so a peer that says its hello a
-/// byte at a time can't stretch the wait. A peer that has closed its end can't hold a read up
-/// either, and macOS takes no option on a socket shut both ways: its timeout is left as it is,
-/// and what the peer said before it went is read.
+/// `stream`'s reads, each given only the time `left` says is left, so a peer that says its hello
+/// a byte at a time can't stretch the wait; a read that runs out of it asks again. A peer that
+/// has closed its end can't hold a read up either, and macOS takes no option on a socket shut
+/// both ways: its timeout is left as it is, and what the peer said before it went is read.
 #[cfg(unix)]
-struct Deadline<'a> {
+struct Deadline<'a, L> {
     stream: &'a UnixStream,
-    at: Instant,
+    left: L,
 }
 
 #[cfg(unix)]
-impl Read for Deadline<'_> {
+impl<L: FnMut() -> Duration> Read for Deadline<'_, L> {
     fn read(&mut self, into: &mut [u8]) -> io::Result<usize> {
-        let late = || {
-            io::Error::new(
-                io::ErrorKind::TimedOut,
-                "the other end of the link didn't say hello in time",
-            )
-        };
-        let left = self.at.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            return Err(late());
-        }
-        let _ = self.stream.set_read_timeout(Some(left));
-        let mut stream = self.stream;
-        match stream.read(into) {
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => Err(late()),
-            read => read,
+        loop {
+            let left = (self.left)();
+            if left.is_zero() {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "the other end of the link didn't say hello in time",
+                ));
+            }
+            let _ = self.stream.set_read_timeout(Some(left));
+            let mut stream = self.stream;
+            match stream.read(into) {
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                read => return read,
+            }
         }
     }
 }
