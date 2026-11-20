@@ -689,6 +689,20 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   It has been since: all 11 patches are applied in its sources (each reverses cleanly there),
   and the framework in this checkout's distribution is, byte for byte, the one it built that
   morning.
+- **The pump's patch, 2026-11-20.** `external-pump-wake-ups` (the pump, `docs/native-pages.md`
+  3.1) was built in this checkout's own folder, a copy-on-write copy of `~/.cache/cef-build`
+  carrying the other 12, which was left as it was: a task's writes stay in its checkout. The
+  copy took 10 minutes. A copied folder needs its build state moved with it: `gn gen
+  out/Release_GN_arm64` again, and the paths in `.siso_fs_state` rewritten for the new place
+  (`siso fs export`, the old folder's path replaced, `siso fs import`); a dry run (`siso ninja
+  -offline -n`) then counted 48 steps stale. The build linked every host tool again (their
+  command lines name Xcode's tools by a path relative to the build folder, which sits deeper),
+  so what those tools generate went again too: `script/cef` took 1 hour 50 minutes, on a Mac
+  at a load average of 40 to 150 from other work, 13,400 steps of the 26,500 siso planned, and
+  its framework passes `script/cef-framework check --release` with 13 patches **[checked]**.
+  Built in the shared folder it would likely take minutes, as `external-pump-idle-work`, a
+  patch of the same file, took 84 s there on 2026-11-19 **[inferred]**; other worktrees
+  building from that folder would then stop until they have the patch (11.6).
 - The framework an app carries is its worktree's, and `script/bundle` refuses any but the one
   `script/cef` builds from the worktree's patches with the codecs (11.6): where `script/cef`
   hasn't run, it stops before it builds the app, naming `script/cef`. A debug engine
@@ -761,7 +775,7 @@ the running engine now checks the one before.
   saying so. It reads the manifest then, off the main thread, and `HostEvent::Ready` carries
   what it says (`framework`): whether H.264 and AAC play, and the patches by name.
 - **The app.** It logs that once as the engine starts, a warning in a release build without
-  either, and Settings › Browser › Engine says it: "with H.264 and AAC and 11 of Koyo's
+  either, and Settings › Browser › Engine says it: "with H.264 and AAC and 13 of Koyo's
   patches", or what the engine is without and what that costs.
 - **The framework in place here** had only the old list of names. Its manifest was written
   once, on 2026-11-19, from the shared folder's `args.gn` and `script/cef-patches`, since

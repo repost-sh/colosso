@@ -1,7 +1,9 @@
 //! What the pump (`embedded/pump.rs`) owes the app's main thread, seen from the main thread's
-//! run loop as `NSApp` runs it: a page on screen that nothing happens in costs it about one
-//! wakeup a second, and work Chromium puts off still runs once it's due, though CEF never says
-//! when that is.
+//! run loop as `NSApp` runs it: a page on screen that nothing happens in leaves it asleep, and
+//! work Chromium puts off still runs once it's due. That holds where the engine's framework says
+//! each time when Chromium next has work (`script/cef-patches/external-pump-wake-ups.patch`);
+//! on CEF's own build, which says it only for some work, the pump's net wakes the main thread
+//! about once a second and runs the rest.
 
 use std::ffi::c_void;
 use std::sync::Mutex;
@@ -20,16 +22,27 @@ use crate::inside::open;
 const SETTLE: Duration = Duration::from_secs(1);
 
 /// How long the main thread's wakeups are counted for at a time.
-const WINDOW: Duration = Duration::from_secs(2);
+const WINDOW: Duration = Duration::from_secs(10);
 
 /// How long Chromium may take to go quiet once the page has loaded: what the load set going
 /// (its caches and history written, among them) takes longer on a busy Mac.
-const QUIET_WITHIN: Duration = Duration::from_secs(40);
+const QUIET_WITHIN: Duration = Duration::from_secs(60);
 
-/// The most wakeups a second an idle page on screen may cost: the pump's one, and what else
-/// wakes a run loop `NSApp` runs. It was over thirty, the pump running CEF's work every
-/// thirtieth of a second whether or not there was any.
-const MOST: f64 = 4.;
+/// The most wakeups a second an idle page on screen may cost where CEF says when Chromium next
+/// has work: what Chromium's own timers and whatever else wakes a run loop `NSApp` runs. The
+/// pump's net alone fires at least once a second; without it, windows of none were seen
+/// between Chromium's bursts of work.
+const MOST: f64 = 0.5;
+
+/// The most on CEF's own build: the net's one, and the rest. It was over thirty, the pump
+/// running CEF's work every thirtieth of a second whether or not there was any.
+const MOST_ON_A_NET: f64 = 4.;
+
+/// The engine's framework.
+const FRAMEWORK: &str = "Contents/Frameworks/Chromium Embedded Framework.framework";
+
+/// The framework's manifest (`script/cef-framework`), which lists its patches.
+const MANIFEST: &str = "Resources/koyo-build.txt";
 
 /// How long Chromium's work is put off for.
 const DELAY: Duration = Duration::from_millis(200);
@@ -106,10 +119,22 @@ fn quiet_on_screen(host: &mut Connection, incoming: &Receiver<Incoming>) -> Resu
     Ok(())
 }
 
-/// A page on screen that nothing happens in wakes the main thread about once a second, once
-/// Chromium has finished what the page's load set going: measured in windows of [`WINDOW`]
-/// until one is that quiet.
+/// Whether the engine's framework says each time when Chromium next has work: whether its
+/// manifest lists `external-pump-wake-ups`.
+fn says_when() -> Result<bool, String> {
+    let manifest = crate::inside::engine()?.join(FRAMEWORK).join(MANIFEST);
+    match std::fs::read_to_string(&manifest) {
+        Ok(text) => Ok(text.lines().any(|line| line.starts_with("patch external-pump-wake-ups "))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("{}: {error}", manifest.display())),
+    }
+}
+
+/// A page on screen that nothing happens in leaves the main thread asleep but for Chromium's own
+/// work, or wakes it about once a second on CEF's own build, once Chromium has finished what the
+/// page's load set going: measured in windows of [`WINDOW`] until one is that quiet.
 pub fn idle_on_screen(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
+    let most = if says_when()? { MOST } else { MOST_ON_A_NET };
     watch_wakes()?;
     quiet_on_screen(host, incoming)?;
     let deadline = Instant::now() + QUIET_WITHIN;
@@ -117,7 +142,7 @@ pub fn idle_on_screen(host: &mut Connection, incoming: &Receiver<Incoming>) -> R
     while Instant::now() < deadline {
         let per_second = wakes_a_second(WINDOW);
         windows.push(format!("{per_second:.1}"));
-        if per_second <= MOST {
+        if per_second <= most {
             eprintln!(
                 "an idle page on screen woke the main thread {per_second:.1} times a second \
                  (each {WINDOW:?} since it loaded: {})",
@@ -127,7 +152,7 @@ pub fn idle_on_screen(host: &mut Connection, incoming: &Receiver<Incoming>) -> R
         }
     }
     Err(format!(
-        "an idle page on screen woke the main thread over {MOST} times a second in each {WINDOW:?} \
+        "an idle page on screen woke the main thread over {most} times a second in each {WINDOW:?} \
          for {QUIET_WITHIN:?}: {}",
         windows.join(", ")
     ))
@@ -186,8 +211,7 @@ mod tasks {
 
 /// Work Chromium puts off from within its own, as its timers do, runs once it's due and late by
 /// no more than it was put off for, on an engine that has gone quiet with a page on screen.
-/// CEF says when it next has work only for work put off outside its own, so the pump runs it
-/// unasked.
+/// Koyo's framework asks for its turn; on CEF's own build, which doesn't, the pump's net runs it.
 pub fn put_off(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
     quiet_on_screen(host, incoming)?;
     let asked = Instant::now();

@@ -1,0 +1,58 @@
+diff --git a/cef/libcef/browser/browser_message_loop.cc b/cef/libcef/browser/browser_message_loop.cc
+index 0fdd1e838..04de0b2cc 100644
+--- a/cef/libcef/browser/browser_message_loop.cc
++++ b/cef/libcef/browser/browser_message_loop.cc
+@@ -28,13 +28,14 @@ class MessagePumpExternal : public base::MessagePumpForUI {
+ 
+   void Run(Delegate* delegate) override {
+     base::TimeTicks start = base::TimeTicks::Now();
++    Delegate::NextWorkInfo next_work_info;
+     while (true) {
+ #if BUILDFLAG(IS_MAC)
+       base::apple::ScopedNSAutoreleasePool autorelease_pool;
+ #endif
+ 
+       base::TimeTicks next_run_time;  // is_null()
+-      DirectRunWork(delegate, &next_run_time);
++      next_work_info = DirectRunWork(delegate, &next_run_time);
+ 
+       if (next_run_time.is_null()) {
+         // We have more work that should run immediately.
+@@ -46,6 +47,18 @@ class MessagePumpExternal : public base::MessagePumpForUI {
+         break;
+       }
+     }
++
++    // Koyo: once DoWork() has returned the next wake-up, the sequence manager
++    // leaves it to the pump ("The MessagePump will schedule the wake up on our
++    // behalf") and doesn't ask for it again. Schedule it here, as Chromium's own
++    // pumps do after each DoWork(). Otherwise work left when the time slice ran
++    // out, and work delayed from within a task, waits for whatever next calls
++    // CefDoMessageLoopWork().
++    if (next_work_info.is_immediate()) {
++      ScheduleWork();
++    } else if (!next_work_info.delayed_run_time.is_max()) {
++      ScheduleDelayedWork(next_work_info);
++    }
+   }
+ 
+   void Quit() override {}
+@@ -60,8 +73,8 @@ class MessagePumpExternal : public base::MessagePumpForUI {
+   }
+ 
+  private:
+-  static void DirectRunWork(Delegate* delegate,
+-                            base::TimeTicks* next_run_time) {
++  static Delegate::NextWorkInfo DirectRunWork(Delegate* delegate,
++                                              base::TimeTicks* next_run_time) {
+     bool more_immediate_work = false;
+     bool more_delayed_work = false;
+ 
+@@ -84,6 +97,7 @@ class MessagePumpExternal : public base::MessagePumpForUI {
+     if (!more_immediate_work) {
+       delegate->DoIdleWork();
+     }
++    return next_work_info;
+   }
+ 
+   const float max_time_slice_;

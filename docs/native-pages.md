@@ -81,25 +81,37 @@ engine's helper apps running the browser host's binary, so what the host does in
   run time, before CEF starts (`embedded/nsapp.rs`). `CefAppProtocol` isn't registered in the
   framework, so it can't be added; nothing has needed it. `[proven]`
 - **Run loop.** GPUI runs `[NSApp run]`. CEF is started with `external_message_pump`, and a
-  run-loop timer in the common modes runs `cef_do_message_loop_work` when CEF asks, at the
-  latest a while on (`embedded/pump.rs`). CEF is started from that timer, never inside GPUI's
-  frame, and what edits a page is done from it too. `[proven]` The while is CEF's net for work
-  it has without saying so: work put off from within its own turn, as Chromium's timers on the
-  main thread are, never asks for a turn (with no net, work put off for 200 ms hadn't run 3 s
-  on). It's 1/30 s after a turn someone asked for, or one that ran out of CEF's 10 ms, while a
-  page is on screen (1/10 s while pages are open and none is, 1 s with none), and doubles with
-  each turn nobody asked for, up to 1 s; while the app waits on the engine, or a window of
-  Chrome's own is open, it stays 1/30 s. What's put off from a turn someone asked for runs late
-  by less than it was put off for and 1/30 s (`tests/embedded/pump.rs`); what's put off from a
+  run-loop timer in the common modes runs `cef_do_message_loop_work` when CEF asks
+  (`embedded/pump.rs`). CEF is started from that timer, never inside GPUI's frame, and what
+  edits a page is done from it too. `[proven]` CEF's own build doesn't ask for all its work:
+  work put off from within its own turn, as Chromium's timers on the main thread are, and work
+  left when a turn ran out of its 10 ms never ask, as Chromium leaves those wakeups to the pump
+  and CEF's drops them. With nothing else running its work, work put off for 200 ms hadn't run
+  3 s on (2026-11-19), and in one run on a busy Mac a page didn't load in 30 s (2026-11-20). Koyo's framework carries a patch that asks for them, as
+  Chromium's own pumps do (`external-pump-wake-ups`, `script/cef-patches`), and there the timer
+  fires only when CEF asks. CEF upstream has no such change (to 2026-11-20); its own example
+  pump runs the work every 1/30 s whether asked or not (CEF issue 2968).
+- **The net, on CEF's own build.** A framework without the patch, which the host still runs
+  with a warning (a debug engine packaged from CEF's own), also has the timer fire at the
+  latest a while on. The while is 1/30 s after a turn someone asked for, or one that ran out of
+  CEF's 10 ms, while a page is on screen (1/10 s while pages are open and none is, 1 s with
+  none), and doubles with each turn nobody asked for, up to 1 s; while the app waits on the
+  engine, or a window of Chrome's own is open, it stays 1/30 s. What's put off from a turn
+  someone asked for runs late by less than it was put off for and 1/30 s; what's put off from a
   turn nobody asked for, as each link of a chain of timers is after the first, runs late by up
   to the net after that turn, so by up to 1 s however little it was put off for
-  (`embedded/pump/tests.rs`): CEF says nothing of work put off within a turn, so the pump can't
-  keep the net short for it. Measured on a debug build on the agent desktop
-  (2026-11-19), before the net backed off: one static page shown rather than hidden cost Koyo
+  (`embedded/pump/tests.rs`).
+- **What it costs the main thread.** Measured on a debug build on the agent desktop
+  (2026-11-19), with the net at 1/30 s: one static page shown rather than hidden cost Koyo
   about 0.6 s of CPU a minute, 140 wakeups and 440 syscalls a second more; the main thread
   waited 98% of the time, and CEF's work from the pump was about 1.2% of it. `[proven]` In the
-  engine's test app since, an idle page on screen wakes the main thread once a second, where
-  it woke it over 29 times a second in each of twenty two-second windows. `[proven]`
+  engine's test app (`tests/embedded/pump.rs`), an idle page on screen woke the main thread
+  over 29 times a second with the net at 1/30 s. With it backing off, on CEF's own build
+  (2026-11-20, load average 5), it woke it 1.9 to 5.5 times a second in ten-second windows a minute
+  long, Chromium's own work on top of the net's one. With the patch and no net, under the same
+  load, three runs each had a window of ten seconds with no wakeup at all, within 10 to 40 s
+  of the page's load, between bursts of Chromium's work that CEF asked for; and work put off for
+  200 ms ran 200.0 to 200.2 ms after it was put off, where the net ran it at 295 ms. `[proven]`
 - **Started when a page is needed**: once a page is first drawn, or an agent opens one out of
   sight (`BrowserView::ensure_open`), not as the app launches. The hello, loading CEF and
   readying its root cache run on the thread that starts it; CEF's own start (`adopt_app`,
@@ -650,7 +662,8 @@ never comes forward (section 3.3), so they run while the person works.
 `koyo-browser-host/tests/embedded` runs the engine as Koyo does: in the test's own process,
 run from an app it lays out round itself with the engine inside (section 3.1), CEF's work
 pumped from the run loop `NSApp` runs, and a page loads and draws there, an idle page on screen
-wakes the main thread about once a second, and work Chromium puts off runs once it's due.
+leaves the main thread asleep (about one wakeup a second on CEF's own build), and work Chromium
+puts off runs once it's due.
 `script/check`
 packages the engine and runs both, and `koyo/src/browser/host_tests`, all but the location
 and zoom tests (`script/check` says why). `[proven]` 2026-11-19: ten smoke tests, the

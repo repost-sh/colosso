@@ -57,7 +57,7 @@ pub const TESTS: [(&str, Step); 5] = [
         load_and_draw,
     ),
     (
-        "an_idle_page_on_screen_wakes_the_main_thread_about_once_a_second",
+        "an_idle_page_on_screen_leaves_the_main_thread_asleep",
         crate::pump::idle_on_screen,
     ),
     (
@@ -115,7 +115,7 @@ pub fn run(scratch: &Path, test: &str) -> ExitCode {
 }
 
 /// The engine this app holds, as Koyo holds it.
-fn engine() -> Result<PathBuf, String> {
+pub fn engine() -> Result<PathBuf, String> {
     let this = std::env::current_exe().map_err(|error| error.to_string())?;
     let contents = this.ancestors().nth(2).ok_or("the test isn't in an app")?;
     Ok(contents.join("Frameworks/Koyo Browser Host.app"))
