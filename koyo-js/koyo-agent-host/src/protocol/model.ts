@@ -34,6 +34,41 @@ export const Prompt = z.object({
 });
 export type Prompt = z.infer<typeof Prompt>;
 
+/** Where a step of a chat's plan stands (docs/chat.md 5.5). */
+export const StepStatus = z.enum(["pending", "running", "done", "blocked", "skipped"]);
+export type StepStatus = z.infer<typeof StepStatus>;
+
+/** A sub-step of a phase: a unit of the work the phase delivers. */
+export const PlanStep = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  /** One sentence on what it covers and how the agent will know it's done. */
+  detail: z.string().nullable(),
+  status: StepStatus,
+  /** When it first ran and when it closed; a step put back to pending has neither. */
+  startedAt: Time.nullable(),
+  endedAt: Time.nullable(),
+});
+export type PlanStep = z.infer<typeof PlanStep>;
+
+/**
+ * An end-to-end milestone of the task and the sub-steps it takes, one level deep: once one of
+ * them has started, the phase's status is theirs.
+ */
+export const PlanPhase = PlanStep.extend({ steps: z.array(PlanStep) });
+export type PlanPhase = z.infer<typeof PlanPhase>;
+
+/** The plan the agent keeps of a chat's task with Koyo's progress tool (docs/chat.md 5.5). */
+export const Plan = z.object({
+  phases: z.array(PlanPhase),
+  /** The agent's one line on what it's doing now. */
+  now: z.string().nullable(),
+  /** When the plan's first step started: kept as the plan changes, started over by a replace. */
+  startedAt: Time.nullable(),
+  updatedAt: Time,
+});
+export type Plan = z.infer<typeof Plan>;
+
 export const Thread = z.object({
   id: ThreadId,
   cwd: z.string().min(1),
@@ -67,6 +102,8 @@ export const Thread = z.object({
    * None while no session runs.
    */
   backgroundTasks: Count.default(0),
+  /** The plan the agent keeps with the progress tool, once it declared one. */
+  progress: Plan.nullable().default(null),
   createdAt: Time,
   updatedAt: Time,
   readAt: Time.nullable(),

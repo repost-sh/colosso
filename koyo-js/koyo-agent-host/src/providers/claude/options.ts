@@ -6,9 +6,11 @@ import type {
   SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
 
+import { PROGRESS_PROMPT, PROGRESS_SERVER, PROGRESS_TOOL } from "../../progress/prompt";
 import type { Mode } from "../../protocol/model";
 import type { SessionSpec } from "../provider";
 import type { Env } from "./environment";
+import { MOD_TOOL, type ProgressTools } from "./progress";
 
 /** Claude's permission mode for each of Koyo's modes, which are named for people (C12). */
 export const PERMISSION: Readonly<Record<Mode, PermissionMode>> = {
@@ -151,6 +153,9 @@ const KOYO_READS = [
   "terminal_log",
 ];
 
+/** MCP servers a session is given, with the tools allowed without asking and those taken away. */
+type Tools = Required<Pick<Options, "mcpServers" | "allowedTools" | "disallowedTools">>;
+
 /**
  * Koyo's tools for chat `threadId`: `koyo mcp` from the app's own `koyo`, naming the chat, which
  * the app trusts as it trusts an agent in its terminals; its reads allowed; and what a chat
@@ -158,10 +163,7 @@ const KOYO_READS = [
  * the chat can't follow, deleting a worktree, which an agent isn't granted, and launching Koyo,
  * which a chat would do only once the person quit it.
  */
-function koyoTools(koyo: string, threadId: string): Pick<
-  Options,
-  "mcpServers" | "allowedTools" | "disallowedTools"
-> {
+function koyoTools(koyo: string, threadId: string): Tools {
   return {
     mcpServers: {
       koyo: { type: "stdio", command: koyo, args: ["mcp"], env: { KOYO_CHAT: threadId } },
@@ -176,33 +178,71 @@ function koyoTools(koyo: string, threadId: string): Pick<
   };
 }
 
+/**
+ * The progress tool (docs/chat.md 5.5): its server, its one tool allowed without asking, and
+ * the person's own mod's plan tool taken away, so a chat has one plan tool, and with its tool the
+ * mod's prompt goes too.
+ */
+function planTools(progress: ProgressTools): Tools {
+  return {
+    mcpServers: { [PROGRESS_SERVER]: progress.server },
+    allowedTools: [PROGRESS_TOOL],
+    disallowedTools: [MOD_TOOL],
+  };
+}
+
+/** Each of `tools` together; nothing at all of none. */
+function joined(tools: readonly Tools[]): Partial<Tools> {
+  if (tools.length === 0) {
+    return {};
+  }
+  return {
+    mcpServers: Object.fromEntries(tools.flatMap((each) => Object.entries(each.mcpServers))),
+    allowedTools: tools.flatMap((each) => each.allowedTools),
+    disallowedTools: tools.flatMap((each) => each.disallowedTools),
+  };
+}
+
 /** What a chat's session is opened with beside its spec. */
 interface Opening {
   /** Whether the conversation has turns to continue. */
   readonly resume: boolean;
   /** How tools are approved, when the session asks the person (`asks`). */
   readonly canUseTool: CanUseTool;
+  /** What keeps the chat's plan, while the spec asks for it; made for each process. */
+  readonly progress: ProgressTools | null;
 }
 
 /**
  * A chat session's options: Claude Code's own system prompt (an omitted one is empty) with
- * what it's told of Koyo (`KOYO_PROMPT`), and of Koyo's tools while it has them, text
- * as it streams, a subagent's words as well as its tools, what the model thought (left out
- * unless asked for, and asked for by the flag: the `thinking` option would also turn thinking on
- * for someone who has it off), and a permission mode only when the chat or Koyo names one, so
- * Claude's own settings choose otherwise (C12).
+ * what it's told of Koyo (`KOYO_PROMPT`), of Koyo's tools while it has them, and of the plan
+ * while it keeps one, with the progress tool's hooks, text as it streams, a subagent's words as
+ * well as its tools, what the model thought (left out unless asked for, and asked for by the
+ * flag: the `thinking` option would also turn thinking on for someone who has it off), and a
+ * permission mode only when the chat or Koyo names one, so Claude's own settings choose
+ * otherwise (C12).
  */
 export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening): Options {
   const mode = spec.permission;
   const permissionMode = requested(spec.plan, mode);
   const koyo = spec.koyoTools;
-  const append = koyo === null ? KOYO_PROMPT : `${KOYO_PROMPT}\n\n${KOYO_TOOLS_PROMPT}`;
+  const { progress } = opening;
+  const append = [
+    KOYO_PROMPT,
+    ...(koyo === null ? [] : [KOYO_TOOLS_PROMPT]),
+    ...(progress === null ? [] : [PROGRESS_PROMPT]),
+  ].join("\n\n");
+  const tools = [
+    ...(koyo === null ? [] : [koyoTools(koyo, spec.threadId)]),
+    ...(progress === null ? [] : [planTools(progress)]),
+  ];
   return {
     ...placed(place),
     ...(opening.resume ? { resume: spec.sessionId } : { sessionId: spec.sessionId }),
     ...(opening.resume && spec.resumeAt !== null ? { resumeSessionAt: spec.resumeAt } : {}),
     systemPrompt: { type: "preset", preset: "claude_code", append },
-    ...(koyo === null ? {} : koyoTools(koyo, spec.threadId)),
+    ...joined(tools),
+    ...(progress === null ? {} : { hooks: progress.hooks }),
     includePartialMessages: true,
     forwardSubagentText: true,
     extraArgs: { "thinking-display": "summarized" },

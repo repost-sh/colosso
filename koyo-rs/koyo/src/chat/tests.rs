@@ -32,7 +32,9 @@ mod floating;
 mod keys;
 mod marks;
 mod pointer;
+mod progress;
 mod recent;
+mod resize;
 mod rewind;
 mod said;
 mod seen;
@@ -100,6 +102,7 @@ pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
             tab_open: true,
             parent: None,
             background_tasks: 0,
+            progress: None,
             created_at: Time(AT.into()),
             updated_at: Time(AT.into()),
             read_at: None,

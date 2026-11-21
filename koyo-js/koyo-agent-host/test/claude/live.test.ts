@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { afterAll, describe, expect, test } from "bun:test";
 
+import { PROGRESS_TOOL } from "../../src/progress/prompt";
 import { ClaudeProvider } from "../../src/providers/claude/provider";
 import { removeScratch, scratch } from "../support/scratch";
 import { Sink, spec, turnOf } from "./support";
@@ -28,5 +29,30 @@ describe.skipIf(!LIVE)("the real Claude CLI", () => {
       event.item.kind === "assistant_text" ? [event.item.payload.text] : []);
     expect(said.join(" ").toLowerCase()).toContain("pong");
     expect(sink.of("turn.finished")).toMatchObject([{ outcome: "completed", failure: null }]);
+  }, TURN_MS + 30_000);
+
+  test("keeps a plan with the progress tool, its call shown by what it did", async () => {
+    const cwd = scratch();
+    const claude = new ClaudeProvider();
+    const sink = new Sink();
+    const opened = spec({ cwd, permission: "ask", model: "haiku", progress: true });
+    const session = claude.open(opened, sink);
+    session.start(turnOf(
+      `Call the ${PROGRESS_TOOL} tool once to declare a plan of two phases for a short poem about `
+      + "tea: phase 1 \"Draft the tea poem's first verse\", running, and phase 2 \"Settle the tea "
+      + "poem's closing line\", pending, each with a one-sentence detail. Then call it again to "
+      + "mark phase 1 done. Write no poem and use no other tool; reply with the single word done.",
+    ));
+    await sink.finished;
+    await session.close();
+    expect(sink.planned.length).toBeGreaterThan(0);
+    expect(sink.plan.current()?.phases.map((phase) => phase.status)).toEqual(["done", "pending"]);
+    const labels = sink.of("item.started").flatMap((event) => {
+      const { item } = event;
+      return item.kind === "tool" && item.payload.name === PROGRESS_TOOL
+        ? [item.payload.label]
+        : [];
+    });
+    expect(labels[0]).toBe("Plan: 2 phases");
   }, TURN_MS + 30_000);
 });

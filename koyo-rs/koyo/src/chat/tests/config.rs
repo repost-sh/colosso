@@ -22,6 +22,7 @@ fn the_client_keeps_the_settings_from_the_start_and_as_they_change(cx: &mut Test
             claude_path: None,
             default_mode: None,
             koyo_tools: Some(this.to_string_lossy().into_owned()),
+            progress: true,
         })
     );
 
@@ -33,4 +34,7 @@ fn the_client_keeps_the_settings_from_the_start_and_as_they_change(cx: &mut Test
 
     cx.update(|cx| settings::update(cx, |settings| settings.koyo_tools = false));
     assert_eq!(told(cx).and_then(|config| config.koyo_tools), None);
+
+    cx.update(|cx| settings::update(cx, |settings| settings.chat_progress = false));
+    assert_eq!(told(cx).map(|config| config.progress), Some(false));
 }

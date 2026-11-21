@@ -106,6 +106,10 @@ pub struct Config {
     /// The app's own `koyo`, which a chat's session starts as its `koyo` MCP server
     /// (`koyo mcp`), so the chat drives Koyo; `None` while Koyo tools are off.
     pub koyo_tools: Option<String>,
+    /// Whether a chat's agent keeps a plan with Koyo's progress tool, which the chat's details
+    /// card shows (`docs/chat.md` 5.5).
+    #[serde(default)]
+    pub progress: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -3,11 +3,10 @@
 use std::path::Path;
 use std::process::Command;
 
-use gpui_kit::{AnyWindowHandle, AppContext as _, Modifiers, TestAppContext, VisualTestContext};
+use gpui_kit::{AppContext as _, Modifiers, TestAppContext, VisualTestContext};
 
-use super::super::view::ChatView;
 use super::super::view::details::{commit_files, went_old};
-use super::drawing::shown_chat;
+use super::drawing::{card_up, shown_chat, shows};
 use crate::modal;
 use crate::test_support::{draw, git, in_front, on_screen, scratch, write};
 
@@ -20,13 +19,6 @@ fn subject(folder: &Path) -> String {
         .unwrap()
         .trim()
         .to_owned()
-}
-
-/// Whether the card has the line called `what` that does something with the branch.
-fn offers(what: &'static str, window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
-    VisualTestContext::from_window(window, cx)
-        .debug_bounds(what)
-        .is_some()
 }
 
 #[gpui_kit::test]
@@ -48,12 +40,10 @@ fn the_card_commits_what_changed_and_publishes_it(cx: &mut TestAppContext) {
     ] {
         git(&folder, &["config", setting, value]);
     }
-    if !view.read_with(cx, ChatView::details_up) {
-        cx.simulate_keystrokes(window, "cmd-shift-b");
-    }
+    card_up(window, &view, cx);
     view.update(cx, went_old);
     draw(window, cx);
-    assert!(offers("publish", window, cx), "it's never been pushed");
+    assert!(shows("publish", window, cx), "it's never been pushed");
 
     write(&folder, "new.txt", b"new\n");
     (cx.update_window(window, |_, window, cx| {
@@ -82,13 +72,13 @@ fn the_card_commits_what_changed_and_publishes_it(cx: &mut TestAppContext) {
     draw(window, cx);
     draw(window, cx);
     assert_eq!(subject(&remote), "Work");
-    assert!(!offers("publish", window, cx), "it's published");
-    assert!(!offers("push", window, cx), "there's nothing to push");
+    assert!(!shows("publish", window, cx), "it's published");
+    assert!(!shows("push", window, cx), "there's nothing to push");
 
     git(&folder, &["commit", "-q", "--allow-empty", "-m", "More"]);
     view.update(cx, went_old);
     draw(window, cx);
-    assert!(offers("push", window, cx), "there's a commit to push");
+    assert!(shows("push", window, cx), "there's a commit to push");
 }
 
 /// The card reads the branch whenever its window can be seen, beside another app's too, where a
@@ -100,13 +90,11 @@ fn the_card_reads_the_branch_while_its_window_is_seen(cx: &mut TestAppContext) {
     let (window, view, _) = shown_chat("chat-details-seen", cx);
     in_front(window, true, cx);
     let folder = view.read_with(cx, |view, _| view.details_folder()).unwrap();
-    if !view.read_with(cx, ChatView::details_up) {
-        cx.simulate_keystrokes(window, "cmd-shift-b");
-    }
+    card_up(window, &view, cx);
     view.update(cx, went_old);
     draw(window, cx);
     assert!(
-        !offers("publish", window, cx),
+        !shows("publish", window, cx),
         "there's nowhere to publish to"
     );
 
@@ -120,7 +108,7 @@ fn the_card_reads_the_branch_while_its_window_is_seen(cx: &mut TestAppContext) {
     view.update(cx, went_old);
     draw(window, cx);
     assert!(
-        offers("publish", window, cx),
+        shows("publish", window, cx),
         "beside another app's, it reads the branch"
     );
 
@@ -128,12 +116,12 @@ fn the_card_reads_the_branch_while_its_window_is_seen(cx: &mut TestAppContext) {
     git(&folder, &["remote", "remove", "origin"]);
     view.update(cx, went_old);
     draw(window, cx);
-    assert!(offers("publish", window, cx), "hidden, it reads nothing");
+    assert!(shows("publish", window, cx), "hidden, it reads nothing");
 
     on_screen(window, true, cx);
     draw(window, cx);
     assert!(
-        !offers("publish", window, cx),
+        !shows("publish", window, cx),
         "seen again, it reads the branch"
     );
 }

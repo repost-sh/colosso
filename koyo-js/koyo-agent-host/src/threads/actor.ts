@@ -1,4 +1,5 @@
 import { errorMessage, log } from "../log";
+import { updatePlan } from "../progress/tool";
 import { PlainUUID, type RequestId, type RunId } from "../protocol/ids";
 import type { Delivered, Delivery, Rows, ThreadSnapshot } from "../protocol/methods";
 import type {
@@ -13,7 +14,12 @@ import type {
   ThreadSummary,
 } from "../protocol/model";
 import { HostError } from "../protocol/wire";
-import { type DriverEvent, type Outcome, processFailure } from "../providers/provider";
+import {
+  type DriverEvent,
+  type Outcome,
+  type PlanAnswer,
+  processFailure,
+} from "../providers/provider";
 import { within } from "../time";
 import type { Context } from "./context";
 import {
@@ -69,6 +75,10 @@ export class ThreadActor {
       },
       ask: (payload, signal, waiter) => {
         this.#requests.ask(payload, signal, waiter);
+      },
+      plan: {
+        update: (input) => this.#progress(input),
+        current: () => this.#state.thread.progress,
       },
       gone: () => {
         this.#sessionGone();
@@ -440,6 +450,16 @@ export class ThreadActor {
         this.#state.heard(event);
       }
     }
+  }
+
+  /** A call of the progress tool: the chat's plan, which goes out and is kept with the thread. */
+  #progress(input: unknown): PlanAnswer {
+    const { thread } = this.#state;
+    const used = updatePlan(thread.progress, input, this.#cx.now());
+    if (!used.refused) {
+      this.#state.commit({ thread: { ...thread, progress: used.plan } });
+    }
+    return used;
   }
 
   /** What lived in the session beside its turn went with it. */

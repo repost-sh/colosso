@@ -11,17 +11,19 @@ pub enum DetailsItem {
     Scripts,
     Git,
     Changes,
+    Progress,
     Subagents,
     Context,
 }
 
 impl DetailsItem {
-    pub const ALL: [DetailsItem; 7] = [
+    pub const ALL: [DetailsItem; 8] = [
         DetailsItem::Worktree,
         DetailsItem::OpenIn,
         DetailsItem::Scripts,
         DetailsItem::Git,
         DetailsItem::Changes,
+        DetailsItem::Progress,
         DetailsItem::Subagents,
         DetailsItem::Context,
     ];
@@ -33,13 +35,14 @@ impl DetailsItem {
             DetailsItem::Scripts => "Project scripts",
             DetailsItem::Git => "Git actions and pull request",
             DetailsItem::Changes => "Changes",
+            DetailsItem::Progress => "Progress",
             DetailsItem::Subagents => "Subagents",
             DetailsItem::Context => "Context window",
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ChatDetails {
     /// Whether it's up where it has room beside the timeline.
@@ -48,6 +51,10 @@ pub struct ChatDetails {
     pub hidden: Vec<DetailsItem>,
     /// The editor its checkout last opened in.
     pub editor: Option<String>,
+    /// How wide a person dragged it, by its left edge; unset, as wide as it comes.
+    pub width: Option<f32>,
+    /// How tall a person dragged it, by its bottom edge; unset, as tall as what it shows.
+    pub height: Option<f32>,
 }
 
 impl Default for ChatDetails {
@@ -56,6 +63,8 @@ impl Default for ChatDetails {
             open: true,
             hidden: Vec::new(),
             editor: None,
+            width: None,
+            height: None,
         }
     }
 }

@@ -115,6 +115,8 @@ export const methods = {
        * (`koyo mcp`), so the chat drives Koyo; `null` while Koyo tools are off.
        */
       koyoTools: z.string().min(1).nullable(),
+      /** Whether a chat's agent keeps a plan with Koyo's progress tool (docs/chat.md 5.5). */
+      progress: z.boolean().default(false),
     }),
     result: Empty,
   },

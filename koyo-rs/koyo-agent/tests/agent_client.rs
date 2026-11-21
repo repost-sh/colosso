@@ -247,6 +247,7 @@ fn a_connection_tells_the_host_koyos_settings_before_what_made_it() {
         claude_path: None,
         default_mode: None,
         koyo_tools: Some("/Applications/Koyo.app/Contents/MacOS/koyo".into()),
+        progress: true,
     };
     let told = serde_json::to_value(&config).unwrap();
     let host = stand_in(&dir, move |mut host: Host| {

@@ -300,6 +300,20 @@ fn prompts_float_until_a_person_turns_it_off_which_is_kept() {
 }
 
 #[test]
+fn chats_keep_a_plan_until_a_person_turns_it_off_which_is_kept() {
+    assert!(Settings::default().chat_progress, "on by default");
+    let missing: Settings = serde_json::from_str("{}").unwrap();
+    assert!(missing.chat_progress, "a file from before keeps one");
+    let off = Settings {
+        chat_progress: false,
+        ..Settings::default()
+    };
+    let json = serde_json::to_value(&off).unwrap();
+    assert_eq!(json["chat_progress"], false);
+    assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), off);
+}
+
+#[test]
 fn the_pinned_tabs_zone_shows_until_a_person_puts_it_away_which_is_kept() {
     assert!(!Settings::default().pinned_zone_dismissed, "shown at first");
     let missing: Settings = serde_json::from_str("{}").unwrap();

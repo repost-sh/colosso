@@ -7,5 +7,6 @@ pub mod ids;
 pub mod limits;
 pub mod methods;
 pub mod model;
+pub mod progress;
 pub mod requests;
 pub mod wire;

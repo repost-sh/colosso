@@ -24,6 +24,7 @@ import { answerTool, type Asking } from "./approvals";
 import type { Env } from "./environment";
 import { Frames } from "./frames";
 import { asks, modeOf, PERMISSION, sessionOptions } from "./options";
+import { progressTools } from "./progress";
 import { userMessage } from "./prompts";
 import { Groups } from "./spawn";
 import { Lifecycle, Turns } from "./turns";
@@ -261,6 +262,7 @@ export class ClaudeSession implements ProviderSession {
     }, {
       resume: resume && launch.resumable,
       canUseTool: this.#canUseTool,
+      progress: spec.progress ? progressTools(this.#sink.plan) : null,
     });
     const conversation = this.#deps.start({ prompt: this.#prompts, options });
     this.#conversation = conversation;

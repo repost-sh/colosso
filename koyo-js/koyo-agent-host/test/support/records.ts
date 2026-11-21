@@ -30,6 +30,7 @@ export function thread(): Thread {
     tabOpen: true,
     parent: null,
     backgroundTasks: 0,
+    progress: null,
     createdAt: AT,
     updatedAt: AT,
     readAt: null,
