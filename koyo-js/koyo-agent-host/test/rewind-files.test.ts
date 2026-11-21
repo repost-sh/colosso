@@ -23,13 +23,27 @@ function inFolder(): InFolder {
   return { ...chat(cwd), cwd };
 }
 
-/** A file in the chat's folder, written as long ago or as far ahead as `fromNowMs` says. */
-function fileOf(on: InFolder, name: string, fromNowMs: number): string {
+/** A file in the chat's folder, written at `atMs`. */
+function fileAt(on: InFolder, name: string, atMs: number): string {
   const path = join(on.cwd, name);
   writeFileSync(path, "words");
-  const at = new Date(Date.now() + fromNowMs);
+  const at = new Date(atMs);
   utimesSync(path, at, at);
   return path;
+}
+
+/** A file in the chat's folder, written as long ago or as far ahead as `fromNowMs` says. */
+function fileOf(on: InFolder, name: string, fromNowMs: number): string {
+  return fileAt(on, name, Date.now() + fromNowMs);
+}
+
+/** When the chat last wrote files, as its thread keeps it. */
+function settledAt(on: InFolder): number {
+  const settled = on.store.thread(on.thread.id)?.filesSettledAt ?? null;
+  if (settled === null) {
+    throw new Error("The chat hasn't written files yet.");
+  }
+  return Date.parse(settled);
 }
 
 /** What the provider says of putting back `files`. */
@@ -172,7 +186,7 @@ describe("going back with the files", () => {
     await Bun.sleep(5);
     const second = await said(on, "Second");
     on.provider.entry = "an entry";
-    const file = fileOf(on, "a.txt", -1);
+    const file = fileAt(on, "a.txt", settledAt(on) - 1);
     await on.threads.rewind(on.thread.id, second, false);
     on.provider.changes = changing(file);
     expect((await on.threads.filesBack(on.thread.id, first))?.blocked).toBeNull();
