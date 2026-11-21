@@ -29,6 +29,7 @@ mod loose;
 mod loose_slide;
 mod pinned;
 mod project_keys;
+mod slide_budget;
 mod space_keys;
 mod spaces;
 mod switcher;

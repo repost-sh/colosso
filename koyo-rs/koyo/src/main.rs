@@ -68,6 +68,7 @@ mod toggle;
 mod viewer;
 #[cfg(feature = "visual-check")]
 mod visual;
+mod window_options;
 mod wrapped;
 
 use std::process::ExitCode;
@@ -150,7 +151,7 @@ fn open_main_window(cx: &mut App, kept: shell::KeptWindow) -> gpui_kit::Result<(
                 px(theme::TRAFFIC_LIGHTS_TOP),
             )),
         }),
-        ..Default::default()
+        ..window_options::base()
     };
     let opened = cx.open_window(options, |window, cx| {
         theme::follow_window_appearance(window);

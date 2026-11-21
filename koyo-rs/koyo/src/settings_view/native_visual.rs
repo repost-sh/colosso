@@ -64,7 +64,7 @@ pub fn run() -> ExitCode {
                     appears_transparent: true,
                     traffic_light_position: None,
                 }),
-                ..WindowOptions::default()
+                ..crate::window_options::base()
             };
             let mut made = None;
             let opened = cx.open_window(options, |window, cx| {

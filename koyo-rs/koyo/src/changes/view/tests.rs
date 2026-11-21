@@ -107,7 +107,7 @@ fn open_with(
         };
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            ..WindowOptions::default()
+            ..crate::window_options::base()
         };
         let mut panel = None;
         let (window, _) = gpui_kit::open_window(options, cx, |window, cx| {
