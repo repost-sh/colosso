@@ -17,6 +17,9 @@
 //! `--visual-check-chat-markdown`: markdown in a chat's messages and composer, its floating
 //! prompts and a picture in the viewer, in `.superpowers/qa/chat-markdown/` (`visual/markdown.rs`).
 //!
+//! `--visual-check-chat-progress`: the plan a chat's agent keeps, in its details card, in
+//! `.superpowers/qa/chat-progress/` (`visual/progress.rs`).
+//!
 //! Each check keeps its settings in its own folder, as the theme check changes the gradient theme:
 //! the theme check's is `.superpowers/qa/chat-theme/config`.
 //!
@@ -28,8 +31,8 @@
 //! ```
 
 mod markdown;
+mod progress;
 
-use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use gpui_kit::{Action, point};
@@ -81,19 +84,15 @@ SELECT count(*) FROM forwarder WHERE id !~ '^c[a-z0-9]{24}$';
 
 > Go's regexp has no negative lookahead, so this is the way to exclude `common`.";
 
-/// Draws the pictures and says where they are, or why it couldn't.
-pub fn run() -> ExitCode {
-    crate::visual::run(draw)
-}
-
-/// Draws the markdown check's pictures and says where they are, or why it couldn't.
-pub fn run_markdown() -> ExitCode {
-    crate::visual::run(markdown::draw)
-}
-
-/// Draws the theme check's pictures and says where they are, or why it couldn't.
-pub fn run_theme() -> ExitCode {
-    crate::visual::run(draw_theme)
+/// What draws the pictures of the chat check the command line's `arg` names, if it names one.
+pub fn check(arg: &str) -> Option<fn() -> Result<Vec<String>>> {
+    match arg {
+        "--visual-check-chat" => Some(draw),
+        "--visual-check-chat-theme" => Some(draw_theme),
+        "--visual-check-chat-markdown" => Some(markdown::draw),
+        "--visual-check-chat-progress" => Some(progress::draw),
+        _ => None,
+    }
 }
 
 fn draw() -> Result<Vec<String>> {

@@ -95,6 +95,20 @@ pub(super) fn shown_chat(
     (window, view, thread)
 }
 
+/// Brings the details card of `view`, in `window`, up if it isn't.
+pub(super) fn card_up(window: AnyWindowHandle, view: &Entity<ChatView>, cx: &mut TestAppContext) {
+    if !view.read_with(cx, ChatView::details_up) {
+        cx.simulate_keystrokes(window, "cmd-shift-b");
+    }
+}
+
+/// Whether `window` draws what's called `what`.
+pub(super) fn shows(what: &'static str, window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
+    VisualTestContext::from_window(window, cx)
+        .debug_bounds(what)
+        .is_some()
+}
+
 /// How much of item `id` of `timeline`'s work shows.
 pub(super) fn shows_of(timeline: &Entity<Timeline>, id: &str, cx: &mut TestAppContext) -> Shows {
     timeline.update(cx, |timeline, cx| {

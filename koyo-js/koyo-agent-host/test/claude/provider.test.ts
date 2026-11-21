@@ -73,7 +73,12 @@ describe("Claude's status", () => {
 
   test("looks for claude where Koyo's setting says first", async () => {
     const { claude, looked } = provider();
-    claude.setConfig({ claudePath: "/Users/dev/bin/claude", defaultMode: null, koyoTools: null });
+    claude.setConfig({
+      claudePath: "/Users/dev/bin/claude",
+      defaultMode: null,
+      koyoTools: null,
+      progress: false,
+    });
     expect(await claude.status(false)).toMatchObject({ executable: "/Users/dev/bin/claude" });
     expect(looked).toEqual(["/Users/dev/bin/claude"]);
   });
@@ -162,7 +167,7 @@ describe("the catalog", () => {
 
   test("reports Claude's own default mode, whatever Koyo's settings name", async () => {
     const { claude } = provider();
-    claude.setConfig({ claudePath: null, defaultMode: "auto", koyoTools: null });
+    claude.setConfig({ claudePath: null, defaultMode: "auto", koyoTools: null, progress: false });
     expect((await claude.catalog("/work/a")).defaultMode).toBe("accept_edits");
   });
 

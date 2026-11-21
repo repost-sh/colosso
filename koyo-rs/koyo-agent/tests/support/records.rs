@@ -31,6 +31,7 @@ pub fn thread(seq: u64) -> Thread {
         tab_open: true,
         parent: None,
         background_tasks: 0,
+        progress: None,
         created_at: Time(AT.into()),
         updated_at: Time(AT.into()),
         read_at: None,

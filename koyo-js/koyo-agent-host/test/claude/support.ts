@@ -12,7 +12,8 @@ import type {
   SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 
-import type { RequestPayload, Response } from "../../src/protocol/model";
+import { updatePlan } from "../../src/progress/tool";
+import type { Plan, RequestPayload, Response } from "../../src/protocol/model";
 import type { ToolRequest } from "../../src/providers/claude/approvals";
 import {
   ClaudeSession,
@@ -23,6 +24,8 @@ import {
 } from "../../src/providers/claude/session";
 import type {
   DriverEvent,
+  PlanAnswer,
+  PlanSink,
   SessionSink,
   SessionSpec,
   TurnInput,
@@ -208,11 +211,26 @@ export interface Asked {
   readonly answer: (response: Response) => void;
 }
 
-/** What a session reported, and the questions it's waiting on. */
+/** What a session reported, the questions it's waiting on, and the plan its calls keep. */
 export class Sink implements SessionSink {
   readonly events: DriverEvent[] = [];
   readonly asked: Asked[] = [];
+  /** The inputs of the progress tool's calls, in order. */
+  readonly planned: unknown[] = [];
   readonly #finished = Promise.withResolvers<undefined>();
+  #plan: Plan | null = null;
+
+  readonly plan: PlanSink = {
+    update: async (input: unknown): Promise<PlanAnswer> => {
+      this.planned.push(input);
+      const used = updatePlan(this.#plan, input, new Date().toISOString());
+      if (!used.refused) {
+        this.#plan = used.plan;
+      }
+      return await Promise.resolve(used);
+    },
+    current: () => this.#plan,
+  };
 
   /** Resolves once a turn has finished. */
   get finished(): Promise<undefined> {
@@ -275,6 +293,7 @@ export function spec(change: Partial<SessionSpec> = {}): SessionSpec {
     permission: "ask",
     plan: false,
     koyoTools: null,
+    progress: false,
     ...change,
   };
 }

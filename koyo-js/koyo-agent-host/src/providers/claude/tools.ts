@@ -6,6 +6,8 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 import { z } from "zod";
 
+import { PROGRESS_TOOL } from "../../progress/prompt";
+import { planLabel } from "../../progress/tool";
 import { Hunk, type ToolFamily } from "../../protocol/model";
 import type { ItemBody } from "../provider";
 
@@ -122,6 +124,9 @@ export function label(name: string, fields: Fields): string {
       return text(fields, "query") ?? text(fields, "url") ?? name;
     }
     case "mcp": {
+      if (name === PROGRESS_TOOL) {
+        return planLabel(fields);
+      }
       const parts = mcpParts(name);
       return parts === undefined ? name : `${parts.server}: ${parts.tool}`;
     }

@@ -1,3 +1,6 @@
+import { log } from "../log";
+import { PROGRESS_SERVER, PROGRESS_TOOL } from "../progress/prompt";
+import { planLabel } from "../progress/tool";
 import type { Catalog, ProviderStatus } from "../protocol/methods";
 import type { Mode, ProviderId, RequestPayload, Response } from "../protocol/model";
 import type {
@@ -7,6 +10,7 @@ import type {
   FileChanges,
   ItemBody,
   Outcome,
+  PlanAnswer,
   Provider,
   ProviderSession,
   SessionChange,
@@ -226,14 +230,98 @@ export class FakeSession implements ProviderSession {
       },
     };
   }
+
+  /** Calls the progress tool with `input`, as an agent does. */
+  async plan(input: unknown): Promise<PlanAnswer> {
+    return await this.#sink.plan.update(input);
+  }
 }
 
 /** What a turn starts with for the fake to do some work before it answers. */
 const SHOW_WORK = "Show your work";
 /** What a turn starts with for the fake to leave a task running in the background. */
 const IN_BACKGROUND = "Keep working in the background";
-
 type ToolPayload = Extract<ItemBody, { kind: "tool" }>["payload"];
+
+/** What a turn starts with for the fake to keep a plan, moving it along until it's all done. */
+const SHOW_PLAN = "Show your plan";
+/** What a turn starts with for the fake to keep a plan and end the turn with a step running. */
+const PAUSE_PLAN = "Show your plan, then stop";
+/** How many of `SHOWN_PLAN`'s calls a turn that stops partway makes. */
+const PAUSED_AFTER = 3;
+/** How long the fake's plan waits between its updates. */
+const PLAN_STEP_MS = 800;
+
+/** The calls of the progress tool a turn that asks for a plan makes, in order. */
+export const SHOWN_PLAN: readonly unknown[] = [
+  {
+    steps: [
+      {
+        id: "1",
+        title: "Reproduce the flaky ledger test",
+        detail: "Run the ledger suite until it fails and keep the seed that breaks it.",
+        status: "running",
+      },
+      { id: "1.1", parent: "1", title: "Run the ledger suite until it fails", status: "running" },
+      { id: "1.2", parent: "1", title: "Keep the seed that breaks it" },
+      {
+        id: "2",
+        title: "Fix the rounding race in settle()",
+        detail: "Settle under one lock so a concurrent post can't round twice.",
+      },
+      { id: "2.1", parent: "2", title: "Hold the ledger lock across settle" },
+      {
+        id: "2.2",
+        parent: "2",
+        title: "Run the suite 200 times with the seed",
+        detail: "Any failure reopens 2.1.",
+      },
+      {
+        id: "3",
+        title: "Note the cause in the ledger changelog",
+        detail: "One line under Fixed, done once it's in the diff.",
+      },
+    ],
+    now: "running the ledger suite",
+  },
+  { steps: [{ id: "1.1", status: "done" }, { id: "1.2", status: "running" }] },
+  {
+    steps: [{ id: "1.2", status: "done" }, { id: "2.1", status: "running" }],
+    now: "taking the ledger lock in settle()",
+  },
+  {
+    steps: [{ id: "2.1", status: "done" }, { id: "2.2", status: "running" }],
+    now: "running the suite with seed 7731",
+  },
+  {
+    steps: [{ id: "2.2", status: "done" }, { id: "3", status: "running" }],
+    now: "writing the changelog line",
+  },
+  { steps: [{ id: "3", status: "done" }], now: "" },
+];
+
+/** Calls the progress tool with each of `calls`, a while apart, each a row of the turn. */
+async function showPlan(
+  session: FakeSession,
+  turn: number,
+  calls: readonly unknown[],
+): Promise<void> {
+  const base = { output: null, exitCode: null, patch: null, files: [], server: PROGRESS_SERVER };
+  for (const [index, input] of calls.entries()) {
+    if (index > 0) {
+      await Bun.sleep(PLAN_STEP_MS);
+    }
+    const key = `plan-${String(turn)}-${String(index)}`;
+    const payload: ToolPayload = {
+      ...base, name: PROGRESS_TOOL, family: "mcp", label: planLabel(input), input: null,
+    };
+    session.report({ type: "item.started", key, item: { kind: "tool", payload } });
+    const got = await session.plan(input);
+    const item: ItemBody = { kind: "tool", payload: { ...payload, output: got.text } };
+    const status = got.refused ? "failed" : "completed";
+    session.report({ type: "item.updated", key, item, status });
+  }
+}
 
 /** The work a turn that asks for it does: it thinks, reads, edits, tests, writes and plans. */
 function work(session: FakeSession, turn: number): void {
@@ -328,17 +416,36 @@ function work(session: FakeSession, turn: number): void {
   });
 }
 
-/** Answers `turn` at once with its text said back, streamed in two pieces. */
+/**
+ * Answers `turn` with its text said back, streamed in two pieces: at once, or once the plan a
+ * turn that asks for one keeps is all done, or has gone a few steps for one that stops partway.
+ */
 export function answer(session: FakeSession, turn: TurnInput): void {
-  const key = `answer-${String(session.turns.length)}`;
-  const opening = "You said: ";
+  const count = session.turns.length;
   session.started();
+  if (turn.text.startsWith(SHOW_PLAN)) {
+    const paused = turn.text.startsWith(PAUSE_PLAN);
+    const calls = paused ? SHOWN_PLAN.slice(0, PAUSED_AFTER) : SHOWN_PLAN;
+    showPlan(session, count, calls).then(() => {
+      saidBack(session, turn, count);
+    }, (error: unknown) => {
+      log.warn("The fake's plan stopped", error);
+    });
+    return;
+  }
   if (turn.text.startsWith(SHOW_WORK)) {
-    work(session, session.turns.length);
+    work(session, count);
   }
   if (turn.text.startsWith(IN_BACKGROUND)) {
     session.report({ type: "background", tasks: 1 });
   }
+  saidBack(session, turn, count);
+}
+
+/** Says `turn`'s text back, streamed in two pieces, and ends the turn. */
+function saidBack(session: FakeSession, turn: TurnInput, count: number): void {
+  const key = `answer-${String(count)}`;
+  const opening = "You said: ";
   session.startsText(key);
   session.report({ type: "item.appended", key, text: opening });
   session.report({ type: "item.appended", key, text: turn.text });

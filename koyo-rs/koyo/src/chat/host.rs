@@ -51,6 +51,7 @@ impl Chats {
                 .then(std::env::current_exe)
                 .and_then(Result::ok)
                 .map(|koyo| koyo.to_string_lossy().into_owned()),
+            progress: settings.chat_progress,
         };
         if self.told_config.as_ref() == Some(&config) {
             return;

@@ -146,6 +146,9 @@ pub struct Settings {
     pub chat_verbosity: Verbosity,
     /// What the details card over a chat shows, and whether it's up.
     pub chat_details: ChatDetails,
+    /// Whether a chat's agent keeps a plan of its task with Koyo's progress tool, which the chat's
+    /// details card shows (`docs/chat.md` 5.5).
+    pub chat_progress: bool,
     /// How wide a chat's timeline and composer get.
     pub chat_width: ChatWidth,
     /// Whether scrolling back up through a chat's section brings the prompt it answers down at the
@@ -268,6 +271,7 @@ impl Default for Settings {
             language_servers: language_servers::every_server(),
             chat_verbosity: Verbosity::default(),
             chat_details: ChatDetails::default(),
+            chat_progress: true,
             chat_width: ChatWidth::default(),
             floating_prompts: true,
             chat_activity: ChatActivity::default(),

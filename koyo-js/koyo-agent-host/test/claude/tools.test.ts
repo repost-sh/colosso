@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { PROGRESS_TOOL } from "../../src/progress/prompt";
 import type { Hunk } from "../../src/protocol/model";
 import {
   bounded,
@@ -44,6 +45,32 @@ describe("families", () => {
       server: "github",
     });
   });
+
+  test("a plan update is shown by what it did: phases declared, statuses set, or the agent's now",
+    () => {
+      const shown = (input: unknown): string => toolStarted(PROGRESS_TOOL, input).payload.label;
+      const phase = (id: string): unknown => ({ id, title: `Phase ${id} of it`, detail: "." });
+      expect(toolStarted(PROGRESS_TOOL, { steps: [phase("1")] }).payload).toMatchObject({
+        name: PROGRESS_TOOL,
+        family: "mcp",
+        server: "koyo_progress",
+      });
+      const declared = ["1", "2", "3", "4", "5"].flatMap((id) => [
+        phase(id),
+        { id: `${id}.1`, parent: id, title: "A unit of the phase's work", status: "pending" },
+      ]);
+      expect(shown({ steps: declared })).toBe("Plan: 5 phases");
+      expect(shown({ replace: true, steps: [phase("1")] })).toBe("Plan: 1 phase");
+      expect(shown({ steps: [{ id: "3.2", status: "done" }, { id: 3.3, status: "running" }] }))
+        .toBe("Plan: 3.2 done, 3.3 running");
+      expect(shown({ steps: [], now: "gating the worker report for 2.3" }))
+        .toBe("Plan: gating the worker report for 2.3");
+      expect(shown({ steps: [{ id: "3.4", parent: "3", title: "Rerun the ledger suite" }] }))
+        .toBe("Plan: 3.4 added");
+      expect(shown({ steps: [phase("6"), { id: "5.2", status: "done" }] }))
+        .toBe("Plan: 6 added, 5.2 done");
+      expect(shown({ steps: [{ id: "2.1", title: "" }] })).toBe("Plan");
+    });
 
   test("a long input is kept cut", () => {
     const input = { content: "x".repeat(10_000) };

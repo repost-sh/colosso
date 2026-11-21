@@ -1,6 +1,7 @@
 //! The Chat settings page: what chats run on and whether they have Koyo's tools, what an agent
 //! may do and how hard it works in a new chat, how wide a chat is, whether its prompts float, what
-//! its composer shows while it works, and how much of its work shows, its verbosity.
+//! its composer shows while it works, whether its agent keeps a plan of its task, and how much of
+//! its work shows, its verbosity.
 
 use std::path::Path;
 
@@ -28,6 +29,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
         new_chats(cx),
         layout(cx),
         composer(cx),
+        progress(),
         verbosity(cx),
     ]
 }
@@ -217,6 +219,22 @@ fn composer(cx: &App) -> SettingsSection {
             .control(MenuButton::new("chat-activity", activity.label(), |cx| {
                 settings::get(cx).chat_activity.menu()
             })),
+    )
+}
+
+fn progress() -> SettingsSection {
+    SettingsSection::new("Progress").row(
+        SettingRow::new("Task plan")
+            .description(
+                "The agent keeps a plan of its task, its phases and the steps each takes, and the \
+                 chat's details card shows how far it has come. Off, the card stops showing it at \
+                 once, and chats stop keeping one from the next time they start.",
+            )
+            .control(NativeSwitch::new(
+                "chat-progress",
+                |settings| settings.chat_progress,
+                |settings, on| settings.chat_progress = on,
+            )),
     )
 }
 

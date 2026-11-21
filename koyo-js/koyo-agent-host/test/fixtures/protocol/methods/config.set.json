@@ -5,7 +5,8 @@
     "params": {
       "claudePath": null,
       "defaultMode": "accept_edits",
-      "koyoTools": "/Applications/Koyo.app/Contents/MacOS/koyo"
+      "koyoTools": "/Applications/Koyo.app/Contents/MacOS/koyo",
+      "progress": true
     }
   },
   "response": {

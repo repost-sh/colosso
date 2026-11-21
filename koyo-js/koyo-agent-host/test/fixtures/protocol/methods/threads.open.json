@@ -28,6 +28,74 @@
         "tabOpen": true,
         "parent": null,
         "backgroundTasks": 1,
+        "progress": {
+          "phases": [
+            {
+              "id": "1",
+              "title": "Reproduce the flaky ledger test",
+              "detail": "Run the ledger suite until it fails and keep the seed that breaks it.",
+              "status": "done",
+              "startedAt": "2026-11-03T18:02:20.000Z",
+              "endedAt": "2026-11-03T18:04:10.000Z",
+              "steps": []
+            },
+            {
+              "id": "2",
+              "title": "Fix the rounding race in settle()",
+              "detail": "Settle under one lock so a concurrent post can't round twice; done when 200 runs pass.",
+              "status": "running",
+              "startedAt": "2026-11-03T18:04:10.000Z",
+              "endedAt": null,
+              "steps": [
+                {
+                  "id": "2.1",
+                  "title": "Hold the ledger lock across settle",
+                  "detail": null,
+                  "status": "done",
+                  "startedAt": "2026-11-03T18:04:10.000Z",
+                  "endedAt": "2026-11-03T18:07:00.000Z"
+                },
+                {
+                  "id": "2.2",
+                  "title": "Run the suite 200 times with the seed",
+                  "detail": "Uses the seed kept in 1; any failure reopens 2.1.",
+                  "status": "running",
+                  "startedAt": "2026-11-03T18:07:00.000Z",
+                  "endedAt": null
+                },
+                {
+                  "id": "2.3",
+                  "title": "Drop the retry the test leaned on",
+                  "detail": null,
+                  "status": "skipped",
+                  "startedAt": null,
+                  "endedAt": "2026-11-03T18:07:30.000Z"
+                }
+              ]
+            },
+            {
+              "id": "3",
+              "title": "Ask whether to backport the fix to 4.x",
+              "detail": "The person decides; blocked until they answer.",
+              "status": "blocked",
+              "startedAt": null,
+              "endedAt": null,
+              "steps": []
+            },
+            {
+              "id": "4",
+              "title": "Note the cause in the ledger changelog",
+              "detail": "One line under Fixed.",
+              "status": "pending",
+              "startedAt": null,
+              "endedAt": null,
+              "steps": []
+            }
+          ],
+          "now": "running the suite with seed 7731",
+          "startedAt": "2026-11-03T18:02:20.000Z",
+          "updatedAt": "2026-11-03T18:09:30.000Z"
+        },
         "createdAt": "2026-11-03T18:02:11.204Z",
         "updatedAt": "2026-11-03T18:09:40.877Z",
         "readAt": "2026-11-03T18:05:02.000Z",

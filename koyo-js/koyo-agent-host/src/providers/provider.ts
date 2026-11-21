@@ -8,6 +8,7 @@ import type {
   Item,
   Mode,
   NoticeLevel,
+  Plan,
   ProviderId,
   RequestPayload,
   Response,
@@ -50,6 +51,8 @@ export interface SessionSpec {
   readonly resumeAt: string | null;
   /** The `koyo` the session starts as Koyo's MCP server, as Koyo's settings say (`config.set`). */
   readonly koyoTools: string | null;
+  /** Whether the agent keeps the chat's plan with Koyo's progress tool, as Koyo's settings say. */
+  readonly progress: boolean;
 }
 
 /** A change to a live session's settings. */
@@ -172,6 +175,20 @@ export type DriverEvent =
   }
   | { readonly type: "session.ended"; readonly error: string | null };
 
+/** What a call of the progress tool got: the whole plan and notes, or why it changed nothing. */
+export interface PlanAnswer {
+  readonly refused: boolean;
+  readonly text: string;
+}
+
+/** The chat's plan, which the agent keeps with the progress tool (docs/chat.md 5.5). */
+export interface PlanSink {
+  /** Applies a call of the tool, its input as the agent made it, in a step of its own. */
+  readonly update: (input: unknown) => Promise<PlanAnswer>;
+  /** The plan as it is now. */
+  readonly current: () => Plan | null;
+}
+
 /** Where a session reports to. */
 export interface SessionSink {
   readonly event: (event: DriverEvent) => void;
@@ -184,6 +201,7 @@ export interface SessionSink {
     signal: AbortSignal,
     bySubagent: boolean,
   ) => Promise<Response>;
+  readonly plan: PlanSink;
 }
 
 /**

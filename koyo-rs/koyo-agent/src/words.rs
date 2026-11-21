@@ -12,6 +12,10 @@ use crate::protocol::requests::{
     Response,
 };
 
+mod progress;
+
+pub use progress::{percent, plan_count, plan_stale, plan_time, span, step_time};
+
 /// What shows under a final answer: "Opus 5.5 · High · 14:30", the model as `catalog` calls the
 /// one it ran on, which for a run that chose none is the one a chat that chose none says it runs
 /// on; or its id, if it's no longer listed.
@@ -138,22 +142,23 @@ pub fn subagent_line(
     ended: Option<&Time>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> String {
-    let took = started.and_then(|started| elapsed(started, ended, now));
+    let took = (started.and_then(|started| elapsed(started, ended, now)))
+        .map(|seconds| duration(seconds.max(0).unsigned_abs()));
     took.map_or_else(|| doing.to_owned(), |took| format!("{doing} · {took}"))
 }
 
+/// How many seconds went by from `started` to `ended`, or to `now` while it goes on.
 fn elapsed(
     started: &Time,
     ended: Option<&Time>,
     now: chrono::DateTime<chrono::Utc>,
-) -> Option<String> {
+) -> Option<i64> {
     let started = parsed(started)?;
     let until = match ended {
         Some(ended) => parsed(ended)?,
         None => now.fixed_offset(),
     };
-    let seconds = (until - started).num_seconds().max(0);
-    Some(duration(seconds.unsigned_abs()))
+    Some((until - started).num_seconds())
 }
 
 /// What a subagent's used so far, as a person says it.

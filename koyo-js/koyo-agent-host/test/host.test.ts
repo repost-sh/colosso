@@ -114,6 +114,7 @@ describe("the host", () => {
       claudePath: "/Users/ana/bin/claude",
       defaultMode: "auto",
       koyoTools: "/Applications/Koyo.app/Contents/MacOS/koyo",
+      progress: true,
     };
     const catalog = { provider: "fake", cwd: chats.dir };
     chats.provider.settingsMode = "accept_edits";
@@ -126,19 +127,32 @@ describe("the host", () => {
     expect(await app.next()).toMatchObject({ line: { result: { defaultMode: "auto" } } });
   });
 
-  test("opens a chat that names no mode in Koyo's default, with Koyo's tools", async () => {
+  test("opens a chat that names no mode in Koyo's default, with Koyo's tools and the progress tool",
+    async () => {
+      const chats = host();
+      const app = await client(chats);
+      const koyoTools = "/Applications/Koyo.app/Contents/MacOS/koyo";
+      const config = { claudePath: null, defaultMode: "accept_edits", koyoTools, progress: true };
+      app.request(1, "config.set", config);
+      await app.next();
+      const thread = chats.threads.create(CREATE);
+      chats.threads.actor(thread.id).send(prompt("Find the flaky test."), "auto");
+      expect(chats.provider.session.spec).toMatchObject({
+        threadId: thread.id,
+        permission: "accept_edits",
+        koyoTools,
+        progress: true,
+      });
+    });
+
+  test("leaves the progress tool off while Koyo's settings don't name it", async () => {
     const chats = host();
     const app = await client(chats);
-    const koyoTools = "/Applications/Koyo.app/Contents/MacOS/koyo";
-    app.request(1, "config.set", { claudePath: null, defaultMode: "accept_edits", koyoTools });
+    app.request(1, "config.set", { claudePath: null, defaultMode: null, koyoTools: null });
     await app.next();
     const thread = chats.threads.create(CREATE);
     chats.threads.actor(thread.id).send(prompt("Find the flaky test."), "auto");
-    expect(chats.provider.session.spec).toMatchObject({
-      threadId: thread.id,
-      permission: "accept_edits",
-      koyoTools,
-    });
+    expect(chats.provider.session.spec.progress).toBe(false);
   });
 
   test("tells a thread's changes in step order, each before the answer that made it", async () => {

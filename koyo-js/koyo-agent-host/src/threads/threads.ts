@@ -34,7 +34,7 @@ export class Threads {
   /** The actors with a session open, the least recently used first. */
   #sessions: ThreadActor[] = [];
   /** Koyo's settings for the agents, as the app last gave them. */
-  #config: Config = { claudePath: null, defaultMode: null, koyoTools: null };
+  #config: Config = { claudePath: null, defaultMode: null, koyoTools: null, progress: false };
 
   constructor(options: Options) {
     this.#options = options;

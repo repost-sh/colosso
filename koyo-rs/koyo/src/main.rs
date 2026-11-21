@@ -195,16 +195,8 @@ fn main() -> ExitCode {
         return settings_view::visual::run();
     }
     #[cfg(feature = "visual-check")]
-    if std::env::args().any(|arg| arg == "--visual-check-chat") {
-        return chat::visual::run();
-    }
-    #[cfg(feature = "visual-check")]
-    if std::env::args().any(|arg| arg == "--visual-check-chat-theme") {
-        return chat::visual::run_theme();
-    }
-    #[cfg(feature = "visual-check")]
-    if std::env::args().any(|arg| arg == "--visual-check-chat-markdown") {
-        return chat::visual::run_markdown();
+    if let Some(draw) = std::env::args().find_map(|arg| chat::visual::check(&arg)) {
+        return visual::run(draw);
     }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-chat-backdrop") {

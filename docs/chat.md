@@ -484,6 +484,7 @@ Thread {
   parent: {threadId, itemId} | null,   // the row of the thread that started it (4.5.10)
   backgroundTasks: n,         // what the agent has running in the background now (4.7); 0
                               // while no session runs, and as a host that stopped comes back
+  progress: Plan | null,      // the plan the agent keeps with the progress tool (5.5)
   createdAt, updatedAt, readAt, seq
 }
 
@@ -816,7 +817,9 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   args: ["mcp"], env: {KOYO_CHAT: <thread id>}}}`, `allowedTools` the server's 18 read-only
   tools (`mcp__koyo__…`), `disallowedTools: ["EnterWorktree", "ExitWorktree",
   "mcp__koyo__worktree_delete", "mcp__koyo__app_launch"]`, and `KOYO_TOOLS_PROMPT` appended
-  after `KOYO_PROMPT`. The
+  after `KOYO_PROMPT`. While Progress is on (5.5): the in-process `koyo_progress` server, its
+  tool allowed, the person's own `mcp__progress__update` disallowed, `PROGRESS_PROMPT` appended
+  last, and the hooks that refuse a subagent's call and remind the agent of the plan. The
   probe, the files query and the title keep registering nothing.
 - **Prompt identity.** Each prompt gets a fresh uuid; root frames are credited to a turn
   only once the CLI echoes it (`user_message_uuid(s)`) or reports it in `command_lifecycle`.
@@ -1038,7 +1041,12 @@ Layout, top to bottom inside the pane's card:
   is. What's known of the branch is read as the card's drawn, asking its remote, if that's over a
   minute old, `HEAD` moved, or a person is back from another app. Pull requests are the GitHub CLI's, where it's installed. It's up where the pane has room for it beside
   the timeline, as a person left it, and over the timeline only when asked for where there's none.
-  ⌘⇧B or its button toggles it, and a menu beside the button turns each part on or off.
+  ⌘⇧B or its button toggles it, and a menu beside the button turns each part on or off. Its
+  free sides size it: the left edge its width (240 to 640 pt, within the pane), the bottom edge its
+  height (from 160 pt to the room above the composer; unset, it's as tall as what it shows) and the
+  corner between them both. The size is kept in settings once a drag ends, and a double click on a
+  handle puts its sides back as they come. Its right and top sides stay against the pane's corner
+  and its controls.
 - **Subagents.** A subagent's row is a card: Claude's little guy, in his orange, on a round mark
   with a dot for how it's doing; what it's called; what it's doing or the start of its report;
   its status and how long it took. Subagents one after the other sit under one line saying how
@@ -1310,6 +1318,67 @@ Layout, top to bottom inside the pane's card:
   before.
 - A field's caret blinks while it has the keyboard; a field in a window behind another app's draws
   no caret and doesn't blink, as GPUI tells it it lost the keyboard.
+
+
+### 5.5 Progress [decided]
+
+A chat's agent keeps a plan of its task, and the details card shows it: a bar of how far the
+task has come, then its phases, each opening on a click to say what it covers and to list its
+sub-steps, each of which opens to its own detail. Settings › Chat › Progress turns it on
+(the default) or off. Ported from the person's Claude Code mod `progress` (a tool, a prompt
+section and a terminal pane), and changed where 199 of its past sessions showed it failing.
+
+- **The plan is the chat's.** `Thread.progress` holds it (4.4): phases, each with its sub-steps
+  one level deep, each step `{id, title, detail, status, startedAt, endedAt}`, the status one of
+  pending, running, done, blocked, skipped; and the agent's `now` line, the plan's `startedAt`
+  and `updatedAt`. A plan with no phases is never kept, so `Thread.progress` is null exactly when
+  the chat has no plan. It's stored with the thread and sent in `thread.changed` like any other
+  change to it, so it outlives the session, the CLI process and the host. Why: the mod kept the
+  plan in the CLI's process, which Koyo closes after five idle minutes (4.5.6), so 223 of 1,122
+  updates sent after a new prompt in Koyo's chats found it gone, against none of 1,480 within a
+  turn, and those losses were three quarters of all refusals. Nesting the sub-steps makes a
+  sub-step of a sub-step impossible to store; the tool's input stays flat (`id`, `parent`), as the
+  mod's was.
+- **The tool.** While Settings › Chat › Progress is on (`config.set`'s `progress`), each session
+  gets an in-process MCP server `koyo_progress` (the SDK's `createSdkMcpServer`, so it runs in the
+  host and needs no process), its one tool `mcp__koyo_progress__update` allowed without asking
+  and loaded with the prompt rather than behind tool search (`alwaysLoad`). A call goes to the
+  thread's actor (`SessionSink.plan`), which applies it in a step of its own, commits the thread
+  and answers with the whole plan, phase by phase, and notes on how the call used it. The rules
+  are the mod's: upserts by id; a new step needs a title, a new phase a detail; a title of
+  generic words, or too short, is refused; a phase with sub-steps takes its status from them, and
+  can't be marked done while one is open. A subagent's call is refused by a `PreToolUse` hook,
+  and the tool's description says only the chat's agent calls it (all 479 subagent calls in the
+  study were refused; the mod told only the main conversation).
+- **What changed from the mod.** `replace` is never refused: a replace that drops open phases
+  says which, so the agent can carry them over. The mod refused it while a phase was open, and
+  11 of the 28 agents refused went on adding new tasks to the old plan. A title changed to one
+  sharing under a fifth of its words is refused as different work under a reused id (378 of 590
+  title changes were). Each plan's clock is its own.
+- **Reminders** (SDK hooks, in the host): a message the person sends while the plan has work
+  left tells the agent what's running and pending and asks it to update the plan or replace it
+  for a different task (`UserPromptSubmit`); thirty of the agent's tool calls without a plan
+  update add one line asking for it (`PostToolUse`), once a stretch. Why: 619 of 1,306 turns
+  ended with a step still running, and 609 of 3,721 gaps between updates spanned thirty calls or
+  more. Rejected: a `Stop` hook, which would buy an accurate plan with a model round at the end
+  of half the turns; the card shows a stopped chat's running step as paused instead.
+- **The person's mod.** Their Claude Code loads it in Koyo's chats too, as `mcp__progress__update`;
+  with Progress on, a session disallows that tool, so a chat has one plan tool, and the mod adds
+  its prompt section only while its tool is offered.
+- **The card.** A Progress section (`DetailsItem::Progress`, before Subagents): "2 of 5 · 40%"
+  and the plan's elapsed time over a bar; each phase not skipped counts the same, an open one by
+  its done sub-steps' share. A phase's row has its status mark, title, "1/3" and time; a running
+  or blocked one is open until a person closes it. The foot has the agent's `now` while it works,
+  "Waiting on you" or "Paused until the next message" while it doesn't (a running step then
+  draws still), and how long ago the plan changed once that's ten minutes with work open. Where
+  the card is down, its controls show the share beside the toggle.
+- **The timeline** keeps each update as a tool row, labelled by what it did ("Plan: 3.2 done,
+  3.3 running"), under Results.
+- Rejected: Koyo's own MCP server (`koyo mcp`, O1), which would tie the plan to Koyo tools being
+  on and keep it in the app, which isn't there while it's closed; deriving the plan from
+  Claude's own to-do tool, which has no phases or details; a history of replaced plans (the
+  timeline holds each update).
+- Not done: going back past the turn that changed the plan (C11) leaves the plan as it is.
 
 ---
 

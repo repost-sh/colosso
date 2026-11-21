@@ -1,8 +1,9 @@
 import { errorMessage, log } from "../log";
-import type { RequestPayload, Thread } from "../protocol/model";
+import type { Plan, RequestPayload, Thread } from "../protocol/model";
 import type {
   Config,
   DriverEvent,
+  PlanAnswer,
   Provider,
   ProviderSession,
   SessionChange,
@@ -16,7 +17,8 @@ const IDLE_MS = 5 * 60_000;
 
 /**
  * The session `thread` runs its turns in, as conversation `sessionId`: in the chat's mode, or
- * Koyo's `defaultMode` when it names none (C12), with Koyo's tools while Koyo's settings say.
+ * Koyo's `defaultMode` when it names none (C12), with Koyo's tools and the progress tool while
+ * Koyo's settings say.
  */
 export function specFor(thread: Thread, sessionId: string, config: Config): SessionSpec {
   return {
@@ -31,13 +33,26 @@ export function specFor(thread: Thread, sessionId: string, config: Config): Sess
     plan: thread.plan,
     resumeAt: thread.resumeAt,
     koyoTools: config.koyoTools,
+    progress: config.progress,
   };
 }
+
+/** What a dropped session's call of the progress tool is answered. */
+const DROPPED: PlanAnswer = {
+  refused: true,
+  text: "This chat's session was closed, so the plan wasn't changed.",
+};
 
 /** Where what the session reports goes, each call in a step of its own. */
 export interface Reports {
   readonly event: (event: DriverEvent) => void;
   readonly ask: (payload: RequestPayload, signal: AbortSignal, waiter: Waiter) => void;
+  /** The chat's plan: a call of the progress tool applied within the step it comes in, and the
+   * plan as it is. */
+  readonly plan: {
+    readonly update: (input: unknown) => PlanAnswer;
+    readonly current: () => Plan | null;
+  };
   /** The session went, by whichever road: what lived in it beside its turn went with it. */
   readonly gone: () => void;
 }
@@ -102,6 +117,14 @@ export class SessionSlot {
           }
         });
       }),
+      plan: {
+        update: async (input) => await new Promise((resolve) => {
+          this.#later(() => {
+            resolve(current() ? this.#planned(input) : DROPPED);
+          });
+        }),
+        current: () => this.#reports.plan.current(),
+      },
     };
     const live = this.#provider.open(spec, sink);
     this.#session = { live, reopen: false };
@@ -165,6 +188,16 @@ export class SessionSlot {
   /** Asks subagent `key` to stop; one lives as long as the session, so there is one to ask. */
   stopSubagent(key: string): void {
     this.#session?.live.stopSubagent(key);
+  }
+
+  /** A call of the progress tool applied, or why it couldn't be: its answer is always given. */
+  #planned(input: unknown): PlanAnswer {
+    try {
+      return this.#reports.plan.update(input);
+    } catch (error) {
+      log.error("A call of the progress tool failed", error);
+      return { refused: true, text: `The plan wasn't changed: ${errorMessage(error)}` };
+    }
   }
 
   /** Tells what the session reported. Once nothing runs in the background, which kept it, it

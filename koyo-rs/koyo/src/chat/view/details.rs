@@ -1,7 +1,8 @@
 //! The card over a chat that says where it works and how that's going (`docs/chat.md` 5.3): its
-//! branch and folder, what's changed there, its subagents and how full its conversation is. It's
-//! up by itself where the pane has room for it beside the timeline, and over the timeline where a
-//! person asks for it and there's none.
+//! branch and folder, what's changed there, how far the plan of its task has come, its subagents
+//! and how full its conversation is. It's up by itself where the pane has room for it beside the
+//! timeline, and over the timeline where a person asks for it and there's none; down, its controls
+//! still say how far the plan has come.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -9,16 +10,21 @@ use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, Focusable as _, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled as _, Window, actions, canvas, deferred, div,
-    px,
+    px, relative,
 };
 use koyo_agent::replica::Replica;
 use koyo_agent::words::{NEARLY_FULL, context_line, context_percent};
+use std::cell::Cell;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 mod commit_dialog;
 mod git_actions;
 mod open_in;
+mod progress;
+mod resize;
 mod scripts;
 mod subagents;
 
@@ -39,7 +45,7 @@ use crate::theme::{self, Palette};
 
 actions!(chat, [ToggleDetails]);
 
-/// How wide the card is.
+/// How wide the card comes.
 const WIDTH: f32 = 280.;
 /// What it keeps from the pane's edges.
 const MARGIN: f32 = 12.;
@@ -75,7 +81,14 @@ pub(super) struct Details {
     over: bool,
     /// Whether the subagents that ended show.
     previous: bool,
+    /// What a person opened or closed of the plan, by its steps' ids, phases' and sub-steps'
+    /// alike: it holds over what a step's status opens.
+    opened_steps: HashMap<String, bool>,
     git: git_actions::GitState,
+    resize: resize::Resize,
+    /// How tall the card was last drawn, border and all, which its bottom is dragged from while
+    /// it's as tall as what it shows.
+    drawn: Rc<Cell<f32>>,
 }
 
 impl Details {
@@ -83,11 +96,14 @@ impl Details {
     /// the pane, where it comes up over the chat when asked for.
     fn has_room(&self, cx: &App) -> bool {
         let column = settings::get(cx).chat_width.column();
-        column.is_some_and(|column| self.pane.0 >= px(column + 2. * (WIDTH + 2. * MARGIN)))
+        let width = self.width(cx);
+        column.is_some_and(|column| self.pane.0 >= px(column + 2. * (width + 2. * MARGIN)))
     }
 
     pub(super) fn is_up(&self, cx: &App) -> bool {
-        if self.has_room(cx) {
+        if self.resizing() {
+            true
+        } else if self.has_room(cx) {
             settings::get(cx).chat_details.open
         } else {
             self.over
@@ -166,17 +182,20 @@ pub(super) fn floating(
         .gap_1()
         .rounded_full()
         .occlude();
+    let replica = view
+        .showing()
+        .and_then(|shown| shown.thread.read(cx).replica());
+    let share = (!up).then(|| progress::pill(replica, p, cx)).flatten();
     let controls = liquid::floating(controls, on_glass, p)
         .when(up, |controls| controls.child(choosing(view, p, cx)))
+        .when_some(share, |controls, share| {
+            controls.child(share.on_click(cx.listener(toggled)))
+        })
         .child(
-            control("chat-details-toggle", IconName::PanelRight, p).on_click(cx.listener(
-                |view, _: &ClickEvent, _, cx| {
-                    view.details.toggle(cx);
-                    cx.notify();
-                },
-            )),
+            control("chat-details-toggle", IconName::PanelRight, p).on_click(cx.listener(toggled)),
         );
     let card = up.then(|| card(view, window, cx));
+    let drawn = view.details.drawn.clone();
     deferred(
         div()
             .absolute()
@@ -187,23 +206,38 @@ pub(super) fn floating(
             .items_end()
             .gap(px(GAP))
             .child(controls)
-            .children(card),
+            .children(card)
+            .on_children_prepainted(move |bounds, _, _| {
+                if let Some(card) = bounds.get(1) {
+                    drawn.set(card.size.height.as_f32());
+                }
+            }),
     )
     .into_any_element()
 }
 
+fn toggled(view: &mut ChatView, _: &ClickEvent, _: &mut Window, cx: &mut Context<ChatView>) {
+    view.details.toggle(cx);
+    cx.notify();
+}
+
 fn control(id: &'static str, mark: IconName, p: Palette) -> Stateful<Div> {
+    control_shell(id, p).w(px(CONTROLS - 6.)).child(icon(mark, 14.))
+}
+
+/// What a control is drawn in, round and muted until the pointer's on it, as wide as what it
+/// holds.
+fn control_shell(id: &'static str, p: Palette) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
         .items_center()
         .justify_center()
-        .size(px(CONTROLS - 6.))
+        .h(px(CONTROLS - 6.))
         .rounded_full()
         .cursor_pointer()
         .text_color(p.muted)
         .hover(move |control| control.bg(p.hover).text_color(p.text))
-        .child(icon(mark, 14.))
 }
 
 /// What a person can have the card show.
@@ -226,7 +260,7 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
     let replica = view
         .showing()
         .and_then(|shown| shown.thread.read(cx).replica());
-    let tallest = (view.details.pane.1 - px(MARGIN + CONTROLS + GAP + COMPOSER)).max(px(120.));
+    let height = view.details.height(cx);
     let sections: Vec<Div> = [
         choice
             .shows(DetailsItem::Worktree)
@@ -248,6 +282,7 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
             .shows(DetailsItem::Changes)
             .then(|| changes(view, p, cx))
             .flatten(),
+        progress::section(view, replica, p, cx),
         choice
             .shows(DetailsItem::Subagents)
             .then(|| subagents::section(view, replica, p, cx))
@@ -261,14 +296,22 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
     .flatten()
     .collect();
     let surface = div()
+        .debug_selector(|| "chat-details-card".into())
         .relative()
-        .w(px(WIDTH))
+        .w(px(view.details.width(cx)))
+        .when_some(height, |surface, height| surface.h(px(height)))
         .rounded(px(RADIUS))
         .occlude()
         .text_sm();
     let body = div()
         .id("chat-details")
-        .max_h(tallest)
+        .map(|body| {
+            if height.is_some() {
+                body.h_full()
+            } else {
+                body.max_h(px(view.details.tallest()))
+            }
+        })
         .overflow_y_scroll()
         .flex()
         .flex_col()
@@ -284,6 +327,7 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
         }));
     crate::chat_backdrop::floating(surface, on_glass, p, cx)
         .child(body)
+        .children(resize::handles(&view.details, p, cx))
         .into_any_element()
 }
 
@@ -381,35 +425,40 @@ fn context(replica: Option<&Replica>, p: Palette) -> Option<Div> {
     } else {
         p.muted
     };
-    Some(
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(6.))
-            .px(px(10.))
-            .py(px(6.))
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .child(div().text_color(p.text).child("Context"))
-                    .child(meta(context_line(held, room), p.muted)),
-            )
-            .child(
-                div()
-                    .h(px(3.))
-                    .w_full()
-                    .rounded_full()
-                    .bg(p.hairline)
-                    .child(
-                        div()
-                            .h_full()
-                            .rounded_full()
-                            .bg(color)
-                            .w(gpui_kit::relative(f32::from(percent) / 100.)),
-                    ),
-            ),
-    )
+    let share = f32::from(percent) / 100.;
+    Some(gauge("Context", context_line(held, room), share, color, p))
+}
+
+/// A section that says how far along something is: its title and what it says of it, over a bar
+/// `share` full of `fill`.
+fn gauge(title: &'static str, says: String, share: f32, fill: Hsla, p: Palette) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .px(px(10.))
+        .py(px(6.))
+        .child(
+            div()
+                .flex()
+                .justify_between()
+                .child(div().text_color(p.text).child(title))
+                .child(meta(says, p.muted)),
+        )
+        .child(
+            div()
+                .h(px(3.))
+                .w_full()
+                .rounded_full()
+                .bg(p.hairline)
+                .child(
+                    div()
+                        .h_full()
+                        .rounded_full()
+                        .bg(fill)
+                        .w(relative(share)),
+                ),
+        )
 }
 
 /// What a person can turn on and off of the card.

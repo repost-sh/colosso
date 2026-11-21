@@ -107,6 +107,10 @@ pub struct Thread {
     /// done. None while no session runs, and from a host from before it said.
     #[serde(default)]
     pub background_tasks: u64,
+    /// The plan the agent keeps with the progress tool, once it declared one; none from a host
+    /// from before it kept one.
+    #[serde(default)]
+    pub progress: Option<super::progress::Plan>,
     pub created_at: Time,
     pub updated_at: Time,
     pub read_at: Option<Time>,
