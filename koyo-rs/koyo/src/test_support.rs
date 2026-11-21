@@ -162,7 +162,7 @@ pub fn in_window<V: Render>(
         };
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            ..WindowOptions::default()
+            ..crate::window_options::base()
         };
         gpui_kit::open_window(options, cx, build).unwrap()
     })

@@ -133,7 +133,7 @@ fn options(bounds: Bounds<Pixels>, kind: Kind, parent: &Window, cx: &App) -> Win
         is_minimizable: false,
         window_background: WindowBackgroundAppearance::Blurred,
         display_id: parent.display(cx).map(|display| display.id()),
-        ..Default::default()
+        ..crate::window_options::base()
     }
 }
 

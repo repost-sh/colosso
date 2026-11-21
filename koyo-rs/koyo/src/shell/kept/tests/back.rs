@@ -322,7 +322,7 @@ fn a_window_opened_again_brings_back_what_its_file_holds(cx: &mut TestAppContext
     cx.update(|cx| {
         let slot = opened.clone();
         let open = move |kept, cx: &mut gpui_kit::App| {
-            let options = gpui_kit::WindowOptions::default();
+            let options = crate::window_options::base();
             let (_, shell) = gpui_kit::open_window(options, cx, |window, cx| {
                 cx.new(|cx| crate::shell::Shell::new(window, kept, cx))
             })?;
