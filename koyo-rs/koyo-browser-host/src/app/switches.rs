@@ -2,7 +2,8 @@
 //! a page hidden only by the app, and its timers run at least once a second while hidden, the
 //! work Chrome does for its metrics turned off, which a build of Koyo's never sends, and what
 //! Chrome fetches in the background for its omnibox, its AI and translate features and
-//! autofill's server, which no page of Koyo's shows.
+//! autofill's server, which no page of Koyo's shows, and the copy of its own bundle Chrome
+//! makes at each start.
 
 use cef::{CefString, CommandLine, ImplCommandLine};
 
@@ -68,6 +69,12 @@ const TRANSLATE_OFF: [&str; 2] = ["TranslateRankerQuery", "TranslateRankerEnforc
 /// hasn't and are refused. What a person saved fills in all the same.
 const AUTOFILL_SERVER_OFF: [&str; 1] = ["AutofillServerCommunication"];
 
+/// The clone of its own bundle Chrome makes in the user's temporary folder at each start
+/// (`chrome/browser/mac/code_sign_clone_manager.mm`), so that an update replacing the bundle
+/// leaves the running browser's signature valid. The copies a host didn't delete piled up:
+/// 150 of 400 MB in three days, 13 GB on disk once their shared blocks are counted once.
+const BUNDLE_CLONE_OFF: [&str; 1] = ["MacAppCodeSignClone"];
+
 /// Every feature the browser process turns off. What stays on, and why, is in the tests:
 /// the components and requests that check certificates, warn of dangerous sites and
 /// downloads, play protected video and keep extensions current.
@@ -79,6 +86,7 @@ fn features_off() -> impl Iterator<Item = &'static str> {
         .chain(GUIDE_OFF)
         .chain(TRANSLATE_OFF)
         .chain(AUTOFILL_SERVER_OFF)
+        .chain(BUNDLE_CLONE_OFF)
 }
 
 /// Every switch the browser process starts with.
@@ -119,7 +127,7 @@ mod tests {
 
     /// What a fresh profile fetched in its first minutes, and every launch asked Google, for
     /// nothing a page of Koyo's shows: each stays off.
-    const OFF: [&str; 10] = [
+    const OFF: [&str; 11] = [
         "HeapProfilerReporting",
         "OmniboxOnDeviceHeadProviderNonIncognito",
         "OmniboxOnDeviceHeadProviderIncognito",
@@ -130,6 +138,7 @@ mod tests {
         "TranslateRankerQuery",
         "TranslateRankerEnforcement",
         "AutofillServerCommunication",
+        "MacAppCodeSignClone",
     ];
 
     /// Switches that would stop what a page needs along with what it doesn't: background
