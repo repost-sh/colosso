@@ -116,25 +116,25 @@ fn the_bottom_edge_gives_the_card_a_height_and_the_corner_both(cx: &mut TestAppC
     assert_eq!(kept(cx), (Some(310.), Some(shown + 20.)));
 }
 
+/// The card's width is kept within 240 and 640 points, and beside the chat to what leaves the
+/// chat 480 of the pane; its height from 160 points to the pane's bottom.
 #[gpui_kit::test]
 fn the_card_is_kept_within_its_limits(cx: &mut TestAppContext) {
     let window = with_card("chat-details-resize-limits", cx);
     drag_by(window, LEFT, point(px(200.), px(0.)), cx);
     assert!(near(card(window, cx).size.width, 240.), "the narrowest");
     drag_by(window, LEFT, point(px(-2000.), px(0.)), cx);
-    assert!(near(card(window, cx).size.width, 640.), "the widest");
-    assert_eq!(kept(cx).0, Some(640.));
+    let pane = VisualTestContext::from_window(window, cx).debug_bounds("chat");
+    let pane = pane.expect("the chat is drawn");
+    let widest = (pane.size.width.as_f32() - 480. - 24.).min(640.);
+    assert!(near(card(window, cx).size.width, widest), "the widest, beside the chat");
+    let kept_width = kept(cx).0;
+    assert!(kept_width.is_some_and(|width| (width - widest).abs() < 0.5), "{kept_width:?}");
 
     drag_by(window, BOTTOM, point(px(0.), px(-2000.)), cx);
     assert!(near(card(window, cx).size.height, 160.), "the shortest");
     drag_by(window, BOTTOM, point(px(0.), px(2000.)), cx);
     let tallest = card(window, cx);
-    let pane = cx.update(|cx| window.update(cx, |_, window, _| window.viewport_size()));
-    let pane = pane.expect("the window");
-    assert!(
-        tallest.bottom().as_f32() <= pane.height.as_f32() - 180.,
-        "it leaves the composer its room: {tallest:?} in {pane:?}"
-    );
     drag_by(window, BOTTOM, point(px(0.), px(500.)), cx);
     assert!(
         near(card(window, cx).size.height, tallest.size.height.as_f32()),

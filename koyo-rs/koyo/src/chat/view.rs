@@ -1,8 +1,9 @@
 //! A chat tab: the timeline, and what floats over it (`docs/chat.md` 5.3). The two are views of
-//! their own, each drawn only for its own changes; this is what's left: where they go, the pill
-//! back to the end, and the older runs as the top gets near. What floats is among the window's
-//! overlays, as the glass hides what's drawn under it. That draws this view again for any change
-//! under it (a deferred element's reads aren't told apart), so it's kept to very little.
+//! their own, each drawn only for its own changes; this is what's left: where they go, left of the
+//! details card while it's up beside them, the pill back to the end, and the older runs as the top
+//! gets near. What floats is among the window's overlays, as the glass hides what's drawn under
+//! it. That draws this view again for any change under it (a deferred element's reads aren't told
+//! apart), so it's kept to very little.
 
 mod context_menu;
 pub(super) mod details;
@@ -440,13 +441,13 @@ impl Render for ChatView {
         self.note_seen(window, cx);
         cx.defer_in(window, |this, _, cx| this.float(cx));
         let timeline = (self.showing()).map(|shown| {
-            shown
-                .timeline
-                .clone()
-                .cached(StyleRefinement::default().size_full())
+            let list = (shown.timeline.clone()).cached(StyleRefinement::default().size_full());
+            let beside = self.details.aside(cx);
+            div().absolute().inset_0().right(beside).child(list)
         });
         div()
             .id("chat")
+            .debug_selector(|| "chat".into())
             .relative()
             .size_full()
             .text_color(theme::palette(cx).text)

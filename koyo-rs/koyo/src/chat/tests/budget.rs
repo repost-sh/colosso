@@ -5,9 +5,10 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gpui_kit::{AppContext as _, Entity, TestAppContext, px, size};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext, px, size};
 use koyo_agent::protocol::events::Changed;
 use koyo_agent::protocol::ids::{RunId, ThreadId, Time};
+use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
     Item, ItemStatus, Run, RunStatus, Status, ThreadSummary, ToolFamily,
 };
@@ -15,7 +16,8 @@ use koyo_agent::protocol::model::{
 use super::super::Chats;
 use super::super::thread::{ChatThread, ThreadEvent};
 use super::asks::Asking;
-use super::drawing::{settled, shell_with_chat, tool};
+use super::super::view::ChatView;
+use super::drawing::{settled, shell_with_chat_set, tool};
 use super::{answer, appended, at, chats_of, hears, run, snapshot};
 use crate::beat::IN_FRONT;
 use crate::budget::{
@@ -35,9 +37,20 @@ pub(super) fn root_of(shell: &Entity<Shell>, cx: &TestAppContext) -> PathBuf {
     })
 }
 
+/// A window showing chat `0001`'s tab with the rows of `shown`, its details card down: the card
+/// reads the branch whenever the window comes in front (`docs/chat.md` 5.4), which is its own
+/// work, not the chat's frames these hold.
+fn chat_card_down(
+    name: &str,
+    shown: ThreadSnapshot,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, Entity<ChatView>, Entity<ChatThread>) {
+    shell_with_chat_set(name, shown, |settings| settings.chat_details.open = false, cx)
+}
+
 #[gpui_kit::test]
 fn a_token_of_an_answer_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, _, _, thread) = shell_with_chat("budget-token", settled("0001"), cx);
+    let (window, _, _, thread) = chat_card_down("budget-token", settled("0001"), cx);
     let token = |cx: &mut TestAppContext| {
         thread.update(cx, |thread, cx| {
             thread.take_in(vec![appended("a", " more")], cx);
@@ -59,7 +72,7 @@ fn a_token_of_an_answer_leaves_the_shell_alone(cx: &mut TestAppContext) {
 /// A frame of the chat's own view, as when its timeline scrolls, which the view follows.
 #[gpui_kit::test]
 fn a_frame_of_a_chats_own_view_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, _, view, _) = shell_with_chat("budget-chat-view", settled("0001"), cx);
+    let (window, _, view, _) = chat_card_down("budget-chat-view", settled("0001"), cx);
 
     let budget = Built {
         shell: 0,
@@ -72,7 +85,7 @@ fn a_frame_of_a_chats_own_view_leaves_the_shell_alone(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn what_is_typed_in_a_chats_prompt_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, _, view, _) = shell_with_chat("budget-typed", settled("0001"), cx);
+    let (window, _, view, _) = chat_card_down("budget-typed", settled("0001"), cx);
     let composer = view.read_with(cx, |view, _| view.composer.clone());
     let text = composer.read_with(cx, |composer, _| composer.text.clone());
     let key = |cx: &mut TestAppContext| {
@@ -97,7 +110,7 @@ fn what_is_typed_in_a_chats_prompt_leaves_the_shell_alone(cx: &mut TestAppContex
 fn a_chats_summary_renders_the_shell_once_when_it_changes_and_not_when_it_is_the_same(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _, _) = shell_with_chat("budget-summary", settled("0001"), cx);
+    let (window, shell, _, _) = chat_card_down("budget-summary", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     let failed = |cx: &mut TestAppContext| hears(&chats, at(&root, Status::Failed), cx);
 
@@ -120,7 +133,7 @@ fn a_chats_summary_renders_the_shell_once_when_it_changes_and_not_when_it_is_the
 fn a_chats_summary_renders_nothing_when_only_what_the_shell_does_not_show_changes(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _, _) = shell_with_chat("budget-summary-unshown", settled("0001"), cx);
+    let (window, shell, _, _) = chat_card_down("budget-summary-unshown", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     let later = ThreadSummary {
         updated_at: Time("2026-11-03T10:05:00.000Z".into()),
@@ -148,7 +161,7 @@ fn a_chats_summary_renders_nothing_when_only_what_the_shell_does_not_show_change
 fn a_chat_working_out_of_sight_renders_the_shell_at_each_beat_of_its_spinners(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _, _) = shell_with_chat("budget-spinner", settled("0001"), cx);
+    let (window, shell, _, _) = chat_card_down("budget-spinner", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     hears(&chats, at(&root, Status::Working), cx);
 
@@ -236,7 +249,7 @@ fn changed(run: Run, item: Item) -> ThreadEvent {
 /// the shell's alone.
 #[gpui_kit::test]
 fn a_working_chat_draws_its_spinners_edge_and_live_row(cx: &mut TestAppContext) {
-    let (window, shell, _, thread) = shell_with_chat("budget-working", settled("0001"), cx);
+    let (window, shell, _, thread) = chat_card_down("budget-working", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     works(&chats, &root, &thread, cx);
 
@@ -259,7 +272,7 @@ fn a_working_chat_draws_its_spinners_edge_and_live_row(cx: &mut TestAppContext) 
 fn a_working_chat_with_its_edge_still_or_off_renders_the_shell_at_each_beat(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _, thread) = shell_with_chat("budget-edge-still", settled("0001"), cx);
+    let (window, shell, _, thread) = chat_card_down("budget-edge-still", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     let held_behind = Built {
         shell: 10,
@@ -282,7 +295,7 @@ fn a_working_chat_with_its_edge_still_or_off_renders_the_shell_at_each_beat(
 
 /// Once a chat stops working and its edge has faded out, nothing in the window asks for a beat.
 fn stops_the_beat(name: &str, front: bool, cx: &mut TestAppContext) {
-    let (window, shell, _, thread) = shell_with_chat(name, settled("0001"), cx);
+    let (window, shell, _, thread) = chat_card_down(name, settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     in_front(window, front, cx);
     works(&chats, &root, &thread, cx);
@@ -317,7 +330,7 @@ fn a_chat_that_stops_working_with_reduced_motion_stops_the_beat(cx: &mut TestApp
 fn a_terminal_shown_beside_a_working_chats_spinners_leaves_the_shell_alone(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _, thread) = shell_with_chat("budget-terminal-beside", settled("0001"), cx);
+    let (window, shell, _, thread) = chat_card_down("budget-terminal-beside", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     works(&chats, &root, &thread, cx);
     terminal_shown(window, &shell, &root, cx);
@@ -339,7 +352,7 @@ fn a_terminal_shown_beside_a_working_chats_spinners_leaves_the_shell_alone(
 /// so a chat at work in it builds nothing; seen again, it's drawn whole and goes on at once.
 #[gpui_kit::test]
 fn a_working_chat_in_a_window_nobody_sees_builds_nothing(cx: &mut TestAppContext) {
-    let (window, shell, _, thread) = shell_with_chat("budget-hidden", settled("0001"), cx);
+    let (window, shell, _, thread) = chat_card_down("budget-hidden", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     works(&chats, &root, &thread, cx);
     in_front(window, false, cx);
@@ -358,7 +371,7 @@ fn a_working_chat_in_a_window_nobody_sees_builds_nothing(cx: &mut TestAppContext
 /// counts as seen, so a working chat's spinners go on turning at each beat (`crate::beat`).
 #[gpui_kit::test]
 fn a_working_chat_goes_on_in_a_window_the_harness_counts_as_seen(cx: &mut TestAppContext) {
-    let (window, shell, _, thread) = shell_with_chat("budget-unseen-counts", settled("0001"), cx);
+    let (window, shell, _, thread) = chat_card_down("budget-unseen-counts", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     works(&chats, &root, &thread, cx);
     in_front(window, false, cx);
@@ -375,7 +388,7 @@ fn a_working_chat_goes_on_in_a_window_the_harness_counts_as_seen(cx: &mut TestAp
 /// as in front, where a person watches it from elsewhere, and not at all where nobody can see it.
 #[gpui_kit::test]
 fn a_running_items_time_builds_the_timeline_each_second_where_it_is_seen(cx: &mut TestAppContext) {
-    let (window, shell, view, thread) = shell_with_chat("budget-tick", settled("0001"), cx);
+    let (window, shell, view, thread) = chat_card_down("budget-tick", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     cx.update(|cx| cx.set_reduce_motion(true));
     works(&chats, &root, &thread, cx);

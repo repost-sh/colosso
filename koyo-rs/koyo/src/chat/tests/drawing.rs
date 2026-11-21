@@ -17,7 +17,9 @@ use super::super::thread::ChatThread;
 use super::super::timeline::{OpenSubagent, Timeline};
 use super::super::view::ChatView;
 use super::{AT, answer, appended, chats_of, run, snapshot, summary, text_of};
-use crate::settings::{self, CHAT_SIZES, LARGEST_CHAT_SIZE, Preset, Shows, Step, Verbosity};
+use crate::settings::{
+    self, CHAT_SIZES, LARGEST_CHAT_SIZE, Preset, Settings, Shows, Step, Verbosity,
+};
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
@@ -136,8 +138,24 @@ pub(super) fn shell_with_chat(
     Entity<ChatView>,
     Entity<ChatThread>,
 ) {
+    shell_with_chat_set(name, shown, |_| {}, cx)
+}
+
+/// `shell_with_chat`, the settings changed by `set` before the chat is first drawn.
+pub(super) fn shell_with_chat_set(
+    name: &str,
+    shown: ThreadSnapshot,
+    set: impl FnOnce(&mut Settings),
+    cx: &mut TestAppContext,
+) -> (
+    AnyWindowHandle,
+    Entity<Shell>,
+    Entity<ChatView>,
+    Entity<ChatThread>,
+) {
     let root = repo(name, &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
+    cx.update(|cx| settings::update(cx, set));
     select(&shell, &root, cx);
     let chats = chats_of(&shell, cx);
     chats.update(cx, |chats, cx| {

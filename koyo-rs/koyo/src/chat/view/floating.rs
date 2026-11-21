@@ -1,6 +1,7 @@
-//! What floats over a chat's timeline: the composer, over its end or in the middle of an empty
-//! chat, a subagent's bar in its place, the pill back to the end once a person left it, and, as a
-//! person scrolls up, the prompt of the section read at the top once its own place went up past it.
+//! What floats over a chat's timeline, as wide as it is: the composer, over its end or in the
+//! middle of an empty chat, a subagent's bar in its place, the pill back to the end once a person
+//! left it, and, as a person scrolls up, the prompt of the section read at the top once its own
+//! place went up past it.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::message_scroller::MessageScrollerState;
@@ -111,7 +112,7 @@ impl ChatView {
         let place = div()
             .absolute()
             .left_0()
-            .right_0()
+            .right(self.details.aside(cx))
             .flex()
             .flex_col()
             .items_center()
@@ -332,7 +333,7 @@ impl ChatView {
             .top_0()
             .bottom(self.inset())
             .left_0()
-            .right_0()
+            .right(self.details.aside(cx))
             .overflow_hidden()
             .flex()
             .flex_col()
@@ -400,7 +401,7 @@ impl ChatView {
             .absolute()
             .bottom(self.inset())
             .left_0()
-            .right_0()
+            .right(self.details.aside(cx))
             .flex()
             .justify_center()
             .child(pill);
