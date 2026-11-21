@@ -11,9 +11,9 @@ pub enum DetailsItem {
     Scripts,
     Git,
     Changes,
-    Progress,
     Subagents,
     Context,
+    Progress,
 }
 
 impl DetailsItem {
@@ -23,9 +23,9 @@ impl DetailsItem {
         DetailsItem::Scripts,
         DetailsItem::Git,
         DetailsItem::Changes,
-        DetailsItem::Progress,
         DetailsItem::Subagents,
         DetailsItem::Context,
+        DetailsItem::Progress,
     ];
 
     pub fn label(self) -> &'static str {
@@ -35,9 +35,9 @@ impl DetailsItem {
             DetailsItem::Scripts => "Project scripts",
             DetailsItem::Git => "Git actions and pull request",
             DetailsItem::Changes => "Changes",
-            DetailsItem::Progress => "Progress",
             DetailsItem::Subagents => "Subagents",
             DetailsItem::Context => "Context window",
+            DetailsItem::Progress => "Progress",
         }
     }
 }
@@ -55,6 +55,8 @@ pub struct ChatDetails {
     pub width: Option<f32>,
     /// How tall a person dragged it, by its bottom edge; unset, as tall as what it shows.
     pub height: Option<f32>,
+    /// Whether its progress is open to the plan's phases, or shows only how far the plan has come.
+    pub progress_open: bool,
 }
 
 impl Default for ChatDetails {
@@ -65,6 +67,7 @@ impl Default for ChatDetails {
             editor: None,
             width: None,
             height: None,
+            progress_open: false,
         }
     }
 }

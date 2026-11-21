@@ -10,13 +10,13 @@ use gpui_kit::{
     Pixels, Point, Styled as _, canvas, div, px,
 };
 
-use super::{COMPOSER, CONTROLS, Details, GAP, MARGIN, WIDTH};
 use super::super::ChatView;
+use super::room::NARROWEST;
+use super::{Details, WIDTH};
 use crate::settings;
 use crate::theme::Palette;
 
 /// What the card's kept within, as the pane has room for.
-const NARROWEST: f32 = 240.;
 const WIDEST: f32 = 640.;
 const SHORTEST: f32 = 160.;
 /// How thick an edge's handle is, and how far the corner's goes up and along.
@@ -81,20 +81,14 @@ impl Details {
         self.resize.held.is_some()
     }
 
-    /// The tallest the card can be: the pane's height less its controls and the composer's room.
-    pub(super) fn tallest(&self) -> f32 {
-        (self.pane.1.as_f32() - (MARGIN + CONTROLS + GAP + COMPOSER)).max(120.)
-    }
-
     /// How wide the card is: as its left edge is dragged, or as a person left it, within its
-    /// limits, but never narrower than the narrowest.
+    /// limits and what the pane has room for, but never narrower than the narrowest.
     pub(super) fn width(&self, cx: &App) -> f32 {
         let wanted = match &self.resize.held {
             Some(held) if held.handle.widens() => held.width - (held.at.x - held.from.x).as_f32(),
             _ => settings::get(cx).chat_details.width.unwrap_or(WIDTH),
         };
-        let widest = (self.pane.0.as_f32() - 2. * MARGIN).min(WIDEST);
-        wanted.min(widest).max(NARROWEST)
+        wanted.min(self.widest().min(WIDEST)).max(NARROWEST)
     }
 
     /// How tall the card is, where a person gave it a height: as its bottom edge is dragged, or as
@@ -148,9 +142,9 @@ impl Details {
     }
 
     /// Keeps `width` and `height` for the sides `handle` sizes, putting back those it has none
-    /// for, and the card up where it is, beside the timeline or over it.
+    /// for, and the card up where it is, beside the chat or over it.
     fn keep(&mut self, handle: Handle, width: Option<f32>, height: Option<f32>, cx: &mut App) {
-        let room = self.has_room(cx);
+        let room = self.has_room();
         settings::update(cx, |settings| {
             let details = &mut settings.chat_details;
             if handle.widens() {

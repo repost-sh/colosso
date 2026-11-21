@@ -1039,14 +1039,21 @@ Layout, top to bottom inside the pane's card:
   publish or push, pull, create a pull request, or the one it has), what's changed there, its
   subagents (those working, then "Previous agents" behind a line), and how full its conversation
   is. What's known of the branch is read as the card's drawn, asking its remote, if that's over a
-  minute old, `HEAD` moved, or a person is back from another app. Pull requests are the GitHub CLI's, where it's installed. It's up where the pane has room for it beside
-  the timeline, as a person left it, and over the timeline only when asked for where there's none.
-  ⌘⇧B or its button toggles it, and a menu beside the button turns each part on or off. Its
-  free sides size it: the left edge its width (240 to 640 pt, within the pane), the bottom edge its
-  height (from 160 pt to the room above the composer; unset, it's as tall as what it shows) and the
-  corner between them both. The size is kept in settings once a drag ends, and a double click on a
-  handle puts its sides back as they come. Its right and top sides stay against the pane's corner
-  and its controls.
+  minute old, `HEAD` moved, or a person is back from another app. Pull requests are the GitHub CLI's, where it's installed. Last comes how far the plan of its task has
+  come (5.5). Where the pane has room for the chat beside it, the card at its narrowest and the
+  chat at 480 pt (where three of the composer's four chips still say what they are), it's a
+  sidebar, up as a person left it: while it's up, the timeline's column and all that floats over
+  the chat's bottom (the composer and its drawers, the floating prompt, a subagent's bar, the pill
+  back to the end, the working edge) keep to the width left of it, at every Width, a narrow or
+  wide column centred in what's left, so nothing runs under it. Where there's none, it comes up
+  over the chat only when asked for, and moves nothing. ⌘⇧B or its button toggles it, and a menu
+  beside the button turns each part on or off. Its free sides size it, the chat beside it
+  following live: the left edge its width (240 to 640 pt, within the pane, and beside the chat
+  as leaves the chat its 480), the bottom edge its height (from 160 pt to the pane's bottom less
+  its margin beside the chat, or to the room above the composer over it; unset, it's as tall as
+  what it shows) and the corner between them both. The size is kept in settings once a drag
+  ends, and a double click on a handle puts its sides back as they come. Its right and top sides
+  stay against the pane's corner and its controls.
 - **Subagents.** A subagent's row is a card: Claude's little guy, in his orange, on a round mark
   with a dot for how it's doing; what it's called; what it's doing or the start of its report;
   its status and how long it took. Subagents one after the other sit under one line saying how
@@ -1083,8 +1090,8 @@ Layout, top to bottom inside the pane's card:
   koyo / claude-chat-agent-sdk") and moves to the bottom on the first send.
 - **Width and text size.** The timeline, the composer and a subagent's bar share one column, as
   wide as Settings › Chat › Width says: Narrow (760 px, the default), Wide (1080 px) or Full
-  width, the pane's. The details card is beside a column only where the pane has room for both,
-  never beside a full-width one, over which it comes up when asked for. A chat's text is 11 to
+  width, the pane's. While the details card is up beside the chat, the pane's width is what's left
+  of the card, a full-width column included, and a narrower column is centred in it. A chat's text is 11 to
   18 pt, 14 by default (Settings › Appearance); a size saved before the sizes came down a notch,
   under `chat_size`, is read as the one at the same place on the slider.
 - **Right-click menu.** A right-click on the chat, where what's under the pointer has no menu of
@@ -1365,13 +1372,16 @@ section and a terminal pane), and changed where 199 of its past sessions showed 
 - **The person's mod.** Their Claude Code loads it in Koyo's chats too, as `mcp__progress__update`;
   with Progress on, a session disallows that tool, so a chat has one plan tool, and the mod adds
   its prompt section only while its tool is offered.
-- **The card.** A Progress section (`DetailsItem::Progress`, before Subagents): "2 of 5 · 40%"
-  and the plan's elapsed time over a bar; each phase not skipped counts the same, an open one by
-  its done sub-steps' share. A phase's row has its status mark, title, "1/3" and time; a running
-  or blocked one is open until a person closes it. The foot has the agent's `now` while it works,
-  "Waiting on you" or "Paused until the next message" while it doesn't (a running step then
-  draws still), and how long ago the plan changed once that's ten minutes with work open. Where
-  the card is down, its controls show the share beside the toggle.
+- **The card.** A Progress section, the card's last (`DetailsItem::Progress`, after Context):
+  "2 of 5 · 40%" and the plan's elapsed time over a bar, with a chevron; each phase not skipped
+  counts the same, an open one by its done sub-steps' share. A click on that opens the section to
+  the phases and the foot, and closes it again; settings keep which (`ChatDetails.progress_open`),
+  closed at first. Why: a plan's lines pushed the card's other parts out of sight. A phase's row
+  has its status mark, title, "1/3" and time; a running or blocked one is open until a person
+  closes it. The foot has the agent's `now` while it works, "Waiting on you" or "Paused until the
+  next message" while it doesn't (a running step then draws still), and how long ago the plan
+  changed once that's ten minutes with work open. Where the card is down, its controls show the
+  share beside the toggle.
 - **The timeline** keeps each update as a tool row, labelled by what it did ("Plan: 3.2 done,
   3.3 running"), under Results.
 - Rejected: Koyo's own MCP server (`koyo mcp`, O1), which would tie the plan to Koyo tools being

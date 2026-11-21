@@ -23,6 +23,7 @@ use crate::test_support::{draw, repo, select, shell_with};
 
 mod activity;
 pub(super) mod asks;
+mod beside;
 mod budget;
 mod config;
 mod details;

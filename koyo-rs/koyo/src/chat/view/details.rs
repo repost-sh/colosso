@@ -1,16 +1,16 @@
-//! The card over a chat that says where it works and how that's going (`docs/chat.md` 5.3): its
-//! branch and folder, what's changed there, how far the plan of its task has come, its subagents
-//! and how full its conversation is. It's up by itself where the pane has room for it beside the
-//! timeline, and over the timeline where a person asks for it and there's none; down, its controls
-//! still say how far the plan has come.
+//! The card at a chat's right that says where it works and how that's going (`docs/chat.md` 5.3):
+//! its branch and folder, what's changed there, its subagents, how full its conversation is and
+//! how far the plan of its task has come. It's up by itself beside the chat where the pane has
+//! room for both, the chat keeping to what's left of it, and over the chat where a person asks for
+//! it and there's none; down, its controls still say how far the plan has come.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, Focusable as _, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled as _, Window, actions, canvas, deferred, div,
-    px, relative,
+    Stateful, StatefulInteractiveElement as _, Styled as _, Window, actions, deferred, div, px,
+    relative,
 };
 use koyo_agent::replica::Replica;
 use koyo_agent::words::{NEARLY_FULL, context_line, context_percent};
@@ -25,6 +25,7 @@ mod git_actions;
 mod open_in;
 mod progress;
 mod resize;
+mod room;
 mod scripts;
 mod subagents;
 
@@ -33,6 +34,7 @@ pub(in crate::chat) use git_actions::{commit_files, went_old};
 pub(super) use git_actions::{keep_fresh, window_active_again};
 pub(in crate::chat) use open_in::OpenIn;
 pub(super) use open_in::opened_in;
+pub(super) use room::measure;
 
 use super::ChatView;
 use crate::checkout::Checkout;
@@ -52,7 +54,7 @@ const MARGIN: f32 = 12.;
 /// How tall its controls are, and the gap under them.
 const CONTROLS: f32 = 28.;
 const GAP: f32 = 8.;
-/// What it leaves at the bottom for the composer.
+/// What it leaves at the bottom for the composer, over the chat.
 const COMPOSER: f32 = 180.;
 const RADIUS: f32 = 16.;
 const ROW_ICON: f32 = 15.;
@@ -77,7 +79,7 @@ pub(super) struct Details {
     place: Option<Workplace>,
     /// How big the pane was last drawn.
     pane: (Pixels, Pixels),
-    /// Whether a person asked for it where it has no room beside the timeline.
+    /// Whether a person asked for it where it has no room beside the chat.
     over: bool,
     /// Whether the subagents that ended show.
     previous: bool,
@@ -92,24 +94,6 @@ pub(super) struct Details {
 }
 
 impl Details {
-    /// Whether the pane has room for it on the timeline's right: never beside a chat as wide as
-    /// the pane, where it comes up over the chat when asked for.
-    fn has_room(&self, cx: &App) -> bool {
-        let column = settings::get(cx).chat_width.column();
-        let width = self.width(cx);
-        column.is_some_and(|column| self.pane.0 >= px(column + 2. * (width + 2. * MARGIN)))
-    }
-
-    pub(super) fn is_up(&self, cx: &App) -> bool {
-        if self.resizing() {
-            true
-        } else if self.has_room(cx) {
-            settings::get(cx).chat_details.open
-        } else {
-            self.over
-        }
-    }
-
     /// Follows where the chat works, which is new when it's on another branch.
     pub(super) fn set_place(&mut self, place: Workplace, cx: &mut Context<ChatView>) -> bool {
         let new = self.place.as_ref() != Some(&place);
@@ -120,46 +104,10 @@ impl Details {
         new
     }
 
-    /// The card's up or it isn't, for this pane or wherever there's room, as it has any.
-    pub(super) fn toggle(&mut self, cx: &mut App) {
-        if self.has_room(cx) {
-            settings::update(cx, |settings| settings.chat_details.open ^= true);
-        } else {
-            self.over = !self.over;
-        }
-    }
-
     #[cfg(test)]
     pub(super) fn folder(&self) -> Option<PathBuf> {
         self.place.as_ref().map(|place| place.folder.clone())
     }
-
-    pub(super) fn measured(&mut self, pane: (Pixels, Pixels)) -> bool {
-        let new = self.pane != pane;
-        self.pane = pane;
-        new
-    }
-}
-
-/// Keeps how big the pane is, which is drawn before the card is.
-pub(super) fn measure(cx: &Context<ChatView>) -> impl IntoElement + use<> {
-    let view = cx.weak_entity();
-    canvas(
-        move |bounds, _, cx| {
-            let pane = (bounds.size.width, bounds.size.height);
-            cx.defer(move |cx| {
-                view.update(cx, |view, cx| {
-                    if view.details.measured(pane) {
-                        cx.notify();
-                    }
-                })
-                .ok();
-            });
-        },
-        |_, (), _, _| {},
-    )
-    .absolute()
-    .size_full()
 }
 
 /// The card's controls and, if it's up, the card.
@@ -282,7 +230,6 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
             .shows(DetailsItem::Changes)
             .then(|| changes(view, p, cx))
             .flatten(),
-        progress::section(view, replica, p, cx),
         choice
             .shows(DetailsItem::Subagents)
             .then(|| subagents::section(view, replica, p, cx))
@@ -291,6 +238,7 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
             .shows(DetailsItem::Context)
             .then(|| context(replica, p))
             .flatten(),
+        progress::section(view, replica, p, cx),
     ]
     .into_iter()
     .flatten()
@@ -411,9 +359,11 @@ fn changes(view: &ChatView, p: Palette, cx: &Context<ChatView>) -> Option<Div> {
             line.child(meta(format!("−{removed}"), p.danger))
         });
     Some(div().child(
-        clickable(line, "chat-details-changes", p).on_click(|_, window, cx| {
-            window.dispatch_action(Box::new(ToggleChanges), cx);
-        }),
+        clickable(line, "chat-details-changes", p)
+            .debug_selector(|| "chat-details-changes".into())
+            .on_click(|_, window, cx| {
+                window.dispatch_action(Box::new(ToggleChanges), cx);
+            }),
     ))
 }
 
@@ -426,12 +376,13 @@ fn context(replica: Option<&Replica>, p: Palette) -> Option<Div> {
         p.muted
     };
     let share = f32::from(percent) / 100.;
-    Some(gauge("Context", context_line(held, room), share, color, p))
+    let says = meta(context_line(held, room), p.muted);
+    Some(gauge("Context", says, share, color, p))
 }
 
 /// A section that says how far along something is: its title and what it says of it, over a bar
 /// `share` full of `fill`.
-fn gauge(title: &'static str, says: String, share: f32, fill: Hsla, p: Palette) -> Div {
+fn gauge(title: &'static str, says: impl IntoElement, share: f32, fill: Hsla, p: Palette) -> Div {
     div()
         .flex()
         .flex_col()
@@ -443,7 +394,7 @@ fn gauge(title: &'static str, says: String, share: f32, fill: Hsla, p: Palette) 
                 .flex()
                 .justify_between()
                 .child(div().text_color(p.text).child(title))
-                .child(meta(says, p.muted)),
+                .child(says),
         )
         .child(
             div()

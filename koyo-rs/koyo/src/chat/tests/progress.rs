@@ -1,7 +1,7 @@
 //! The details card's progress: the plan the agent keeps of a chat's task, its phases opening on a
 //! click, and what the card says while nothing runs the plan.
 
-use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
+use gpui_kit::{AnyWindowHandle, Entity, TestAppContext, VisualTestContext, px};
 use koyo_agent::protocol::ids::Time;
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::progress::{Plan, PlanPhase, PlanStep, StepStatus};
@@ -63,8 +63,20 @@ fn plan() -> Plan {
     }
 }
 
-/// A window showing a settled chat with `shown`'s plan, its card up.
+/// A window showing a settled chat with `shown`'s plan, its card up and its progress open.
 fn card_with(
+    name: &str,
+    change: impl FnOnce(&mut ThreadSnapshot),
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<ChatView>) {
+    let (window, view) = closed_card_with(name, change, cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.chat_details.progress_open = true));
+    draw(window, cx);
+    (window, view)
+}
+
+/// A window showing a settled chat with `shown`'s plan, its card up as it comes.
+fn closed_card_with(
     name: &str,
     change: impl FnOnce(&mut ThreadSnapshot),
     cx: &mut TestAppContext,
@@ -103,6 +115,45 @@ fn the_card_shows_a_chats_plan_and_nothing_of_one_it_has_none_of(cx: &mut TestAp
         !shows("chat-details-progress-3.1", window, cx),
         "the pending one isn't"
     );
+}
+
+/// Progress is the card's last part, which says how far the plan has come and opens on a click to
+/// its phases, once a person wants them: a card full of a plan's lines pushes the rest out of sight.
+#[gpui_kit::test]
+fn progress_comes_last_and_closed_and_opens_on_a_click_which_is_kept(cx: &mut TestAppContext) {
+    assert_eq!(DetailsItem::ALL.last(), Some(&DetailsItem::Progress), "and so in its menu");
+    let (window, _) = closed_card_with("chat-progress-closed", has_plan, cx);
+    let bounds = |what: &'static str, cx: &mut TestAppContext| {
+        VisualTestContext::from_window(window, cx).debug_bounds(what)
+    };
+    let head = bounds("chat-details-progress", cx).expect("the plan's head shows");
+    let changes = bounds("chat-details-changes", cx).expect("the changes show");
+    let card = bounds("chat-details-card", cx).expect("the card is up");
+    assert!(changes.bottom() < head.top(), "{changes:?} over {head:?}");
+    assert!(card.bottom() - head.bottom() < px(10.), "nothing under it: {head:?} in {card:?}");
+    for closed in [
+        "chat-details-progress-1",
+        "chat-details-progress-2.1",
+        "chat-details-progress-paused",
+    ] {
+        assert!(!shows(closed, window, cx), "{closed} waits for a click");
+    }
+
+    click(window, "chat-details-progress", cx);
+    assert!(shows("chat-details-progress-1", window, cx));
+    assert!(shows("chat-details-progress-2.1", window, cx), "the running phase is open");
+    assert!(shows("chat-details-progress-paused", window, cx));
+    let kept = cx.update(|cx| settings::get(cx).chat_details.progress_open);
+    assert!(kept, "settings keep it open");
+    cx.simulate_keystrokes(window, "cmd-shift-b");
+    draw(window, cx);
+    cx.simulate_keystrokes(window, "cmd-shift-b");
+    draw(window, cx);
+    assert!(shows("chat-details-progress-1", window, cx), "open as the card comes up again");
+
+    click(window, "chat-details-progress", cx);
+    assert!(!shows("chat-details-progress-1", window, cx), "closed again");
+    assert!(shows("chat-details-progress", window, cx), "to its head");
 }
 
 #[gpui_kit::test]

@@ -1,7 +1,7 @@
 //! The card's progress: the plan the agent keeps of the chat's task (`docs/chat.md` 5.5), how far
-//! it has come in a bar, and its phases, each opening on a click to what it covers and its
-//! sub-steps. A step the plan says runs is drawn still while the chat doesn't work, as nothing
-//! runs it then, and the card says why.
+//! it has come in a bar, which opens on a click to its phases, each opening on a click to what it
+//! covers and its sub-steps. A step the plan says runs is drawn still while the chat doesn't work,
+//! as nothing runs it then, and the card says why.
 
 use chrono::{DateTime, Utc};
 use gpui_kit::assets::IconName;
@@ -74,27 +74,43 @@ pub(super) fn section(
         now: Utc::now(),
         working: replica.working(),
     };
+    let open = settings::get(cx).chat_details.progress_open;
     Some(
         div()
             .flex()
             .flex_col()
-            .child(head(plan, at, p))
-            .children((plan.phases.iter()).map(|phase| lines(view, Line::Phase(phase), at, p, cx)))
-            .children(foot(plan, replica, at, p)),
+            .child(head(plan, at, open, p))
+            .when(open, |section| {
+                let phases = plan.phases.iter();
+                section
+                    .children(phases.map(|phase| lines(view, Line::Phase(phase), at, p, cx)))
+                    .children(foot(plan, replica, at, p))
+            }),
     )
 }
 
 /// "Progress", how far the plan has come and for how long, and a bar of it, which fills green
-/// once every phase is over.
-fn head(plan: &Plan, at: At, p: Palette) -> Div {
+/// once every phase is over; a click opens the section to the plan's phases, or closes it to this,
+/// which settings keep.
+fn head(plan: &Plan, at: At, open: bool, p: Palette) -> Stateful<Div> {
     let share = plan.share();
     let says = match plan_time(plan, at.now) {
         Some(time) => format!("{} · {time}", plan_count(plan, share)),
         None => plan_count(plan, share),
     };
+    let says = div()
+        .flex()
+        .items_center()
+        .gap(px(SPACE))
+        .child(meta(says, p.muted))
+        .child(folding(true, open, p));
     let fill = if plan.is_closed() { p.added } else { p.text };
-    gauge("Progress", says, share.unwrap_or(0.), fill, p)
-        .debug_selector(|| "chat-details-progress".into())
+    let head = gauge("Progress", says, share.unwrap_or(0.), fill, p)
+        .rounded(px(8.))
+        .debug_selector(|| "chat-details-progress".into());
+    clickable(head, "chat-details-progress", p).on_click(|_, _, cx| {
+        settings::update(cx, |settings| settings.chat_details.progress_open ^= true);
+    })
 }
 
 /// A line of the plan: a phase's, which counts its sub-steps done and opens to them as well as to
