@@ -5,10 +5,8 @@
 //! log.
 
 use std::cell::RefCell;
-use std::ptr::NonNull;
 use std::sync::OnceLock;
 
-use block2::RcBlock;
 use gpui_kit::Window;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
@@ -266,6 +264,9 @@ fn let_show(menu: *mut AnyObject) {
 /// is cancelled at once and said loudly in the log.
 #[cfg(debug_assertions)]
 fn net() {
+    use std::ptr::NonNull;
+
+    use block2::RcBlock;
     use objc2_app_kit::NSMenuDidBeginTrackingNotification;
     use objc2_foundation::{NSNotification, NSNotificationCenter};
 
