@@ -408,16 +408,15 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   - A settings page, and what's said where there's no tab.
 - Only in the Arc layout. Orca keeps its one card, holding the sidebar, the panes
   and the panel beside them, hairlines between them.
-- Orca's card and the window's glass under it can be tuned in Settings → Appearance, whose
-  two rows show only in the Orca layout (`settings/layout.rs`): **Card glass**, how see-through
+- The card, Orca's one or Arc's islands, and the window's glass under it can be tuned in
+  Settings → Appearance, in either layout (`settings/layout.rs`): **Card glass**, how see-through
   the card is, from clear (20 % opaque) through the theme's own at the middle to solid; and
   **Glass blur**, how blurred the desktop behind the window looks, from none through macOS's own
   at the middle to twice it. The card's colour follows the first in `theme::palette_for`; the
   second sets the radius of the Gaussian blur macOS's `NSVisualEffectView` gives the window
-  (`shell::rails::blur_glass`, `native::window::blur`, by way of `setKoyoBlurScale:` in
+  (`shell::state::blur_glass`, `native::window::blur`, by way of `setKoyoBlurScale:` in
   `vendor/gpui-fast-macos`), 30 points for this material on macOS 27, read back from Core
-  Animation as 0 and 60 at the ends. macOS blurs the whole window at one radius. The Arc layout
-  keeps the theme's card and macOS's blur.
+  Animation as 0 and 60 at the ends. macOS blurs the whole window at one radius.
 - A page is drawn in the window's own frame, so the island's rounded corners clip it as they
   clip the rest of what's on it.
 

@@ -95,10 +95,10 @@ pub struct Settings {
     /// What text is in, and how big a chat's is.
     pub fonts: Fonts,
     pub layout: Layout,
-    /// How much of the window's glass the Orca layout's card lets through, along its slider
+    /// How much of the window's glass the card lets through, along its slider
     /// (`card_opacity`).
     pub card_glass: f32,
-    /// How blurred the window's glass is in the Orca layout, along its slider (`blur_scale`).
+    /// How blurred the window's glass is, along its slider (`blur_scale`).
     pub glass_blur: f32,
     pub sidebar_width: f32,
     pub changes_files_width: f32,

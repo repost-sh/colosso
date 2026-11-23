@@ -1,5 +1,5 @@
-//! Appearance: light, dark or the system's, the gradient glass of each and, in the Orca layout,
-//! how much of it the card lets through, the wallpaper behind chats, and the fonts.
+//! Appearance: light, dark or the system's, the gradient glass of each, how much of it the card
+//! lets through and how blurred it is, the wallpaper behind chats, and the fonts.
 
 use gpui_kit::App;
 use gpui_kit::component::ActiveTheme as _;
@@ -9,7 +9,7 @@ use super::native_slider::NativeSlider;
 use super::{chat_backdrop, fonts};
 use crate::gradient::{self, GradientTheme};
 use crate::picker;
-use crate::settings::{self, GLASS_STOPS, Layout};
+use crate::settings::GLASS_STOPS;
 use crate::theme;
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
@@ -20,13 +20,6 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
         "light"
     };
     let glass_is_default = *gradient::current(cx) == GradientTheme::default();
-    let orca = settings::get(cx).layout == Layout::Orca;
-    let glass_said = if orca {
-        ""
-    } else {
-        " In the Orca layout, how much of it shows through the card and how blurred it is are \
-         set here too."
-    };
     vec![
         SettingsSection::new("Theme")
             .row(
@@ -40,7 +33,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
                 SettingRow::new("Glass")
                     .description(format!(
                         "The gradient tinting the window's glass in the {appearance} appearance. \
-                     Light and dark each keep their own.{glass_said}"
+                     Light and dark each keep their own."
                     ))
                     .control(
                         PillButton::new("reset-glass", "Reset")
@@ -55,14 +48,13 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
                         },
                     )),
             )
-            .rows(orca.then(glass_rows).into_iter().flatten()),
+            .rows(glass_rows()),
         chat_backdrop::section(cx),
         fonts::section(cx),
     ]
 }
 
-/// The Orca layout's rows for its glass: how much of it the card lets through, and how blurred
-/// it is.
+/// The rows for the window's glass: how much of it the card lets through, and how blurred it is.
 fn glass_rows() -> [SettingRow; 2] {
     let card = NativeSlider::new(
         "card-glass",
@@ -80,7 +72,7 @@ fn glass_rows() -> [SettingRow; 2] {
         slider(
             (
                 "Card glass",
-                "How much of the window's glass shows through the Orca layout's card: the middle \
+                "How much of the window's glass shows through the card: the middle \
                  is the theme's own, the right end solid.",
             ),
             card,
@@ -89,7 +81,7 @@ fn glass_rows() -> [SettingRow; 2] {
         slider(
             (
                 "Glass blur",
-                "How blurred the desktop behind the window looks through the Orca layout's \
+                "How blurred the desktop behind the window looks through its \
                  glass: the middle is macOS's own, the left end none.",
             ),
             blur,
@@ -106,10 +98,10 @@ mod tests {
     use crate::settings::{self, Layout};
     use crate::theme;
 
-    /// In the Orca layout Appearance has the card's glass, and the card is as opaque as it's set;
-    /// in Arc's, whose islands keep the theme's own, the row is gone and Glass's names it.
+    /// Appearance has the card's glass and its blur in either layout, and the card is as opaque
+    /// as it's set in both.
     #[gpui_kit::test]
-    fn the_card_glass_shows_and_tells_only_in_the_orca_layout(cx: &mut TestAppContext) {
+    fn the_card_glass_shows_and_tells_in_either_layout(cx: &mut TestAppContext) {
         cx.update(crate::test_support::init);
         let card = |cx: &mut TestAppContext| {
             cx.read(|cx| {
@@ -126,16 +118,9 @@ mod tests {
                 });
             });
         };
-        set(Layout::Orca, 0.5, cx);
-        let (shown, own) = card(cx);
-        assert!(shown);
-        set(Layout::Orca, 1., cx);
-        assert_eq!(card(cx), (true, 1.), "solid");
-        set(Layout::Arc, 1., cx);
-        assert_eq!(card(cx), (false, own), "Arc keeps the theme's own");
-        let named = cx.read(|cx| {
-            (sections(cx).iter()).any(|section| section.matches("through the card"))
-        });
-        assert!(named, "search finds it from the Glass row");
+        for layout in Layout::ALL {
+            set(layout, 1., cx);
+            assert_eq!(card(cx), (true, 1.), "{layout:?}: solid");
+        }
     }
 }

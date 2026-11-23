@@ -322,7 +322,7 @@ pub fn palette(cx: &App) -> Palette {
 
 /// The dark palette if `dark`, else the light one, whatever the appearance on screen, in the
 /// accent in use: for what's drawn on glass whose tone the page under it sets rather than the
-/// theme (`glass`). In the Orca layout the card is as opaque as the person set it.
+/// theme (`glass`). The card is as opaque as the person set it (`Settings::card_opacity`).
 pub fn palette_for(dark: bool, cx: &App) -> Palette {
     let palette = if dark { DARK } else { LIGHT };
     let primary = gradient::current(cx).primary();
