@@ -88,9 +88,12 @@ apply_patches() {
     } >&2
     exit 1
   fi
+  # A patch the sources carry, the same as this checkout's, as the loop above made sure, is in
+  # them already: git can't tell so of one a later patch's changes overlap.
   for patch in "$patches"/*.patch; do
     [ -f "$patch" ] || continue
     name=$(basename "$patch")
+    [ -f "$carried/$name" ] && continue
     if git -C "$src" apply --check "$patch" 2> /dev/null; then
       git -C "$src" apply "$patch"
       echo "Applied ${name%.patch}"

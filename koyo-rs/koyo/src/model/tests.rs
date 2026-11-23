@@ -1,4 +1,5 @@
 use super::*;
+use koyo_git::Head;
 use crate::browser::profiles::By;
 
 fn worktree(path: &str, branch: &str) -> Worktree {

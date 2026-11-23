@@ -209,7 +209,7 @@ impl Operation for LayoutSet {
     const TITLE: &'static str = "Set the layout";
     const SUBJECT: &'static [&'static str] = &["layout", "rightPanel"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Opens or closes the sidebar, the right panel (changes or files) and the bottom panel, and switches the layout between orca and arc. Fields left out stay as they are.";
+    const DESCRIPTION: &'static str = "Opens or closes the sidebar, the selected worktree's right panel (changes or files; each worktree keeps its own, and with no worktree selected there is none) and the bottom panel, and switches the layout between orca and arc. Fields left out stay as they are.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = LayoutSetInput;
     type Output = LayoutState;

@@ -1,5 +1,5 @@
 //! `--visual-check-chat-progress`: the plan a chat's agent keeps, as the details card shows it
-//! (`docs/chat.md` 5.3, 5.5), saved as PNGs under `.superpowers/qa/chat-progress/`. The fake
+//! (`docs/chat.md` 5.3, 5.5), saved as PNGs under `.artifacts/qa/chat-progress/`. The fake
 //! provider keeps a plan for a message that starts "Show your plan", moving it along until it's
 //! all done, and stops partway for one that starts "Show your plan, then stop". Drawn: the card
 //! down with the share beside its toggle; the card up beside the chat as the plan runs, its
@@ -9,10 +9,10 @@
 //! page with its switch.
 //!
 //! ```sh
-//! mkdir -p .superpowers/c/tmp &&
-//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.superpowers/c TMPDIR=$PWD/.superpowers/c/tmp \
-//!   KOYO_CONFIG_DIR=$PWD/.superpowers/qa/chat-progress/config \
-//!   KOYO_LOG_DIR=$PWD/.superpowers/c/logs \
+//! mkdir -p .artifacts/c/tmp &&
+//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.artifacts/c TMPDIR=$PWD/.artifacts/c/tmp \
+//!   KOYO_CONFIG_DIR=$PWD/.artifacts/qa/chat-progress/config \
+//!   KOYO_LOG_DIR=$PWD/.artifacts/c/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-chat-progress
 //! ```
 
@@ -31,7 +31,7 @@ use crate::settings_view::SettingsPage;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
-const OUT: &str = ".superpowers/qa/chat-progress";
+const OUT: &str = ".artifacts/qa/chat-progress";
 /// How long the fake's plan gets to reach a step, past its own pace.
 const PATIENCE: Duration = Duration::from_secs(20);
 /// What's told to the chats: the fake provider's cues to keep a plan, all the way or partway.

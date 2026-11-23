@@ -66,6 +66,10 @@ pub fn frames(drawn: &mut Drawn, count: usize, step: Duration) -> Result<()> {
     Ok(())
 }
 
+/// How much of the window's width the larger picture of the Orca layout's top rail shows, in
+/// points.
+const RAIL_WIDTH: u32 = 1100;
+
 /// A part of the sidebar a picture shows again, larger: what's said there is a few points
 /// across.
 #[derive(Clone, Copy)]
@@ -78,24 +82,31 @@ pub enum Part {
     Foot,
     /// A worktree's rows, `rows` of them down from `top`, a little room round them.
     Worktree { top: Pixels, rows: u32 },
+    /// The Orca layout's top rail, from its start: its pinned and loose pages and the
+    /// checkout's tabs after them.
+    Rail,
 }
 
-/// Saves the window as `name`, and `part` of the sidebar, three or four times its size, as
-/// `name`-rows, `name`-foot, `name`-tiles or `name`-part.
+/// Saves the window as `name`, and `part` of it, two to four times its size, as `name`-rows,
+/// `name`-foot, `name`-tiles, `name`-part or `name`-rail.
 pub fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     let path = drawn.save(&format!("{name}.png"))?;
     let picture = image::open(&path).map_err(|error| error.to_string())?;
     let (width, height) = (picture.width(), picture.height());
     let scale = width / 1600;
     let sidebar = drawn.cx.read(|cx| settings::get(cx).sidebar_width());
-    let across = ((sidebar + 2. * theme::GUTTER) as u32 * scale).min(width);
-    let (label, top, down, times) = match part {
-        Part::Rows => ("rows", (80 * scale).min(height), 600 * scale, 3),
-        Part::Foot => ("foot", height.saturating_sub(110 * scale), 110 * scale, 4),
-        Part::Tiles => ("tiles", height.saturating_sub(200 * scale), 200 * scale, 3),
+    let sidebar = ((sidebar + 2. * theme::GUTTER) as u32 * scale).min(width);
+    let (label, across, top, down, times) = match part {
+        Part::Rows => ("rows", sidebar, (80 * scale).min(height), 600 * scale, 3),
+        Part::Foot => ("foot", sidebar, height.saturating_sub(110 * scale), 110 * scale, 4),
+        Part::Tiles => ("tiles", sidebar, height.saturating_sub(200 * scale), 200 * scale, 3),
         Part::Worktree { top, rows } => {
             let top = (top.as_f32() as u32).saturating_sub(8) * scale;
-            ("part", top.min(height), (rows * 38 + 16) * scale, 3)
+            ("part", sidebar, top.min(height), (rows * 38 + 16) * scale, 3)
+        }
+        Part::Rail => {
+            let down = (theme::TITLE_BAR_HEIGHT as u32 + 6) * scale;
+            ("rail", (RAIL_WIDTH * scale).min(width), 0, down, 2)
         }
     };
     let down = down.min(height - top);

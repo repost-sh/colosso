@@ -15,6 +15,7 @@ use gpui_kit::{
 };
 
 use super::SettingsPage;
+use super::native_slider::NativeSlider;
 use crate::shell::icon;
 use crate::theme::{self, Palette};
 
@@ -355,4 +356,15 @@ fn pill(id: ElementId, disabled: bool, p: Palette) -> Stateful<Div> {
         .when(!disabled, |pill| {
             pill.cursor_pointer().hover(|style| style.bg(p.selected))
         })
+}
+
+/// A row named and described by `said`, set by `slider` between the words `ends` say.
+pub fn slider(
+    said: (&'static str, &'static str),
+    slider: NativeSlider,
+    ends: (&'static str, &'static str),
+) -> SettingRow {
+    SettingRow::new(said.0)
+        .description(said.1)
+        .control(slider.ends(ends.0, ends.1))
 }

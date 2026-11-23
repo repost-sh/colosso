@@ -324,10 +324,10 @@ impl Workspace {
         })
     }
 
-    /// Pins the loose page at `at` of those listed at the address `home`, after the pages
-    /// pinned already: it goes on showing if it was the tab shown. Where it is among the
-    /// pinned.
-    pub fn pin_loose(&mut self, at: usize, home: String) -> Option<usize> {
+    /// Pins the loose page at `at` of those listed at the address `home`, in slot `place` among
+    /// the pages pinned already or after them: it goes on showing if it was the tab shown.
+    /// Where it is among the pinned.
+    pub fn pin_loose(&mut self, at: usize, home: String, place: usize) -> Option<usize> {
         let shown = self.loose_shown() == Some(at);
         let page = self.apart.take(at, false)?;
         let pinned = Pinned {
@@ -336,7 +336,7 @@ impl Workspace {
             project: page.project,
             more: serde_json::Map::new(),
         };
-        Some(self.add_pinned(pinned, shown))
+        Some(self.add_pinned(pinned, place, shown))
     }
 
     /// Unpins the page at `at` among the pinned: it's a loose page of the space shown, at

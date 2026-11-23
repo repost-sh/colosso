@@ -70,7 +70,7 @@ esac
 target="$arch-apple-darwin"
 # Where cef-dll-sys keeps the distribution: koyo-rs/.cargo/config.toml's CEF_PATH, the same
 # folder from the checkout's root.
-cef="${cef:-${CEF_PATH:-.superpowers/cef}/$version/cef_macos_$arch}"
+cef="${cef:-${CEF_PATH:-.tools/cef}/$version/cef_macos_$arch}"
 
 script/cargo build -p koyo-browser-host --profile "$cargo_profile"
 binary="koyo-rs/target/$profile/koyo-browser-host"

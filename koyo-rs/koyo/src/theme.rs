@@ -46,7 +46,8 @@ pub const FILES_TREE_MIN_WIDTH: f32 = 180.;
 pub const FILES_TREE_MAX_WIDTH: f32 = 640.;
 /// What the right panel leaves of the card for the chat beside it, at its widest.
 pub const CHAT_MIN_WIDTH: f32 = 320.;
-pub const TAB_STRIP_HEIGHT: f32 = 38.;
+/// How tall the Changes and Files panels' header is.
+pub const PANEL_HEADER_HEIGHT: f32 = 38.;
 pub const ROW_HEIGHT: f32 = 30.;
 /// How wide a settings page's column grows before it centers in the card.
 pub const SETTINGS_PAGE_WIDTH: f32 = 680.;
@@ -321,14 +322,15 @@ pub fn palette(cx: &App) -> Palette {
 
 /// The dark palette if `dark`, else the light one, whatever the appearance on screen, in the
 /// accent in use: for what's drawn on glass whose tone the page under it sets rather than the
-/// theme (`glass`).
+/// theme (`glass`). In the Orca layout the card is as opaque as the person set it.
 pub fn palette_for(dark: bool, cx: &App) -> Palette {
     let palette = if dark { DARK } else { LIGHT };
     let primary = gradient::current(cx).primary();
+    let card = palette.card.alpha(settings::get(cx).card_opacity(palette.card.a));
     Palette {
         mono: fonts::code(cx),
         accent: accent::get(dark, cx),
-        card: tinted(palette.card, primary, CARD_SATURATION),
+        card: tinted(card, primary, CARD_SATURATION),
         glass_edge: tinted(palette.glass_edge, primary, EDGE_SATURATION),
         wash: tinted(palette.wash, primary, WASH_SATURATION),
         faint_wash: tinted(palette.faint_wash, primary, WASH_SATURATION),

@@ -29,10 +29,10 @@ use crate::settings::{self, Surface};
 use crate::theme::Palette;
 
 /// The backdrop behind `surface`, filling its parent, which must be `relative`; none while it's
-/// turned off there, and the card shows. `key` tells it from the others drawn in the window.
-pub fn backdrop(surface: Surface, key: u64, cx: &App) -> Option<AnyElement> {
+/// turned off there, and the card shows. `id` tells it from the others drawn in the window.
+pub fn backdrop(surface: Surface, id: impl Into<ElementId>, cx: &App) -> Option<AnyElement> {
     let settings = settings::get(cx).chat_backdrop;
-    let id = ElementId::NamedInteger("chat-backdrop".into(), key);
+    let id = id.into();
     settings
         .shows(surface)
         .then(|| element::Picture { settings, id }.into_any_element())
@@ -48,7 +48,7 @@ pub fn behind(pane: &Pane, cx: &App) -> Option<AnyElement> {
         Content::Editor(Editor::Untitled | Editor::File(_)) => Surface::Files,
         Content::Desktop(_) | Content::Device(_) => Surface::Devices,
     };
-    backdrop(surface, pane.id, cx)
+    backdrop(surface, ElementId::NamedInteger("chat-backdrop".into(), pane.id), cx)
 }
 
 /// `surface`, floating over a chat as [`liquid::floating`] has it, but see-through over the

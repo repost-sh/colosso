@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::browser;
 use crate::browser::profiles::By;
 use crate::model::{Loose, Tab};
-use crate::settings::{self, Layout};
+use crate::settings;
 use crate::shell::Shell;
 
 /// A loose page.
@@ -97,7 +97,6 @@ impl Shell {
         let settings = settings::get(cx);
         let known: Vec<u64> = settings.spaces.iter().map(|space| space.id).collect();
         let here = settings.shown_space_id();
-        let orca = settings.layout != Layout::Arc;
         let (spaces, workspace) = (&self.kept.kept.spaces, &mut self.workspace);
         for kept in spaces {
             let pages: Vec<Loose> = (kept.tabs.iter())
@@ -125,9 +124,6 @@ impl Shell {
             for (by, key) in shown_in {
                 workspace.bring_back_loose_shown(by, key);
             }
-        }
-        if orca {
-            self.workspace.leave_apart();
         }
     }
 }

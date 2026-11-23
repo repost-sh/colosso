@@ -436,5 +436,5 @@ The owner's decisions of 2026-11-08, built the same day:
   `a_page_an_agent_opens_starts_at_the_persons_size_for_agents_pages`. Pictures: the browser
   visual check (`--visual-check-browser`, `browser/visual/opened.rs`) saves an agent's page at
   the default, with the device bar, and Settings → MCP server (`agent-opened.png`,
-  `settings-mcp*.png` in `.superpowers/qa/browser/`); its pictures lay a page in at the scale
+  `settings-mcp*.png` in `.artifacts/qa/browser/`); its pictures lay a page in at the scale
   it shows at.

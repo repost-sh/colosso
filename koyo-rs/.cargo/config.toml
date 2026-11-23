@@ -10,7 +10,7 @@ ZIG_GLOBAL_CACHE_DIR = { value = "../.tools/zig-cache", relative = true }
 # What the browser host's CEF build needs: where cef-dll-sys keeps the CEF distribution
 # (fetched there on the first build, under a versioned folder), and the cmake script/cmake
 # fetches on first use.
-CEF_PATH = { value = "../.superpowers/cef", relative = true }
+CEF_PATH = { value = "../.tools/cef", relative = true }
 CMAKE = { value = "../script/cmake", relative = true }
 # Where the checkout is, and the workspace's build output, for code that keeps fixtures, test
 # scratch or a debug build's packaged helpers there (`env!("KOYO_TARGET_DIR")`), so how deep a

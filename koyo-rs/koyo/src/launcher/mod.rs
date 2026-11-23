@@ -158,8 +158,8 @@ impl Shell {
             )
     }
 
-    /// Opens the launcher over the window, on the selected checkout; with none, there's nowhere
-    /// for a tab to open, and it doesn't.
+    /// Opens the launcher over the window, on the selected checkout; with none, for a page only,
+    /// a loose one of the space.
     pub fn open_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_launcher_on(None, window, cx);
     }
@@ -190,10 +190,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(here) = here::Here::of(self, cx) else {
-            log::warn!("no checkout is selected to open a tab on");
-            return;
-        };
+        let here = here::Here::of(self, cx);
         let pages = self.pages_shown(cx);
         view::open(cx.entity().downgrade(), here, page, &pages, window, cx);
     }

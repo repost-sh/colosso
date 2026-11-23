@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell};
 
 use gpui_kit::{Along as _, Axis, Bounds, Hsla, Pixels, Point, px};
 
-use super::{beyond_ends, outside};
+use super::{List, beyond_ends, outside};
 
 /// The middle share of a tab that joins what's held over it; the rest either side reorders.
 const JOIN_ZONE: f32 = 0.6;
@@ -21,14 +21,15 @@ const PULL: f32 = 24.;
 pub struct TabHand {
     drag: RefCell<Option<Drag>>,
     /// The list whose tabs still slide into place after one was let go.
-    settling: Cell<Option<u64>>,
-    /// Where, outside the lists, a tab let go is taken, as last drawn: the pinned pages' region
-    /// in the Arc sidebar (`docs/arc-sidebar.md` 11). Over it, a tab is off its list.
+    settling: Cell<Option<List>>,
+    /// Where, outside the lists, a tab let go is taken, as last drawn: the pinned pages' region,
+    /// at the Arc sidebar's head or in the Orca layout's top rail (`docs/arc-sidebar.md` 11).
+    /// Over it, a tab is off its list.
     elsewhere: Cell<Option<Bounds<Pixels>>>,
 }
 
 struct Drag {
-    list: u64,
+    list: List,
     key: u64,
     /// How far into the tab the pointer took hold of it, along the list.
     grab: Pixels,
@@ -77,7 +78,7 @@ pub(super) struct Held {
 
 impl TabHand {
     /// Takes up the tab `key` of `list`, in slot `at`, held `grab` in from its start.
-    pub fn take(&self, list: u64, key: u64, at: usize, grab: Pixels) {
+    pub fn take(&self, list: List, key: u64, at: usize, grab: Pixels) {
         self.elsewhere.set(None);
         *self.drag.borrow_mut() = Some(Drag {
             list,
@@ -125,19 +126,19 @@ impl TabHand {
     }
 
     /// Whether `list`'s tabs are still sliding into place after one was let go.
-    pub(super) fn settling(&self, list: u64) -> bool {
+    pub(super) fn settling(&self, list: List) -> bool {
         self.settling.get() == Some(list)
     }
 
     /// `list`'s tabs are all in place.
-    pub(super) fn settled(&self, list: u64) {
+    pub(super) fn settled(&self, list: List) {
         if self.settling(list) {
             self.settling.set(None);
         }
     }
 
     /// Lets go of the tab in hand: what it does, when it's `list`'s and on it.
-    pub(super) fn release(&self, list: u64) -> Option<Drop> {
+    pub(super) fn release(&self, list: List) -> Option<Drop> {
         let drag = self.drag.borrow_mut().take()?;
         self.settling.set(Some(drag.list));
         if drag.list != list || drag.off {
@@ -161,7 +162,7 @@ impl TabHand {
     /// its list settles.
     pub(super) fn place(
         &self,
-        list: &List,
+        list: &Laid,
         slots: &[Bounds<Pixels>],
         at: Point<Pixels>,
         held: bool,
@@ -180,7 +181,7 @@ impl TabHand {
         let (axis, bounds) = (list.axis, list.bounds);
         let outside = outside(axis, bounds, at);
         let tabs = matches!(list.holds, Holds::Tabs { .. });
-        let leaves = !matches!(list.holds, Holds::Worktrees);
+        let leaves = !matches!(list.holds, Holds::Rows);
         let taken = (self.elsewhere.get()).is_some_and(|place| place.contains(&at));
         drag.off = leaves
             && (taken
@@ -237,18 +238,19 @@ pub(super) enum Holds {
     /// taken off the list is a chip for a pane's side or, down the sidebar, another checkout's
     /// list.
     Tabs { accent: Hsla },
-    /// A project's worktrees in the Arc sidebar (`docs/arc-sidebar.md` 5), which only move.
-    Worktrees,
-    /// A space's loose pages in the Arc sidebar (`docs/arc-sidebar.md` 11): they move, and one
-    /// taken off the list is a chip for a checkout's list or the pinned pages, but none joins
-    /// another, as each is a page.
+    /// Rows that only move: a project's worktrees in either layout's sidebar
+    /// (`docs/arc-sidebar.md` 5), the Orca layout's projects.
+    Rows,
+    /// A space's loose pages, down the Arc sidebar or along the Orca layout's top rail
+    /// (`docs/arc-sidebar.md` 11): they move, and one taken off the list is a chip for a
+    /// checkout's list or the pinned pages, but none joins another, as each is a page.
     Pages,
 }
 
-/// A list's own facts beside its tabs: which list it is, what it holds, which way it runs, its
-/// tabs' keys, and where it is.
-pub(super) struct List {
-    pub id: u64,
+/// A list as it's laid out this frame, its own facts beside its tabs: which list it is, what it
+/// holds, which way it runs, its tabs' keys, and where it is.
+pub(super) struct Laid {
+    pub id: List,
     pub holds: Holds,
     pub axis: Axis,
     pub keys: Vec<u64>,
@@ -261,16 +263,19 @@ mod tests {
 
     use super::*;
 
+    /// The list `strip` lays out: a checkout's tabs.
+    const STRIP: List = List::Checkout(0, 0);
+
     /// `count` tabs 100 wide in a strip, keyed from 100.
-    fn strip(count: usize) -> (List, Vec<Bounds<Pixels>>) {
+    fn strip(count: usize) -> (Laid, Vec<Bounds<Pixels>>) {
         let slots = (0..count)
             .map(|at| Bounds {
                 origin: point(px(at as f32 * 100.), px(0.)),
                 size: size(px(100.), px(28.)),
             })
             .collect();
-        let list = List {
-            id: 7,
+        let list = Laid {
+            id: STRIP,
             holds: Holds::Tabs {
                 accent: Hsla::default(),
             },
@@ -292,7 +297,7 @@ mod tests {
     fn a_tab_moves_past_the_edge_of_a_tab_and_joins_its_middle() {
         let hand = TabHand::default();
         let (list, slots) = strip(3);
-        hand.take(7, 100, 0, px(50.));
+        hand.take(STRIP, 100, 0, px(50.));
         let place = |x| hand.place(&list, &slots, at(x, 14.), true).unwrap();
         let held = place(115.);
         assert_eq!((held.to, held.join), (0, None), "not into its middle yet");
@@ -333,7 +338,7 @@ mod tests {
         );
         assert_eq!(held.to, 1, "the tab passed stays out of the way");
         assert_eq!(
-            hand.release(7),
+            hand.release(STRIP),
             Some(Drop::Join {
                 from: 0,
                 onto: 2,
@@ -342,17 +347,17 @@ mod tests {
         );
         assert!(hand.holding().is_none());
 
-        hand.take(7, 102, 2, px(50.));
+        hand.take(STRIP, 102, 2, px(50.));
         let held = hand.place(&list, &slots, at(10., 14.), true).unwrap();
         assert_eq!((held.pos, held.to, held.join), (px(0.), 0, None));
-        assert_eq!(hand.release(7), Some(Drop::Move { from: 2, to: 0 }));
+        assert_eq!(hand.release(STRIP), Some(Drop::Move { from: 2, to: 0 }));
     }
 
     #[test]
     fn a_tab_pulled_off_its_list_goes_back_and_does_nothing_there() {
         let hand = TabHand::default();
         let (list, slots) = strip(2);
-        hand.take(7, 100, 0, px(50.));
+        hand.take(STRIP, 100, 0, px(50.));
         assert!(!hand.chip_shows(), "on its list the tab itself is in hand");
         hand.place(&list, &slots, at(150., 40.), true);
         assert!(
@@ -367,7 +372,7 @@ mod tests {
         hand.place(&list, &slots, at(150., 14.), true);
         assert!(!hand.chip_shows(), "over the strip it's back on");
         hand.place(&list, &slots, at(150., 80.), true);
-        assert_eq!(hand.release(7), None);
+        assert_eq!(hand.release(STRIP), None);
     }
 
     #[test]
@@ -377,9 +382,9 @@ mod tests {
             origin: point(px(0.), px(top)),
             size: size(px(240.), px(height)),
         });
-        let list = List {
-            id: 9,
-            holds: Holds::Worktrees,
+        let list = Laid {
+            id: List::Worktrees(0),
+            holds: Holds::Rows,
             axis: Axis::Vertical,
             keys: vec![1, 2, 3],
             bounds: Bounds {
@@ -387,7 +392,7 @@ mod tests {
                 size: size(px(240.), px(184.)),
             },
         };
-        hand.take(9, 1, 0, px(18.));
+        hand.take(List::Worktrees(0), 1, 0, px(18.));
         let place = |x, y| hand.place(&list, &slots, at(x, y), true).unwrap();
         let held = place(120., 70.);
         assert_eq!(
@@ -401,25 +406,25 @@ mod tests {
         assert_eq!((held.to, held.pos), (2, px(184. - 36.)), "last, at the end");
         assert!(!place(900., 400.).off, "nor taken off sideways");
         assert!(!hand.chip_shows());
-        assert_eq!(hand.release(9), Some(Drop::Move { from: 0, to: 2 }));
+        assert_eq!(hand.release(List::Worktrees(0)), Some(Drop::Move { from: 0, to: 2 }));
     }
 
     #[test]
     fn a_list_leaves_another_lists_tab_alone_and_lets_go_once_the_drag_is_over() {
         let hand = TabHand::default();
         let (list, slots) = strip(2);
-        hand.take(8, 500, 0, px(10.));
+        hand.take(List::Checkout(0, 1), 500, 0, px(10.));
         assert!(hand.place(&list, &slots, at(50., 14.), true).is_none());
         assert_eq!(
             hand.holding(),
             Some(500),
             "the other list's tab stays in hand"
         );
-        assert_eq!(hand.release(7), None);
+        assert_eq!(hand.release(STRIP), None);
 
-        hand.take(7, 101, 1, px(10.));
+        hand.take(STRIP, 101, 1, px(10.));
         assert!(hand.place(&list, &slots, at(50., 14.), false).is_none());
         assert!(hand.holding().is_none(), "gpui's drag is over");
-        assert!(hand.settling(7));
+        assert!(hand.settling(STRIP));
     }
 }

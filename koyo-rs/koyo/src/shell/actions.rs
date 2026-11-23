@@ -131,6 +131,7 @@ impl Shell {
             .map(|root| Self::handle_launcher(root, cx))
             .map(|root| projects::handle_actions(root, cx))
             .map(|root| crate::arc::handle_actions(root, cx))
+            .map(|root| Self::handle_pinned(root, cx))
             .map(|root| crate::chat::heard_at_window(root, cx))
             .map(browser::handle_actions)
             .map(|root| terminals::handle_actions(root, cx))

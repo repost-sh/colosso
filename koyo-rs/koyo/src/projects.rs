@@ -297,6 +297,40 @@ impl Shell {
         }
     }
 
+    /// The prefix the person's own branches carry in the project at `project`, which
+    /// `BranchUnit::title` leaves off: the one new worktrees' branches get (Settings → General).
+    pub(crate) fn own_prefix<'a>(&'a self, project: usize, cx: &'a App) -> Option<&'a str> {
+        let user = self.workspace.projects.get(project)?.user.as_deref();
+        settings::get(cx).branch_prefix.own(user)
+    }
+
+    /// Whether the worktrees of the project at `project` are folded away under its name in
+    /// either layout's sidebar.
+    pub(crate) fn is_folded(&self, project: &Path, cx: &App) -> bool {
+        settings::get(cx).is_folded(project)
+    }
+
+    /// Folds the worktrees of the project at `project` away under its name in either layout's
+    /// sidebar, or brings them back, kept for the next launch.
+    pub(crate) fn toggle_fold(&mut self, project: &Path, cx: &mut Context<Self>) {
+        settings::update(cx, |settings| settings.toggle_folded(project));
+    }
+
+    /// Moves the project at `from` among `group`, places in the sidebar's order, to `to`'s, and
+    /// saves the order: what a project dragged in either layout's sidebar does.
+    pub(crate) fn move_project_among(
+        &mut self,
+        group: &[usize],
+        from: usize,
+        to: usize,
+        cx: &mut Context<Self>,
+    ) {
+        if self.workspace.move_project_among(group, from, to) {
+            self.save_projects(cx);
+            cx.notify();
+        }
+    }
+
     /// Moves the worktree of the project at `project` from `from` to where the one at `to` is,
     /// in both layouts' lists, and keeps the order for the next launch (`docs/arc-sidebar.md`
     /// 5, 9).

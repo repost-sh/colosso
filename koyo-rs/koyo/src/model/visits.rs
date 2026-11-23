@@ -59,14 +59,12 @@ impl Workspace {
     /// The `most` tabs to switch among, wherever they are: those looked at, the latest first,
     /// the one shown at their head; then, while there's room, the open tabs not looked at yet,
     /// the nearest first (`distance`), as they're listed. A pinned page is among them only once
-    /// it's been looked at: until then it's a tile, with no page open. Pinned and loose pages
-    /// are among them if `apart`; the Orca layout, which lists neither, leaves them out.
-    pub fn latest(&self, most: usize, apart: bool) -> Vec<Visited<'_>> {
+    /// it's been looked at: until then it's a tile, or a button, with no page open.
+    pub fn latest(&self, most: usize) -> Vec<Visited<'_>> {
         let mut listed: Vec<Visited<'_>> = (self.everywhere())
             .filter(|visited| match visited.spot {
-                Spot::Checkout(..) => true,
-                Spot::Loose(_) => apart,
-                Spot::Pinned => apart && visited.tab.shown_at() > 0,
+                Spot::Checkout(..) | Spot::Loose(_) => true,
+                Spot::Pinned => visited.tab.shown_at() > 0,
             })
             .collect();
         listed.sort_by_cached_key(|visited| {

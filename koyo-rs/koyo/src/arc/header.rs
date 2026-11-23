@@ -1,37 +1,38 @@
 //! A worktree's header in the Arc sidebar (`docs/arc-sidebar.md` 5), a label over its tabs: the
 //! worktree's name, from where their icons start, and, while the pointer's on it, a pill under the
-//! row and a `…` and a `+` at its end, fading in and out.
-//! Clicked, it opens or collapses the worktree's rows, which slide as they go. Its `…`,
-//! or a right-click, opens the worktree's menu, and its `+` a new tab in it; dragged, it takes the
-//! worktree, rows and all, to another place among the project's; and a tab from another worktree
-//! let go on it moves there.
+//! row and its changes', its files', a `…` and a `+` at its end, fading in and out, the name
+//! making room for them only then; the changes' or the files' stays while its panel shows.
+//! Clicked, it opens or collapses the worktree's rows, which slide as they go. Its changes' and
+//! files' show the worktree's panel on them
+//! (`right_panel::buttons`), its `…`, or a right-click, opens the worktree's menu, and its `+` a
+//! new tab in it; dragged, it takes the worktree, rows and all, to another place among the
+//! project's; and a tab from another worktree let go on it moves there.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, App, AppContext as _, Context, Div, FontWeight, InteractiveElement as _, MouseButton,
-    MouseDownEvent, ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _,
+    MouseDownEvent, ParentElement as _, Stateful, StatefulInteractiveElement as _,
     Styled as _, Window, div, px,
 };
 
 use super::Look;
 use super::actions::ClearWorktree;
-use super::tiles::DraggedTile;
-use super::worktrees::{ROW_END, arc_row, list_of, takes_tabs};
+use super::worktrees::{ROW_END, arc_row, takes_tabs};
 use crate::launcher::NewTab;
-use koyo_git::Head;
 
 use crate::model::BranchUnit;
-use crate::pane::{ROW_GLYPH, row_sized, tab_button};
+use crate::pane::ROW_GLYPH;
 use crate::projects::{DeleteWorktree, path_items};
 use crate::settings;
-use crate::shell::{Shell, ellipsized, icon};
+use crate::shell::{InHand, List, Shell, ellipsized, icon, row_button};
 use crate::theme;
 
-/// How long the pill, the `…` and the `+` take to fade in or out as the pointer comes onto the
+/// How long the pill and the buttons take to fade in or out as the pointer comes onto the
 /// header or leaves, as the sidebar's other hovers do.
 const HOVER_FADE: Duration = Duration::from_millis(150);
 
@@ -45,38 +46,28 @@ pub(super) fn header(
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    let name = title(unit, shell.own_prefix(project, cx));
+    let name = unit.title(shell.own_prefix(project, cx));
     let (shown, hover) = theme::hover::eased(("arc-header", key), HOVER_FADE, window, cx);
-    let lit = if shell.worktree_hand.holding() == Some(key) {
+    let lit = if shell.row_hand.holding() == Some(key) {
         1.
     } else {
         shown
     };
     let at = (project, branch);
-    let more = row_sized(tab_button(("arc-header-more", branch), look.p))
-        .debug_selector(move || format!("arc-header-more-{branch}"))
-        .child(icon(IconName::Ellipsis, ROW_GLYPH))
-        .on_mouse_down(MouseButton::Left, opens_menu(at, cx));
-    let new_tab = row_sized(tab_button(("arc-header-new-tab", branch), look.p))
-        .debug_selector(move || format!("arc-header-new-tab-{branch}"))
-        .child(icon(IconName::Plus, ROW_GLYPH))
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                this.open_worktree(at, cx);
-            }),
-        )
-        .on_click(|_, window, cx| window.dispatch_action(Box::new(NewTab), cx));
+    let hovered = shown > 0.;
+    let panel = (shell.panel_buttons(at, (ROW_GLYPH, look.pill), hovered, cx).into_iter())
+        .map(|(button, lit)| button.opacity(if lit { 1. } else { shown }));
     let ends = div()
         .flex()
         .flex_shrink_0()
         .items_center()
         .gap(px(2.))
-        .opacity(shown)
-        .child(more)
-        .child(new_tab);
-    let hand = shell.worktree_hand.clone();
+        .children(panel)
+        .when(hovered, |ends| {
+            ends.child(more_button(at, look, cx).opacity(shown))
+                .child(plus_button(at, look, cx).opacity(shown))
+        });
+    let hand = shell.row_hand.clone();
     let header = arc_row(("arc-header", branch))
         .debug_selector(move || format!("arc-header-{branch}"))
         .pr(px(ROW_END))
@@ -87,9 +78,9 @@ pub(super) fn header(
         .on_hover(hover)
         .on_click(cx.listener(move |this, _, _, cx| this.toggle_worktree(at, cx)))
         .on_mouse_down(MouseButton::Right, opens_menu(at, cx))
-        .on_drag(DraggedTile, move |_, grab, _, cx| {
-            hand.take(list_of(project), key, branch, grab.y);
-            cx.new(|_| DraggedTile)
+        .on_drag(InHand, move |_, grab, _, cx| {
+            hand.take(List::Worktrees(project), key, branch, grab.y);
+            cx.new(|_| InHand)
         })
         .child(ellipsized(name).flex_1())
         .child(ends);
@@ -99,6 +90,31 @@ pub(super) fn header(
         header.on_prepaint(crate::visual::noting(format!("arc-header-{branch}")))
     };
     takes_tabs(header, at, look, cx)
+}
+
+/// The header's `…`, which opens the worktree's menu, for the worktree at `at`.
+fn more_button(at: (usize, usize), look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let branch = at.1;
+    row_button(("arc-header-more", branch), look.p)
+        .debug_selector(move || format!("arc-header-more-{branch}"))
+        .child(icon(IconName::Ellipsis, ROW_GLYPH))
+        .on_mouse_down(MouseButton::Left, opens_menu(at, cx))
+}
+
+/// The header's `+`, which selects the worktree at `at` and opens a new tab on it.
+fn plus_button(at: (usize, usize), look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let branch = at.1;
+    row_button(("arc-header-new-tab", branch), look.p)
+        .debug_selector(move || format!("arc-header-new-tab-{branch}"))
+        .child(icon(IconName::Plus, ROW_GLYPH))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.open_worktree(at, cx);
+            }),
+        )
+        .on_click(|_, window, cx| window.dispatch_action(Box::new(NewTab), cx))
 }
 
 /// Opens the menu of the worktree at `at`, as `(project, branch)`, where the pointer pressed,
@@ -154,29 +170,7 @@ impl Items {
     }
 }
 
-/// A worktree's name in words: its branch less `prefix`, the one the person's own branches carry,
-/// its dashes and underscores spaces and its first letter a capital, so
-/// `schulzfel/some-nasty-name` is "Some nasty name". A detached checkout keeps its name.
-pub(super) fn title(unit: &BranchUnit, prefix: Option<&str>) -> SharedString {
-    let Head::Branch(branch) = &unit.worktree.head else {
-        return unit.name();
-    };
-    let own = prefix.and_then(|prefix| branch.strip_prefix(prefix)?.strip_prefix('/'));
-    let mut words = own.unwrap_or(branch).replace(['-', '_'], " ");
-    if let Some(first) = words.get_mut(..1) {
-        first.make_ascii_uppercase();
-    }
-    words.into()
-}
-
 impl Shell {
-    /// The prefix the person's own branches carry in the project at `project`, which `title`
-    /// leaves off: the one new worktrees' branches get (Settings → General).
-    pub(super) fn own_prefix<'a>(&'a self, project: usize, cx: &'a App) -> Option<&'a str> {
-        let user = self.workspace.projects.get(project)?.user.as_deref();
-        settings::get(cx).branch_prefix.own(user)
-    }
-
     /// The folders of the project at `project` and of its worktree at `branch`, if it has one.
     fn folders_at(&self, (project, branch): (usize, usize)) -> Option<(&Path, &Path)> {
         let folder = self.workspace.projects.get(project)?;

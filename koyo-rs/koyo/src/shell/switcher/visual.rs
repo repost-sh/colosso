@@ -3,7 +3,7 @@
 //! is taken, ⌃⇥ as typed, and what macOS says of the panel's window as ⌃ is held and let go:
 //! unseen until ⌃ has been held, never with the keyboard, with no edge of its own, the glass
 //! behind what GPUI draws. The panel's cards, each with its tab's picture, are saved in
-//! `.superpowers/qa/switcher/`; the glass, which macOS draws, isn't in it. It says what a
+//! `.artifacts/qa/switcher/`; the glass, which macOS draws, isn't in it. It says what a
 //! picture adds to a frame.
 //!
 //! The chat is nearly all prompt, which is on glass: the window draws it in a layer over its
@@ -12,7 +12,7 @@
 //! prompt: the pane that stands for the glass, and what's on it.
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/switcher && mkdir -p $Q/tmp &&
+//! Q=$PWD/.artifacts/qa/switcher && mkdir -p $Q/tmp &&
 //!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config \
 //!   KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
 //!   --visual-check-switcher
@@ -36,7 +36,7 @@ use crate::theme;
 use crate::visual::{self, Drawn, Result};
 
 /// Where the picture goes, relative to the checkout.
-const OUT: &str = ".superpowers/qa/switcher";
+const OUT: &str = ".artifacts/qa/switcher";
 /// The files shown in turn, each in a tab of its own: the last is the tab shown.
 const FILES: [&str; 3] = [
     "koyo-rs/koyo/src/shell.rs",

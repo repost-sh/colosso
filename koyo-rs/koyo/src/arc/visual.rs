@@ -1,18 +1,20 @@
 //! The Arc sidebar (`docs/arc-sidebar.md`) as the app draws it, saved as PNGs in
-//! `.superpowers/qa/arc/`: this checkout's project with a few tabs in a space, a second project in
+//! `.artifacts/qa/arc/`: this checkout's project with a few tabs in a space, a second project in
 //! a space of its own with its own colours, and an empty space, light and dark; then what a
 //! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tab's
 //! row and its tile saying the same, a tile dragged to another row and back, the address bar
 //! following the pane pressed in, ⌘L's launcher on a page, ⌥← and ⌥→ between projects and ⌥⇧←
 //! and ⌥⇧→ between spaces, in a composer and on the shortcuts page (`keys`), the pages pinned
-//! at the sidebar's head and the space's loose pages under them, pinned and kept by a drop,
-//! dragged, shown as the space changes, closed and put away (`pins`), the loose pages half-way
-//! through a swipe, each space's own and shared (`loose_swipe`), and a project's worktrees
-//! under their headers, collapsed, opened, dragged and kept (`headers`). It shows a chat, so it
+//! at the sidebar's head and the space's loose pages under them, pinned and kept by a drop, a
+//! tab in hand making room among the tiles, dragged, shown as the space changes, closed and put
+//! away (`pins`), the loose pages half-way through a swipe, each space's own and shared
+//! (`loose_swipe`), a project's worktrees under their headers, collapsed, opened, dragged and
+//! kept (`headers`), and the same pinned and loose pages in the Orca layout's top rail, a tab in
+//! hand making room among the pinned ones there, and their zone (`rail`). It shows a chat, so it
 //! runs on a data folder and an agent host of its own:
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
+//! Q=$PWD/.artifacts/qa/arc && mkdir -p $Q/tmp &&
 //!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp \
 //!   KOYO_CONFIG_DIR=$Q/config KOYO_LOG_DIR=$Q/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-arc
@@ -39,9 +41,10 @@ mod headers;
 mod keys;
 mod loose_swipe;
 mod pins;
+mod rail;
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/arc";
+const OUT: &str = ".artifacts/qa/arc";
 
 pub fn run() -> ExitCode {
     crate::visual::run(draw)
@@ -192,5 +195,6 @@ fn draw() -> Result<Vec<String>> {
     let held = |path: &Path| path.display().to_string();
     said.push(format!("second project: {}", held(&site)));
     headers::headers(&mut drawn, &mut said)?;
+    rail::rail_pages(&mut drawn, &mut said)?;
     Ok(said)
 }

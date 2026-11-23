@@ -12,7 +12,7 @@ fn pin_first_page(workspace: &mut Workspace) {
         .first()
         .title
         .to_string();
-    assert!(workspace.pin_tab((0, 0, 1), home).is_some());
+    assert!(workspace.pin_tab((0, 0, 1), home, usize::MAX).is_some());
 }
 
 fn pinned(workspace: &Workspace) -> Vec<String> {
@@ -25,7 +25,7 @@ fn pinned(workspace: &Workspace) -> Vec<String> {
 fn only_a_tab_whose_single_pane_is_a_page_is_pinned() {
     let mut workspace = with_pages(&["a", "b"]);
     assert_eq!(
-        workspace.pin_tab((0, 0, 0), String::new()),
+        workspace.pin_tab((0, 0, 0), String::new(), usize::MAX),
         None,
         "a chat isn't"
     );
@@ -33,12 +33,12 @@ fn only_a_tab_whose_single_pane_is_a_page_is_pinned() {
     let beside = unit.tabs[1].first().id;
     assert!(unit.drop_tab(2, beside, Edge::Right));
     assert_eq!(
-        workspace.pin_tab((0, 0, 1), String::new()),
+        workspace.pin_tab((0, 0, 1), String::new(), usize::MAX),
         None,
         "a split isn't"
     );
     assert_eq!(
-        workspace.pin_tab((0, 0, 9), String::new()),
+        workspace.pin_tab((0, 0, 9), String::new(), usize::MAX),
         None,
         "no such tab"
     );
@@ -49,7 +49,7 @@ fn only_a_tab_whose_single_pane_is_a_page_is_pinned() {
 #[test]
 fn a_page_pinned_leaves_its_checkout_and_goes_on_showing_if_it_was_shown() {
     let mut workspace = with_pages(&["a", "b"]);
-    assert_eq!(workspace.pin_tab((0, 0, 1), "a".into()), Some(0));
+    assert_eq!(workspace.pin_tab((0, 0, 1), "a".into(), usize::MAX), Some(0));
     assert_eq!(pinned(&workspace), ["a"]);
     assert_eq!(
         workspace.pinned()[0].project,
@@ -57,12 +57,29 @@ fn a_page_pinned_leaves_its_checkout_and_goes_on_showing_if_it_was_shown() {
     );
     assert_eq!(workspace.pinned_shown(), None);
     assert_eq!(shown(&workspace), "b");
-    assert_eq!(workspace.pin_tab((0, 0, 1), "b".into()), Some(1));
+    assert_eq!(workspace.pin_tab((0, 0, 1), "b".into(), usize::MAX), Some(1));
     assert_eq!(pinned(&workspace), ["a", "b"]);
     assert_eq!(workspace.pinned_shown(), Some(1));
     assert_eq!(shown(&workspace), "b");
     let unit = workspace.branch().expect("a checkout");
     assert_eq!((unit.tabs.len(), unit.active_tab), (1, 0));
+}
+
+#[test]
+fn a_page_pinned_at_a_slot_goes_there_and_the_one_shown_stays_shown() {
+    let mut workspace = with_pages(&["a", "b", "c", "d"]);
+    assert_eq!(workspace.pin_tab((0, 0, 1), "a".into(), usize::MAX), Some(0));
+    assert!(workspace.show_pinned(0));
+    assert_eq!(workspace.pin_tab((0, 0, 1), "b".into(), 0), Some(0), "before the first");
+    assert_eq!(pinned(&workspace), ["b", "a"]);
+    assert_eq!(workspace.pinned_shown(), Some(1), "the one shown, a slot along");
+    assert_eq!(workspace.pin_tab((0, 0, 1), "c".into(), 1), Some(1), "between the two");
+    assert_eq!(pinned(&workspace), ["b", "c", "a"]);
+    assert_eq!(workspace.pinned_shown(), Some(2));
+    workspace.select_tab(0, 0, 1);
+    assert_eq!(workspace.pin_tab((0, 0, 1), "d".into(), 1), Some(1), "shown, it shows");
+    assert_eq!(pinned(&workspace), ["b", "d", "c", "a"]);
+    assert_eq!(workspace.pinned_shown(), Some(1));
 }
 
 #[test]
@@ -88,8 +105,9 @@ fn a_pinned_page_stays_shown_while_another_project_is_selected_until_a_tab_is_pi
     workspace.new_tab(PaneKind::Chat);
     assert_eq!(workspace.pinned_shown(), None);
     workspace.show_pinned(0);
-    assert!(workspace.leave_apart());
-    assert!(!workspace.leave_apart(), "none was shown");
+    assert!(workspace.apart_shown());
+    workspace.leave_apart();
+    assert!(!workspace.apart_shown(), "none is shown");
     assert_eq!(pinned(&workspace), ["a"], "left, it's still pinned");
 }
 

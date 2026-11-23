@@ -14,7 +14,7 @@ use gpui_kit::{
 
 use super::Shell;
 use crate::launcher::NewTab;
-use crate::pane::{sized_close_button, tab_button, unsaved_dot};
+use crate::pane::{row_sized, sized_close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
 use crate::theme::{self, Palette};
 
@@ -37,6 +37,12 @@ pub(super) fn drag_area(id: &'static str) -> Stateful<Div> {
                 window.start_window_move();
             }
         })
+}
+
+/// A square button the size of a sidebar row's, lit when hovered, without what's drawn in it:
+/// a worktree's `…`, `+`, Changes or Files.
+pub fn row_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
+    row_sized(tab_button(id, p))
 }
 
 pub fn icon_button(

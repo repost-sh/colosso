@@ -1,12 +1,13 @@
 //! `--visual-check-chat-backdrop` (`docs/chat-backdrop.md` 10, step 9): a chat over a wallpaper
 //! kept in the checkout, not the person's, drawn by the real shell in a real window off screen and
-//! saved as PNGs under `.superpowers/qa/chat-backdrop/`: the backdrop on and off, in the light
+//! saved as PNGs under `.artifacts/qa/chat-backdrop/`: the backdrop on and off, in the light
 //! appearance and the dark, at each Quality stop (with a crop of each at a pixel a pixel, where
-//! the picture is sharp), and Appearance › Chat background. A window off screen lies on no screen,
+//! the picture is sharp), the Orca layout's sidebar, tabs and Files panel over it, its compact
+//! mode, the tabs still in its top rail, and Appearance › Chat background. A window off screen lies on no screen,
 //! so the check's window stands on one of its own, 2560 × 1440 points, at (480, 220).
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/chat-backdrop && mkdir -p $Q/tmp &&
+//! Q=$PWD/.artifacts/qa/chat-backdrop && mkdir -p $Q/tmp &&
 //!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config \
 //!   KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
 //!   --visual-check-chat-backdrop
@@ -24,13 +25,14 @@ use super::layout::Scaling;
 use super::screens;
 use super::wallpaper::Named;
 use crate::navigation::Route;
+use crate::right_panel::View;
 use crate::settings::{self, Quality};
 use crate::settings_view::SettingsPage;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout, out_dir};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/chat-backdrop";
+const OUT: &str = ".artifacts/qa/chat-backdrop";
 /// The display ID of the check's own screen, which no real one has.
 const DISPLAY: u64 = 0xc4ec;
 /// The check's screen, in points, and where its window lies on it.
@@ -111,8 +113,23 @@ fn draw() -> Result<Vec<String>> {
         saved.push(drawn.save(name)?);
     }
     drawn.cx.update(|cx| {
-        cx.dispatch_action(&UseLightTheme);
         settings::update(cx, |settings| settings.chat_backdrop.on = true);
+        let shell = drawn.shell.clone();
+        shell.update(cx, |shell, cx| shell.show(View::Files, cx));
+    });
+    saved.push(settled(&mut drawn, "orca-files-dark.png")?);
+    let shell = drawn.shell.clone();
+    for open in [false, true] {
+        drawn.cx.update(|cx| {
+            cx.set_reduce_motion(!open);
+            shell.update(cx, |shell, cx| shell.set_sidebar_open(open, cx));
+        });
+        if !open {
+            saved.push(settled(&mut drawn, "orca-compact-dark.png")?);
+        }
+    }
+    drawn.cx.update(|cx| {
+        cx.dispatch_action(&UseLightTheme);
         let shell = drawn.shell.clone();
         shell.update(cx, |shell, cx| {
             shell.navigate(Route::Settings(SettingsPage::Appearance), cx);

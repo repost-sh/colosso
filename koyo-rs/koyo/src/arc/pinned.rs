@@ -1,47 +1,36 @@
 //! The pinned pages, at the sidebar's head (`docs/arc-sidebar.md` 11): a tile each, as the
-//! projects' are, in a grid they're dragged about in with the same physics (`tile_grid`), common
-//! to every space, so they stay put as a space swipes away. The one shown is lit. A page's tab
-//! dragged from a worktree's list, or a loose page's row, onto them is pinned; a tile dragged
-//! off them onto a worktree's tabs or the space's loose pages is unpinned there. With none
-//! pinned, a dotted zone says where one goes, which the person can put away: it still shows
-//! once a page's tab is taken off its list. Hovered, a tile says its page's title and host;
-//! right-clicked, it's pinned elsewhere, closed, unpinned, copied into the selected worktree or
-//! removed.
+//! projects' are, in a grid they're dragged about in with the same physics (`shell::TileGrid`),
+//! common to every space, so they stay put as a space swipes away. The one shown is lit. A
+//! page's tab dragged from a worktree's list, or a loose page's row, onto them is pinned where
+//! the tiles make room for it; a tile dragged off them onto a worktree's tabs or the space's
+//! loose pages is unpinned there. With none pinned, a dotted zone says where one goes, which the
+//! person can put away: it still shows once a page's tab is taken off its list. Hovered, a tile
+//! says its page's title and host; right-clicked, it's pinned elsewhere, closed, unpinned,
+//! copied into the selected worktree or removed, a menu the Orca layout's pinned pages have too
+//! (`shell/pinned/menu.rs`).
 
 use std::rc::Rc;
 
-use gpui_kit::assets::IconName;
-use gpui_kit::base::ElementExt as _;
-use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, Context, Div, FontWeight, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, Pixels, Point, Render, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
+    AppContext as _, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
+    Pixels, Point, Render, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
+    px,
 };
 
 use super::Look;
-use super::actions::{
-    ClosePinned, CopyToWorktree, EditPinned, RemovePinned, RepinAtCurrent, Unpin,
-};
 use super::hover::Hovered;
-use super::rename;
-use super::tile_grid::{TileGrid, TileHand};
 use super::tiles::{GAP, PICTURE, TILE, per_row, tile_frame};
-use crate::browser::{Address, read_address};
-use crate::history;
-use crate::model::{Pane, Pinned};
+use crate::model::Pinned;
 use crate::pane::{ROW_GLYPH, row_sized, sized_close_button};
-use crate::projects::with_menu;
-use crate::settings;
-use crate::shell::{Dragged, DraggedPane, FAVICON_CORNERS, Face, Shell, drag_chip, icon};
+use crate::shell::{
+    Arrange, Face, Landing, Shell, TileHand, drag_chip, hides_pinned_zone, pinned_picture,
+    pinned_zone_says,
+};
 use crate::theme;
 
 /// How far the outline that says a tab can be let go on the tiles stands out from them.
 const OUTLINE: f32 = 4.;
-/// How much of its strength the picture of a page that isn't open keeps.
-const CLOSED: f32 = 0.6;
 
 /// A pinned page's tile in hand. On its grid nothing's drawn for it under the pointer, as the
 /// grid draws it there; taken well away, where its tile has gone back to its slot, it travels as
@@ -71,62 +60,27 @@ impl Render for DraggedPin {
 
 /// The pinned pages' region: their tiles, or the zone that says where one goes; none while no
 /// page is pinned, the zone was put away and nothing it takes is in hand. `taking` says a page's
-/// tab or a loose page's row is in hand, off its list: the region says so, and lights under it.
+/// tab or a loose page's row is in hand, off its list: the region says so, and lights under it,
+/// and over it the tiles make room for it where it would land.
 pub fn region(
     shell: &Shell,
     taking: bool,
     look: Look,
     cx: &mut Context<Shell>,
 ) -> Option<Stateful<Div>> {
-    let pinned = shell.workspace.pinned();
-    if pinned.is_empty() && !taking && settings::get(cx).pinned_zone_dismissed {
-        return None;
-    }
-    let hand = shell.tab_hand.clone();
-    let note = move |bounds: Bounds<Pixels>, _: &mut Window, _: &mut App| hand.taken_at(bounds);
-    let region = div()
-        .id("arc-pinned")
-        .debug_selector(|| "arc-pinned".to_owned())
-        .flex_shrink_0()
-        .relative()
-        .rounded(px(10.))
-        .drag_over::<DraggedPane>(move |style, held, _, _| {
-            if taking && matches!(held.what, Dragged::Tab(..) | Dragged::Loose) {
-                style.bg(look.tile_hover)
-            } else {
-                style
-            }
-        })
-        .on_drop(cx.listener(|this, held: &DraggedPane, _, cx| {
-            if let (Dragged::Tab(..) | Dragged::Loose, [face]) = (held.what, held.faces.as_slice())
-            {
-                this.pin_tab_of(face.id, cx);
-            }
-        }))
-        .on_prepaint(note);
-    #[cfg(feature = "visual-check")]
-    let region = region.on_prepaint(crate::visual::noting("arc-pinned".into()));
-    if pinned.is_empty() {
+    let region = shell.pinned_region("arc-pinned", (taking, look.tile_hover), cx)?;
+    let region = region.relative().rounded(px(10.));
+    let grid = ("arc-pinned-grid", (Arrange::Grid(per_row), px(GAP)));
+    let landing = Landing {
+        accent: look.p.accent,
+        corners: px(super::ROUNDED),
+    };
+    let tile = |at: (usize, &Pinned), shown, cx: &mut Context<Shell>| {
+        tile(shell, at, shown, look, cx).into_any_element()
+    };
+    let Some(grid) = shell.pinned_grid(grid, (taking, landing), tile, cx) else {
         return Some(region.child(zone(taking, look)));
-    }
-    let shown = shell.workspace.pinned_shown();
-    let tiles = (pinned.iter().enumerate())
-        .map(|(at, pinned)| {
-            let tile = tile(shell, (at, pinned), shown == Some(at), look, cx);
-            (pinned.key(), tile.into_any_element())
-        })
-        .collect();
-    let on_drop = cx.listener(|this, &(from, to): &(usize, usize), _, cx| {
-        this.move_pinned(from, to, cx);
-    });
-    let rows = (per_row(pinned.len()), px(GAP));
-    let grid = TileGrid::new(
-        "arc-pinned-grid",
-        tiles,
-        rows,
-        shell.pinned_hand.clone(),
-        Rc::new(on_drop),
-    );
+    };
     let outline = div()
         .absolute()
         .top(px(-OUTLINE))
@@ -149,18 +103,8 @@ pub fn region(
 /// tab in hand it says to let it go there, and has no ×.
 fn zone(taking: bool, look: Look) -> Div {
     let p = look.p;
-    let says = if taking {
-        "Drop to pin"
-    } else {
-        "Drag a page here to pin it"
-    };
     let dismiss = row_sized(sized_close_button("arc-pinned-dismiss", ROW_GLYPH - 4., p))
-        .debug_selector(|| "arc-pinned-dismiss".to_owned())
-        .tooltip(|window, cx| Tooltip::new("Hide").build(window, cx))
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_click(|_, _, cx| {
-            settings::update(cx, |settings| settings.pinned_zone_dismissed = true);
-        });
+        .debug_selector(|| "arc-pinned-dismiss".to_owned());
     let end = div()
         .absolute()
         .top_0()
@@ -170,7 +114,7 @@ fn zone(taking: bool, look: Look) -> Div {
         .items_center()
         .opacity(0.)
         .group_hover("arc-pinned-zone", |style| style.opacity(1.))
-        .child(dismiss);
+        .child(hides_pinned_zone(dismiss));
     div()
         .group("arc-pinned-zone")
         .debug_selector(|| "arc-pinned-zone".to_owned())
@@ -185,38 +129,8 @@ fn zone(taking: bool, look: Look) -> Div {
         .border_color(look.label.opacity(if taking { 0.6 } else { 0.35 }))
         .text_xs()
         .text_color(look.label.opacity(if taking { 1. } else { 0.8 }))
-        .child(says)
+        .child(pinned_zone_says(taking))
         .when(!taking, |zone| zone.child(end))
-}
-
-/// The first letter of the host of the page at `address`, which a site with no icon shows.
-fn initial(address: &str) -> Option<SharedString> {
-    let host = history::host(address)?;
-    let first = host.chars().find(|first| first.is_alphanumeric())?;
-    Some(first.to_uppercase().collect::<String>().into())
-}
-
-/// A pinned page's picture, the size of a tab row's icon: its site's icon, its corners a little
-/// rounded; with none, its host's initial; a globe for a page with no host, as a new tab's
-/// start page.
-fn picture(page: &Pane, look: Look) -> AnyElement {
-    if let Some(favicon) = page.favicon() {
-        return img(favicon)
-            .size(px(PICTURE))
-            .rounded(px(FAVICON_CORNERS))
-            .into_any_element();
-    }
-    let muted = div().text_color(look.p.muted);
-    match initial(page.address().unwrap_or_default()) {
-        Some(initial) => muted
-            .text_sm()
-            .font_weight(FontWeight::SEMIBOLD)
-            .child(initial)
-            .into_any_element(),
-        None => muted
-            .child(icon(IconName::Globe, PICTURE))
-            .into_any_element(),
-    }
 }
 
 /// The tile of the page `pinned`, in slot `at`, lit when it's the tab `shown`.
@@ -226,7 +140,7 @@ fn tile(
     shown: bool,
     look: Look,
     cx: &mut Context<Shell>,
-) -> impl IntoElement + use<> {
+) -> Stateful<Div> {
     let key = pinned.key();
     let page = pinned.tab.first();
     let hand = shell.pinned_hand.clone();
@@ -237,10 +151,7 @@ fn tile(
         hand: hand.clone(),
         grab: Point::default(),
     };
-    let open = page.view().is_some();
-    let face = div()
-        .when(!open, |face| face.opacity(CLOSED))
-        .child(picture(page, look));
+    let face = pinned_picture(page, PICTURE, look.p);
     let tile = tile_frame(
         ("arc-pinned-tile", key),
         Hovered::Pin(key),
@@ -262,124 +173,5 @@ fn tile(
     .on_click(cx.listener(move |this, _, _, cx| {
         this.show_tab_holding(key, cx);
     }));
-    let shell = cx.weak_entity();
-    with_menu(tile, move |_, cx| {
-        let menu = shell.read_with(cx, |shell, _| Menu::of(shell, key).build());
-        menu.unwrap_or_else(|_| NativeMenu::new())
-    })
-}
-
-/// Has the window's root handle what a pinned page's menu picks, and a loose page's.
-pub(super) fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
-    root.on_action(
-        cx.listener(|this, CopyToWorktree(key): &CopyToWorktree, window, cx| {
-            this.copy_to_worktree(*key, window, cx);
-        }),
-    )
-    .on_action(
-        cx.listener(|this, ClosePinned(key): &ClosePinned, window, cx| {
-            this.close_apart(*key, Shell::close_pinned, window, cx);
-        }),
-    )
-    .on_action(cx.listener(|this, Unpin(key): &Unpin, _, cx| this.unpin(*key, cx)))
-    .on_action(
-        cx.listener(|this, RemovePinned(key): &RemovePinned, window, cx| {
-            this.close_apart(*key, Shell::remove_pinned, window, cx);
-        }),
-    )
-    .on_action(
-        cx.listener(|this, RepinAtCurrent(key): &RepinAtCurrent, _, cx| {
-            this.repin_at_current(*key, cx);
-        }),
-    )
-    .on_action(
-        cx.listener(|this, EditPinned(key): &EditPinned, window, cx| {
-            this.ask_pinned_address(*key, window, cx);
-        }),
-    )
-}
-
-impl Shell {
-    /// Asks for the address the pinned page known by `key` is pinned at, the one it has in the
-    /// field: an address typed as in the address bar, which it's then pinned at. Left empty, or
-    /// words that are no address, it stays pinned where it was.
-    fn ask_pinned_address(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(at) = self.workspace.pinned_at(key) else {
-            return;
-        };
-        let home = self.workspace.pinned()[at].home.clone();
-        let shell = cx.weak_entity();
-        let done = move |typed: String, cx: &mut App| {
-            let Some(Address::Page(address)) = read_address(&typed) else {
-                return;
-            };
-            (shell.update(cx, |shell, cx| shell.repin_at(key, address, cx))).ok();
-        };
-        let asks = ("Edit Pinned Page", "Save");
-        rename::ask(asks, home, "Address", window, cx, done);
-    }
-}
-
-/// What a pinned page's menu offers (`docs/arc-sidebar.md` 11), and which of it can be picked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Menu {
-    key: u64,
-    /// Whether its page shows another address than the one it's pinned at, to pin it at.
-    pub strayed: bool,
-    /// Whether it has a page to close.
-    pub open: bool,
-    /// Whether a worktree is selected, to copy it into.
-    pub worktree: bool,
-}
-
-impl Menu {
-    pub(super) fn of(shell: &Shell, key: u64) -> Menu {
-        Menu {
-            key,
-            strayed: shell.pinned_strayed(key).is_some(),
-            open: shell.pinned_is_open(key),
-            worktree: shell.checkout_shown().is_some(),
-        }
-    }
-
-    /// The menu, as Arc's for a pinned tab: the address it's pinned at, to change; then closing
-    /// it, which leaves it pinned, unpinning it, and a copy of it in the selected worktree; and
-    /// removing it, apart.
-    fn build(self) -> NativeMenu {
-        let key = self.key;
-        let edit = NativeMenu::new()
-            .menu_with_disabled(
-                "Replace Pinned URL with Current",
-                !self.strayed,
-                Box::new(RepinAtCurrent(key)),
-            )
-            .menu("Edit…", Box::new(EditPinned(key)));
-        NativeMenu::new()
-            .submenu("Edit Pinned Page", edit)
-            .separator()
-            .menu_with_disabled("Close", !self.open, Box::new(ClosePinned(key)))
-            .menu("Unpin", Box::new(Unpin(key)))
-            .menu_with_disabled(
-                "Copy to Worktree",
-                !self.worktree,
-                Box::new(CopyToWorktree(key)),
-            )
-            .separator()
-            .menu("Remove Pinned Tab", Box::new(RemovePinned(key)))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::initial;
-
-    #[test]
-    fn a_site_with_no_icon_shows_its_hosts_first_letter() {
-        let letter = |address| initial(address).map(|letter| letter.to_string());
-        assert_eq!(letter("https://www.example.com/docs").as_deref(), Some("E"));
-        assert_eq!(letter("http://localhost:3000/").as_deref(), Some("L"));
-        assert_eq!(letter("https://127.0.0.1:8080/").as_deref(), Some("1"));
-        assert_eq!(letter("about:blank"), None, "no host: a globe");
-        assert_eq!(letter(""), None);
-    }
+    Shell::with_pinned_menu(tile, key, cx)
 }

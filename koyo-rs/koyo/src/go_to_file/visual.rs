@@ -1,12 +1,12 @@
 //! Go to File drawn as the app draws it: the real shell off screen on this repository's own
 //! checkout with a file open in the Files viewer, ⌘P typed into it, the arrow keys held over
-//! what it lists, a query typed and Enter pressed, saved as PNGs in `.superpowers/qa/finder/`.
+//! what it lists, a query typed and Enter pressed, saved as PNGs in `.artifacts/qa/finder/`.
 //! The palette is a window of its own, glass the system blurs; the pictures of it over the
 //! shell paste it onto the shell's, with the shell blurred where it lies, which is what the
 //! system shows.
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/finder/config \
+//! KOYO_CONFIG_DIR=$PWD/.artifacts/qa/finder/config \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-finder
 //! ```
 
@@ -24,7 +24,7 @@ use crate::modal;
 use crate::visual::{self, Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/finder";
+const OUT: &str = ".artifacts/qa/finder";
 /// How long the project gets to list the checkout, and the palette to search it.
 const PATIENCE: Duration = Duration::from_secs(30);
 /// The file the Files viewer shows behind the palette.

@@ -1,5 +1,5 @@
 //! A terminal tab drawn as the app draws it, on a shell the daemon runs in a scratch
-//! repository, saved as PNGs in `.superpowers/qa/terminal/`: the prompt, a command and its
+//! repository, saved as PNGs in `.artifacts/qa/terminal/`: the prompt, a command and its
 //! output, history and Ctrl-C, text through the input method, the status and control bar as
 //! an agent holds the terminal and the person takes it, colours and box drawing, a
 //! selection by mouse, the history scrolled back, a full-screen program, the tab narrowed by
@@ -13,9 +13,9 @@
 //! afresh in it, so no earlier run's terminals come back.
 //!
 //! ```sh
-//! mkdir -p .superpowers/t/home .superpowers/t/tmp && touch .superpowers/t/home/.zshrc &&
-//!   HOME=$PWD/.superpowers/t/home TMPDIR=$PWD/.superpowers/t/tmp \
-//!   KOYO_DATA_DIR=$PWD/.superpowers/t KOYO_CONFIG_DIR=$PWD/.superpowers/qa/terminal/config \
+//! mkdir -p .artifacts/t/home .artifacts/t/tmp && touch .artifacts/t/home/.zshrc &&
+//!   HOME=$PWD/.artifacts/t/home TMPDIR=$PWD/.artifacts/t/tmp \
+//!   KOYO_DATA_DIR=$PWD/.artifacts/t KOYO_CONFIG_DIR=$PWD/.artifacts/qa/terminal/config \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-terminal
 //! ```
 
@@ -46,7 +46,7 @@ use drive::{
 };
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/terminal";
+const OUT: &str = ".artifacts/qa/terminal";
 /// Colours, styles and box drawing, pasted as one command.
 const COLOURS: &str = "printf '\\e[1;31mbold red\\e[0m \\e[3;32mitalic green\\e[0m \\e[4;34munderline blue\\e[0m \\e[7m inverse \\e[0m \\e[48;5;214m\\e[30m 256 \\e[0m \\e[38;2;120;80;220mtruecolor\\e[0m\\n┌──┬──┐ ━━┳━━ ▀▄█▌▐░▒▓ 字 🙂\\n│ab│cd│   ┃   ╭─╮ ═══\\n└──┴──┘ ━━┻━━ ╰─╯ box-done\\n'";
 

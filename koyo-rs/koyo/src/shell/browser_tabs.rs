@@ -41,7 +41,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
-        let loose = self.opens_loose(cx);
+        let loose = self.opens_loose();
         self.open_page(url, (loose, beside), mode.filter(|_| !loose), window, cx)
     }
 

@@ -5,7 +5,7 @@
 
 use gpui_kit::App;
 
-use super::components::{SettingRow, SettingsSection};
+use super::components::{SettingRow, SettingsSection, slider};
 use super::native_slider::NativeSlider;
 use super::native_switch::NativeSwitch;
 use crate::chat_backdrop;
@@ -23,9 +23,9 @@ pub fn section(cx: &App) -> SettingsSection {
             WHAT.to_owned()
         } else {
             format!(
-                "{WHAT} Turn it on to choose what it shows behind (chats, explorers, files, \
-                 diffs, terminals, simulators and agent desktop), and set its opacity, the cell \
-                 size and density, the fade, where it starts and ends, and the quality."
+                "{WHAT} Turn it on to choose what it shows behind (chats, explorers, the sidebar, \
+                 files, diffs, terminals, simulators and agent desktop), and set its opacity, the \
+                 cell size and density, the fade, where it starts and ends, and the quality."
             )
         })
         .control(NativeSwitch::new(
@@ -143,17 +143,6 @@ fn fade_rows() -> [SettingRow; 2] {
     ]
 }
 
-/// A row named and described by `said`, set by `slider` between the words `ends` say.
-fn slider(
-    said: (&'static str, &'static str),
-    slider: NativeSlider,
-    ends: (&'static str, &'static str),
-) -> SettingRow {
-    SettingRow::new(said.0)
-        .description(said.1)
-        .control(slider.ends(ends.0, ends.1))
-}
-
 #[cfg(test)]
 mod tests {
     use gpui_kit::TestAppContext;
@@ -173,6 +162,7 @@ mod tests {
         let all = [
             "chats",
             "explorers",
+            "sidebar",
             "files",
             "diffs",
             "terminals",

@@ -27,7 +27,7 @@ pub(super) fn persons_page(
     let pane = opened["pane"].as_u64().unwrap();
     rig.shell.update(cx, |shell, cx| {
         if pinned {
-            assert!(shell.pin_tab_of(pane, cx));
+            assert!(shell.pin_tab_of(pane, usize::MAX, cx));
         } else {
             shell.loosen_tab_of(pane, usize::MAX, cx);
         }

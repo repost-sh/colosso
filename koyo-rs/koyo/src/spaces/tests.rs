@@ -221,6 +221,7 @@ fn spaces_survive_a_round_trip() {
     settings.set_project_icon(&path("app"), Some("/pictures/app.png".into()));
     settings.set_worktree_order(&path("app"), vec![path("app-feat"), path("app")]);
     settings.toggle_collapsed(&path("app"), &path("app-feat"));
+    settings.toggle_folded(&path("app"));
     let json = serde_json::to_vec(&settings).unwrap();
     let read: Settings = serde_json::from_slice(&json).unwrap();
     assert_eq!(read, settings);
@@ -231,4 +232,17 @@ fn spaces_survive_a_round_trip() {
         serde_json::from_str(r#"{ "project_looks": { "/src/app": { "name": "App" } } }"#).unwrap();
     assert!(older.worktree_order(&path("app")).is_empty());
     assert!(!older.is_collapsed(&path("app"), &path("app")));
+    assert!(!older.is_folded(&path("app")));
+}
+
+#[test]
+fn a_project_folds_and_opens_again_and_forgets_it_once_open() {
+    let mut settings = settings(&["app"]);
+    let app = path("app");
+    assert!(!settings.is_folded(&app));
+    settings.toggle_folded(&app);
+    assert!(settings.is_folded(&app));
+    settings.toggle_folded(&app);
+    assert!(!settings.is_folded(&app), "open again");
+    assert!(settings.project_looks.is_empty(), "nothing's kept of an open project");
 }

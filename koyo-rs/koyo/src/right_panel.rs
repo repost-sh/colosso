@@ -1,28 +1,29 @@
 //! The right panel beside the chat: the selected checkout's changed files, or its file tree,
-//! each opened and closed by its own button in the top bar; a file picked in either opens in
-//! the workspace's tabs, its diff in the checkout's Changes tab or the file in a tab of its
-//! own. Each checkout in the sidebar keeps its panels while it's there, so leaving it and coming
-//! back finds its open folders, its pick and its scroll as they were. The panel follows the shell
-//! after each change to it rather than while it's drawn, so nothing is made or swapped mid-frame.
+//! each opened and closed by its own button, on the worktree's header in the Arc sidebar and at
+//! the Orca top rail's end (`buttons`);
+//! a file picked in either opens in the workspace's tabs, its diff in the checkout's Changes tab
+//! or the file in a tab of its own. Each checkout in the sidebar keeps its panels while it's
+//! there, and whether its panel's open and on which (`side`), so leaving it and coming back
+//! finds its panel, its open folders, its pick and its scroll as they were. The panel follows the
+//! shell after each change to it rather than while it's drawn, so nothing is made or swapped
+//! mid-frame.
 
 use std::collections::HashMap;
 use std::mem;
 use std::path::{Path, PathBuf};
 
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AnyWindowHandle, App, AppContext as _, Context, Div, DragMoveEvent, Empty, Entity,
-    FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Styled,
-    Subscription, WeakEntity, Window, actions, div, px,
+    FocusHandle, IntoElement, KeyBinding, ParentElement as _, Styled, Subscription, WeakEntity,
+    Window, actions, div, px,
 };
 
 use crate::changes::ChangesPanel;
 use crate::checkout::{Checkout, HeadMoved, Seen, TotalsChanged};
 use crate::files::{FilesPanel, Place};
 use crate::language;
-use crate::navigation::Route;
 use crate::settings;
-use crate::shell::{Shell, ToggleRightPanel};
+use crate::shell::Shell;
 use crate::theme::{self, Palette};
 
 actions!(right_panel, [ShowFiles, ToggleChanges, ToggleFiles]);
@@ -109,8 +110,8 @@ impl Panels {
 
 #[derive(Default)]
 pub struct RightPanel {
-    open: bool,
-    view: View,
+    /// What each checkout's panel shows, by its path: closed for one that isn't here.
+    sides: HashMap<PathBuf, side::Side>,
     /// Whether the panel takes the keyboard once it's next shown, as it does when opened.
     focus: bool,
     /// The panels of each checkout in the sidebar, by its path.
@@ -124,16 +125,6 @@ pub struct RightPanel {
 }
 
 impl RightPanel {
-    /// Whether the panel is open on `view`.
-    pub fn shows(&self, view: View) -> bool {
-        self.open && self.view == view
-    }
-
-    /// What the panel shows, while it's open.
-    pub fn shown_view(&self) -> Option<View> {
-        self.open.then_some(self.view)
-    }
-
     fn shown(&self) -> Option<&Panels> {
         self.checkouts.get(self.selected.as_deref()?)
     }
@@ -163,9 +154,11 @@ impl RightPanel {
         self.shown()?.files.as_ref()
     }
 
-    /// The lines the selected checkout's changes add and remove, once they've been read.
-    pub fn totals(&self) -> (u32, u32) {
-        self.shown().map_or((0, 0), |panels| panels.totals)
+    /// The lines the changes of the checkout at `root` add and remove, while it's the selected
+    /// one and they've been read.
+    pub fn totals_in(&self, root: &Path) -> (u32, u32) {
+        let shown = self.shown().filter(|_| self.is_selected(root));
+        shown.map_or((0, 0), |panels| panels.totals)
     }
 
     /// The right panel as the card shows it, if it's open while it's `shown`, `beside` being
@@ -179,8 +172,9 @@ impl RightPanel {
         cx: &mut App,
     ) -> Option<Div> {
         self.widest = widest(beside, window);
-        let panels = self.shown().filter(|_| shown && self.open)?;
-        let panel: AnyElement = match self.view {
+        let side = self.selected_side();
+        let panels = self.shown().filter(|_| shown && side.open)?;
+        let panel: AnyElement = match side.view {
             View::Changes => panels.changes.clone().map(Entity::into_any_element),
             View::Files => panels.files.clone().map(Entity::into_any_element),
         }
@@ -204,7 +198,7 @@ impl RightPanel {
                         .flex_shrink_0()
                         .children(crate::chat_backdrop::backdrop(
                             settings::Surface::Explorer,
-                            u64::MAX,
+                            "explorer-backdrop",
                             cx,
                         ))
                         .child(panel),
@@ -216,7 +210,7 @@ impl RightPanel {
     /// The panel's width as set for what it shows, or as its edge is being dragged, within
     /// its limits, unless the window is too narrow for that and the chat both.
     fn width(&self, cx: &App) -> f32 {
-        let (min, max, set) = self.view.widths(settings::get(cx));
+        let (min, max, set) = self.selected_side().view.widths(settings::get(cx));
         self.dragged
             .unwrap_or(set)
             .clamp(min, max)
@@ -236,7 +230,7 @@ impl RightPanel {
         }
         let width = self.width(cx);
         self.dragged = None;
-        let view = self.view;
+        let view = self.selected_side().view;
         settings::update(cx, |settings| match view {
             View::Changes => settings.changes_files_width = width,
             View::Files => settings.files_tree_width = width,
@@ -285,47 +279,6 @@ impl RightPanel {
 }
 
 impl Shell {
-    /// What the window does with the right panel's actions and drags.
-    pub fn handle_right_panel(root: Div, cx: &mut Context<Self>) -> Div {
-        root.on_action(cx.listener(|this, _: &ToggleRightPanel, _, cx| {
-            let panel = &mut this.right_panel;
-            (panel.open, panel.focus) = (!panel.open, !panel.open);
-            cx.notify();
-        }))
-        .on_action(cx.listener(|this, _: &ShowFiles, _, cx| this.show(View::Files, cx)))
-        .on_action(cx.listener(|this, _: &ToggleChanges, _, cx| this.toggle(View::Changes, cx)))
-        .on_action(cx.listener(|this, _: &ToggleFiles, _, cx| this.toggle(View::Files, cx)))
-        .map(|root| Self::handle_go_to_file(root, cx))
-        .map(|root| Self::handle_symbols(root, cx))
-        .map(|root| Self::handle_files(root, cx))
-        .on_drag_move(cx.listener(Self::resize_right_panel))
-    }
-
-    /// Shows `view` in the right panel, opening it if it's closed, and gives it the keyboard.
-    pub(crate) fn show(&mut self, view: View, cx: &mut Context<Self>) {
-        let panel = &mut self.right_panel;
-        (panel.open, panel.view, panel.focus) = (true, view, true);
-        self.navigate(Route::Workspace, cx);
-        cx.notify();
-    }
-
-    /// Closes the right panel if it shows `view`, and shows `view` otherwise.
-    fn toggle(&mut self, view: View, cx: &mut Context<Self>) {
-        if self.right_panel.shows(view) {
-            self.close_right_panel(cx);
-        } else {
-            self.show(view, cx);
-        }
-    }
-
-    /// Closes the right panel, whatever it shows.
-    pub(crate) fn close_right_panel(&mut self, cx: &mut Context<Self>) {
-        if self.right_panel.open {
-            self.right_panel.open = false;
-            cx.notify();
-        }
-    }
-
     /// Lets go of the panels of checkouts gone from the sidebar, and of their language servers.
     /// Says how many.
     pub(crate) fn let_go_of_checkouts_gone(&mut self, cx: &mut Context<Self>) -> usize {
@@ -338,6 +291,7 @@ impl Shell {
             }
             kept
         });
+        (panel.sides).retain(|path, _| workspace.project_of(path).is_some());
         for root in &gone {
             language::forget(root, cx);
         }
@@ -365,7 +319,7 @@ impl Shell {
         let Some(root) = selected else {
             return;
         };
-        let (open, view) = (panel.open, panel.view);
+        let side::Side { open, view } = panel.side(root);
         let diffs_shown = (workspace.tab_shown())
             .is_some_and(|tab| tab.any_pane(&|pane| pane.changes().is_some()));
         let mut focus = mem::take(&mut panel.focus);
@@ -457,10 +411,10 @@ pub fn title(label: &'static str, p: Palette) -> Div {
     div().text_sm().text_color(p.text).child(label)
 }
 
-/// Either panel's header: a strip as tall as the tabs', its title at its left.
+/// Either panel's header, its title at its left.
 pub fn panel_header(p: Palette) -> Div {
     div()
-        .h(px(theme::TAB_STRIP_HEIGHT))
+        .h(px(theme::PANEL_HEADER_HEIGHT))
         .flex_shrink_0()
         .px_2()
         .flex()
@@ -483,5 +437,6 @@ pub fn note(p: Palette) -> Div {
 }
 
 mod buttons;
+mod side;
 #[cfg(test)]
 mod tests;

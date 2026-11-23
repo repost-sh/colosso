@@ -55,7 +55,7 @@ fn option_up_and_down_go_down_the_sidebars_rows_and_leave_the_keyboard_be(cx: &m
     });
     let page = open_page(window, &shell, Some("https://example.com/loose"), cx);
     shell.update(cx, |shell, cx| {
-        assert!(shell.pin_tab_of(page, cx));
+        assert!(shell.pin_tab_of(page, usize::MAX, cx));
         shell.loosen_pinned(page, 0, cx);
         shell.workspace.select_tab(0, 0, 0);
         cx.notify();

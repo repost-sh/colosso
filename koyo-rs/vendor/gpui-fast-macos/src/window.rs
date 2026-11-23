@@ -279,6 +279,10 @@ unsafe fn build_classes() {
         crate::fast::composition::build_overlay_view_class();
         BLURRED_VIEW_CLASS = {
             let mut decl = ClassBuilder::new(c"BlurredView", class!(NSVisualEffectView)).unwrap();
+            // Koyo: how strongly the view blurs, as a scale of the material's own radius, and
+            // that radius as the view first had it (`setKoyoBlurScale:`).
+            decl.add_ivar::<f64>(BLUR_SCALE_IVAR);
+            decl.add_ivar::<f64>(BLUR_OWN_RADIUS_IVAR);
             decl.add_method(
                 sel!(initWithFrame:),
                 blurred_view_init_with_frame as extern "C" fn(_, Sel, NSRect) -> *mut AnyObject,
@@ -286,6 +290,10 @@ unsafe fn build_classes() {
             decl.add_method(
                 sel!(updateLayer),
                 blurred_view_update_layer as extern "C" fn(_, Sel),
+            );
+            decl.add_method(
+                sel!(setKoyoBlurScale:),
+                blurred_view_set_blur_scale as extern "C" fn(_, Sel, f64),
             );
             decl.register()
         };
@@ -4265,6 +4273,9 @@ extern "C" fn blurred_view_init_with_frame(
         // has no `CABackdropLayer` on macOS 27, so nothing behind the window was blurred. (Setting
         // a material also avoids the deprecated default, `AppearanceBased`.)
         let _: () = msg_send![view, setMaterial: NSVisualEffectMaterial::UnderWindowBackground];
+        if let Some(view) = view.as_ref() {
+            store_blur(view, BLUR_SCALE_IVAR, 1.);
+        }
         // The default, but blurring what's behind the window is this view's whole purpose.
         let _: () = msg_send![view, setBlendingMode: NSVisualEffectBlendingMode::BehindWindow];
         let _: () = msg_send![view, setState: NSVisualEffectState::Active];
@@ -4278,6 +4289,93 @@ extern "C" fn blurred_view_update_layer(this: &AnyObject, _: Sel) {
         let layer: *mut AnyObject = msg_send![this, layer];
         if !layer.is_null() {
             remove_layer_background(layer);
+            scale_blur(this, layer);
+        }
+    }
+}
+
+/// Koyo: the ivars of a `BlurredView` that say how strongly it blurs.
+const BLUR_SCALE_IVAR: &CStr = c"koyoBlurScale";
+const BLUR_OWN_RADIUS_IVAR: &CStr = c"koyoBlurOwnRadius";
+
+/// Koyo: has the view blur `scale` times as strongly as its material does, 0 not at all; now,
+/// and again each time `AppKit` updates its layer. A scale it already has changes nothing.
+extern "C" fn blurred_view_set_blur_scale(this: &AnyObject, _: Sel, scale: f64) {
+    unsafe {
+        if load_blur(this, BLUR_SCALE_IVAR) == scale {
+            return;
+        }
+        store_blur(this, BLUR_SCALE_IVAR, scale);
+        let layer: *mut AnyObject = msg_send![this, layer];
+        if !layer.is_null() {
+            scale_blur(this, layer);
+        }
+    }
+}
+
+unsafe fn load_blur(view: &AnyObject, name: &CStr) -> f64 {
+    unsafe {
+        view.class()
+            .instance_variable(name)
+            .map_or(0., |ivar| *ivar.load::<f64>(view))
+    }
+}
+
+unsafe fn store_blur(view: &AnyObject, name: &CStr, value: f64) {
+    unsafe {
+        if let Some(ivar) = view.class().instance_variable(name) {
+            *ivar.load_ptr::<f64>(view) = value;
+        }
+    }
+}
+
+/// Koyo: sets the radius of the Gaussian blur `NSVisualEffectView` gives its backdrop layer, in
+/// `layer` or under it, to the view's scale of the radius the material first gave it. The
+/// filter is Core Animation's own, named "gaussianBlur", whose radius is `inputRadius`. While
+/// the material's radius isn't known, it's left as the material has it.
+unsafe fn scale_blur(view: &AnyObject, layer: *mut AnyObject) {
+    unsafe {
+        let filters: *mut AnyObject = msg_send![layer, filters];
+        if !filters.is_null() {
+            let blur = ns_string("gaussianBlur");
+            let count: NSUInteger = msg_send![filters, count];
+            for i in 0..count {
+                let filter: *mut AnyObject = msg_send![filters, objectAtIndex: i];
+                let names: Bool = msg_send![filter, respondsToSelector: sel!(name)];
+                if names == Bool::NO {
+                    continue;
+                }
+                let name: *mut AnyObject = msg_send![filter, name];
+                let hit: Bool = msg_send![name, isEqualToString: blur];
+                if hit == Bool::NO {
+                    continue;
+                }
+                let key = ns_string("inputRadius");
+                if load_blur(view, BLUR_OWN_RADIUS_IVAR) == 0. {
+                    let own: *mut AnyObject = msg_send![filter, valueForKey: key];
+                    if !own.is_null() {
+                        let own: f64 = msg_send![own, doubleValue];
+                        store_blur(view, BLUR_OWN_RADIUS_IVAR, own);
+                    }
+                }
+                let own = load_blur(view, BLUR_OWN_RADIUS_IVAR);
+                if own > 0. {
+                    let radius = own * load_blur(view, BLUR_SCALE_IVAR);
+                    let radius: *mut AnyObject =
+                        msg_send![class!(NSNumber), numberWithDouble: radius];
+                    let path = ns_string("filters.gaussianBlur.inputRadius");
+                    let _: () = msg_send![layer, setValue: radius, forKeyPath: path];
+                }
+                break;
+            }
+        }
+        let sublayers: *mut AnyObject = msg_send![layer, sublayers];
+        if !sublayers.is_null() {
+            let count: NSUInteger = msg_send![sublayers, count];
+            for i in 0..count {
+                let sublayer: *mut AnyObject = msg_send![sublayers, objectAtIndex: i];
+                scale_blur(view, sublayer);
+            }
         }
     }
 }

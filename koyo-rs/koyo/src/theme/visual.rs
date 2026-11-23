@@ -1,9 +1,9 @@
 //! The General settings page, whose switches and slider are drawn in the accent, as the app
-//! draws it in the light theme and the dark, saved as PNGs in `.superpowers/qa/accent/`, with
+//! draws it in the light theme and the dark, saved as PNGs in `.artifacts/qa/accent/`, with
 //! the accent this Mac's System Settings gave and where gpui-kit's theme took it:
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/accent/config \
+//! KOYO_CONFIG_DIR=$PWD/.artifacts/qa/accent/config \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-accent
 //! ```
 
@@ -20,7 +20,7 @@ use crate::settings_view::SettingsPage;
 use crate::visual::{Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/accent";
+const OUT: &str = ".artifacts/qa/accent";
 
 /// Draws the pictures and says where they are and what the accent was, or why it couldn't.
 pub fn run() -> ExitCode {

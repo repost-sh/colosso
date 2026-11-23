@@ -7,14 +7,14 @@ use crate::model::{Pinned, Spot, Unloaded, Workspace};
 
 /// The titles of the `most` tabs to switch among, pinned and loose pages too.
 fn latest(workspace: &Workspace, most: usize) -> Vec<String> {
-    (workspace.latest(most, true).iter())
+    (workspace.latest(most).iter())
         .map(|visited| visited.tab.first().title.to_string())
         .collect()
 }
 
-/// Where the tabs to switch among are; pinned and loose pages too if `apart`.
-fn spots(workspace: &Workspace, apart: bool) -> Vec<Spot> {
-    (workspace.latest(5, apart).iter())
+/// Where the tabs to switch among are.
+fn spots(workspace: &Workspace) -> Vec<Spot> {
+    (workspace.latest(5).iter())
         .map(|visited| visited.spot)
         .collect()
 }
@@ -56,7 +56,7 @@ fn open_tabs_not_looked_at_fill_the_list_the_nearest_first() {
     workspace.show_pages_of(7);
     workspace.bring_back_loose(7, vec![loose("here"), loose("beside")], None);
     workspace.bring_back_loose(9, vec![loose("there")], None);
-    workspace.add_pinned(pinned("tile"), false);
+    workspace.add_pinned(pinned("tile"), usize::MAX, false);
     let nearest = ["b", "New chat", "a", "here", "beside", "feature", "there"];
     assert_eq!(latest(&workspace, 10), nearest);
     assert!(workspace.show_loose(0));
@@ -80,7 +80,7 @@ fn only_as_many_as_asked_for_are_listed_the_one_shown_first() {
 fn pinned_and_loose_pages_and_other_checkouts_are_looked_at_as_any_tab() {
     let mut workspace = with_pages(&["a", "b"]);
     workspace.stamp_shown();
-    workspace.add_pinned(pinned("pinned"), true);
+    workspace.add_pinned(pinned("pinned"), usize::MAX, true);
     workspace.stamp_shown();
     workspace.show_pages_of(7);
     workspace.add_loose(loose("loose"), 0, true);
@@ -95,14 +95,7 @@ fn pinned_and_loose_pages_and_other_checkouts_are_looked_at_as_any_tab() {
         Spot::Checkout(0, 0, 2),
         Spot::Checkout(0, 0, 0),
     ];
-    assert_eq!(spots(&workspace, true), everywhere);
-    let checkouts = [
-        Spot::Checkout(0, 1, 0),
-        Spot::Checkout(0, 0, 2),
-        Spot::Checkout(0, 0, 0),
-        Spot::Checkout(0, 0, 1),
-    ];
-    assert_eq!(spots(&workspace, false), checkouts);
+    assert_eq!(spots(&workspace), everywhere);
 }
 
 #[test]
@@ -112,7 +105,7 @@ fn a_tab_keeps_its_place_as_it_moves_and_leaves_once_closed() {
     look_at(&mut workspace, 1);
     look_at(&mut workspace, 0);
     let b = workspace.tab((0, 0, 2)).expect("b").first().id;
-    assert_eq!(workspace.pin_tab((0, 0, 2), "b".into()), Some(0));
+    assert_eq!(workspace.pin_tab((0, 0, 2), "b".into(), usize::MAX), Some(0));
     assert_eq!(latest(&workspace, 5), ["New chat", "a", "b"]);
     assert_eq!(workspace.spot_of(b), Some(Spot::Pinned));
     let closed = Unloaded {
@@ -136,7 +129,7 @@ fn a_pane_is_found_shown_and_taken_out_the_same_way_wherever_its_tab_is() {
     let mut workspace = with_pages(&["a", "b"]);
     workspace.show_pages_of(7);
     workspace.bring_back_loose(7, vec![loose("here")], None);
-    workspace.add_pinned(pinned("tile"), false);
+    workspace.add_pinned(pinned("tile"), usize::MAX, false);
     let key = |workspace: &Workspace, title: &str| {
         (workspace.everywhere())
             .find(|visited| visited.tab.first().title.as_ref() == title)

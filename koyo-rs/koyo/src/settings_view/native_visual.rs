@@ -1,13 +1,13 @@
 //! The General settings' sliders and switches as macOS draws them, in the real app: the window
 //! on screen with `AppKit`'s run loop running, so the native controls are composited, and
-//! captured with `screencapture` into `.superpowers/qa/native-controls/`. On the way it moves a
+//! captured with `screencapture` into `.artifacts/qa/native-controls/`. On the way it moves a
 //! slider and flips a switch as `AppKit` does (their actions sent in the process; no input is
 //! injected), turns the repeat off, scrolls the page and resizes the window, moves the Appearance
 //! page's text size between its letters, and counts the window's views before the page shows,
 //! while it does, and after it closed, twice.
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/native-controls
+//! Q=$PWD/.artifacts/qa/native-controls
 //! KOYO_CONFIG_DIR=$Q/config KOYO_DATA_DIR=$Q/data KOYO_LOG_DIR=$Q/logs TMPDIR=$Q/tmp \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-native-controls
 //! ```
@@ -37,7 +37,7 @@ use crate::shell::Shell;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::Result;
 
-const OUT: &str = ".superpowers/qa/native-controls";
+const OUT: &str = ".artifacts/qa/native-controls";
 /// Long enough for a change to be drawn, and composited, a few times over.
 const SETTLE: Duration = Duration::from_millis(700);
 

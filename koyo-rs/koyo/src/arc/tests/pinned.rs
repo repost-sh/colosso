@@ -5,28 +5,17 @@
 //! a page's tab in hand.
 
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, EntityId, Focusable as _, TestAppContext,
+    AnyWindowHandle, AppContext as _, Entity, EntityId, Focusable as _, TestAppContext, point, px,
 };
 
 use super::{act, arc_shell, chat, drag, drag_onto, drawn, let_go_on, listed, take_up};
-use crate::arc::actions::{
-    ClosePinned, MoveProjectToNewSpace, NewSpace, NextSpace, PreviousSpace, RemovePinned,
-    RepinAtCurrent, Unpin,
-};
-use crate::arc::pinned::Menu;
+use crate::arc::actions::{MoveProjectToNewSpace, NewSpace, NextSpace, PreviousSpace};
 use crate::model::Edge;
 use crate::settings;
-use crate::shell::{CloseTab, Shell};
-use crate::test_support::{click, draw, open_page};
-
-/// The pinned pages, by the addresses they show, in the order of their tiles.
-fn pinned(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
-    cx.read(|cx| {
-        (shell.read(cx).workspace.pinned().iter())
-            .map(|pinned| pinned.tab.first().address().unwrap_or_default().to_owned())
-            .collect()
-    })
-}
+use crate::shell::{
+    ClosePinned, CloseTab, PinnedMenu, RemovePinned, RepinAtCurrent, Shell, Unpin,
+};
+use crate::test_support::{carry, click, draw, let_go, open_page, pin, pinned};
 
 /// The address of the page the panes show, and whether it's a pinned one.
 fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
@@ -35,26 +24,6 @@ fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
         let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
         (address.map(str::to_owned), workspace.pinned_shown().is_some())
     })
-}
-
-/// Opens a page at each of `addresses` on the selected checkout and pins them, in that order:
-/// what their tiles are known by.
-fn pin(
-    window: AnyWindowHandle,
-    shell: &Entity<Shell>,
-    addresses: &[&str],
-    cx: &mut TestAppContext,
-) -> Vec<u64> {
-    let keys: Vec<u64> = (addresses.iter())
-        .map(|address| open_page(window, shell, Some(address), cx))
-        .collect();
-    shell.update(cx, |shell, cx| {
-        for key in &keys {
-            assert!(shell.pin_tab_of(*key, cx), "a page's tab is pinned");
-        }
-    });
-    draw(window, cx);
-    keys
 }
 
 /// The view of the pinned page known by `key`, once it's made, and whether it has the keyboard.
@@ -110,10 +79,15 @@ fn a_pages_tab_dropped_on_the_pinned_region_is_pinned_and_no_other_kind_is(
         Some(0)
     );
 
-    drag(window, "tab-0-0-2", "arc-pinned", cx);
+    take_up(window, "tab-0-0-2", cx);
+    let tiles = drawn(window, "arc-pinned", cx).expect("the tiles");
+    let past = point(tiles.right() - px(2.), tiles.center().y);
+    carry(window, past, cx);
+    let_go(window, past, cx);
     assert_eq!(
         pinned(&shell, cx),
-        ["https://example.com/docs", "https://example.com/other"]
+        ["https://example.com/docs", "https://example.com/other"],
+        "let go past the first, it's after it"
     );
     assert_eq!(
         shown(&shell, cx),
@@ -131,6 +105,55 @@ fn a_pages_tab_dropped_on_the_pinned_region_is_pinned_and_no_other_kind_is(
     drag(window, "tab-0-0-1", "arc-pinned", cx);
     assert_eq!(pinned(&shell, cx).len(), 2, "{beside} and {app} stay a tab");
     assert_eq!(listed(&shell, cx).len(), 2);
+}
+
+/// A page's tab let go on the tiles is pinned where the pointer has it among them, as the tiles
+/// make room for it there: before the first, between two, or after the last, on any row.
+#[gpui_kit::test]
+fn a_pages_tab_let_go_among_the_tiles_lands_where_they_made_room_for_it(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-pin-land"], cx);
+    shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("A chat"));
+        cx.notify();
+    });
+    let [one, two, three, four, five, six] = [
+        "https://one.example/",
+        "https://two.example/",
+        "https://three.example/",
+        "https://four.example/",
+        "https://five.example/",
+        "https://six.example/",
+    ];
+    pin(window, &shell, &[one, two, three], cx);
+    click(window, "tab-0-0-0", cx);
+    for address in [four, five, six] {
+        open_page(window, &shell, Some(address), cx);
+    }
+    draw(window, cx);
+    let region = |cx: &mut TestAppContext| drawn(window, "arc-pinned", cx).expect("the tiles");
+
+    take_up(window, "tab-0-0-1", cx);
+    let tiles = region(cx);
+    let first = point(tiles.left() + px(2.), tiles.top() + px(22.));
+    carry(window, first, cx);
+    let_go(window, first, cx);
+    assert_eq!(pinned(&shell, cx), [four, one, two, three], "before the first");
+
+    take_up(window, "tab-0-0-1", cx);
+    let tiles = region(cx);
+    let between = point(tiles.left() + tiles.size.width * 0.4, tiles.top() + px(22.));
+    carry(window, between, cx);
+    let_go(window, between, cx);
+    assert_eq!(pinned(&shell, cx), [four, five, one, two, three], "between the first two");
+
+    take_up(window, "tab-0-0-1", cx);
+    let tiles = region(cx);
+    let last = point(tiles.right() - px(2.), tiles.bottom() - px(2.));
+    carry(window, last, cx);
+    let_go(window, last, cx);
+    let landed = [four, five, one, two, three, six];
+    assert_eq!(pinned(&shell, cx), landed, "after the last, on the second row");
+    assert_eq!(listed(&shell, cx), ["A chat"]);
 }
 
 #[gpui_kit::test]
@@ -272,7 +295,7 @@ fn a_pinned_page_closed_stays_pinned_and_goes_back_to_where_its_pinned(cx: &mut 
     });
     let pages = ["https://a.example/", "https://b.example/"];
     let keys = pin(window, &shell, &pages, cx);
-    let menu = |key: u64, cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), key));
+    let menu = |key: u64, cx: &TestAppContext| cx.read(|cx| PinnedMenu::of(shell.read(cx), key));
     let open = |key: u64, cx: &TestAppContext| {
         cx.read(|cx| (shell.read(cx).workspace.pane(key)).is_some_and(|page| page.view().is_some()))
     };

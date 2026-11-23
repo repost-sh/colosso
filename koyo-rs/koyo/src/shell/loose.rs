@@ -1,23 +1,99 @@
 //! The shell's side of the loose pages (`docs/arc-sidebar.md` 11), the pages open in a space
-//! that are no project's: one opened where the person is in no worktree, shown as its row is
+//! that are no project's: their list, down the Arc sidebar or along the Orca layout's top rail,
+//! and a page's row in it; one opened where the person is in no worktree, shown as its row is
 //! picked, moved among them, closed, taken from a checkout's tabs or to them, and to and from
 //! the pinned pages. What a page's events do, a link it opens, its `DevTools` beside it, what
 //! it tells the history, goes one way whichever kind of tab it's in (`browser_tabs.rs`).
 
-use gpui_kit::{App, Context, Window};
+use std::rc::Rc;
+
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    Along as _, AnyElement, AppContext as _, Axis, Context, Div, InteractiveElement as _,
+    MouseButton, Pixels, Point, Stateful, StatefulInteractiveElement as _, Styled as _, Window,
+};
 
 use super::Shell;
+use super::reorder::{Drop, List, Reorder, TabHand};
+use super::splits::{Dragged, DraggedPane};
+use super::tab_face::Face;
 use crate::model::{ClosedFrom, ClosedTab, Loose};
 use crate::navigation::Route;
-use crate::settings::{self, Layout, LoosePages};
+use crate::settings::{self, LoosePages};
+use crate::theme::Palette;
+
+/// The space's loose pages, each a row `loose_row` made, in a list along `axis` with `gap`
+/// between them that they're dragged along: let go at another place of it, one moves there.
+pub fn loose_list(
+    hand: &Rc<TabHand>,
+    (axis, gap): (Axis, Pixels),
+    rows: Vec<(u64, AnyElement)>,
+    cx: &mut Context<Shell>,
+) -> Reorder {
+    let on_drop = cx.listener(|this, drop: &Drop, _, cx| {
+        if let Drop::Move { from, to } = *drop {
+            this.move_loose(from, to, cx);
+        }
+    });
+    Reorder::pages(axis, rows, hand.clone(), gap, Rc::new(on_drop))
+}
+
+/// `row`, the loose page `page`'s, at `at` in its list along `axis`, with what `single` lays out
+/// in it as its page's face has it: lit while it's in hand; picked, its page shows; closed by a
+/// middle click; dragged, it's taken up by the list, and off it travels as a chip.
+pub fn loose_row(
+    row: Stateful<Div>,
+    (at, page): (usize, &Loose),
+    (axis, hand): (Axis, &Rc<TabHand>),
+    p: Palette,
+    cx: &mut Context<Shell>,
+    single: impl FnOnce(Stateful<Div>, &Face) -> Stateful<Div>,
+) -> Stateful<Div> {
+    let key = page.key();
+    let face = Face::of(page.tab.first(), cx);
+    let lifted = hand.holding() == Some(key);
+    let held = DraggedPane {
+        what: Dragged::Loose,
+        faces: vec![face.clone()],
+        hand: Some(hand.clone()),
+        grab: Point::default(),
+    };
+    let hand = hand.clone();
+    let row = row
+        .when(lifted, |row| row.bg(p.hover).shadow_sm())
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.show_tab_holding(key, cx);
+        }))
+        .on_mouse_down(
+            MouseButton::Middle,
+            cx.listener(move |this, _, window, cx| {
+                this.close_apart(key, Shell::close_loose, window, cx);
+            }),
+        )
+        .on_drag(held, move |held, grab, _, cx| {
+            hand.take(List::Loose, key, at, grab.along(axis));
+            let chip = held.chip(grab);
+            cx.new(|_| chip)
+        });
+    single(row, &face)
+}
+
+/// `button`, the × of the loose page known by `key`: pressed, the page closes, and its row isn't
+/// picked.
+pub fn loose_close(button: Stateful<Div>, key: u64, cx: &mut Context<Shell>) -> Stateful<Div> {
+    button
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(cx.listener(move |this, _, window, cx| {
+            cx.stop_propagation();
+            this.close_apart(key, Shell::close_loose, window, cx);
+        }))
+}
 
 impl Shell {
     /// Whether a browser tab opened now is a loose page: the person is in no worktree, as a
-    /// pinned or a loose page is the tab shown, or no checkout is selected. Only in the Arc
-    /// layout, which lists them.
-    pub(crate) fn opens_loose(&self, cx: &App) -> bool {
-        let lists = settings::get(cx).layout == Layout::Arc;
-        lists && (self.workspace.apart_shown() || self.workspace.branch().is_none())
+    /// pinned or a loose page is the tab shown, or no checkout is selected.
+    pub(crate) fn opens_loose(&self) -> bool {
+        self.workspace.apart_shown() || self.workspace.branch().is_none()
     }
 
     /// What's shown just now is looked at, in the workspace: a page was moved and shows where
@@ -150,16 +226,13 @@ impl Shell {
 
     /// The settings changed: every terminal's program follows the app's theme, its tab shown or
     /// not; each project goes by the name the person gave it in Koyo, or its folder's; the loose
-    /// pages are those of the space shown; and the Orca layout, which lists no pinned or loose
-    /// pages, shows the selected checkout's tab.
-    pub(super) fn settings_changed(&mut self, cx: &mut Context<Self>) {
+    /// pages are those of the space shown; and the window's glass blurs as they say. A pinned or
+    /// a loose page shown stays shown whichever layout lists it.
+    pub(super) fn settings_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        super::state::blur_glass(window, cx);
         self.terminals.tell_theme(cx);
         let settings = settings::get(cx);
         self.workspace.name_projects(&settings.project_looks);
-        let orca = settings.layout != Layout::Arc;
         self.follow_space_pages(cx);
-        if orca {
-            self.workspace.leave_apart();
-        }
     }
 }

@@ -179,7 +179,7 @@ fn option_arrows_leave_a_pinned_page_for_the_project(cx: &mut TestAppContext) {
     let (window, shell, [_, site, docs, _]) = four_spaces("project-keys-pinned", cx);
     let pinned = |cx: &TestAppContext| cx.read(|cx| shell.read(cx).workspace.pinned_shown());
     let key = open_page(window, &shell, Some("https://example.com/inbox"), cx);
-    shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(key, cx)));
+    shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(key, usize::MAX, cx)));
     draw(window, cx);
     assert!(pinned(cx).is_some(), "the pinned page shows");
     assert_eq!(press(window, &shell, "alt-right", cx), (Some(site), 0));

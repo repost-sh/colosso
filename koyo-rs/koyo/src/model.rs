@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
-use koyo_git::{Head, Worktree};
+use koyo_git::Worktree;
 
 mod chats;
 mod closed;
@@ -14,6 +14,7 @@ mod content;
 mod entered;
 mod loose;
 mod moves;
+mod names;
 mod page;
 mod pane;
 mod pinned;
@@ -104,14 +105,6 @@ impl BranchUnit {
             worktree,
             tabs: Vec::new(),
             active_tab: 0,
-        }
-    }
-
-    /// What the sidebar calls it: its branch, or the commit it is detached at.
-    pub fn name(&self) -> SharedString {
-        match &self.worktree.head {
-            Head::Branch(branch) => branch.clone().into(),
-            Head::Detached(commit) => format!("detached at {}", short(commit)).into(),
         }
     }
 

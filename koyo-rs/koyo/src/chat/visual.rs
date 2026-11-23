@@ -1,8 +1,8 @@
-//! Two checks of how a chat is drawn, saved as PNGs under `.superpowers/qa/`.
+//! Two checks of how a chat is drawn, saved as PNGs under `.artifacts/qa/`.
 //!
 //! `--visual-check-chat`: a chat whose agent did some work, drawn as the app draws it at each
 //! verbosity, in the light theme and the dark, and the Chat settings page with its Verbosity
-//! section, in `.superpowers/qa/chat/`. The fake provider does the work Claude would for a message
+//! section, in `.artifacts/qa/chat/`. The fake provider does the work Claude would for a message
 //! that starts "Show your work": it thinks, reads, searches, edits, runs the tests, writes a file
 //! and updates its to-dos. Last, a chat whose agent keeps a task running in the background, and the
 //! dialog quitting opens then, which names it; its Stop Everything stops the agent host, which
@@ -10,23 +10,23 @@
 //!
 //! `--visual-check-chat-theme`: a chat in a gradient theme of a colour, blue going to violet, whose
 //! answer holds what markdown sets apart from its text (a table, code inline and in a block, a
-//! quote), dark and light, in `.superpowers/qa/chat-theme/`: whether what's set apart takes the
+//! quote), dark and light, in `.artifacts/qa/chat-theme/`: whether what's set apart takes the
 //! theme's colour and lets the card show through. The fake provider says back what it's told, so
 //! the person's message is the markdown and the answer draws it.
 //!
 //! `--visual-check-chat-markdown`: markdown in a chat's messages and composer, its floating
-//! prompts and a picture in the viewer, in `.superpowers/qa/chat-markdown/` (`visual/markdown.rs`).
+//! prompts and a picture in the viewer, in `.artifacts/qa/chat-markdown/` (`visual/markdown.rs`).
 //!
 //! `--visual-check-chat-progress`: the plan a chat's agent keeps, in its details card, in
-//! `.superpowers/qa/chat-progress/` (`visual/progress.rs`).
+//! `.artifacts/qa/chat-progress/` (`visual/progress.rs`).
 //!
 //! Each check keeps its settings in its own folder, as the theme check changes the gradient theme:
-//! the theme check's is `.superpowers/qa/chat-theme/config`.
+//! the theme check's is `.artifacts/qa/chat-theme/config`.
 //!
 //! ```sh
-//! mkdir -p .superpowers/c/tmp &&
-//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.superpowers/c TMPDIR=$PWD/.superpowers/c/tmp \
-//!   KOYO_CONFIG_DIR=$PWD/.superpowers/qa/chat/config KOYO_LOG_DIR=$PWD/.superpowers/c/logs \
+//! mkdir -p .artifacts/c/tmp &&
+//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.artifacts/c TMPDIR=$PWD/.artifacts/c/tmp \
+//!   KOYO_CONFIG_DIR=$PWD/.artifacts/qa/chat/config KOYO_LOG_DIR=$PWD/.artifacts/c/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-chat
 //! ```
 
@@ -47,8 +47,8 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/chat";
-const THEME_OUT: &str = ".superpowers/qa/chat-theme";
+const OUT: &str = ".artifacts/qa/chat";
+const THEME_OUT: &str = ".artifacts/qa/chat-theme";
 /// How much longer than it waits for a wait may go on, with the app slow to draw.
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How long the chat gets to take in what the fake provider did, and colour its diffs.

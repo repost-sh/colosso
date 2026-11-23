@@ -2,12 +2,12 @@
 //! repeat on and off, in the light theme and the dark, the Appearance page with its fonts as
 //! they first show and with others picked, the Agent desktop page with one grant held and one
 //! not, and a chat in the fake provider's words at the ends of
-//! the text size's slider and in other fonts, saved as PNGs in `.superpowers/qa/settings/`:
+//! the text size's slider and in other fonts, saved as PNGs in `.artifacts/qa/settings/`:
 //!
 //! ```sh
-//! mkdir -p .superpowers/c/tmp &&
-//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.superpowers/c TMPDIR=$PWD/.superpowers/c/tmp \
-//!   KOYO_CONFIG_DIR=$PWD/.superpowers/qa/settings/config KOYO_LOG_DIR=$PWD/.superpowers/c/logs \
+//! mkdir -p .artifacts/c/tmp &&
+//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.artifacts/c TMPDIR=$PWD/.artifacts/c/tmp \
+//!   KOYO_CONFIG_DIR=$PWD/.artifacts/qa/settings/config KOYO_LOG_DIR=$PWD/.artifacts/c/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-settings
 //! ```
 
@@ -26,7 +26,7 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/settings";
+const OUT: &str = ".artifacts/qa/settings";
 /// How much longer than it waits for a wait may go on, with the app slow to draw.
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How long the chat gets to take in what the fake provider says back.

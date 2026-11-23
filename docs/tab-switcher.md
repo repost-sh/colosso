@@ -210,10 +210,10 @@ frame is first presented as the app presents one, in the window's two layers, an
 read once the GPU has drawn it. The chat's, saved as `chat-picture.png`, is looked at for its
 prompt: the pane that stands for the glass, and what's on it. The check says what a picture
 adds to a frame (section 4). It saves what GPUI draws of the panel, the cards with their
-tabs' pictures and without the glass, as `.superpowers/qa/switcher/switcher.png`.
+tabs' pictures and without the glass, as `.artifacts/qa/switcher/switcher.png`.
 
 ```sh
-Q=$PWD/.superpowers/qa/switcher && mkdir -p $Q/tmp &&
+Q=$PWD/.artifacts/qa/switcher && mkdir -p $Q/tmp &&
   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config \
   KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
   --visual-check-switcher

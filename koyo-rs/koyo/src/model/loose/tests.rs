@@ -113,7 +113,7 @@ fn a_pages_tab_moves_between_a_checkout_the_loose_pages_and_the_pinned() {
     assert_eq!(listed(&workspace), ["b", "a"]);
     assert_eq!(workspace.shown_apart_project(), Some(Path::new("/src/app")));
 
-    assert_eq!(workspace.pin_loose(0, "b".into()), Some(0));
+    assert_eq!(workspace.pin_loose(0, "b".into(), usize::MAX), Some(0));
     assert_eq!(
         (listed(&workspace), workspace.loose_shown()),
         (vec!["a".to_owned()], None)

@@ -18,7 +18,7 @@ each. It shows a chat, so it wants a data folder and
 an agent host of its own, and says so if it isn't given them:
 
 ```sh
-Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
+Q=$PWD/.artifacts/qa/arc && mkdir -p $Q/tmp &&
   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp \
   KOYO_CONFIG_DIR=$Q/config KOYO_LOG_DIR=$Q/logs \
   script/cargo run -p koyo --features visual-check -- --visual-check-arc
@@ -34,6 +34,25 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
 ## 1. Top row: window and browser controls
 
 - The traffic lights, then the sidebar toggle, on the left of the sidebar's top row.
+- The top row is over the sidebar alone. The card beside it rises to the gutter along the
+  window's top, as it stops at the one along its bottom, and that gutter moves the window as the
+  row's empty glass does. The window's top edge has nothing else on it: the Changes and Files
+  buttons are on each worktree's header (section 5). The Orca layout keeps its rail across the
+  window, for its traffic lights and controls. After back and forward, in the order the Arc
+  sidebar lists them from its head (11.1): **[asked, 2026-11-23]**
+  1. **The pinned pages**, a button each showing its page's site icon alone, in a pill: a
+     rounded rectangle lighter than the rail, with no edge, the tell that they're every
+     project's, not a checkout's tabs (11.2). With none pinned, the zone in its place (11.2).
+  2. **The space's loose pages**, as tabs like the checkout's (11.3).
+  3. A **hairline**, then **the selected checkout's tabs** and their **+**. The hairline is there
+     while the pill, the zone or a loose page is.
+  4. Empty glass that moves the window, at least 96 pt of it, the tabs narrowing to fit, and at
+     the rail's end the selected worktree's Changes and Files buttons, the changes' saying how
+     many lines they add and remove.
+
+  Orca has no strip of tabs over the panes. ⌘B folds Orca's sidebar and status bar away but
+  leaves its top rail, pinned and loose pages and tabs and all, so its compact mode keeps them
+  to pick; Arc's tabs fold away with its sidebar.
 - Back, forward and reload on the right of the same row, in Arc's style. They act on the
   page of the pane the person is in (section 2), and in a pane of another kind on the tab's
   first page, so a page beside a chat can be reloaded from the chat. They're greyed out on a
@@ -93,7 +112,7 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   from, both together, each part of it rounded as a tile is, in the lit tile's shade
   (`arc/glide.rs`). With reduced motion it's at once; into another space, the space slides
   instead.
-- Dragging a tile moves its project among the space's (`arc/tile_grid.rs`): the tile follows
+- Dragging a tile moves its project among the space's (`shell/tile_grid.rs`): the tile follows
   the pointer, the tiles it passes step into the slot it left, along their row and round onto
   the next, and let go it slides into the slot it's over. The room a short last row leaves
   counts as the last slot. Taken well away from the grid it goes back, and letting go there
@@ -133,6 +152,19 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   nowhere else.
 - A space with no project shows neither: no dot, and no name. It's a space like any other,
   with its loose pages and the pinned ones.
+- **Clicking the name folds the project's worktrees away**, headers and tabs, or brings them
+  back, kept for the next launch (section 9). It's lit under the pointer as a tab's row is. The
+  fold is at once, without a slide. Folded, ⌥↑ and ⌥↓ pass over the project's tabs, as they do a
+  collapsed worktree's, and only the name brings them back.
+- Folded, the name says at its end how the project's doing, as its tile does in its corner
+  (`Shell::project_activity`): the spinner while a chat in it is at work, an indigo dot once
+  something in it waits for the person. Open, it says nothing: the tabs' rows say it.
+- The Orca layout's project rows fold the same way, and share the setting, so a project folded
+  in one layout is folded in the other (`orca.rs`). Its folder shows open while its branches
+  show and closed while they're folded away, and it's lit under the pointer. Folded, the row
+  says what its branches' rows would: how many of its terminals wait for input, and the most
+  urgent of its chats' marks. A search that finds a folded project's branches lists it by its
+  row, still folded.
 
 ## 5. Worktrees and their tabs
 
@@ -141,16 +173,20 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
 - The header is a row as tall as a tab's, with its corners: the worktree's name alone, from
   where the tabs' icons start, a label over them: smaller and lighter than their titles
   (12 pt, medium), in the muted grey of the sidebar's labels, cut short with an ellipsis
-  before the row's end. No chevron, no other icon, and no badges: a collapsed worktree shows
-  by its tabs being gone.
+  before the row's end. No chevron and no badges: a collapsed worktree shows by its tabs being
+  gone. At rest the only icon on it is the Changes or Files button whose panel shows.
 - The name is the branch in words, without the prefix new worktrees' branches get (Settings →
   General: the person's GitHub user unless they set another): `schulzfel/some-nasty-name`
   shows as "Some nasty name", `main` as "Main". A detached checkout keeps "detached at …".
-  The Clear dialog calls it so too; the Orca layout lists the branch.
+  The Clear dialog calls it so too, and so do the Orca layout's branch rows, the main
+  checkout's with a muted "checkout" after it (`BranchUnit::title`).
 - The worktrees stand apart by space: 12 pt between one worktree and the next, 2 pt between a
   header and its tabs, so each header sits on its own tabs.
-- Under the pointer a pill fades in across the header, as a tab's hover tint, with a muted `…`
-  and a **+** at its end; leaving, they fade out (150 ms, as the sidebar's other hovers do).
+- Under the pointer a pill fades in across the header, as a tab's hover tint, with the
+  **Changes** and **Files** buttons, a muted `…` and a **+** at its end; leaving, they fade out
+  (150 ms, as the sidebar's other hovers do). The name makes room for them only while they show,
+  and runs on to the row's end otherwise. The Changes or Files button whose panel shows
+  beside the chat stays, lit as the tab shown's pill, on the selected worktree's header.
   The `…`, the **+** and a tab's ×, or a split's pane's, are Arc's size, bigger than a tab
   bar's: 24 pt squares, their glyphs 18 pt.
 - **Clicking the header collapses the worktree, or opens it**, as Arc's folder does. Its tabs
@@ -159,9 +195,17 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
 - Collapsed, all its tabs are hidden, the tab shown among them too: the panes still show it.
   Only its header opens it again, so a tab moved onto it, or shown some other way, leaves it
   collapsed.
+- The header's **Changes** and **Files** open the worktree's panel beside the chat on its
+  changed files or its file tree (`right_panel/buttons.rs`), selecting the worktree first if it
+  isn't, and close it when pressed on the selected worktree with that panel shown. Changes says
+  how many lines the selected worktree's changes add and remove, once they've been read. Each
+  worktree keeps whether its panel's open and on which (`right_panel/side.rs`), so going to
+  another worktree finds that one's as it was left, closed until it's opened there. ⌘⇧E, ⌘⌥B and
+  the chat's details card act on the selected worktree's. The Orca layout has the two buttons
+  at its top rail's end instead, for the selected worktree (section 1).
 - The header's **+** selects the worktree and opens the ⌘T launcher on it, opening the
   worktree first if it's collapsed, so the tab it opens shows. Clicking the rest of the header
-  doesn't select the worktree: its **+** and its tabs do.
+  doesn't select the worktree: its **+**, its **Changes** and **Files**, and its tabs do.
 - The `…`, or a right-click on the header, opens the worktree's menu:
   - **Clear Tabs…**: asks first, then closes every tab of the worktree, stopping its terminals
     and chats. Greyed out while it has no tabs.
@@ -306,7 +350,9 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   build is ignored.
 - It keeps each project's Koyo-only name and icon (`project_looks`), and with them how its
   worktrees show in the sidebar (section 5): their order once one's been dragged (`worktrees`)
-  and those collapsed (`collapsed`), each by its folder. What's kept of a worktree git no longer
+  and those collapsed (`collapsed`), each by its folder, and whether they're all folded away
+  under its name (`folded`, section 4). Whether a worktree's panel is open isn't kept: the
+  window opens with every panel closed. What's kept of a worktree git no longer
   lists goes when the project's worktrees are next read.
 - The keyboard is where the person puts it (`shell/keys.rs`), in either layout. A pane has it
   once they press in it, or ask for its tab: picked in the sidebar, opened (⌘T, a new terminal,
@@ -360,8 +406,18 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   - The Changes or Files panel, the glass before it the handle that resizes it.
   - The places a symbol led to, and the bottom panel, under the panes.
   - A settings page, and what's said where there's no tab.
-- Only in the Arc layout. Orca keeps its one card, holding the sidebar, the tab strip, the panes
+- Only in the Arc layout. Orca keeps its one card, holding the sidebar, the panes
   and the panel beside them, hairlines between them.
+- Orca's card and the window's glass under it can be tuned in Settings → Appearance, whose
+  two rows show only in the Orca layout (`settings/layout.rs`): **Card glass**, how see-through
+  the card is, from clear (20 % opaque) through the theme's own at the middle to solid; and
+  **Glass blur**, how blurred the desktop behind the window looks, from none through macOS's own
+  at the middle to twice it. The card's colour follows the first in `theme::palette_for`; the
+  second sets the radius of the Gaussian blur macOS's `NSVisualEffectView` gives the window
+  (`shell::rails::blur_glass`, `native::window::blur`, by way of `setKoyoBlurScale:` in
+  `vendor/gpui-fast-macos`), 30 points for this material on macOS 27, read back from Core
+  Animation as 0 and 60 at the ends. macOS blurs the whole window at one radius. The Arc layout
+  keeps the theme's card and macOS's blur.
 - A page is drawn in the window's own frame, so the island's rounded corners clip it as they
   clip the rest of what's on it.
 
@@ -398,6 +454,9 @@ From the top: **[asked]**
 No space's name shows in the sidebar, and a space with no project shows no dot where a
 project's name would be (section 4). **[asked]**
 
+The Orca layout's top rail lists the pinned and the space's loose pages in the same order, left
+to right, before the selected checkout's tabs (section 1). **[asked, 2026-11-23]**
+
 ### 11.2 The pinned pages
 
 - A tile per pinned page, as the projects' tiles are (section 3): 44 pt high, 10 pt corners,
@@ -427,16 +486,50 @@ project's name would be (section 4). **[asked]**
   one. A loose page is always one. **[asked]**
 - A page's tab dragged from a worktree's list, or a loose page's row, onto the region is
   pinned: off its list it's a chip; the zone, or a dotted outline round the tiles, lights
-  under it; let go, it leaves where it was and is the last tile. **[asked; ours: it goes
-  last rather than where it's dropped among the tiles]**
+  under it; let go, it leaves where it was and is pinned **where the pointer has it among the
+  tiles**: before the first, between any two, or after the last. **[asked, 2026-11-23: "they can
+  choose precisely where it goes"]** While it's over the region the tiles lay themselves out as
+  they will be with it among them, as many to a row as there will be: every tile from the slot
+  the pointer is nearest on slides one along, and that slot is washed and outlined, dashed, in
+  the accent colour, so it's plain where it lands; a row it needs opens under the others. Let
+  go, it fills that slot and nothing else moves. Taken off the region, the tiles slide back.
+  (`shell/tile_grid.rs`, `TileHand::lands`) **[ours: the nearest slot, the slot's light]**
 - It goes on showing if it was the tab shown, and its page isn't reloaded. **[ours]**
-- Tiles move among themselves as project tiles do (`arc/tile_grid.rs`): the one in hand
+- Tiles move among themselves as project tiles do (`shell/tile_grid.rs`): the one in hand
   follows the pointer, the others step out of its way, let go it slides into its slot, and
   taken well away it goes back with nothing changed. **[asked]**
 - Taken well away, the tile in hand travels as a chip, as a tab off its list does. Let go on
   a worktree's tab or header it's **unpinned** there: a tab of that worktree where that tab
   is, or first, and shown. Let go on a loose page's row it's a loose page of the space, where
   that row is. **[asked; ours: the chip, and the loose pages taking it]**
+- **In the Orca layout's top rail** (2026-11-23, the owner: "pinned browser tabs should sit in
+  the top rail inside an overlay pill ... the tell sign that this is shared, not a project tab
+  but a pinned tab"), the same pages are buttons in a pill after back and forward
+  (`orca/pinned.rs`): **[asked]**
+  - Each button is 26 pt square and shows its page's picture alone, as a tile does
+    (`shell::pinned_picture`), 2 pt apart, in a pill 3 pt round them on every side: white over
+    the rail, faint in the dark appearance and stronger in the light, and **no edge**: it
+    reads by its fill alone. **[asked, 2026-11-23: "that border is bad"]** **The corners
+    nest**: the pill is a rounded rectangle with 9 pt corners, not a capsule, and a button, 3 pt
+    in from its edge, has 9 − 3 = 6 pt corners, the tab rows' own, so a lit button's corners run
+    along the pill's; the slot lit where a page lands has the same. **[asked, 2026-11-23: "the
+    radiuses must match"; ours: 9 and 6]** The page shown's button is lit. Hovered, a button's
+    tooltip says its page's title. **[ours: the sizes and shades, the tooltip rather than the
+    card]**
+  - Picked, a button shows its page, as a tile does (11.4); dragged along the pill, it moves
+    among them with the tiles' physics; right-clicked, it has the tile's menu (11.5). Taken off
+    the pill it goes back to its slot: Orca has nowhere to unpin it by dragging, so Unpin is in
+    its menu. **[ours]**
+  - A page's tab of the checkout, or a loose page's tab, dragged over the pill is off its list
+    and is pinned where the pointer has it among the buttons, the buttons making room for it
+    and the pill growing by one, as on the tiles above. **[asked]**
+  - With none pinned, the zone is a pill of the same shape and fill in the rail, with no edge,
+    saying "Drag a page here to pin it", its × at its end under the pointer putting it away
+    (the same `pinned_zone_dismissed` as the Arc sidebar's): a 26 pt button 3 pt in from the
+    zone's edge with 6 pt corners, as a pinned button is in the pill. While a page's tab is in
+    hand it says "Drop to pin", edged in dashes, the one edge it has; put away, it's back so
+    once a page's tab is taken off its list, and gone again once it's let go elsewhere.
+    **[asked; ours: Arc's words, the dashes only while a tab is in hand]**
 
 ### 11.3 The loose pages
 
@@ -448,8 +541,8 @@ project's name would be (section 4). **[asked]**
   or not (in options)"). Settings → General → **Unpinned pages** is **Per space**, the
   default, as above, or **Shared**: every space lists every loose page, one list in one
   order, whichever space or project is shown (`settings.json` `loose_pages`, `PerSpace` or
-  `Shared`; app control's `loosePages`). It's the Arc layout's alone, as the Orca layout
-  lists no loose pages. The pinned pages are every space's either way. **[asked]**
+  `Shared`; app control's `loosePages`). The Orca layout's top rail lists the same pages the
+  Arc sidebar does. The pinned pages are every space's either way. **[asked]**
   - Each loose page is filed under a space whichever is chosen: the one it was opened in,
     dragged or unpinned into, or that took it from a space deleted. Shared, a page opened
     is filed under the space shown then, wherever it goes in the list. The setting only says
@@ -498,6 +591,12 @@ project's name would be (section 4). **[asked]**
   loose page for the person (`ClosedFrom`, `shell/reopen.rs`). **[asked, 2026-11-15]**
 - A space deleted hands its loose pages on with its projects: to the space that takes them,
   after that space's own; they close when the projects are taken out of Koyo. **[ours]**
+- **In the Orca layout's top rail** the space's loose pages are tabs like the checkout's,
+  after the pinned pages' pill and before the hairline and the checkout's tabs
+  (`orca/loose.rs`): the one shown lit, picked to show, closed by their × or a middle click,
+  dragged along among themselves, or onto the pill, where they're pinned (11.2). The rail has
+  no strip for a first loose page: a page's tab isn't made loose by dragging it there. **[asked:
+  before the checkout's tabs, a separator between; ours: the rest]**
 
 ### 11.4 The tab shown
 
@@ -538,9 +637,15 @@ project's name would be (section 4). **[asked]**
 - A pinned or a loose page's `DevTools`, detached, split its tab as they split any page's;
   their pane has only its ×, as such a page's panes aren't dragged elsewhere. No side of one
   takes a tab in hand: it's split with nothing. **[ours]**
-- In the Orca layout, which lists neither, the selected worktree's tab shows; the pinned and
-  the loose pages stay as they are, and are back with the Arc layout. A page opened there
-  with no checkout selected opens nothing, as before. **[ours]**
+- **The Orca layout shows them too** (2026-11-23): its top rail lists the pinned and the loose
+  pages (section 1), and a pinned or a loose page shown stays shown as the layout changes
+  either way. While one is shown, none of the checkout's tabs in the rail is lit, the selected
+  branch's row stays lit in the sidebar, and the rail's Changes and Files buttons still open
+  that branch's panel beside the page. Picking a checkout's tab, or a branch's row, leaves the
+  page for the checkout's tab; the rail's **+** opens a tab of the checkout, as a worktree's
+  header **+** in the Arc sidebar does. A page opened otherwise while one is shown, or with no
+  checkout selected, is a loose page of the space, as in the Arc layout, and ⌃⇥ lists the
+  pinned and the loose pages in either layout. **[asked: Orca shows them; ours: the rest]**
 
 ### 11.5 The address a page is pinned at, and closing it
 
@@ -653,10 +758,11 @@ menu is Arc's.
 | `koyo/src/arc/pinned.rs` | The pinned region: tiles, the zone, the chip, the menu and its actions |
 | `koyo/src/arc/loose.rs` | The loose rows, their menu, and the strip that takes the first |
 | `koyo/src/control/exec/browser/pages/` (`listing.rs`, `consent.rs`, `grants.rs`), `asking.rs`, `asker.rs` | App control's reach: the person's pages listed, the gate and the consents it keeps, the prompts, and who asks |
-| `koyo/src/arc/tile_grid.rs` | The grid both kinds of tiles share, each with its own `TileHand` |
+| `koyo/src/shell/tile_grid.rs` | The grid the projects' tiles and the pinned pages share in both layouts, each with its own `TileHand`, and a page from elsewhere landing among them |
+| `koyo/src/orca/pinned.rs`, `orca/loose.rs`, `orca.rs` (`pages`) | The Orca layout's top rail: the pinned pages' pill and zone, the loose pages' tabs, the hairline |
 | `koyo/src/arc/card.rs`, `hover.rs` | A pinned page's card |
 | `koyo/src/shell/reorder.rs`, `reorder/hand.rs` | The loose rows' list, and a tab off its list (`TabHand::left_list`, `taken_at`) |
 | `koyo/src/spaces.rs` | A space's `id` |
 | `koyo/src/launcher/here.rs` | The launcher where no checkout is selected: a page only |
-| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `settings/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs`, `control/tests/settings.rs` | The tests |
-| `koyo/src/arc/visual/pins.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`) |
+| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `orca/tests/rail.rs`, `shell/tile_grid/tests.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `settings/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs`, `control/tests/settings.rs` | The tests |
+| `koyo/src/arc/visual/pins.rs`, `arc/visual/rail.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`, `orca-rail-*.png`) |

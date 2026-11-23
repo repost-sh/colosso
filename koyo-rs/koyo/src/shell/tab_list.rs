@@ -1,7 +1,6 @@
-//! A checkout's tabs as a list, along the strip over the panes in Orca and down the sidebar
-//! in Arc: dragged, a tab moves among them or joins another side by side, and pulled off
-//! the list it goes onto a side of a pane; a pane of a split dropped on a tab goes where
-//! that tab is.
+//! A checkout's tabs as a list, along the top rail in Orca and down the sidebar in Arc: dragged,
+//! a tab moves among them or joins another side by side, and pulled off the list it goes onto a
+//! side of a pane; a pane of a split dropped on a tab goes where that tab is.
 
 use std::rc::Rc;
 
@@ -13,7 +12,7 @@ use gpui_kit::{
 };
 
 use super::Shell;
-use super::reorder::{Drop, Reorder, TabHand};
+use super::reorder::{Drop, List, Reorder, TabHand};
 use super::splits::{Dragged, DraggedPane};
 use super::tab_face::{Face, split_chips};
 use crate::model::Tab;
@@ -26,11 +25,6 @@ const JOINING_OPACITY: f32 = 0.35;
 /// little space before it.
 const END: f32 = ROW_BUTTON + 6.;
 
-/// The list of the checkout `(project, branch)`.
-fn list_id((project, branch): (usize, usize)) -> u64 {
-    ((project as u64) << 32) | branch as u64
-}
-
 /// The tabs of the checkout `at`, as `(project, branch)`, as `tab_row` makes them, in a
 /// list along `axis`.
 pub fn tab_list(
@@ -42,7 +36,7 @@ pub fn tab_list(
     cx: &mut Context<Shell>,
 ) -> Reorder {
     let on_drop = cx.listener(move |this, drop: &Drop, _, cx| this.drop_in_list(at, *drop, cx));
-    let list = (list_id(at), axis);
+    let list = (List::Checkout(at.0, at.1), axis);
     Reorder::new(list, tabs, hand.clone(), gap, p.accent, Rc::new(on_drop))
 }
 
@@ -107,7 +101,7 @@ fn tab_drag(
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    let list = list_id((at.0, at.1));
+    let list = List::Checkout(at.0, at.1);
     let held = DraggedPane {
         what: Dragged::Tab(at.0, at.1, at.2),
         faces,

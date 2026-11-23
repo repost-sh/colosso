@@ -223,7 +223,7 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
         .collect();
     shell.update(cx, |shell, cx| {
         for key in &keys {
-            assert!(shell.pin_tab_of(*key, cx));
+            assert!(shell.pin_tab_of(*key, usize::MAX, cx));
         }
         shell.move_pinned(2, 0, cx);
     });
@@ -285,7 +285,7 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
     assert_eq!(pins_of(&back, cx).1, Some(0));
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
     cx.run_until_parked();
-    assert_eq!(pins_of(&back, cx).1, None);
+    assert_eq!(pins_of(&back, cx).1, Some(0), "the Orca layout's rail lists it too");
     assert_eq!(pins_of(&back, cx).0.len(), 2);
 }
 

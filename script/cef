@@ -16,14 +16,15 @@
 # framework built so from this checkout's patches. The framework is built at the commit of the
 # distribution in place, so the headers, the C++ wrapper and the cef crate's bindings stay as
 # they are and only the framework is swapped.
-# To have CEF's own back, remove .superpowers/cef/<version>/cef_macos_<arch>: the next build
-# of koyo-browser-host fetches it again.
+# To have CEF's own back, remove .tools/cef/<version>/cef_macos_<arch>: the next build of
+# koyo-browser-host fetches it again.
 #
-# Everything this makes is under one folder, .superpowers/cef-build.noindex unless --dir names
-# another: depot_tools, Chromium's sources and the build, and the home and temporary folders
-# its tools write to. Run again, it carries on where it stopped and builds nothing twice. For
-# a later CEF version the folder is emptied first: fetched without Chromium's history, the
-# sources can't be moved on to another Chromium, and CEF's tools refuse to.
+# Everything this makes is under one folder, ~/.cache/cef-build unless --dir names another,
+# shared by every checkout and worktree so the 45 GB are fetched and built once: depot_tools,
+# Chromium's sources and the build, and the home and temporary folders its tools write to.
+# Run again, it carries on where it stopped and builds nothing twice. For a later CEF version
+# the folder is emptied first: fetched without Chromium's history, the sources can't be moved
+# on to another Chromium, and CEF's tools refuse to.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -34,7 +35,7 @@ fail() {
   exit 1
 }
 
-dir=.superpowers/cef-build.noindex
+dir="$HOME/.cache/cef-build"
 while [ $# -gt 0 ]; do
   case "$1" in
     --dir) dir="$2"; shift ;;
@@ -51,7 +52,7 @@ case "$(uname -m)" in
   arm64) arch=aarch64; cpu=arm64 ;;
   *) arch=x86_64; cpu=x64 ;;
 esac
-dist="${CEF_PATH:-.superpowers/cef}/$version/cef_macos_$arch"
+dist="${CEF_PATH:-.tools/cef}/$version/cef_macos_$arch"
 
 # What it was built from: CEF's commit, and the Chromium its whole version ends in
 # (156.0.14+g4fa4ab5+chromium-156.0.8078.48), whose third number is CEF's branch.

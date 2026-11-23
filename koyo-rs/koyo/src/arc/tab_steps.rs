@@ -27,6 +27,9 @@ impl Shell {
             return rows;
         };
         let (held, settings) = (&self.workspace.projects[project], settings::get(cx));
+        if settings.is_folded(&held.path) {
+            return rows;
+        }
         for (branch, unit) in held.branches.iter().enumerate() {
             if !settings.is_collapsed(&held.path, &unit.worktree.path) {
                 rows.extend((0..unit.tabs.len()).map(|tab| Row::Tab(project, branch, tab)));

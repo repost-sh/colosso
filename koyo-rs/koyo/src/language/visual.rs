@@ -1,11 +1,11 @@
 //! Rust in a file tab's editor with the real rust-analyzer, the managed one fetched into
 //! the data folder: the shell off screen on this repository's own checkout, `main.rs` shown
 //! until its server is ready, then a hover, a definition in another file gone to with F12,
-//! and a fixture crate's type error underlined. Saved as PNGs in `.superpowers/qa/lsp/`,
+//! and a fixture crate's type error underlined. Saved as PNGs in `.artifacts/qa/lsp/`,
 //! with how long each step took and how much memory the server holds once ready:
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/lsp/config KOYO_DATA_DIR=$PWD/.superpowers/data \
+//! KOYO_CONFIG_DIR=$PWD/.artifacts/qa/lsp/config KOYO_DATA_DIR=$PWD/.artifacts/data \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-lsp
 //! ```
 
@@ -26,7 +26,7 @@ use crate::test_support::try_git;
 use crate::visual::{Drawn, Result, checkout};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/lsp";
+const OUT: &str = ".artifacts/qa/lsp";
 /// How long the server gets to load this workspace, building its build scripts first.
 const LOADING: Duration = Duration::from_mins(20);
 /// How long an answer gets.

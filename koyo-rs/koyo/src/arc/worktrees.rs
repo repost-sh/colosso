@@ -1,15 +1,17 @@
-//! The space under its tiles (`docs/arc-sidebar.md` 4, 5): the selected project's name, then each
-//! of its worktrees as Arc's folder, under a header (`header.rs`) that collapses it, opens a tab
-//! in it and drags it to another place among the project's; open, its tabs as Arc's rows, the one
-//! shown a pill. A tab says at its end how it's doing, as its project's tile does: the spinner
-//! while a chat in it is at work, an indigo dot once something in it waits for the person.
+//! The space under its tiles (`docs/arc-sidebar.md` 4, 5): the selected project's name, which
+//! folds its worktrees away and brings them back, then each of its worktrees as Arc's folder,
+//! under a header (`header.rs`) that collapses it, opens a tab in it and drags it to another place
+//! among the project's; open, its tabs as Arc's rows, the one shown a pill. A tab says at its end
+//! how it's doing, as its project's tile does: the spinner while a chat in it is at work, an
+//! indigo dot once something in it waits for the person. The project's name says so for all of
+//! them while they're folded away.
 
 use std::rc::Rc;
 
 use gpui_kit::base::motion::{Transition, transition};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Axis, ClickEvent, Context, Div, ElementId, FontWeight,
+    AnyElement, App, Axis, ClickEvent, Context, Div, ElementId, FontWeight, Hsla,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Stateful,
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
@@ -17,15 +19,14 @@ use gpui_kit::{
 use super::DraggedPin;
 use super::glide;
 use super::header::header;
-use super::tiles::key_of;
 use super::{Look, space_colour, space_dot};
-use crate::chat::{Activity, spinner};
-use crate::model::{BranchUnit, Tab};
-use crate::pane::{ROW_GLYPH, dot, row_sized};
+use crate::chat::Activity;
+use crate::model::{BranchUnit, Project, Tab};
+use crate::pane::{ROW_GLYPH, row_sized};
 use crate::settings;
 use crate::shell::{
-    Dragged, DraggedPane, Drop, Face, MOTION, Reorder, Shell, add_project_row, ellipsized,
-    project_error, tab_close_button, tab_list, tab_row, title_with_end,
+    Dragged, DraggedPane, Drop, Face, List, MOTION, Reorder, Shell, add_project_row, ellipsized,
+    key_of, project_error, tab_close_button, tab_list, tab_row, title_with_end,
 };
 use crate::theme::Palette;
 
@@ -40,11 +41,6 @@ const WORKTREE_GAP: f32 = 12.;
 pub(super) const TAB_ICON: f32 = 16.;
 /// How far in from a row's end what's there sits: a header's `…` and `+`, a tab's ×.
 pub(super) const ROW_END: f32 = 6.;
-
-/// The list the worktrees of the project at `project` are dragged along.
-pub(super) fn list_of(project: usize) -> u64 {
-    project as u64
-}
 
 /// A row of a worktree's, as Arc's are: its header, a tab. Its icon goes first, in a column
 /// `TAB_ICON` wide, its text after.
@@ -102,32 +98,20 @@ pub fn space(
     let project =
         (shell.workspace.active_project()).map(|index| (index, &shell.workspace.projects[index]));
     let colour = space_colour(settings::get(cx).space, cx);
-    let heading = project.map(|(_, project)| {
-        div()
-            .debug_selector(|| "arc-project-name".to_owned())
-            .h(px(28.))
-            .flex_shrink_0()
-            .px(px(10.))
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .text_sm()
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(look.label)
-            .child(space_dot(colour))
-            .child(ellipsized(project.name.clone()))
-    });
+    let folded = project.is_some_and(|(_, project)| shell.is_folded(&project.path, cx));
+    let heading = project.map(|(_, project)| heading(shell, project, colour, look, cx));
     let mut body: Vec<AnyElement> = Vec::new();
+    if let Some(error) = project.and_then(|(_, project)| project.error.clone()) {
+        body.push(project_error(error, p).into_any_element());
+    }
     match project {
         None => body.push(
             add_project_row("arc-add-project", p)
                 .px(px(10.))
                 .into_any_element(),
         ),
+        Some(_) if folded => {}
         Some((project_index, project)) => {
-            if let Some(error) = project.error.clone() {
-                body.push(project_error(error, p).into_any_element());
-            }
             let shown = shell.workspace.shown_checkout_tab();
             let worktrees = (project.branches.iter().enumerate())
                 .map(|(branch_index, unit)| {
@@ -142,9 +126,9 @@ pub fn space(
                     this.move_worktree(project_index, from, to, cx);
                 }
             });
-            let (list, hand) = (list_of(project_index), shell.worktree_hand.clone());
+            let (list, hand) = (List::Worktrees(project_index), shell.row_hand.clone());
             let worktrees =
-                Reorder::worktrees(list, worktrees, hand, px(WORKTREE_GAP), Rc::new(on_drop));
+                Reorder::rows(list, worktrees, hand, px(WORKTREE_GAP), Rc::new(on_drop));
             body.push(worktrees.into_any_element());
         }
     }
@@ -158,6 +142,34 @@ pub fn space(
         .children(super::loose::sliding(shell, loosens, look, cx))
         .children(heading)
         .children(body)
+}
+
+/// The project's name over its worktrees, after the space's dot in its `colour`. Clicked, it
+/// folds them away, or brings them back, kept for the next launch; folded, it says at its end
+/// how the project's doing, as its tile does, where its tabs' rows would have.
+fn heading(
+    shell: &Shell,
+    project: &Project,
+    colour: Hsla,
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    let path = project.path.clone();
+    let said = shell.is_folded(&path, cx).then(|| {
+        let activity = shell.project_activity(project, cx);
+        sign(activity, ("arc-project", key_of(&path)), look, cx)
+    });
+    arc_row("arc-project-name")
+        .debug_selector(|| "arc-project-name".to_owned())
+        .h(px(28.))
+        .gap(px(8.))
+        .hover(|style| style.bg(look.row_hover))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(look.label)
+        .on_click(cx.listener(move |this, _, _, cx| this.toggle_fold(&path, cx)))
+        .child(space_dot(colour))
+        .child(ellipsized(project.name.clone()).flex_1())
+        .children(said.flatten())
 }
 
 /// A worktree's header and, unless it's collapsed, its tabs, sliding open or closed as it's
@@ -272,7 +284,7 @@ fn tab_row_of(
             cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
         )
         .when(matches!(tab, Tab::Split(_)), |row| {
-            row.children(sign(activity, first, look, cx))
+            row.children(sign(activity, ("arc-tab", first), look, cx))
         });
     let row = takes_pins(row, (project_index, branch_index), tab_index, look, cx);
     #[cfg(feature = "visual-check")]
@@ -284,7 +296,7 @@ fn tab_row_of(
     let list = (Axis::Vertical, &shell.tab_hand);
     tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
         let close = ("arc-tab-close", branch_index * 100 + tab_index);
-        let mark = sign(activity, first, look, cx).map(at_end);
+        let mark = sign(activity, ("arc-tab", first), look, cx).map(at_end);
         let hidden = !face.dirty && (!active || mark.is_some());
         let shown = !hidden || mark.is_some();
         let close = tab_close_button(close, at, (face.dirty, ROW_GLYPH), p, cx);
@@ -317,16 +329,23 @@ fn tab_row_of(
     })
 }
 
-/// What a tab's row says of how the tab's doing (`docs/arc-sidebar.md` 5), as its project's
-/// tile does in its corner: the spinner while a chat in it is at work, an indigo dot once something
-/// in it waits for the person. The tab is known by its first pane, `pane`.
-fn sign(activity: Activity, pane: u64, look: Look, cx: &mut Context<Shell>) -> Option<Div> {
-    let (sign, name) = match activity {
+/// What a tab's row, or a folded project's name, says of how it's doing (`docs/arc-sidebar.md`
+/// 4, 5), as the project's tile does in its corner: the spinner while a chat in it is at work, an
+/// indigo dot once something in it waits for the person. It's known as `of` and by `key`: a tab
+/// by its first pane, a project by its folder's.
+fn sign(
+    activity: Activity,
+    (of, key): (&'static str, u64),
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Option<Div> {
+    let name = match activity {
         Activity::Quiet => return None,
-        Activity::Working => (spinner(format!("arc-tab-{pane}"), cx), "working"),
-        Activity::Attention => (dot(look.p.waiting), "waiting"),
+        Activity::Working => "working",
+        Activity::Attention => "waiting",
     };
-    Some(sign.debug_selector(move || format!("arc-tab-{name}-{pane}")))
+    let sign = activity.sign(|| format!("{of}-{key}"), look.p, cx)?;
+    Some(sign.debug_selector(move || format!("{of}-{name}-{key}")))
 }
 
 /// `sign` at the end of a single pane's row: in the ×'s place, which it leaves to the × while

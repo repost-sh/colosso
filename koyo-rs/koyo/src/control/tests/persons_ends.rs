@@ -50,7 +50,7 @@ fn consent_ends_as_the_page_moves_closes_or_is_pinned_elsewhere(cx: &mut TestApp
 
     let page = persons_page(&rig, &agent, "https://b.example/", false, cx);
     allowed(&agent, page, cx);
-    rig.shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(page, cx)));
+    rig.shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(page, usize::MAX, cx)));
     cx.run_until_parked();
     ended(&agent, page, cx);
 
@@ -240,7 +240,7 @@ fn a_worktrees_page_that_becomes_the_persons_during_a_call_is_theirs(cx: &mut Te
     let waiting = send(&agent, None, op("browser_wait", wait), cx);
     cx.executor().advance_clock(Duration::from_secs(1));
     cx.run_until_parked();
-    rig.shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(page, cx)));
+    rig.shell.update(cx, |shell, cx| assert!(shell.pin_tab_of(page, usize::MAX, cx)));
     cx.run_until_parked();
     assert_eq!(listed(&agent, page, cx)["controller"], Value::Null);
     cx.executor().advance_clock(Duration::from_secs(1));

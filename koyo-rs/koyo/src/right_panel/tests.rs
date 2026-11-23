@@ -33,6 +33,8 @@ fn each_checkout_keeps_its_panels_until_it_leaves_the_sidebar(cx: &mut TestAppCo
     cx.run_until_parked();
     let first = shown(&shell, cx);
     select(&shell, &two, cx);
+    cx.dispatch_action(window, ShowFiles);
+    cx.run_until_parked();
     let second = shown(&shell, cx);
     assert_ne!(first.1, second.1, "each checkout has a tree of its own");
     select(&shell, &one, cx);
@@ -53,6 +55,35 @@ fn each_checkout_keeps_its_panels_until_it_leaves_the_sidebar(cx: &mut TestAppCo
             .collect()
     });
     assert_eq!(kept, std::slice::from_ref(&one));
+    for root in [one, two] {
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+/// Each checkout keeps whether its panel's open and on which: going to another finds that one's
+/// as it was left, closed until it's opened there, and coming back finds the first's.
+#[gpui_kit::test]
+fn each_checkout_keeps_whether_its_panel_is_open_and_on_which(cx: &mut TestAppContext) {
+    let (one, two) = (repo("right-panel-side-one", &[]), repo("right-panel-side-two", &[]));
+    let (window, shell) = shell_with(&[&one, &two], cx);
+    let shown = |cx: &TestAppContext| cx.read(|cx| shell.read(cx).right_panel.shown_view());
+    select(&shell, &one, cx);
+    cx.dispatch_action(window, ShowFiles);
+    cx.run_until_parked();
+    assert_eq!(shown(cx), Some(View::Files));
+
+    select(&shell, &two, cx);
+    assert_eq!(shown(cx), None, "the other checkout's panel is closed");
+    cx.dispatch_action(window, ToggleChanges);
+    cx.run_until_parked();
+    assert_eq!(shown(cx), Some(View::Changes));
+
+    select(&shell, &one, cx);
+    assert_eq!(shown(cx), Some(View::Files), "the first's as it was left");
+    cx.dispatch_action(window, ToggleFiles);
+    cx.run_until_parked();
+    select(&shell, &two, cx);
+    assert_eq!(shown(cx), Some(View::Changes), "closing one leaves the other's");
     for root in [one, two] {
         let _ = std::fs::remove_dir_all(root);
     }
@@ -147,10 +178,11 @@ fn picked_up(window: AnyWindowHandle, reach: f32, what: &str, cx: &mut TestAppCo
     assert!((grown - 30.).abs() < 10., "{what}: it widened {grown}");
 }
 
-/// What the top bar's buttons do: each opens the panel on its view and closes it, and the
-/// panel opens again after it's closed, though what had the keyboard went with it.
+/// What the Toggle Changes and Toggle Files actions do: each opens the panel on its view and
+/// closes it, and the panel opens again after it's closed, though what had the keyboard went
+/// with it.
 #[gpui_kit::test]
-fn a_panel_closed_from_the_top_bar_opens_again(cx: &mut TestAppContext) {
+fn a_panel_closed_by_its_action_opens_again(cx: &mut TestAppContext) {
     let root = repo("right-panel-reopen", &[("a.txt", "a\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);

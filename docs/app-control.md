@@ -220,7 +220,10 @@ app_focus  [navigate] I {} → brings the window forward, opening it when closed
 app_launch (stdio relay only, answered by the relay) → starts Koyo when it isn't running
            and waits up to 30 s for its socket
 layout_set [navigate] I { sidebar?: bool, rightPanel?: "changes"|"files"|"none",
-                         bottomPanel?: bool, layout?: "orca"|"arc" } → app_status subset
+                         bottomPanel?: bool, layout?: "orca"|"arc" } → app_status subset;
+                         the right panel is the selected worktree's: each worktree keeps its
+                         own, `rightPanel` changes as another is selected, and with none
+                         selected it stays null
 settings_open [navigate] I { page?: "general"|"chat"|"accounts"|"appearance"|"editor"|
                          "languages"|"browser"|"keyboard"|"mcp"|"agent_desktop"|"devices"|
                          "about" } ;

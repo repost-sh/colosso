@@ -1,15 +1,15 @@
 //! The accounts' panel and their button as the app draws them, for accounts made up to show each
 //! state: the active one near auto-switch's line with a model's window, a team's at the line,
 //! one rate-limited on an old reading, auto-switch on with what it last did; and a Mac's login
-//! Koyo doesn't keep yet, with what went wrong. Saved as PNGs in `.superpowers/qa/accounts/`,
+//! Koyo doesn't keep yet, with what went wrong. Saved as PNGs in `.artifacts/qa/accounts/`,
 //! dark and light. The panel is on a menu's tint and the button on a strip like the sidebar's
 //! foot; the glass's blur is the menu window's, which an off-screen window doesn't have. The
 //! check's own settings keep Koyo off the Mac's login, which it never reads.
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/accounts
+//! Q=$PWD/.artifacts/qa/accounts
 //! KOYO_CONFIG_DIR=$Q/config KOYO_DATA_DIR=$Q/data KOYO_LOG_DIR=$Q/logs \
-//!   TMPDIR=$PWD/.superpowers/q \
+//!   TMPDIR=$PWD/.artifacts/q \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-accounts
 //! ```
 
@@ -33,7 +33,7 @@ use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::{Result, out_dir};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/accounts";
+const OUT: &str = ".artifacts/qa/accounts";
 const DAY: f64 = 86_400.;
 
 /// Draws the pictures and says where they are, or why it couldn't.

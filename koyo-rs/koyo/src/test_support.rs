@@ -8,9 +8,9 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, MouseButton,
-    Pixels, Point, Render, Size, TestAppContext, VisualTestContext, Window, WindowBounds,
-    WindowOptions, WindowVisibility, point, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, Pixels, Point,
+    Render, Size, TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions,
+    WindowVisibility, point, px, size,
 };
 #[cfg(test)]
 use koyo_term_control::{
@@ -30,9 +30,17 @@ use crate::shell::{KeptWindow, Shell};
 
 #[cfg(test)]
 mod panes;
+#[cfg(test)]
+mod pinned;
+#[cfg(test)]
+mod pointer;
 mod started;
 #[cfg(test)]
 pub use panes::{iphone, terminals_listed};
+#[cfg(test)]
+pub use pinned::{pin, pinned};
+#[cfg(test)]
+pub use pointer::{GRAB, carry, drag, hold, hover, let_go, let_go_on, move_held, take_up};
 #[cfg(test)]
 pub use started::init_settings;
 pub use started::init;
@@ -300,52 +308,24 @@ pub fn center_of(
     bounds.expect(selector).center()
 }
 
+/// Where `selector` names something in `window`, once it's drawn again; none while it names
+/// nothing drawn.
+#[cfg(test)]
+pub fn drawn(
+    window: AnyWindowHandle,
+    selector: impl Into<String>,
+    cx: &mut TestAppContext,
+) -> Option<Bounds<Pixels>> {
+    draw(window, cx);
+    let selector: &'static str = Box::leak(selector.into().into_boxed_str());
+    VisualTestContext::from_window(window, cx).debug_bounds(selector)
+}
+
 /// Clicks the middle of what `selector` names in `window`, and draws what that changed.
 #[cfg(test)]
 pub fn click(window: AnyWindowHandle, selector: &'static str, cx: &mut TestAppContext) {
     let at = center_of(window, selector, cx);
     VisualTestContext::from_window(window, cx).simulate_click(at, Modifiers::default());
-    draw(window, cx);
-}
-
-/// Moves the pointer to `at` in `window`, with no button down.
-#[cfg(test)]
-pub fn hover(window: AnyWindowHandle, at: Point<Pixels>, cx: &mut TestAppContext) {
-    VisualTestContext::from_window(window, cx).simulate_mouse_move(at, None, Modifiers::default());
-}
-
-/// Moves the pointer to `at` in `window`, the left button held.
-#[cfg(test)]
-pub fn move_held(window: AnyWindowHandle, at: Point<Pixels>, cx: &mut TestAppContext) {
-    VisualTestContext::from_window(window, cx).simulate_mouse_move(
-        at,
-        MouseButton::Left,
-        Modifiers::default(),
-    );
-}
-
-/// How far from an edge its handle is grabbed at its middle: half the handle's 6 points, the
-/// border inside it, and a point to spare.
-#[cfg(test)]
-pub const GRAB: f32 = 5.;
-
-/// Drags in `window` from `from` to `to` as a person does: the button pressed, the pointer
-/// nudged past where a drag starts, moved on to `to`, the button let go, and what that changed
-/// drawn.
-#[cfg(test)]
-pub fn drag(
-    window: AnyWindowHandle,
-    from: Point<Pixels>,
-    to: Point<Pixels>,
-    cx: &mut TestAppContext,
-) {
-    let none = Modifiers::default();
-    let way = to - from;
-    let nudge = from + way * (5. / way.x.as_f32().hypot(way.y.as_f32()).max(1.));
-    VisualTestContext::from_window(window, cx).simulate_mouse_down(from, MouseButton::Left, none);
-    move_held(window, nudge, cx);
-    move_held(window, to, cx);
-    VisualTestContext::from_window(window, cx).simulate_mouse_up(to, MouseButton::Left, none);
     draw(window, cx);
 }
 

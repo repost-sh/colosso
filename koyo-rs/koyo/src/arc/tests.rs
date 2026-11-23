@@ -4,8 +4,7 @@
 use std::path::Path;
 
 use gpui_kit::{
-    Action, AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, TestAppContext,
-    VisualTestContext, point, px,
+    Action, AnyWindowHandle, AppContext as _, Entity, Modifiers, TestAppContext, VisualTestContext,
 };
 
 use super::actions::{ClearWorktree, MoveProjectToNewSpace, NewSpace};
@@ -22,12 +21,16 @@ use crate::shell::{CloseTab, Shell};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
-use crate::test_support::{click_pane, draw, open_page, repo, select, shell_on, shell_with};
+use crate::test_support::{
+    center_of, click_pane, draw, drawn, hold, let_go, let_go_on, move_held, open_page, repo,
+    select, shell_on, shell_with, take_up,
+};
 
 mod address;
 mod loose;
 mod loose_slide;
 mod pinned;
+mod project_fold;
 mod project_keys;
 mod slide_budget;
 mod space_keys;
@@ -403,58 +406,14 @@ fn listed(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
     })
 }
 
-/// Where `selector` names something drawn in `window`, if it names anything.
-fn drawn(
-    window: AnyWindowHandle,
-    selector: impl Into<String>,
-    cx: &mut TestAppContext,
-) -> Option<gpui_kit::Bounds<gpui_kit::Pixels>> {
-    let selector: &'static str = Box::leak(selector.into().into_boxed_str());
-    VisualTestContext::from_window(window, cx).debug_bounds(selector)
-}
-
 /// Takes up what `from` names by its middle and lets it go over the middle of what `to` names,
 /// drawing at each step as a person's drag would be drawn.
 fn drag(window: AnyWindowHandle, from: &'static str, to: &'static str, cx: &mut TestAppContext) {
-    let none = Modifiers::default();
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let held = vcx.debug_bounds(from).expect("what's dragged").center();
-    let target = vcx.debug_bounds(to).expect("where it's dropped").center();
-    vcx.simulate_mouse_down(held, MouseButton::Left, none);
-    vcx.simulate_mouse_move(held + point(px(3.), px(3.)), Some(MouseButton::Left), none);
+    let (held, target) = (center_of(window, from, cx), center_of(window, to, cx));
+    hold(window, held, cx);
+    move_held(window, target, cx);
     draw(window, cx);
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    vcx.simulate_mouse_move(target, Some(MouseButton::Left), none);
-    draw(window, cx);
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    vcx.simulate_mouse_up(target, MouseButton::Left, none);
-    draw(window, cx);
-}
-
-/// Takes up what `from` names by its middle and carries it well off whatever list or grid it's
-/// on, over the panes, as a person dragging it elsewhere does: what takes it shows from then.
-fn take_up(window: AnyWindowHandle, from: &'static str, cx: &mut TestAppContext) {
-    let (none, held) = (Modifiers::default(), Some(MouseButton::Left));
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let at = vcx.debug_bounds(from).expect("what's dragged").center();
-    vcx.simulate_mouse_down(at, MouseButton::Left, none);
-    vcx.simulate_mouse_move(at + point(px(3.), px(3.)), held, none);
-    draw(window, cx);
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    vcx.simulate_mouse_move(point(px(900.), px(450.)), held, none);
-    draw(window, cx);
-}
-
-/// Carries what's in hand over the middle of what `to` names, as it's drawn now, and lets it go.
-fn let_go_on(window: AnyWindowHandle, to: &'static str, cx: &mut TestAppContext) {
-    let none = Modifiers::default();
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let target = vcx.debug_bounds(to).expect("where it's dropped").center();
-    vcx.simulate_mouse_move(target, Some(MouseButton::Left), none);
-    draw(window, cx);
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    vcx.simulate_mouse_up(target, MouseButton::Left, none);
-    draw(window, cx);
+    let_go(window, target, cx);
 }
 
 /// Drags what `from` names off its list or grid and onto what `to` names, where that is once

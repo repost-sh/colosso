@@ -177,12 +177,6 @@ impl Shell {
         self.tab_summaries(tab, cx).filter_map(ChatMark::of)
     }
 
-    /// The mark on the row of the checkout at `worktree`.
-    pub fn checkout_chat_mark(&self, worktree: &Path, p: Palette, cx: &mut App) -> Option<Div> {
-        let mark = *self.chat_tabs.chats.read(cx).checkout_marks.get(worktree)?;
-        Some(mark.shown(format!("row-{}", worktree.display()), p, cx))
-    }
-
     /// Whether a tab has something for the person (`docs/arc-sidebar.md` 5): a terminal waiting
     /// for them, or a chat that's unread, failed or needs them.
     pub fn tab_wants_attention(&self, tab: &Tab, cx: &App) -> bool {
@@ -272,6 +266,19 @@ pub enum Activity {
     Working,
     /// Something waits for the person: a dot.
     Attention,
+}
+
+impl Activity {
+    /// How a tile's corner, a tab's row or a checkout's says it, in either layout: the spinner
+    /// turning at the place `place` names while a chat works, an indigo dot once something waits
+    /// for the person, and nothing while all's quiet.
+    pub fn sign(self, place: impl FnOnce() -> String, p: Palette, cx: &mut App) -> Option<Div> {
+        match self {
+            Activity::Quiet => None,
+            Activity::Working => Some(spinner(place(), cx)),
+            Activity::Attention => Some(dot(p.waiting)),
+        }
+    }
 }
 
 #[cfg(any(test, feature = "visual-check"))]

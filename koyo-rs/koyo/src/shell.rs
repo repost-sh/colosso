@@ -25,7 +25,8 @@ use crate::settings_view::{self, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, slide_out};
 use crate::theme::Palette;
 use crate::theme::card::{island, part};
-use crate::{arc, backdrop, bottom, gradient, keyboard, orca, picker, theme};
+use crate::settings::Surface;
+use crate::{arc, backdrop, bottom, chat_backdrop, gradient, keyboard, orca, picker, theme};
 
 mod actions;
 mod browser_tabs;
@@ -52,6 +53,7 @@ mod state;
 mod switcher;
 mod tab_face;
 mod tab_list;
+mod tile_grid;
 mod unmade;
 mod visits;
 
@@ -67,14 +69,19 @@ use elements::{SearchField, Searched};
 use elements::drag_area;
 pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,
-    no_matches, project_error, row, section_label, solid, tab_close_button,
+    no_matches, project_error, row, row_button, section_label, solid, tab_close_button,
 };
 pub use kept::{KeptWindow, reopen};
+pub use loose::{loose_close, loose_list, loose_row};
 pub(crate) use one_tab::Place;
-pub use reorder::{Drop, MOTION, Reorder, TabHand};
+pub use reorder::{Drop, InHand, List, MOTION, Reorder, TabHand, key_of};
 pub use splits::{Dragged, DraggedPane, drag_chip};
-pub use tab_face::{FAVICON_CORNERS, Face};
+pub use tab_face::Face;
+pub use pinned::{CopyToWorktree, hides_pinned_zone, pinned_picture, pinned_zone_says};
+#[cfg(test)]
+pub use pinned::{ClosePinned, PinnedMenu, RemovePinned, RepinAtCurrent, Unpin};
 pub use tab_list::{tab_list, tab_row, title_with_end};
+pub use tile_grid::{Arrange, Landing, TileGrid, TileHand};
 
 pub struct Shell {
     pub workspace: Workspace,
@@ -116,12 +123,14 @@ pub struct Shell {
     downloads: Entity<crate::browser::DownloadsButton>,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
-    /// The worktree being dragged among its project's in the Arc sidebar.
-    pub worktree_hand: Rc<TabHand>,
+    /// The row being dragged along its list in either layout's sidebar: a worktree among its
+    /// project's, or an Orca project among the projects.
+    pub row_hand: Rc<TabHand>,
     /// The project tile being dragged about the Arc sidebar's grid.
-    pub tile_hand: Rc<arc::TileHand>,
-    /// The pinned page's tile being dragged about its own grid, at the sidebar's head.
-    pub pinned_hand: Rc<arc::TileHand>,
+    pub tile_hand: Rc<TileHand>,
+    /// The pinned page's tile being dragged about its own grid, at the Arc sidebar's head or in
+    /// the Orca layout's top rail, and a page from elsewhere landing among them.
+    pub pinned_hand: Rc<TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
     /// What the walks that let go of what's gone went by when they last ran (`gone`).
@@ -150,7 +159,7 @@ impl Shell {
                 this.tell_sight(window, cx);
                 if visibility.is_visible() {
                     window.refresh();
-                    crate::chat_backdrop::look_again(cx);
+                    chat_backdrop::look_again(cx);
                 }
             }),
             cx.observe_window_activation(window, |this, window, cx| {
@@ -178,7 +187,7 @@ impl Shell {
             }),
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
             cx.on_focus_in(&focus, window, |_, window, cx| keyboard::follow_focus(window, cx)),
-            settings::on_change(cx, Self::settings_changed),
+            settings::observe_in(window, cx, Self::settings_changed),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
             crate::browser::profiles::on_change(cx, |this, cx| {
                 if this.route(cx) == Route::Settings(settings_view::SettingsPage::Browser) {
@@ -192,6 +201,7 @@ impl Shell {
             cx.subscribe(&downloads, |_, _, _: &crate::browser::CameOrWent, cx| cx.notify()),
         ];
         Self::guard_closing(window, cx);
+        state::blur_glass(window, cx);
         let mut workspace = Workspace::new(&settings::get(cx).projects);
         workspace.name_projects(&settings::get(cx).project_looks);
         let mut shell = Shell {
@@ -217,7 +227,7 @@ impl Shell {
             arc_top: arc::Top::new(cx),
             downloads,
             tab_hand: Rc::default(),
-            worktree_hand: Rc::default(),
+            row_hand: Rc::default(),
             tile_hand: Rc::default(),
             pinned_hand: Rc::default(),
             locations: None,
@@ -328,7 +338,9 @@ impl Shell {
         let frame = SidebarFrame::new(layout, self.sidebar_width(cx));
         match (route, layout) {
             (Route::Settings(_), _) => frame.child(self.settings_sidebar.clone()),
-            (Route::Workspace, Layout::Orca) => frame.child(orca::sidebar(self, cx)),
+            (Route::Workspace, Layout::Orca) => frame
+                .children(chat_backdrop::backdrop(Surface::Sidebar, "sidebar-backdrop", cx))
+                .child(orca::sidebar(self, cx)),
             (Route::Workspace, Layout::Arc) => frame.child(arc::sidebar(self, window, cx)),
         }
         .into_any_element()
@@ -338,7 +350,6 @@ impl Shell {
     fn main(
         &mut self,
         route: Route,
-        layout: Layout,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -362,9 +373,6 @@ impl Shell {
             Route::Workspace => {
                 let content = self.workspace_content(p, window, cx);
                 column
-                    .when(layout == Layout::Orca, |main| {
-                        main.child(orca::tab_strip(self, cx))
-                    })
                     .child(content)
                     .children(
                         (self.locations.clone())
@@ -436,8 +444,10 @@ impl Render for Shell {
         let p = theme::palette(cx);
         let width = self.sidebar_width(cx);
         let shown = self.move_rails(window, cx);
-        let sidebar = (shown.open.0 > 0.)
-            .then(|| slide_out(self.sidebar(route, layout, window, cx), width, shown.open.0));
+        let sidebar = (shown.open.0 > 0.).then(|| {
+            let sidebar = self.sidebar(route, layout, window, cx);
+            slide_out(sidebar, width, shown.open.0).into_any_element()
+        });
         let (card_sidebar, glass_sidebar) = match layout {
             Layout::Orca => (sidebar, None),
             Layout::Arc => (None, sidebar),
@@ -447,11 +457,12 @@ impl Render for Shell {
         let beside = rails::left_of_chat(self.sidebar_open, width);
         let next_to_page = self.workspace.tab_shown().is_some_and(Tab::shows_page);
         let right_panel = (self.right_panel).render(on_workspace, beside, next_to_page, window, cx);
-        let main = self.main(route, layout, window, cx);
+        let main = self.main(route, window, cx);
         let card = if islands { div() } else { island(p) }
             .debug_selector(|| "shell-card".to_owned())
             .flex_1()
             .min_w_0()
+            .min_h_0()
             .mr(px(theme::GUTTER))
             .relative()
             .flex()
@@ -470,16 +481,10 @@ impl Render for Shell {
             .when(gradient::current(cx).dots.is_empty(), |root| root.bg(p.rail_tint))
             .text_color(p.text)
             .child(backdrop::backdrop(cx))
-            .child(self.top_rail(shown, window, cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .child(div().w(px(theme::GUTTER)).flex_shrink_0())
-                    .children(glass_sidebar)
-                    .child(card),
-            )
+            .child(match layout {
+                Layout::Orca => self.orca_frame(shown, card, window, cx),
+                Layout::Arc => self.arc_frame(shown, (glass_sidebar, card), window, cx),
+            })
             .child(self.status_rail(shown, cx))
             .child(pictures::taker())
             .into_any_element()

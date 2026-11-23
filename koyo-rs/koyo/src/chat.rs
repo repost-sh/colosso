@@ -59,7 +59,7 @@ pub use asks::{AllowRequest, AllowRequestForChat, DenyRequest};
 pub use composer::{
     ImplementPlan, OpenModelMenu, RecallPrompt, SkipQuestion, StopTurn, TogglePlan,
 };
-pub use spinner::{spinner, spinner_of};
+pub use spinner::spinner_of;
 pub use status::Activity;
 pub use subagent_bar::OpenParent;
 pub use tabs::{ChatTabs, heard_at_window};

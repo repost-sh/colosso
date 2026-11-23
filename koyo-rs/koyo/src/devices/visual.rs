@@ -1,5 +1,5 @@
 //! A device's tab drawn as the app draws it, off screen, and saved as PNGs in
-//! `.superpowers/devices/qa/visual/` (`docs/devices.md` 8): every state a tab stands in, played
+//! `.artifacts/devices/qa/visual/` (`docs/devices.md` 8): every state a tab stands in, played
 //! by a stand-in host, the picker in its three states, and the bar while an agent drives; then,
 //! with `KOYO_VISUAL_DEVICE` naming a simulator of the set, the real one live (`live.rs`): its
 //! picture drawn off screen, its host killed and started again, two at once, and quit; with
@@ -7,9 +7,9 @@
 //! on the screen.
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/devices/qa/visual/config \
-//! KOYO_DATA_DIR=$PWD/.superpowers/devices/qa/visual/data \
-//! KOYO_DEVICE_SET=$PWD/.superpowers/ds KOYO_VISUAL_DEVICE=<udid> [KOYO_VISUAL_SECOND=<udid>] \
+//! KOYO_CONFIG_DIR=$PWD/.artifacts/devices/qa/visual/config \
+//! KOYO_DATA_DIR=$PWD/.artifacts/devices/qa/visual/data \
+//! KOYO_DEVICE_SET=$PWD/.artifacts/ds KOYO_VISUAL_DEVICE=<udid> [KOYO_VISUAL_SECOND=<udid>] \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-devices
 //! ```
 
@@ -37,7 +37,7 @@ use crate::shell::Shell;
 use crate::visual::{Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/devices/qa/visual";
+const OUT: &str = ".artifacts/devices/qa/visual";
 
 pub fn run() -> ExitCode {
     crate::visual::run(draw)

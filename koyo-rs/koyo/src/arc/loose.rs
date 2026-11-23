@@ -7,27 +7,22 @@
 //! a dotted strip takes one that's in hand. Each space's own, they're part of the space, and
 //! slide with it as it changes; shared, they stay where they are with the pinned pages.
 
-use std::rc::Rc;
-
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Div, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, Point, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
-    relative,
+    AnyElement, Axis, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
+    Stateful, StatefulInteractiveElement as _, Styled as _, div, px, relative,
 };
 
-use super::actions::CopyToWorktree;
 use super::worktrees::{ROW_END, arc_row, pill_row, tab_icon};
 use super::{DraggedPin, Look};
 use crate::model::Loose;
 use crate::pane::{ROW_GLYPH, row_sized, sized_close_button};
 use crate::projects::with_menu;
-use crate::shell::{Dragged, DraggedPane, Drop, Face, Reorder, Shell, title_with_end};
-
-/// The list the loose pages are dragged along: no checkout's, whose lists are known by their
-/// project and worktree.
-const LIST: u64 = u64::MAX;
+use crate::shell::{
+    CopyToWorktree, Dragged, DraggedPane, Shell, loose_close, loose_list, loose_row,
+    title_with_end,
+};
 /// Between the rows, as between a worktree's.
 const GAP: f32 = 2.;
 /// Under the last of them, before the open project's name.
@@ -81,13 +76,7 @@ fn list(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Opt
     let rows = (pages.iter().enumerate())
         .map(|(at, page)| row(shell, (at, page), (shown == Some(at), taking), look, cx))
         .collect();
-    let on_drop = cx.listener(|this, drop: &Drop, _, cx| {
-        if let Drop::Move { from, to } = *drop {
-            this.move_loose(from, to, cx);
-        }
-    });
-    let hand = shell.tab_hand.clone();
-    let list = Reorder::pages(LIST, rows, hand, px(GAP), Rc::new(on_drop));
+    let list = loose_list(&shell.tab_hand, (Axis::Vertical, px(GAP)), rows, cx);
     Some(list.into_any_element())
 }
 
@@ -146,53 +135,27 @@ fn row(
 ) -> (u64, AnyElement) {
     let p = look.p;
     let key = page.key();
-    let face = Face::of(page.tab.first(), cx);
-    let hand = shell.tab_hand.clone();
-    let lifted = hand.holding() == Some(key);
-    let held = DraggedPane {
-        what: Dragged::Loose,
-        faces: vec![face.clone()],
-        hand: Some(hand.clone()),
-        grab: Point::default(),
-    };
-    let close = row_sized(sized_close_button(("arc-loose-close", key), ROW_GLYPH, p))
+    let close = row_sized(sized_close_button(("arc-loose-close", key), ROW_GLYPH, p));
+    let close = loose_close(close, key, cx)
         .debug_selector(move || format!("arc-loose-close-{at}"))
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_click(cx.listener(move |this, _, window, cx| {
-            cx.stop_propagation();
-            this.close_apart(key, Shell::close_loose, window, cx);
-        }))
         .when(!active, |close| {
             close
                 .opacity(0.)
                 .group_hover("arc-loose", |style| style.opacity(1.))
         });
-    let title = div()
-        .id(("arc-loose-title", key))
-        .flex()
-        .child(face.label());
     let row = arc_row(("arc-loose", key))
         .group("arc-loose")
         .debug_selector(move || format!("arc-loose-{at}"));
-    let row = pill_row(row, (key, active), shell, look, cx)
-        .pr(px(ROW_END))
-        .when(lifted, |row| row.bg(p.hover).shadow_sm())
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.show_tab_holding(key, cx);
-        }))
-        .on_mouse_down(
-            MouseButton::Middle,
-            cx.listener(move |this, _, window, cx| {
-                this.close_apart(key, Shell::close_loose, window, cx);
-            }),
-        )
-        .on_drag(held, move |held, grab, _, cx| {
-            hand.take(LIST, key, at, grab.y);
-            let chip = held.chip(grab);
-            cx.new(|_| chip)
-        })
-        .child(tab_icon(&face, p))
-        .child(title_with_end(title, close, active, "arc-loose"));
+    let row = pill_row(row, (key, active), shell, look, cx).pr(px(ROW_END));
+    let list = (Axis::Vertical, &shell.tab_hand);
+    let row = loose_row(row, (at, page), list, p, cx, |row, face| {
+        let title = div()
+            .id(("arc-loose-title", key))
+            .flex()
+            .child(face.label());
+        row.child(tab_icon(face, p))
+            .child(title_with_end(title, close, active, "arc-loose"))
+    });
     #[cfg(feature = "visual-check")]
     let row = {
         use gpui_kit::base::ElementExt as _;

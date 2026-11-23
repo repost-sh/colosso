@@ -89,6 +89,8 @@ pub struct ProjectLook {
     pub worktrees: Vec<PathBuf>,
     /// Its worktrees collapsed in the Arc sidebar, by their folders.
     pub collapsed: BTreeSet<PathBuf>,
+    /// Whether its worktrees are folded away under its name in the sidebar, in either layout.
+    pub folded: bool,
 }
 
 impl ProjectLook {
@@ -336,6 +338,18 @@ impl Settings {
         if !collapsed.remove(worktree) {
             collapsed.insert(worktree.to_owned());
         }
+        self.drop_empty_look(project);
+    }
+
+    /// Whether `project`'s worktrees are folded away under its name in either layout's sidebar.
+    pub fn is_folded(&self, project: &Path) -> bool {
+        (self.project_looks.get(project)).is_some_and(|look| look.folded)
+    }
+
+    /// Folds `project`'s worktrees away under its name in the sidebar, or brings them back.
+    pub fn toggle_folded(&mut self, project: &Path) {
+        let look = self.project_looks.entry(project.to_owned()).or_default();
+        look.folded = !look.folded;
         self.drop_empty_look(project);
     }
 

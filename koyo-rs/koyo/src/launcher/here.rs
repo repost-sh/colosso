@@ -35,26 +35,22 @@ pub struct OpenTab {
 
 impl Here {
     /// Where `shell` would open a tab now. With no checkout selected, as in a space with no
-    /// project, the Arc layout still opens a page, a loose one of the space, and has a pinned or
-    /// a loose page's address to change: the place is no project's. The Orca layout, which
-    /// lists no such pages, opens nothing then.
-    pub fn of(shell: &Shell, cx: &App) -> Option<Here> {
+    /// project, it still opens a page, a loose one of the space, and has a pinned or a loose
+    /// page's address to change: the place is no project's.
+    pub fn of(shell: &Shell, cx: &App) -> Here {
         let workspace = &shell.workspace;
         let (Some(project), Some(unit)) = (workspace.project(), workspace.branch()) else {
-            if crate::settings::get(cx).layout != crate::settings::Layout::Arc {
-                return None;
-            }
             let nowhere = std::path::PathBuf::from(crate::browser::NO_PROJECT);
             let place = Place {
                 worktree: nowhere.clone(),
                 project: nowhere,
             };
-            return Some(Here {
+            return Here {
                 place,
                 tabs: Vec::new(),
                 chats: Vec::new(),
                 pages_only: true,
-            });
+            };
         };
         let place = Place {
             worktree: unit.worktree.path.clone(),
@@ -86,12 +82,12 @@ impl Here {
             })
             .collect();
         let chats = shell.chats_without_tabs(&unit.worktree.path, cx);
-        Some(Here {
+        Here {
             place,
             tabs,
             chats,
             pages_only: false,
-        })
+        }
     }
 
     /// The open tabs of `kind`.

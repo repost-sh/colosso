@@ -62,7 +62,8 @@ default (sections 2 and 6). The name stays `chat_backdrop`, in the code and the 
 ## 2. Where it shows
 
 - **Behind chats, and the rest but pages**: a chat and a subagent's chat; the right panel's
-  file tree and list of changed files; an open file; a checkout's diffs; a terminal; round a
+  file tree and list of changed files; the Orca layout's sidebar (Sidebar, 2026-11-23,
+  drawn by the sidebar's frame in `shell.rs` as its first child); an open file; a checkout's diffs; a terminal; round a
   simulator's screen and the agent desktop. Each has a switch of its own, all on by default
   (section 6). A page keeps the card, which its native view covers anyway. **[asked: chats,
   2026-11-16 the rest, each a switch, on by default]**
@@ -306,7 +307,7 @@ on by default, customizable, in Appearance]**
 | Row | Control | Default | Shown |
 |---|---|---|---|
 | Wallpaper background | switch | on | always |
-| Chats, Explorers, Files, Diffs, Terminals, Simulators and agent desktop | a switch each: what it shows behind | on | when on |
+| Chats, Explorers, Sidebar, Files, Diffs, Terminals, Simulators and agent desktop | a switch each: what it shows behind | on | when on |
 | Opacity | slider, Less to More | 24 %, as Monodrive's | when on |
 | Cell size | slider, Fine to Coarse: how many screen pixels a cell is a side | 2, as Monodrive's | when on |
 | Density | slider, Sparse to Dense: how many cells are lit | as Monodrive's | when on |
@@ -331,8 +332,8 @@ Quality its three stops (3.1). They're still to be tuned by eye (section 9).
 - **Search still finds it.** Settings search looks at the rows shown, so with the switch off
   "opacity" or "fade" would find nothing. The switch's description names what it reveals:
   off, "Your wallpaper behind chats, files, diffs, terminals and devices, dithered in its own
-  colours. Turn it on to choose what it shows behind (chats, explorers, files, diffs,
-  terminals, simulators and agent desktop), and set its opacity, the cell size and density,
+  colours. Turn it on to choose what it shows behind (chats, explorers, the sidebar, files,
+  diffs, terminals, simulators and agent desktop), and set its opacity, the cell size and density,
   the fade, where it starts and ends, and the quality."; on, its first sentence alone. The Fade switch does the same for its two rows while it's
   off ("Turn it on to set where it starts and ends."). A test searches the section on, with
   the fade off, and off, for each row's word. **[proposed]**
@@ -498,7 +499,7 @@ is 489 lines, so its new field and default may need something moved out of it fi
    window off screen, over a wallpaper kept in the checkout rather than the person's, saving
    screenshots with the backdrop on and off, in both appearances, and at each Quality stop.
    **Wired** as the regression check (`chat_backdrop/visual.rs`): the wallpaper is painted into
-   `.superpowers/qa/chat-backdrop/wallpaper.png` (a diagonal from amber to blue, soft discs, a
+   `.artifacts/qa/chat-backdrop/wallpaper.png` (a diagonal from amber to blue, soft discs, a
    grid of fine lines and a band of finer checks), and the window stands on a screen of the
    check's own, 2560 × 1440 points, at (480, 220), as a window off screen lies on no screen.
    It saves the backdrop light and dark, at each Quality stop with a crop of each where the
@@ -508,7 +509,7 @@ is 489 lines, so its new field and default may need something moved out of it fi
    minutes); this step's screenshots are taken in a test Koyo on the agent desktop instead.
 
    ```sh
-   Q=$PWD/.superpowers/qa/chat-backdrop && mkdir -p $Q/tmp &&
+   Q=$PWD/.artifacts/qa/chat-backdrop && mkdir -p $Q/tmp &&
      KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config \
      KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
      --visual-check-chat-backdrop

@@ -1,7 +1,8 @@
 //! The pinned pages at the sidebar's head and the loose pages under them (`docs/arc-sidebar.md`
 //! 11), drawn as a person uses them: the zone that says where a pinned page goes while none is;
 //! a page's tab in hand over it, and let go, its tile; three more pinned, one with its site's
-//! icon; a page's tab taken off its list and let go on the strip for the space's own pages, and
+//! icon, and a page's tab in hand over them, the tiles making room for it where it would land; a
+//! page's tab taken off its list and let go on the strip for the space's own pages, and
 //! another opened from it; a tile in hand among the others, taken well away as a chip onto a
 //! loose page's row, and that row back onto the tiles; a pinned page shown as the space changes
 //! under it, a space with no project among them; and the zone put away, back for a page's tab
@@ -10,7 +11,9 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use gpui_kit::{Bounds, Image, ImageFormat, Modifiers, MouseButton, Pixels, Point, point, px};
+use gpui_kit::{
+    Bounds, Context, Image, ImageFormat, Modifiers, MouseButton, Pixels, Point, point, px,
+};
 use image::{ImageBuffer, Rgba};
 
 use super::acts::{Part, drag, save_with, settle};
@@ -18,8 +21,9 @@ use super::headers::away;
 use super::web_page;
 use crate::arc::hover::Hovered;
 use crate::browser::profiles::By;
-use crate::model::{Browser, Content, Pane, Tab, Unloaded};
+use crate::model::{Browser, Content, Pane, Pinned, Tab, Unloaded};
 use crate::settings;
+use crate::shell::Shell;
 use crate::visual::{Drawn, Result, checkout, noted};
 
 /// The pages pinned after the first: their addresses and titles.
@@ -103,7 +107,7 @@ fn showing(drawn: &Drawn) -> String {
 
 /// Takes up what's at `from` and carries it well off its list or grid, as a person dragging it
 /// elsewhere does: what takes it elsewhere shows from then.
-fn take_up(drawn: &mut Drawn, from: Point<Pixels>) -> Result<()> {
+pub(super) fn take_up(drawn: &mut Drawn, from: Point<Pixels>) -> Result<()> {
     let (window, none, held) = (drawn.window, Modifiers::default(), Some(MouseButton::Left));
     (drawn.cx).simulate_mouse_down(window, from, MouseButton::Left, none);
     (drawn.cx).simulate_mouse_move(window, from + point(px(4.), px(4.)), held, none);
@@ -113,22 +117,30 @@ fn take_up(drawn: &mut Drawn, from: Point<Pixels>) -> Result<()> {
 }
 
 /// Carries what's in hand over `to`, without letting go.
-fn carry(drawn: &mut Drawn, to: Point<Pixels>) -> Result<()> {
+pub(super) fn carry(drawn: &mut Drawn, to: Point<Pixels>) -> Result<()> {
     let (none, held) = (Modifiers::default(), Some(MouseButton::Left));
     (drawn.cx).simulate_mouse_move(drawn.window, to, held, none);
     settle(drawn)
 }
 
 /// Lets go at `at` of what's in hand.
-fn let_go(drawn: &mut Drawn, at: Point<Pixels>) -> Result<()> {
+pub(super) fn let_go(drawn: &mut Drawn, at: Point<Pixels>) -> Result<()> {
     (drawn.cx).simulate_mouse_up(drawn.window, at, MouseButton::Left, Modifiers::default());
     settle(drawn)
 }
 
 /// Where what `name` names was drawn, by its middle.
-fn middle(name: &str) -> Result<Point<Pixels>> {
+pub(super) fn middle(name: &str) -> Result<Point<Pixels>> {
     let at = noted(name).ok_or_else(|| format!("{name} isn't drawn"))?;
     Ok(at.center())
+}
+
+/// Removes every pinned page.
+pub(super) fn remove_pins(shell: &mut Shell, cx: &mut Context<Shell>) {
+    let keys: Vec<u64> = shell.workspace.pinned().iter().map(Pinned::key).collect();
+    for key in keys {
+        shell.remove_pinned(key, cx);
+    }
 }
 
 /// The loose pages of the space shown, by their titles, and the place of the one shown.
@@ -208,7 +220,7 @@ fn pin_by_drop(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
                 };
                 let key = pane.id;
                 shell.workspace.push_tab(Tab::Single(pane));
-                shell.pin_tab_of(key, cx);
+                shell.pin_tab_of(key, usize::MAX, cx);
             }
         });
     });
@@ -218,6 +230,27 @@ fn pin_by_drop(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         pinned(drawn),
         save_with(drawn, "arc-pinned-tiles", Part::Rows)?
     ));
+    Ok(())
+}
+
+/// A page's tab taken off its list and brought over the tiles, between the second and the
+/// third: they make room for it there, the slot lit. It's taken back to its own row, and stays
+/// one of the worktree's tabs.
+fn landing(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    let from = row(drawn, 0)?;
+    take_up(drawn, from)?;
+    let tiles = region()?;
+    let between = point(tiles.left() + tiles.size.width * 0.8, tiles.top() + px(22.));
+    for _ in 0..3 {
+        carry(drawn, between)?;
+    }
+    said.push(format!(
+        "a page's tab in hand over the tiles, between the second and the third: {}",
+        save_with(drawn, "arc-pinned-tab-landing", Part::Rows)?
+    ));
+    carry(drawn, from)?;
+    let_go(drawn, from)?;
+    said.push(format!("taken back to its row, still pinned {:?}", pinned(drawn).0));
     Ok(())
 }
 
@@ -373,16 +406,7 @@ fn across_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 /// once a page's tab is taken off its list.
 fn put_away(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let (shell, window) = (drawn.shell.clone(), drawn.window);
-    drawn.cx.update(|cx| {
-        shell.update(cx, |shell, cx| {
-            let keys: Vec<u64> = (shell.workspace.pinned().iter())
-                .map(crate::model::Pinned::key)
-                .collect();
-            for key in keys {
-                shell.remove_pinned(key, cx);
-            }
-        });
-    });
+    drawn.cx.update(|cx| shell.update(cx, remove_pins));
     settle(drawn)?;
     let zone = region()?;
     let end = point(zone.right() - px(18.), zone.center().y);
@@ -416,6 +440,7 @@ fn put_away(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 pub fn pins(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     start(drawn)?;
     pin_by_drop(drawn, said)?;
+    landing(drawn, said)?;
     loose_pages(drawn, said)?;
     drag_tiles(drawn, said)?;
     across_spaces(drawn, said)?;

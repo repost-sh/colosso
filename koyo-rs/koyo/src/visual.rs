@@ -1,6 +1,6 @@
 //! What the visual checks share: the real shell in an off-screen window, with the real text
 //! system and Metal, on this repository's own checkout, drawn and saved as PNGs under
-//! `.superpowers/qa/`. macOS makes windows only on the main thread, so each check is a mode of
+//! `.artifacts/qa/`. macOS makes windows only on the main thread, so each check is a mode of
 //! the app rather than a test, run with `--features visual-check`.
 
 use std::cell::RefCell;

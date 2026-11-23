@@ -30,7 +30,6 @@ mod swipe;
 mod tab_steps;
 #[cfg(test)]
 mod tests;
-mod tile_grid;
 mod tiles;
 mod top;
 #[cfg(feature = "visual-check")]
@@ -44,7 +43,6 @@ pub use actions::{
 pub use hover::Hover;
 pub use pinned::DraggedPin;
 pub use swipe::Swipe;
-pub use tile_grid::TileHand;
 pub use top::Top;
 
 /// Between the sidebar's parts: the address bar, the pinned pages, the space, its projects' tiles,
@@ -131,7 +129,7 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
     if shell.swipe.glides.moving(now) {
         window.request_animation_frame();
     }
-    let (pins, loosens) = shell.taken_elsewhere();
+    let loosens = shell.loose_taking();
     let space = div()
         .flex_1()
         .min_h_0()
@@ -154,7 +152,7 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .on_scroll(cx.listener(Shell::swipe))
         .on_mouse_down(MouseButton::Right, cx.listener(Shell::show_space_menu))
         .child(shell.arc_top.bar())
-        .children(pinned::region(shell, pins, look, cx))
+        .children(pinned::region(shell, shell.pinned_taking(), look, cx))
         .children(loose::still(shell, loosens, look, cx))
         .child(space)
         .child(foot::bar(shell, window, cx))

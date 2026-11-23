@@ -1,12 +1,12 @@
 //! The downloads button in the top bar and the list it opens, as the app draws them, in the Arc
 //! and the Orca layout, light and dark: a page shown, its address field with no downloads
 //! button; the button with a download coming in, its ring part full; and the list open under
-//! it, with a download of each state. Saved as PNGs in `.superpowers/qa/downloads/`: the top
+//! it, with a download of each state. Saved as PNGs in `.artifacts/qa/downloads/`: the top
 //! of the window, then the same with the list laid over it where it opens. The list's glass is
 //! its fill alone, as an off-screen window has no blur.
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/downloads && mkdir -p $Q/tmp &&
+//! Q=$PWD/.artifacts/qa/downloads && mkdir -p $Q/tmp &&
 //!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp \
 //!   KOYO_CONFIG_DIR=$Q/config KOYO_LOG_DIR=$Q/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-downloads
@@ -28,7 +28,7 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/downloads";
+const OUT: &str = ".artifacts/qa/downloads";
 /// How much of the window's top a picture keeps, in points: the top bar, the address field
 /// under it, and the list.
 const ACROSS: u32 = 760;

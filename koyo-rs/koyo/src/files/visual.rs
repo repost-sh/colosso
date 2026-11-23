@@ -1,9 +1,9 @@
 //! The Files panel's tree and the files it opens in tabs, drawn as the app draws them, on this
 //! repository's own checkout, saved as PNGs
-//! in `.superpowers/qa/files/`:
+//! in `.artifacts/qa/files/`:
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/files/config \
+//! KOYO_CONFIG_DIR=$PWD/.artifacts/qa/files/config \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check
 //! ```
 
@@ -21,7 +21,7 @@ use crate::right_panel::{ShowFiles, ToggleChanges};
 use crate::visual::{Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
-const OUT: &str = ".superpowers/qa/files";
+const OUT: &str = ".artifacts/qa/files";
 /// How long the project gets to list what's asked of it.
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How many keystrokes each way the tree's pick is timed over, as many as there are rows.

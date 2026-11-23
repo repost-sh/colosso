@@ -5,19 +5,65 @@
 //! side, the half the pointer is over lit for the side it takes. Pulled off the list it
 //! slides back into its slot and travels as a chip, to drop on a side of a pane.
 
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
+use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::base::motion::{MotionStatus, Transition, transition_with_status};
 use gpui_kit::{
-    AlignItems, Along as _, AnyElement, App, Axis, BorderStyle, Bounds, Corners, DispatchPhase,
-    Display, Element, ElementId, FlexDirection, GlobalElementId, Hsla, InspectorElementId, LayoutId, Length, MouseUpEvent, Pixels, Point, Style, Window, fill, outline,
-    point, px, relative, size,
+    AlignItems, Along as _, AnyElement, App, Axis, BorderStyle, Bounds, Context, Corners,
+    DispatchPhase, Display, Element, ElementId, Empty, FlexDirection, GlobalElementId, Hsla,
+    InspectorElementId, IntoElement, LayoutId, Length, MouseUpEvent, Pixels, Point, Render,
+    Style, Window, fill, outline, point, px, relative, size,
 };
 
-use hand::Holds;
-use hand::List;
+use hand::{Holds, Laid};
 pub use hand::{Drop, TabHand};
+
+/// A row or a tile in hand. Nothing's drawn for it under the pointer: its list or grid draws it
+/// there.
+pub struct InHand;
+
+impl Render for InHand {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        Empty
+    }
+}
+
+/// Which list a tab or a row is dragged along.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum List {
+    /// The tabs of the checkout `(project, branch)`, along the Orca layout's top rail or down
+    /// the Arc sidebar.
+    Checkout(usize, usize),
+    /// The worktrees of the project at `project`, in either layout.
+    Worktrees(usize),
+    /// The Orca layout's projects.
+    Projects,
+    /// The space's loose pages, down the Arc sidebar or along the Orca layout's top rail.
+    Loose,
+}
+
+impl List {
+    /// What the list is known by among the window's elements.
+    fn element_id(self) -> ElementId {
+        match self {
+            List::Checkout(project, branch) => format!("tab-list-{project}-{branch}").into(),
+            List::Worktrees(project) => ("worktree-list", project).into(),
+            List::Projects => "project-list".into(),
+            List::Loose => "loose-list".into(),
+        }
+    }
+}
+
+/// What a project, or a worktree's place in the sidebar, is known by as it moves, whatever its
+/// place: its folder's.
+pub fn key_of(path: &Path) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    hasher.finish()
+}
 
 mod hand;
 
@@ -57,7 +103,7 @@ pub type OnDrop = Rc<dyn Fn(&Drop, &mut Window, &mut App)>;
 /// Tabs in a list, each drawn where its motion has it; or a project's worktrees, by the same
 /// rules but for joining and leaving the list.
 pub struct Reorder {
-    list: u64,
+    list: List,
     holds: Holds,
     axis: Axis,
     tabs: Vec<(u64, AnyElement)>,
@@ -74,20 +120,17 @@ pub struct Placement {
     join: Option<(Bounds<Pixels>, bool)>,
 }
 
-impl Placement {
-    /// The tabs in the order they're drawn: the one in hand last.
-    fn order(&self) -> impl Iterator<Item = usize> {
-        (0..self.offsets.len())
-            .filter(|at| Some(*at) != self.held)
-            .chain(self.held)
-    }
+/// The `count` tabs or tiles of a list or a grid in the order they're drawn: the one `held` in
+/// hand last, over the others.
+pub(super) fn drawing_order(count: usize, held: Option<usize>) -> impl Iterator<Item = usize> {
+    (0..count).filter(move |at| Some(*at) != held).chain(held)
 }
 
 impl Reorder {
     /// The tabs of `list`, each by a key it keeps as it moves, running along `axis` with
     /// `gap` between them, `on_drop` doing what's done with one let go over the list.
     pub fn new(
-        (list, axis): (u64, Axis),
+        (list, axis): (List, Axis),
         tabs: Vec<(u64, AnyElement)>,
         hand: Rc<TabHand>,
         gap: Pixels,
@@ -105,20 +148,21 @@ impl Reorder {
         }
     }
 
-    /// The loose pages of list `list` down the Arc sidebar, each by a key it keeps as it moves,
-    /// with `gap` between them, `on_drop` doing what's done with one let go over the list: they
-    /// move as tabs do and leave the list as tabs do, but join none.
-    pub fn pages(
-        list: u64,
+    /// The space's loose pages, down the Arc sidebar or along the Orca layout's top rail as
+    /// `axis` says, each by a key it keeps as it moves, with `gap` between them, `on_drop` doing
+    /// what's done with one let go over the list: they move as tabs do and leave the list as tabs
+    /// do, but join none.
+    pub(super) fn pages(
+        axis: Axis,
         pages: Vec<(u64, AnyElement)>,
         hand: Rc<TabHand>,
         gap: Pixels,
         on_drop: OnDrop,
     ) -> Self {
         Reorder {
-            list,
+            list: List::Loose,
             holds: Holds::Pages,
-            axis: Axis::Vertical,
+            axis,
             tabs: pages,
             hand,
             gap,
@@ -126,21 +170,22 @@ impl Reorder {
         }
     }
 
-    /// The worktrees of project `list` down the Arc sidebar, each by a key it keeps as it moves,
-    /// with `gap` between them, `on_drop` doing what's done with one let go: they move as tabs
-    /// do, but join none, and stay on the list wherever they're taken.
-    pub fn worktrees(
-        list: u64,
-        worktrees: Vec<(u64, AnyElement)>,
+    /// Rows of a sidebar that move as tabs do but join none and stay on the list wherever
+    /// they're taken: a project's worktrees down either layout's sidebar, the Orca layout's
+    /// projects. Each is known by a key it keeps as it moves, with `gap` between them, `on_drop`
+    /// doing what's done with one let go.
+    pub fn rows(
+        list: List,
+        rows: Vec<(u64, AnyElement)>,
         hand: Rc<TabHand>,
         gap: Pixels,
         on_drop: OnDrop,
     ) -> Self {
         Reorder {
             list,
-            holds: Holds::Worktrees,
+            holds: Holds::Rows,
             axis: Axis::Vertical,
-            tabs: worktrees,
+            tabs: rows,
             hand,
             gap,
             on_drop,
@@ -153,12 +198,7 @@ impl Element for Reorder {
     type PrepaintState = Placement;
 
     fn id(&self) -> Option<ElementId> {
-        let name = match self.holds {
-            Holds::Tabs { .. } => "tab-list",
-            Holds::Worktrees => "worktree-list",
-            Holds::Pages => "page-list",
-        };
-        Some((name, self.list).into())
+        Some(self.list.element_id())
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -210,7 +250,7 @@ impl Element for Reorder {
     ) -> Self::PrepaintState {
         let (axis, gap) = (self.axis, self.gap);
         let slots: Vec<_> = tabs.iter().map(|id| window.layout_bounds(*id)).collect();
-        let list = List {
+        let list = Laid {
             id: self.list,
             holds: self.holds,
             axis,
@@ -262,7 +302,7 @@ impl Element for Reorder {
             held: held.map(|held| held.at),
             join,
         };
-        for at in placement.order() {
+        for at in drawing_order(placement.offsets.len(), placement.held) {
             window.with_element_offset(at_along(axis, placement.offsets[at]), |window| {
                 self.tabs[at].1.prepaint(window, cx);
             });
@@ -280,7 +320,7 @@ impl Element for Reorder {
         window: &mut Window,
         cx: &mut App,
     ) {
-        for at in placement.order() {
+        for at in drawing_order(placement.offsets.len(), placement.held) {
             self.tabs[at].1.paint(window, cx);
         }
         if let (Some((bounds, after)), Holds::Tabs { accent }) = (placement.join, self.holds) {

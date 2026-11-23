@@ -6,11 +6,11 @@
 //! window's own events; `take` and `give` do what the bar's Take control and Give back do.
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/vc KOYO_DATA_DIR=$PWD/.superpowers/vd TMPDIR=$PWD/.superpowers/vt/ \
-//! KOYO_DEVICE_SET=$PWD/.superpowers/ds koyo --visual-check-devices-serve
-//! .superpowers/devices/qa/mcp device_list            # the QA client, port 6301
-//! touch .superpowers/devices/qa/visual/serve/snap      # a picture of the window
-//! touch .superpowers/devices/qa/visual/serve/stop      # quits, its simulators shut down
+//! KOYO_CONFIG_DIR=$PWD/.artifacts/vc KOYO_DATA_DIR=$PWD/.artifacts/vd TMPDIR=$PWD/.artifacts/vt/ \
+//! KOYO_DEVICE_SET=$PWD/.artifacts/ds koyo --visual-check-devices-serve
+//! .artifacts/devices/qa/mcp device_list            # the QA client, port 6301
+//! touch .artifacts/devices/qa/visual/serve/snap      # a picture of the window
+//! touch .artifacts/devices/qa/visual/serve/stop      # quits, its simulators shut down
 //! ```
 
 use std::process::ExitCode;
@@ -22,7 +22,7 @@ use crate::browser::control::Leased as _;
 use crate::control::ApprovedClient;
 use crate::visual::{Drawn, Result};
 
-const OUT: &str = ".superpowers/devices/qa/visual/serve";
+const OUT: &str = ".artifacts/devices/qa/visual/serve";
 const PORT: u16 = 6301;
 /// How long it serves at most, unless `KOYO_VISUAL_SERVE_MINUTES` says.
 const MINUTES: u64 = 60;

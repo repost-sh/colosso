@@ -11,14 +11,15 @@ use koyo_git::{Head, Worktree};
 
 use super::{arc_shell, chat, drag, drawn};
 use crate::arc::actions::ClearWorktree;
-use crate::arc::header::{Items, title};
+use crate::arc::header::Items;
 use crate::files::tests::{dialog, press};
 use crate::launcher::Launcher;
 use crate::model::BranchUnit;
 use crate::projects::{DeleteWorktree, read_worktrees};
+use crate::right_panel::View;
 use crate::settings::{self, BranchPrefix, Layout};
 use crate::shell::Shell;
-use crate::test_support::{click, draw, git, shell_window};
+use crate::test_support::{center_of, click, draw, git, hover, shell_window};
 
 /// The Arc sidebar on a project `name` with worktrees `feat` and `fix` beside its main
 /// checkout, listed in that order: the window, the shell and the main checkout.
@@ -122,6 +123,53 @@ fn a_header_collapses_its_worktree_and_opens_it_again_and_the_next_launch_keeps_
     assert!(!kept);
 }
 
+/// Presses `button` on the header `header` names, the pointer brought onto the header first, as
+/// a person's is: its buttons show only then.
+fn press_on(
+    window: AnyWindowHandle,
+    (header, button): (&'static str, &'static str),
+    cx: &mut TestAppContext,
+) {
+    hover(window, center_of(window, header, cx), cx);
+    draw(window, cx);
+    click(window, button, cx);
+}
+
+/// A header's changes' and files' buttons show the worktree's panel on them, selecting the
+/// worktree first if it isn't, and close it pressed again; the header stays as it was.
+#[gpui_kit::test]
+fn a_headers_buttons_show_its_worktrees_panel_and_close_it(cx: &mut TestAppContext) {
+    let (window, shell, root) = with_worktrees("arc-panel-buttons", cx);
+    let feat = cx.read(|cx| folder_of(shell.read(cx), "feat"));
+    let shown = |cx: &TestAppContext| {
+        cx.read(|cx| {
+            let shell = shell.read(cx);
+            let selected = shell.workspace.branch().map(|unit| unit.worktree.path.clone());
+            (selected, shell.right_panel.shown_view())
+        })
+    };
+    let main = Some(root.clone());
+    assert_eq!(shown(cx), (main.clone(), None));
+    assert!(drawn(window, "toggle-files-0-1", cx).is_none(), "away from the header, none");
+
+    press_on(window, ("arc-header-1", "toggle-files-0-1"), cx);
+    assert_eq!(shown(cx), (Some(feat.clone()), Some(View::Files)), "feat selected, its files");
+    let collapsed = cx.read(|cx| settings::get(cx).is_collapsed(&root, &feat));
+    assert!(!collapsed, "the press is the button's, not the header's");
+
+    hover(window, center_of(window, "arc-header-0", cx), cx);
+    draw(window, cx);
+    assert!(drawn(window, "toggle-files-0-1", cx).is_some(), "lit, it stays");
+    assert!(drawn(window, "toggle-changes-0-1", cx).is_none());
+    press_on(window, ("arc-header-1", "toggle-changes-0-1"), cx);
+    assert_eq!(shown(cx), (Some(feat.clone()), Some(View::Changes)));
+    press_on(window, ("arc-header-1", "toggle-changes-0-1"), cx);
+    assert_eq!(shown(cx), (Some(feat), None), "pressed again, closed");
+
+    press_on(window, ("arc-header-0", "toggle-changes-0-0"), cx);
+    assert_eq!(shown(cx), (main, Some(View::Changes)), "main selected, its changes");
+}
+
 #[gpui_kit::test]
 fn a_worktree_dragged_by_its_header_moves_in_both_layouts_and_the_next_launch_keeps_it(
     cx: &mut TestAppContext,
@@ -194,8 +242,8 @@ fn a_tab_let_go_on_another_worktrees_header_moves_there_open_or_collapsed(cx: &m
 fn a_headers_plus_opens_a_new_tab_on_its_worktree_opening_it_if_collapsed(cx: &mut TestAppContext) {
     let (window, shell, root) = with_worktrees("arc-plus", cx);
     let fix = shell.read_with(cx, |shell, _| folder_of(shell, "fix"));
-    let plus = |branch: &'static str, cx: &mut TestAppContext| {
-        click(window, branch, cx);
+    let plus = |pressed: (&'static str, &'static str), cx: &mut TestAppContext| {
+        press_on(window, pressed, cx);
         let launcher = dialog::<Launcher>(cx).map(|(launcher, _)| launcher);
         if let Some(launcher) = launcher {
             press(launcher, "escape", cx);
@@ -204,13 +252,13 @@ fn a_headers_plus_opens_a_new_tab_on_its_worktree_opening_it_if_collapsed(cx: &m
         let selected = cx.read(|cx| shell.read(cx).workspace.branch().map(BranchUnit::name));
         (launcher.is_some(), selected.map(String::from))
     };
-    let opened = plus("arc-header-new-tab-1", cx);
+    let opened = plus(("arc-header-1", "arc-header-new-tab-1"), cx);
     assert_eq!(opened, (true, Some("feat".into())), "the launcher, on feat");
 
     click(window, "arc-header-2", cx);
     let collapsed = |cx: &TestAppContext| cx.read(|cx| settings::get(cx).is_collapsed(&root, &fix));
     assert!(collapsed(cx));
-    let opened = plus("arc-header-new-tab-2", cx);
+    let opened = plus(("arc-header-2", "arc-header-new-tab-2"), cx);
     assert_eq!(opened, (true, Some("fix".into())));
     assert!(!collapsed(cx), "opened, so the tab it opens shows");
 }
@@ -264,7 +312,7 @@ fn a_worktree_is_called_by_its_branch_in_words_without_the_persons_prefix() {
         named.worktree.head = Head::Branch(branch.into());
         named
     };
-    let called = |branch, prefix| title(&named(branch), prefix).to_string();
+    let called = |branch, prefix| named(branch).title(prefix).to_string();
     let mine = Some("schulzfel");
     assert_eq!(called("schulzfel/some-nasty-name", mine), "Some nasty name");
     assert_eq!(called("schulzfel/fix_login", mine), "Fix login");
@@ -286,7 +334,7 @@ fn a_worktree_is_called_by_its_branch_in_words_without_the_persons_prefix() {
     );
     let mut detached = named("x");
     detached.worktree.head = Head::Detached("0123456789abcdef".into());
-    assert_eq!(title(&detached, mine), "detached at 0123456");
+    assert_eq!(detached.title(mine), "detached at 0123456");
 }
 
 #[test]

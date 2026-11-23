@@ -1,9 +1,10 @@
 //! A project's worktrees under their headers (`docs/arc-sidebar.md` 5), drawn as a person sees
 //! and uses them: the four states of Arc's folder header (open, open under the pointer,
-//! collapsed under the pointer, collapsed), light and dark; the rows sliding closed and open
-//! again, caught along the way; a worktree dragged to the end, caught in hand; and the window
-//! opened again on the settings file, the order and the collapsed worktree as they were left,
-//! and Orca listing them in that order. Each picture is saved whole, and the worktrees' part of
+//! collapsed under the pointer, collapsed), light and dark; a header's Changes and Files, its
+//! Files pressed, and the project's name folding the worktrees away (`panels`); the rows sliding
+//! closed and open again, caught along the way; a worktree dragged to the end, caught in hand;
+//! and the window opened again on the settings file, the order and the collapsed worktree as they
+//! were left, and Orca listing them in that order. Each picture is saved whole, and the worktrees' part of
 //! the sidebar three times its size (`acts::Part::Worktree`).
 
 use std::path::{Path, PathBuf};
@@ -154,8 +155,43 @@ pub fn headers(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         (drawn.cx).simulate_click(drawn.window, on, Modifiers::default());
         rest_at(drawn, away())?;
     }
+    panels(drawn, said)?;
     slide(drawn, place, said)?;
     reorder(drawn, &root, said)
+}
+
+/// The payouts worktree's header under the pointer, its Changes and Files at its end; its Files
+/// pressed, which selects it and opens its file tree beside the chat; and the project's name
+/// pressed, which folds the worktrees away under it, then pressed again. The panel's closed after.
+fn panels(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    let payouts = header(place_of(drawn, "fix-payouts")?)?;
+    rest_at(drawn, payouts.center())?;
+    let part = Part::Worktree {
+        top: payouts.top(),
+        rows: 2,
+    };
+    let saved = save_with(drawn, "arc-header-buttons", part)?;
+    said.push(format!("a header's buttons: {saved}"));
+    let files = point(payouts.right() - px(70.), payouts.center().y);
+    (drawn.cx).simulate_click(drawn.window, files, Modifiers::default());
+    rest_at(drawn, away())?;
+    let shown = drawn.cx.read(|cx| {
+        let shell = drawn.shell.read(cx);
+        let selected = shell.workspace.branch().map(|unit| unit.name().to_string());
+        (selected, shell.right_panel.shown_view())
+    });
+    said.push(format!("Files pressed on fix-payouts: {shown:?}"));
+    let path = drawn.save("arc-files-panel.png")?;
+    said.push(format!("saved {}", path.display()));
+    let name = point(payouts.center().x, header(0)?.top() - px(14.));
+    for state in ["folded", "unfolded"] {
+        (drawn.cx).simulate_click(drawn.window, name, Modifiers::default());
+        rest_at(drawn, away())?;
+        let path = drawn.save(&format!("arc-project-{state}.png"))?;
+        said.push(format!("the project {state}: saved {}", path.display()));
+    }
+    (drawn.cx).simulate_click(drawn.window, files, Modifiers::default());
+    rest_at(drawn, away())
 }
 
 /// The login worktree's rows sliding closed and open again, each caught a few frames in.
@@ -233,6 +269,21 @@ fn reorder(drawn: &mut Drawn, root: &Path, said: &mut Vec<String>) -> Result<()>
         .update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
     let path = drawn.save("orca-worktrees-moved-dark.png")?;
     said.push(format!("in Orca: saved {}", path.display()));
+    orca_fold(drawn, root, said)
+}
+
+/// In the Orca layout, the project's row pressed, folding its branches away under it, then
+/// pressed again.
+fn orca_fold(drawn: &mut Drawn, root: &Path, said: &mut Vec<String>) -> Result<()> {
+    let index = drawn.cx.read(|cx| drawn.shell.read(cx).workspace.project_index(root));
+    let index = index.ok_or("the project isn't listed")?;
+    let row = noted(&format!("orca-project-{index}")).ok_or("the project's row isn't drawn")?;
+    for state in ["folded", "unfolded"] {
+        (drawn.cx).simulate_click(drawn.window, row.center(), Modifiers::default());
+        rest_at(drawn, away())?;
+        let path = drawn.save(&format!("orca-project-{state}-dark.png"))?;
+        said.push(format!("in Orca, the project {state}: saved {}", path.display()));
+    }
     Ok(())
 }
 

@@ -1,13 +1,23 @@
 //! The window's switches as the shell's keys and buttons set them, and as app control reads
-//! and sets them: the sidebar, the bottom panel and the settings pages. Where the keyboard is
+//! and sets them: the sidebar, the bottom panel and the settings pages; and how blurred its glass
+//! is. Where the keyboard is
 //! among the panes is `keys.rs`'s.
 
-use gpui_kit::{App, AppContext as _, Context, SharedString};
+use gpui_kit::{App, AppContext as _, Context, SharedString, Window};
 
 use super::{Place, Shell};
 use crate::model::{Content, Pane, PaneKind};
 use crate::navigation::Route;
 use crate::settings_view::SettingsPage;
+
+/// Has the window's glass blur as the settings say (`Settings::blur_scale`): as it opens, and as
+/// they change.
+pub(super) fn blur_glass(window: &Window, cx: &App) {
+    #[cfg(target_os = "macos")]
+    crate::native::window::blur(window, crate::settings::get(cx).blur_scale());
+    #[cfg(not(target_os = "macos"))]
+    let _ = (window, cx);
+}
 
 impl Shell {
     /// What the sidebar's search field holds.

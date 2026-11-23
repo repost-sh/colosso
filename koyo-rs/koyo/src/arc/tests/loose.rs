@@ -9,12 +9,11 @@ use gpui_kit::{
 };
 
 use super::{act, arc_shell, chat, drag, drag_onto, drawn, let_go_on, listed, take_up};
-use crate::arc::actions::{CopyToWorktree, NewSpace, NextSpace, PreviousSpace};
-use crate::arc::pinned::Menu;
+use crate::arc::actions::{NewSpace, NextSpace, PreviousSpace};
 use crate::files::tests::{dialog, press};
 use crate::launcher::{Launcher, NewTab};
 use crate::settings::{self, LoosePages};
-use crate::shell::{CloseTab, ReopenClosedTab, Shell};
+use crate::shell::{CloseTab, CopyToWorktree, PinnedMenu, ReopenClosedTab, Shell};
 use crate::test_support::{click, draw, open_page};
 
 /// The loose pages of the space shown, by the addresses they show, in the order of their rows.
@@ -219,7 +218,7 @@ fn a_pinned_or_a_loose_page_is_copied_into_the_selected_worktree_from_its_menu(
     let pinned = open_page(window, &shell, Some("https://mail.example/inbox"), cx);
     let page = open_page(window, &shell, Some("https://bank.example/"), cx);
     shell.update(cx, |shell, cx| {
-        assert!(shell.pin_tab_of(pinned, cx));
+        assert!(shell.pin_tab_of(pinned, usize::MAX, cx));
         shell.loosen_tab_of(page, usize::MAX, cx);
     });
     draw(window, cx);
@@ -231,7 +230,7 @@ fn a_pinned_or_a_loose_page_is_copied_into_the_selected_worktree_from_its_menu(
                 .collect::<Vec<_>>()
         })
     };
-    let menu = |cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), pinned));
+    let menu = |cx: &TestAppContext| cx.read(|cx| PinnedMenu::of(shell.read(cx), pinned));
     assert!(tabs(cx).is_empty());
     assert!(menu(cx).worktree, "a worktree is selected to copy into");
 

@@ -4,13 +4,11 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, App, Context, Div, InteractiveElement as _, KeyBinding, MouseDownEvent, Window, actions,
 };
 use koyo_browser_ipc::Go;
 
-use super::header::title;
 use super::{clear, delete_space, rename};
 use crate::browser::BrowserView;
 use crate::chat::Activity;
@@ -103,37 +101,6 @@ pub struct ResetProjectIcon(pub PathBuf);
 #[action(namespace = arc, no_json)]
 pub struct ClearWorktree(pub PathBuf);
 
-/// Closes the pinned page known by this, its page's pane: it stays pinned.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = arc, no_json)]
-pub struct ClosePinned(pub u64);
-
-/// Unpins the pinned page known by this onto the selected worktree's tabs.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = arc, no_json)]
-pub struct Unpin(pub u64);
-
-/// Removes the pinned page known by this from the pinned, its page with it.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = arc, no_json)]
-pub struct RemovePinned(pub u64);
-
-/// Opens a copy of the pinned or the loose page known by this, its page's pane, in a tab of the
-/// selected worktree.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = arc, no_json)]
-pub struct CopyToWorktree(pub u64);
-
-/// Pins the pinned page known by this at the address it shows.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = arc, no_json)]
-pub struct RepinAtCurrent(pub u64);
-
-/// Asks for the address the pinned page known by this is pinned at.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = arc, no_json)]
-pub struct EditPinned(pub u64);
-
 /// Has the window's root handle the Arc sidebar's actions.
 pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
     root.on_action(cx.listener(|this, _: &PageBack, _, cx| this.steer_page(Go::Back, cx)))
@@ -154,7 +121,6 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
         .on_action(cx.listener(|this, _: &NextProject, _, cx| this.step_project(1, cx)))
         .on_action(cx.listener(|this, _: &PreviousTab, _, cx| this.step_tab(-1, cx)))
         .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
-        .map(|root| super::pinned::handle_actions(root, cx))
         .on_action(
             cx.listener(|this, MoveProject(project, to): &MoveProject, _, cx| {
                 this.move_project(project, Some(*to), cx);
@@ -214,7 +180,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
                     return;
                 };
                 let unit = &this.workspace.projects[project].branches[branch];
-                let (tabs, name) = (unit.tabs.len(), title(unit, this.own_prefix(project, cx)));
+                let (tabs, name) = (unit.tabs.len(), unit.title(this.own_prefix(project, cx)));
                 clear::open(cx.weak_entity(), path.clone(), &name, tabs, window, cx);
             }),
         )

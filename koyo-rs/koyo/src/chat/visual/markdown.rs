@@ -1,5 +1,5 @@
 //! `--visual-check-chat-markdown`: a chat's markdown and its floating prompts, drawn as the app
-//! draws them on the fake provider, light and dark, in `.superpowers/qa/chat-markdown/`
+//! draws them on the fake provider, light and dark, in `.artifacts/qa/chat-markdown/`
 //! (`docs/chat.md` 5.3): markdown in the person's bubbles and the answers, a long prompt closed and
 //! opened, the composer while each construct is typed and with the caret in one, a chat of three
 //! prompts at each place a scroll stops with what floats there (nothing until a scroll up, then
@@ -10,9 +10,9 @@
 //! native controls, a switch among them, aren't in it either.
 //!
 //! ```sh
-//! mkdir -p .superpowers/c/tmp &&
-//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.superpowers/c TMPDIR=$PWD/.superpowers/c/tmp \
-//!   KOYO_CONFIG_DIR=$PWD/.superpowers/qa/chat-markdown/config KOYO_LOG_DIR=$PWD/.superpowers/c/logs \
+//! mkdir -p .artifacts/c/tmp &&
+//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.artifacts/c TMPDIR=$PWD/.artifacts/c/tmp \
+//!   KOYO_CONFIG_DIR=$PWD/.artifacts/qa/chat-markdown/config KOYO_LOG_DIR=$PWD/.artifacts/c/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-chat-markdown
 //! ```
 
@@ -32,7 +32,7 @@ use crate::visual::{Drawn, Result, checkout, prompt};
 
 mod picture;
 
-const OUT: &str = ".superpowers/qa/chat-markdown";
+const OUT: &str = ".artifacts/qa/chat-markdown";
 /// How long the host gets to answer, and a run to settle.
 const PATIENCE: Duration = Duration::from_secs(30);
 /// How long a text view gets to take in its text, off the main thread, before it's drawn.

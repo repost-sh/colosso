@@ -40,13 +40,15 @@ impl Pinned {
 #[derive(Clone, Debug, Default)]
 pub(super) struct Pins {
     pub(super) tabs: Vec<Pinned>,
-    /// The one shown in place of the space's own tab, by its place among them.
-    pub(super) shown: Option<usize>,
+    /// The one shown in place of the space's own tab, by its page's pane.
+    pub(super) shown: Option<u64>,
 }
 
 impl Pins {
+    /// The one shown, by its place among them.
     pub(super) fn shown(&self) -> Option<usize> {
-        self.shown.filter(|at| *at < self.tabs.len())
+        let shown = self.shown?;
+        self.tabs.iter().position(|pinned| pinned.key() == shown)
     }
 
     /// No pinned page is shown from now on: the selected checkout's tab is.
@@ -91,11 +93,16 @@ impl Workspace {
         matches!(self.tab(at), Some(Tab::Single(Pane { content: Content::Browser(_), .. })))
     }
 
-    /// Pins the tab at `at`, as `(project, branch, tab)`, at the address `home`, after the pages
-    /// pinned already: it leaves its checkout, and goes on showing if it was the tab shown.
-    /// Where it is among the pinned; `None`, and nothing changes, unless its single pane is a
-    /// page.
-    pub fn pin_tab(&mut self, at: (usize, usize, usize), home: String) -> Option<usize> {
+    /// Pins the tab at `at`, as `(project, branch, tab)`, at the address `home`, in slot `place`
+    /// among the pages pinned already or after them: it leaves its checkout, and goes on showing
+    /// if it was the tab shown. Where it is among the pinned; `None`, and nothing changes, unless
+    /// its single pane is a page.
+    pub fn pin_tab(
+        &mut self,
+        at: (usize, usize, usize),
+        home: String,
+        place: usize,
+    ) -> Option<usize> {
         let shown = self.shown_checkout_tab() == Some(at);
         let (tab, project) = self.take_page_tab(at)?;
         let more = serde_json::Map::new();
@@ -105,35 +112,36 @@ impl Workspace {
             project,
             more,
         };
-        Some(self.add_pinned(pinned, shown))
+        Some(self.add_pinned(pinned, place, shown))
     }
 
-    /// Adds `pinned` after the pages pinned already, shown when `shown`: where it is among them.
-    pub fn add_pinned(&mut self, pinned: Pinned, shown: bool) -> usize {
-        self.apart.pins.tabs.push(pinned);
-        let at = self.apart.pins.tabs.len() - 1;
+    /// Adds `pinned` in slot `place` among the pages pinned already, or after them, the others
+    /// from there on a slot along; shown when `shown`, and otherwise the one shown stays shown.
+    /// Where it is among them.
+    pub fn add_pinned(&mut self, pinned: Pinned, place: usize, shown: bool) -> usize {
+        let pins = &mut self.apart.pins;
+        let at = place.min(pins.tabs.len());
         if shown {
-            self.apart.pins.shown = Some(at);
+            pins.shown = Some(pinned.key());
         }
+        pins.tabs.insert(at, pinned);
         at
     }
 
     /// Shows the pinned page at `at` in place of the selected checkout's tab. False when there's
     /// none there.
     pub fn show_pinned(&mut self, at: usize) -> bool {
-        let there = at < self.apart.pins.tabs.len();
-        if there {
-            self.apart.pins.shown = Some(at);
+        let pins = &mut self.apart.pins;
+        let key = pins.tabs.get(at).map(Pinned::key);
+        if key.is_some() {
+            pins.shown = key;
         }
-        there
+        key.is_some()
     }
 
-    /// Leaves the pinned or the loose page shown for the selected checkout's tab. Whether one
-    /// was shown.
-    pub fn leave_apart(&mut self) -> bool {
-        let shown = self.apart.shown_tab().is_some();
+    /// Leaves the pinned or the loose page shown for the selected checkout's tab.
+    pub fn leave_apart(&mut self) {
         self.apart.leave();
-        shown
     }
 
     /// Whether a pinned or a loose page is the tab shown, in place of the selected checkout's.
@@ -166,10 +174,8 @@ impl Workspace {
         if from == to || from >= count || to >= count {
             return false;
         }
-        let shown = (self.apart.pins.shown()).map(|at| self.apart.pins.tabs[at].key());
         let moved = self.apart.pins.tabs.remove(from);
         self.apart.pins.tabs.insert(to, moved);
-        self.apart.pins.shown = shown.and_then(|key| self.pinned_at(key));
         true
     }
 
@@ -220,13 +226,14 @@ impl Workspace {
     /// Takes the pinned page at `at` out of the pinned, handing it back; shown, the selected
     /// checkout's tab shows in its place.
     pub fn remove_pinned(&mut self, at: usize) -> Option<Pinned> {
-        if at >= self.apart.pins.tabs.len() {
+        let pins = &mut self.apart.pins;
+        if at >= pins.tabs.len() {
             return None;
         }
-        let shown = (self.apart.pins.shown().filter(|shown| *shown != at))
-            .map(|shown| self.apart.pins.tabs[shown].key());
-        let closed = self.apart.pins.tabs.remove(at);
-        self.apart.pins.shown = shown.and_then(|key| self.pinned_at(key));
+        let closed = pins.tabs.remove(at);
+        if pins.shown == Some(closed.key()) {
+            pins.shown = None;
+        }
         Some(closed)
     }
 

@@ -670,10 +670,11 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   **[checked 2026-11-13]** On an M4 Max that was building other things too it ran to its
   end in about three hours, twenty minutes of fetching and two and a half hours of
   compiling its 76,000 steps, and its folder then held 46 GB.
-- It all goes into one folder, in the checkout unless `--dir` names another. On the owner's
-  Mac that's `~/.cache/cef-build`, beside the shared cargo build folder, so that it outlives
-  a worktree: `script/cef --dir ~/.cache/cef-build`. Another worktree gets the framework by
-  running the same there. That builds nothing only where the worktree's patches are the ones
+- It all goes into one folder, `~/.cache/cef-build` unless `--dir` names another, beside the
+  shared cargo build folder, so that it outlives a worktree and every checkout builds from the
+  one copy. Another worktree gets the framework by running `script/cef` too. The distribution
+  it's swapped into is the checkout's own, `.tools/cef` (`CEF_PATH` in
+  `koyo-rs/.cargo/config.toml`), beside the other tools the checkout fetches. That builds nothing only where the worktree's patches are the ones
   the sources carry: a patch the worktree adds is applied and built (the files it touches and
   the framework's link), and one it changed or removed stops `script/cef` before anything is
   built, saying how to take the old one out (11.6). Taken out, the old one then stops the next
@@ -695,6 +696,14 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   It has been since: all 11 patches are applied in its sources (each reverses cleanly there),
   and the framework in this checkout's distribution is, byte for byte, the one it built that
   morning.
+- **One build folder, 2026-11-23.** The copies in the checkout are gone, and `script/cef`
+  builds in `~/.cache/cef-build` unless told otherwise. That folder carries all 13 patches,
+  built: run there, `script/cef` found nothing to build and put the framework in place
+  **[checked]**. Two patches change the same lines of `browser_message_loop.cc`, and once
+  both are in, git can't tell the first is applied, as its reverse no longer fits; so
+  `script/cef-framework` takes its record of the patches it applied (`out/koyo-patches`, each
+  checked against this checkout's first) as the answer for the ones it lists, and asks git
+  only about the others.
 - **The pump's patch, 2026-11-20.** `external-pump-wake-ups` (the pump, `docs/native-pages.md`
   3.1) was built in this checkout's own folder, a copy-on-write copy of `~/.cache/cef-build`
   carrying the other 12, which was left as it was: a task's writes stay in its checkout. The

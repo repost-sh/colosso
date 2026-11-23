@@ -34,7 +34,7 @@ pub struct Glide(Option<Passing>);
 
 #[derive(Clone, Copy)]
 struct Passing {
-    /// What it leaves and goes to, by their keys: a tile's (`tiles::key_of`), a row's tab's.
+    /// What it leaves and goes to, by their keys: a tile's (`shell::key_of`), a row's tab's.
     from: u64,
     to: u64,
     /// On along them (⌥→, ⌥↓), or back (⌥←, ⌥↑).

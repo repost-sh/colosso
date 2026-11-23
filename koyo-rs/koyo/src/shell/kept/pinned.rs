@@ -210,7 +210,7 @@ impl Shell {
                 project: tab.project.clone(),
                 more: tab.more.clone(),
             };
-            workspace.add_pinned(pinned, kept.shown == Some(place));
+            workspace.add_pinned(pinned, usize::MAX, kept.shown == Some(place));
         }
     }
 

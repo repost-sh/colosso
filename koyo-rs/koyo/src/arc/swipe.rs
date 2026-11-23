@@ -12,9 +12,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, ScrollDelta, ScrollEvent, SpringConfig, SpringState, TouchPhase, Window};
 
-use super::tiles::key_of;
 use crate::settings;
-use crate::shell::Shell;
+use crate::shell::{Shell, key_of};
 
 /// The spring the space settles on: firm, and a little under critical damping, so it slows to
 /// rest without bouncing back past it more than a hair.

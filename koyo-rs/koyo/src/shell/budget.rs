@@ -224,7 +224,7 @@ fn the_selected_checkouts_totals_changed_render_the_shell(cx: &mut TestAppContex
         frames: 1,
     };
     ratchet(built_after(window, cx, edited), held, "the checkout's totals changed");
-    let totals = shell.read_with(cx, |shell, _| shell.right_panel.totals());
+    let totals = shell.read_with(cx, |shell, _| shell.right_panel.totals_in(&root));
     assert_eq!(totals, (1, 0), "the button says a line was added");
 }
 
@@ -287,16 +287,17 @@ fn a_worktree_headers_hover_fade_renders_the_arc_shell_at_each_frame(cx: &mut Te
 /// ⌘B closing the sidebar renders the shell at each frame of the rails' spring as they fold
 /// away, as the shell runs the spring as it renders. With the rails in a view of their own, the
 /// shell would render once and the rails at each frame. The sidebar's search field, a view of
-/// its own, is built again in the frames that move it.
+/// its own, is built again in the frames that move it. Orca's top rail stays, its tabs with it,
+/// so only the sidebar and the status bar move.
 #[gpui_kit::test]
 fn closing_the_sidebar_renders_the_shell_at_each_frame_of_the_rails(cx: &mut TestAppContext) {
     let (window, shell, _) = shell_on("budget-sidebar-close", Layout::Orca, cx);
     settle(cx);
 
     let held = Built {
-        shell: 23,
-        views: 53,
-        frames: 23,
+        shell: 12,
+        views: 32,
+        frames: 12,
     };
     let close = |cx: &mut TestAppContext| {
         shell.update(cx, |shell, cx| shell.set_sidebar_open(false, cx));

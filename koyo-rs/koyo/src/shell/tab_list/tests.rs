@@ -94,10 +94,11 @@ fn arc_sidebar_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
     tabs_join_and_reorder(Layout::Arc, cx);
 }
 
-/// However many tabs a checkout has, the strip narrows them to fit beside its + button: each
-/// stays on screen to pick, and none runs over the button or what's beside the strip.
+/// However many tabs a checkout has, the Orca layout's top rail narrows them to fit beside its +
+/// button: each stays on screen to pick, none runs over the button or what's beside them, and
+/// the rail keeps empty glass to move the window by.
 #[gpui_kit::test]
-fn orca_strip_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestAppContext) {
+fn orca_rail_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestAppContext) {
     let root = repo("tab-list-narrowing", &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
@@ -118,6 +119,12 @@ fn orca_strip_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestApp
         assert!(
             button.size.width > px(0.),
             "with {count} tabs the + button has no width"
+        );
+        let empty = vcx.debug_bounds("rail-title").expect("the rail's empty glass");
+        assert!(
+            empty.size.width >= px(96.),
+            "with {count} tabs the rail keeps {:?} to move the window by",
+            empty.size.width
         );
         let last = listed(window, count - 1, cx);
         assert!(

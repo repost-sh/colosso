@@ -21,7 +21,6 @@ use gpui_kit::{
 
 use super::Shell;
 use crate::popup::{self, Kind, Opening};
-use crate::settings::Layout;
 use crate::theme;
 use card::{CARD_GAP, CARD_HEIGHT, CARD_RADIUS, CARD_WIDTH, Card};
 
@@ -152,11 +151,9 @@ fn open(shell: Entity<Shell>, cards: Vec<Card>, picked: usize, window: &mut Wind
 }
 
 /// The tabs to switch among as cards (`Workspace::latest`): those looked at, the latest first,
-/// then the open ones not looked at yet; pinned and loose pages only in the Arc layout, which
-/// lists them.
+/// then the open ones not looked at yet, pinned and loose pages among them.
 fn cards(shell: &Shell, cx: &mut App) -> Vec<Card> {
-    let apart = Shell::layout(cx) == Layout::Arc;
-    (shell.workspace.latest(MOST, apart).iter())
+    (shell.workspace.latest(MOST).iter())
         .filter_map(|visited| Card::of(visited, &shell.workspace, cx))
         .collect()
 }

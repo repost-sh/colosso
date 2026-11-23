@@ -4,9 +4,8 @@
 //! dot in its corner says something in the project waits for the person, a spinner that
 //! something works. Hovered, it names the project and sums up what's in it; right-clicked, it can
 //! move to another space, be renamed, take another picture, or go; dragged, it moves among its
-//! space's tiles (`tile_grid`).
+//! space's tiles (`shell::TileGrid`).
 
-use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Instant;
@@ -16,8 +15,8 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Axis, Context, Div, ElementId, FontWeight,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Stateful,
+    StatefulInteractiveElement as _, Styled as _, div, img, px,
 };
 
 use super::Look;
@@ -27,14 +26,11 @@ use super::actions::{
 use super::avatar;
 use super::glide::{self, Lit};
 use super::hover::Hovered;
-use super::tile_grid::TileGrid;
 use super::worktrees::TAB_ICON;
-use crate::chat::{Activity, spinner};
 use crate::model::Project;
-use crate::pane::dot;
 use crate::projects::{project_items, with_menu};
 use crate::settings;
-use crate::shell::Shell;
+use crate::shell::{Arrange, InHand, Shell, TileGrid, key_of};
 use crate::theme::Palette;
 
 /// A tile's height, the room between tiles, and the picture in one, the size of a tab row's
@@ -77,7 +73,7 @@ pub fn grid(
     let on_drop = cx.listener(|this, &(from, to): &(usize, usize), _, cx| {
         this.move_tile(from, to, cx);
     });
-    let rows = (per_row(projects.len()), px(GAP));
+    let rows = (Arrange::Grid(per_row), px(GAP));
     Some(TileGrid::new(
         "arc-tile-grid",
         tiles,
@@ -87,47 +83,20 @@ pub fn grid(
     ))
 }
 
-/// What a project's tile, or a worktree's place in the sidebar, is known by as it moves,
-/// whatever its place: its folder's.
-pub(super) fn key_of(path: &Path) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    hasher.finish()
-}
-
-/// A tile or a worktree in hand. Nothing's drawn for it under the pointer: its grid or list
-/// draws it there.
-pub(super) struct DraggedTile;
-
-impl Render for DraggedTile {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        gpui_kit::Empty
-    }
-}
-
 impl Shell {
     /// A tile of the space shown let go over another slot: its project moves there among the
     /// space's, in the sidebar's order, which is saved and which the Orca list shows too.
     fn move_tile(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
         let tiles = self.space_projects(cx);
-        if self.workspace.move_project_among(&tiles, from, to) {
-            self.save_projects(cx);
-            cx.notify();
-        }
+        self.move_project_among(&tiles, from, to, cx);
     }
 }
 
 /// What's in the project's corner: a dot while something waits for the person, a spinner
 /// while something works.
 fn corner(shell: &Shell, project: &Project, p: Palette, cx: &mut App) -> Option<Div> {
-    match shell.project_activity(project, cx) {
-        Activity::Quiet => None,
-        Activity::Working => {
-            let place = format!("tile-{}", project.path.display());
-            Some(spinner(place, cx))
-        }
-        Activity::Attention => Some(dot(p.waiting)),
-    }
+    let place = || format!("tile-{}", project.path.display());
+    shell.project_activity(project, cx).sign(place, p, cx)
 }
 
 /// The project's picture: the one picked or its git host's; its initials until there's one.
@@ -207,9 +176,9 @@ fn tile(
         cx,
     )
     .debug_selector(move || format!("arc-tile-{index}"))
-    .on_drag(DraggedTile, move |_, grab, _, cx| {
+    .on_drag(InHand, move |_, grab, _, cx| {
         hand.take(key, grab);
-        cx.new(|_| DraggedTile)
+        cx.new(|_| InHand)
     })
     .children(passing.and_then(|lit| {
         let colour = glide::over(look.tile, look.tile_selected);

@@ -1,16 +1,72 @@
-//! The shell's side of the pages pinned in the Arc sidebar (`docs/arc-sidebar.md` 11): a page's
-//! tab pinned as it's dropped on their region, a pinned page shown as its tile is picked, moved
-//! among them, closed and still pinned, pinned at another address, unpinned onto a checkout's
-//! tabs or among the space's loose pages, or removed. What a pinned page's own events do goes
-//! as a checkout's page's do (`browser_tabs.rs`).
+//! The shell's side of the pinned pages (`docs/arc-sidebar.md` 11), tiles at the Arc sidebar's
+//! head and buttons in the Orca layout's top rail: their region in either layout (`region.rs`),
+//! a page's tab pinned as it's dropped on it, where they made room for it, a pinned page shown
+//! as its tile is picked, moved among them, closed and still pinned, pinned at another address,
+//! unpinned onto a checkout's tabs or among the space's loose pages, or removed, as its menu
+//! offers (`menu.rs`); and the zone that says where one goes while none is, which the person can
+//! put away. What a pinned page's own events do goes as a checkout's page's do
+//! (`browser_tabs.rs`).
 
 use koyo_browser_ipc::Session;
-use gpui_kit::{App, Context, SharedString};
+use gpui_kit::assets::IconName;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    App, Context, Div, FontWeight, IntoElement, ParentElement as _, SharedString, Styled as _, div,
+    img, px,
+};
 
-use super::Shell;
+use super::splits::{Dragged, DraggedPane};
+use super::tab_face::FAVICON_CORNERS;
+use super::{Shell, icon};
 use crate::browser;
 use crate::browser::profiles::By;
+use crate::history;
 use crate::model::{Pane, Unloaded};
+use crate::settings;
+use crate::theme::Palette;
+
+mod menu;
+mod region;
+
+pub use menu::CopyToWorktree;
+#[cfg(test)]
+pub use menu::{ClosePinned, PinnedMenu, RemovePinned, RepinAtCurrent, Unpin};
+pub use region::{hides_pinned_zone, pinned_zone_says};
+
+/// How much of its strength the picture of a pinned page that isn't open keeps.
+const CLOSED: f32 = 0.6;
+
+/// The first letter of the host of the page at `address`, which a site with no icon shows.
+fn initial(address: &str) -> Option<SharedString> {
+    let host = history::host(address)?;
+    let first = host.chars().find(|first| first.is_alphanumeric())?;
+    Some(first.to_uppercase().collect::<String>().into())
+}
+
+/// A pinned page's picture, `size` points across, on its tile in the Arc sidebar and its button
+/// in the Orca rail: its site's icon, its corners a little rounded; with none, its host's
+/// initial; a globe for a page with no host, as a new tab's start page. Fainter while its page
+/// isn't open, closed or not opened since the window came back.
+pub fn pinned_picture(page: &Pane, size: f32, p: Palette) -> Div {
+    let picture = if let Some(favicon) = page.favicon() {
+        img(favicon)
+            .size(px(size))
+            .rounded(px(FAVICON_CORNERS))
+            .into_any_element()
+    } else {
+        let muted = div().text_color(p.muted);
+        match initial(page.address().unwrap_or_default()) {
+            Some(initial) => muted
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(initial)
+                .into_any_element(),
+            None => muted.child(icon(IconName::Globe, size)).into_any_element(),
+        }
+    };
+    let open = page.view().is_some();
+    div().when(!open, |face| face.opacity(CLOSED)).child(picture)
+}
 
 impl Shell {
     /// Where the checkout's tab holding pane `pane` is, as `(project, branch, tab)`, when that's
@@ -22,34 +78,67 @@ impl Shell {
         (self.workspace.is_page_tab(at) && !tools).then_some(at)
     }
 
-    /// Whether what's in hand is something the pinned pages take, and the loose ones, once it
-    /// has left where it was taken from: what their regions light up for, and what a zone put
-    /// away or a strip shows for. The pinned take a page's tab off a checkout's list and a loose
-    /// page's row off theirs; the loose take that tab too, and a pinned page's tile well away
-    /// from the others. Not while it's still on the list or the grid it was taken from.
-    pub(crate) fn taken_elsewhere(&self) -> (bool, bool) {
-        let off = self.tab_hand.left_list();
-        let row = off.is_some_and(|pane| self.workspace.loose_at(pane).is_some());
-        let tab = !row && off.is_some_and(|pane| self.page_tab_of(pane).is_some());
-        (tab || row, tab || self.pinned_hand.left_grid())
+    /// Whether what's in hand is something the pinned pages take, once it has left where it was
+    /// taken from: what their region lights up for, and what a zone put away shows for. They
+    /// take a page's tab off a checkout's list and a loose page's row off theirs; not while it's
+    /// still on its list.
+    pub(crate) fn pinned_taking(&self) -> bool {
+        (self.tab_hand.left_list()).is_some_and(|pane| {
+            self.workspace.loose_at(pane).is_some() || self.page_tab_of(pane).is_some()
+        })
     }
 
-    /// Pins the tab holding pane `pane`, as it's dropped on the pinned pages' region, at the
-    /// address its page shows: it goes after those pinned already, and goes on showing if it was
-    /// the tab shown. Whether it was one a pin takes.
-    pub(crate) fn pin_tab_of(&mut self, pane: u64, cx: &mut Context<Self>) -> bool {
+    /// Whether what's in hand is something the loose pages take, once it has left where it was
+    /// taken from: what their rows light up for, and what their strip shows for. They take a
+    /// page's tab off a checkout's list, and a pinned page's tile well away from the others;
+    /// not while it's still on the list or the grid it was taken from.
+    pub(crate) fn loose_taking(&self) -> bool {
+        let tab = (self.tab_hand.left_list()).is_some_and(|pane| {
+            self.workspace.loose_at(pane).is_none() && self.page_tab_of(pane).is_some()
+        });
+        tab || self.pinned_hand.left_grid()
+    }
+
+    /// Pins the tab holding pane `pane`, a checkout's or a loose page's, at the address its page
+    /// shows, in slot `place` among those pinned already or after them: it goes on showing if it
+    /// was the tab shown. Whether it was one a pin takes.
+    pub(crate) fn pin_tab_of(&mut self, pane: u64, place: usize, cx: &mut Context<Self>) -> bool {
         let home = (self.workspace.pane(pane)).and_then(Pane::address);
         let home = home.unwrap_or_default().to_owned();
         let pinned = if let Some(at) = self.workspace.loose_at(pane) {
-            self.workspace.pin_loose(at, home)
+            self.workspace.pin_loose(at, home, place)
         } else {
             let tab = self.page_tab_of(pane);
-            tab.and_then(|at| self.workspace.pin_tab(at, home))
+            tab.and_then(|at| self.workspace.pin_tab(at, home, place))
         };
         if pinned.is_some() {
             cx.notify();
         }
         pinned.is_some()
+    }
+
+    /// What's in `held` let go on the pinned pages' region, in either layout: a page's tab or a
+    /// loose page is pinned where the tiles made room for it, or after them, as on the zone
+    /// that's there while none is pinned.
+    fn pin_dropped(&mut self, held: &DraggedPane, cx: &mut Context<Self>) {
+        if let (Dragged::Tab(..) | Dragged::Loose, [face]) = (held.what, held.faces.as_slice()) {
+            let place = self.pinned_hand.lands().unwrap_or(usize::MAX);
+            self.pin_tab_of(face.id, place, cx);
+        }
+    }
+
+    /// Whether the pinned pages' region shows, in either layout: their tiles while any is
+    /// pinned, else the zone that says where one goes, unless the person put it away
+    /// (`settings.json` `pinned_zone_dismissed`) and nothing it takes is in hand, as `taking`
+    /// says.
+    fn lists_pinned(&self, taking: bool, cx: &App) -> bool {
+        !self.workspace.pinned().is_empty() || taking || !settings::get(cx).pinned_zone_dismissed
+    }
+
+    /// Puts away the zone that says where a pinned page goes, as its × does: it's back only
+    /// while a page's tab is in hand, until one is pinned.
+    fn dismiss_pinned_zone(cx: &mut App) {
+        settings::update(cx, |settings| settings.pinned_zone_dismissed = true);
     }
 
     /// A pinned page's tile let go over another slot: it moves there among them.
@@ -167,5 +256,20 @@ impl Shell {
             self.workspace.remove_pinned(at);
             cx.notify();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::initial;
+
+    #[test]
+    fn a_site_with_no_icon_shows_its_hosts_first_letter() {
+        let letter = |address| initial(address).map(|letter| letter.to_string());
+        assert_eq!(letter("https://www.example.com/docs").as_deref(), Some("E"));
+        assert_eq!(letter("http://localhost:3000/").as_deref(), Some("L"));
+        assert_eq!(letter("https://127.0.0.1:8080/").as_deref(), Some("1"));
+        assert_eq!(letter("about:blank"), None, "no host: a globe");
+        assert_eq!(letter(""), None);
     }
 }
