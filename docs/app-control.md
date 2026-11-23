@@ -163,8 +163,8 @@ agent. `project_add`, `worktree_create`, `tab_open`, `pane_split`, `file_open`,
 - `select` left out follows Settings → MCP server → Switch to what agents open
   (`externalControl.showWhatAgentsOpen`), off by default. Off, what the agent made is listed
   in the sidebar and the tab strip, and the window stays where it was: the selected
-  checkout, the tab each checkout shows, the settings page the person is on, and what has
-  the keyboard. On, the window switches to it as the person's own menus would.
+  checkout, the tab each checkout shows, the Settings tab if it's open, and what has the
+  keyboard. On, the window switches to it as the person's own menus would.
 - `select: true` or `select: false` gets what it says, whatever the setting. Agents are told
   to pass `true` only when the person asked to see the thing.
 - A tab a page opens in front (a link to a new tab, a sign-in's popup) while an agent uses the
@@ -229,6 +229,10 @@ settings_open [navigate] I { page?: "general"|"chat"|"accounts"|"appearance"|"ed
                          "about" } ;
               settings_close [navigate] I {}
 ```
+
+`settings_open` opens the Settings tab among the loose pages, or picks it if it's open, on
+`page` or the page it shows (`docs/arc-sidebar.md` 11.9); `settings_close` closes it, and the tab
+it was over shows again. `route` is `settings:<page>` while the Settings tab is shown.
 
 `sidebar: false` (or ⌘B) is compact mode: the rails fold with the sidebar until every edge is as
 thin as the gutter right of the card, and the traffic lights are hidden. The status bar is
@@ -939,8 +943,8 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   selected checkout as the menus do (`control/exec/open.rs` `on_checkout`; the right panel
   follows it there only for a file or the Changes, which open through it, so a checkout the
   person never looked at gets no panels), then `control/exec/kept.rs` puts the window back
-  in the same change (selection, the checkout's shown tab found by a pane in it, the settings page
-  by one step Back, the keyboard), so nothing is drawn in between. A new terminal's tab
+  in the same change (selection, the checkout's shown tab found by a pane in it, the Settings tab
+  taken out for the opening and put back over it, the keyboard), so nothing is drawn in between. A new terminal's tab
   arrives once the daemon answers, not shown and without the keyboard (`open_terminal`'s
   `shown`); `add_project_at` and `add_chat` take `select` themselves.
 - The tab a tool opens by itself (2026-11-14): `desktop_open`'s and `device_open`'s take no

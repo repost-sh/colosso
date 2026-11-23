@@ -39,10 +39,10 @@ use gpui_kit::{Action, point};
 
 use crate::gradient::{DotKind, GradientTheme, Harmony};
 use crate::modal;
-use crate::navigation::Route;
 use crate::quitting::{Quit, QuitDialog};
 use crate::settings::{self, Preset};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
+use crate::shell::Shell;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
@@ -124,7 +124,7 @@ fn draw() -> Result<Vec<String>> {
     drawn.cx.update(|cx| {
         cx.dispatch_action(&UseLightTheme);
         shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Settings(SettingsPage::Chat), cx);
+            shell.open_settings_page(Some(SettingsPage::Chat), cx);
         });
     });
     saved.push(drawn.save("settings-chat.png")?);
@@ -141,7 +141,7 @@ fn draw() -> Result<Vec<String>> {
 fn quitting(drawn: &mut Drawn) -> Result<std::path::PathBuf> {
     let shell = drawn.shell.clone();
     drawn.cx.update(|cx| {
-        shell.update(cx, |shell, cx| shell.navigate(Route::Workspace, cx));
+        shell.update(cx, Shell::close_settings);
     });
     let id = drawn.chat_saying(&checkout()?, IN_BACKGROUND)?;
     let chats = drawn.cx.read(|cx| shell.read(cx).chats().clone());

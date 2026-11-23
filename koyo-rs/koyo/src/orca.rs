@@ -1,8 +1,8 @@
 //! Orca layout: projects and their branch units in the sidebar inside the card, the wallpaper
 //! behind them, and in the top rail the pages that are no checkout's, then the selected
-//! checkout's tabs: the pinned pages in a pill (`pinned.rs`), the space's loose pages as tabs
-//! (`loose.rs`), a hairline, and the checkout's tabs, as the Arc sidebar lists them from its
-//! head down (`docs/arc-sidebar.md` 11). A project's row folds its branches away under it and
+//! checkout's tabs: the pinned pages in a pill (`pinned.rs`), the space's loose pages and the
+//! Settings tab as tabs (`loose.rs`), a hairline, and the checkout's tabs, as the Arc sidebar
+//! lists them from its head down (`docs/arc-sidebar.md` 11). A project's row folds its branches away under it and
 //! brings them back, and a project or a branch dragged by its row goes to another place among
 //! its own, as Arc's worktrees do (`shell/reorder.rs`), the order kept for the next launch. The
 //! selected branch's Changes and Files buttons are at the top rail's end (`shell/rails.rs`).
@@ -18,11 +18,11 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
-use crate::model::{BranchUnit, Project};
+use crate::model::{BranchUnit, Front, Project};
 use crate::pane::CLOSE;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
-    Drop, Face, InHand, List, Reorder, Shell, action_button, add_project_row, ellipsized, icon,
+    Drop, InHand, List, Reorder, Shell, action_button, add_project_row, ellipsized, icon,
     icon_button, key_of, new_tab_button, no_matches, project_error, row, section_label,
     tab_close_button, tab_list, tab_row,
 };
@@ -270,13 +270,14 @@ fn branch_row(
 
 /// What the top rail shows after the window's buttons and before the selected checkout's tabs:
 /// the pinned pages in their pill, or the zone that says where one goes; the space's loose pages
-/// as tabs; and a hairline between them and the checkout's tabs. None while there's none of
-/// them.
+/// and the Settings tab, while it's open, as tabs; and a hairline between them and the
+/// checkout's tabs. None while there's none of them.
 pub fn pages(shell: &Shell, cx: &mut Context<Shell>) -> Option<Div> {
     let p = theme::palette(cx);
     let pinned = pinned::region(shell, shell.pinned_taking(), p, cx);
     let loose = loose::tabs(shell, p, cx);
-    if pinned.is_none() && loose.is_none() {
+    let settings = loose::settings_tab(shell, p, cx);
+    if pinned.is_none() && loose.is_none() && settings.is_none() {
         return None;
     }
     let hairline = (div().w(px(1.)).h(px(18.)).mx_1().flex_shrink_0())
@@ -285,6 +286,7 @@ pub fn pages(shell: &Shell, cx: &mut Context<Shell>) -> Option<Div> {
     let pages = (div().min_w_0().h_full().flex().items_center().gap_1())
         .children(pinned)
         .children(loose)
+        .children(settings)
         .child(hairline);
     Some(pages)
 }
@@ -303,7 +305,10 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
         .map_or(0, |project| project.active_branch);
     let branch = workspace.branch();
     let tabs = branch.map_or(&[][..], |branch| &branch.tabs);
-    let shown = workspace.shown_checkout_tab();
+    let shown = match workspace.front() {
+        Some(Front::Checkout(at)) => Some(at),
+        _ => None,
+    };
     let rows = (tabs.iter().enumerate())
         .map(|(tab_index, tab)| {
             let at = (project_index, branch_index, tab_index);
@@ -330,7 +335,7 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("orca-tab-close", tab_index);
                 let close = tab_close_button(close, at, (face.dirty, CLOSE), p, cx);
-                single_page(row, face, dot, close)
+                single_page(row, (face.icon(13.), face.label()), dot, close)
             })
         })
         .collect();
@@ -367,20 +372,20 @@ fn rail_tab(id: impl Into<ElementId>, active: bool, p: Palette) -> Stateful<Div>
         .when(!active, |tab| tab.text_color(p.muted))
 }
 
-/// What a rail tab of a single page shows, as its `face` has it, at most 220 wide: its icon,
-/// `dot` when there's one, its title and `close`.
+/// What a rail tab of a single page or of Settings shows, at most 220 wide: its `icon`, `dot`
+/// when there's one, its `title` and `close`.
 fn single_page(
     tab: Stateful<Div>,
-    face: &Face,
+    (icon, title): (AnyElement, Div),
     dot: Option<Div>,
     close: Stateful<Div>,
 ) -> Stateful<Div> {
     tab.max_w(px(220.))
         .pl_2()
         .pr_1()
-        .child(face.icon(13.))
+        .child(icon)
         .children(dot)
-        .child(face.label())
+        .child(title)
         .child(close)
 }
 

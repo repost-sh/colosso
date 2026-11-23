@@ -1,5 +1,5 @@
 //! The window's layout, Orca's or Arc's, the menu that switches it, and how much of the window's
-//! glass the card lets through and how blurred that glass is, in either layout.
+//! glass the sidebar lets through and how blurred the desktop behind it is, in either layout.
 
 use gpui_kit::Action;
 use gpui_kit::component::native_menu::NativeMenu;
@@ -46,30 +46,34 @@ impl Layout {
     }
 }
 
-/// The stops of the Card glass and Glass blur sliders (Settings → Appearance),
-/// whose middle is the theme's own card and macOS's own blur.
+/// The stops of the Sidebar glass and Sidebar blur sliders (Settings → Appearance): the glass
+/// from clear through the card's own at the middle to solid, the blur from none through macOS's
+/// own at the middle to twice it.
 pub const GLASS_STOPS: [f32; 5] = [0., 0.25, 0.5, 0.75, 1.];
-/// Where along either slider the theme's or macOS's own is.
+/// Where along either slider the card's own or macOS's own is: where the blur rests.
 pub const GLASS_OWN: f32 = 0.5;
-/// How opaque the card is at the Card glass slider's clear end.
-const CLEAREST: f32 = 0.2;
+/// Where the glass rests: clear, the sidebar on the window's glass as Arc's has always been, and
+/// in Orca's card apart from the content beside it, which is on the card's own.
+pub const GLASS_CLEAR: f32 = 0.;
 
 impl Settings {
-    /// How opaque the card is where the theme has it `own`, as the person set it: from the
-    /// clearest through the theme's own to solid.
-    pub fn card_opacity(&self, own: f32) -> f32 {
-        let at = self.card_glass.clamp(0., 1.);
+    /// How opaque the sidebar's fill of the card's colour is where the theme has the card `own`,
+    /// as the person set it: from none through the card's own to solid.
+    pub fn sidebar_opacity(&self, own: f32) -> f32 {
+        let at = self.sidebar_glass.clamp(0., 1.);
         if at <= GLASS_OWN {
-            CLEAREST + (own - CLEAREST) * at / GLASS_OWN
+            own * at / GLASS_OWN
         } else {
             own + (1. - own) * (at - GLASS_OWN) / GLASS_OWN
         }
     }
 
-    /// How many times as strongly as its material the window's glass blurs, as the person set
-    /// it: from none through macOS's own to twice it.
-    pub fn blur_scale(&self) -> f64 {
-        f64::from(self.glass_blur.clamp(0., 1.) / GLASS_OWN)
+    /// How many times as strongly as its material the sidebar's glass blurs, as the person set
+    /// it: from none through macOS's own to twice it. None at macOS's own, where the sidebar
+    /// blurs as the rest of the window does, by the window's own blur.
+    pub fn sidebar_blur_scale(&self) -> Option<f64> {
+        let scale = f64::from(self.sidebar_blur.clamp(0., 1.) / GLASS_OWN);
+        Some(scale).filter(|scale| (scale - 1.).abs() > f64::EPSILON)
     }
 }
 
@@ -78,28 +82,29 @@ mod tests {
     use super::GLASS_STOPS;
     use crate::settings::Settings;
 
-    fn set(card_glass: f32, glass_blur: f32) -> Settings {
+    fn set(sidebar_glass: f32, sidebar_blur: f32) -> Settings {
         Settings {
-            card_glass,
-            glass_blur,
+            sidebar_glass,
+            sidebar_blur,
             ..Settings::default()
         }
     }
 
     #[test]
-    #[expect(clippy::float_cmp, reason = "the stops' scales are exact in binary")]
-    fn the_blur_is_none_at_the_left_macos_own_at_the_middle_and_twice_at_the_right() {
-        let scales = GLASS_STOPS.map(|at| set(0.5, at).blur_scale());
-        assert_eq!(scales, [0., 0.5, 1., 1.5, 2.]);
+    fn the_blur_is_none_at_the_left_the_windows_own_at_the_middle_and_twice_at_the_right() {
+        let scales = GLASS_STOPS.map(|at| set(0.5, at).sidebar_blur_scale());
+        assert_eq!(scales, [Some(0.), Some(0.5), None, Some(1.5), Some(2.)]);
+        assert_eq!(Settings::default().sidebar_blur_scale(), None, "the window's own by default");
     }
 
     #[test]
-    fn the_card_is_the_themes_own_at_the_middle_the_clearest_and_solid_at_the_ends() {
+    fn the_sidebar_is_clear_by_default_and_at_the_left_the_cards_own_at_the_middle_and_solid() {
         for own in [0.6, 0.65] {
-            assert!((set(0.5, 0.5).card_opacity(own) - own).abs() < 1e-6);
-            assert!((set(1., 0.5).card_opacity(own) - 1.).abs() < 1e-6);
-            assert!((set(0., 0.5).card_opacity(own) - 0.2).abs() < 1e-6);
-            let stops = GLASS_STOPS.map(|at| set(at, 0.5).card_opacity(own));
+            assert!(Settings::default().sidebar_opacity(own).abs() < 1e-6);
+            assert!(set(0., 0.5).sidebar_opacity(own).abs() < 1e-6);
+            assert!((set(0.5, 0.5).sidebar_opacity(own) - own).abs() < 1e-6);
+            assert!((set(1., 0.5).sidebar_opacity(own) - 1.).abs() < 1e-6);
+            let stops = GLASS_STOPS.map(|at| set(at, 0.5).sidebar_opacity(own));
             assert!(stops.windows(2).all(|pair| pair[0] < pair[1]), "{stops:?}");
         }
     }

@@ -156,21 +156,10 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
     refresh_edge(window.window_handle(), cx);
 }
 
-/// Has `window`'s glass blur `scale` times as strongly as its material does, 0 not at all, by
-/// way of the blur view GPUI puts under a blurred window's content (`setKoyoBlurScale:`, in
-/// `vendor/gpui-fast-macos`), which keeps it through `AppKit`'s updates.
-pub fn blur(window: &Window, scale: f64) {
-    use objc2::msg_send;
-
-    if let Some(view) = blur_view(window) {
-        // SAFETY: a `BlurredView`, the class GPUI's macOS windows blur with, which answers
-        // `setKoyoBlurScale:`, on the main thread the window is drawn on.
-        let _: () = unsafe { msg_send![&*view, setKoyoBlurScale: scale] };
-    }
-}
-
-/// The `BlurredView` GPUI puts under a blurred window's content, if `window` has one.
-fn blur_view(window: &Window) -> Option<Retained<NSView>> {
+/// The `BlurredView` GPUI puts under a blurred window's content, if `window` has one: the
+/// backmost of the content view's, as GPUI puts it under all of them and the sidebar's blur goes
+/// over it (`sidebar_blur.rs`).
+pub(super) fn blur_view(window: &Window) -> Option<Retained<NSView>> {
     use objc2::msg_send;
     use objc2::runtime::AnyClass;
 

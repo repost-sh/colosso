@@ -23,7 +23,6 @@ use crate::files::FilePane;
 use crate::browser::BrowserView;
 use crate::keyboard::{self, Cause, Intent, Part, Surface};
 use crate::model::{Content, Editor, EditorFile, Pane, PaneKind, Spot};
-use crate::navigation::Route;
 
 /// What's still to happen to the keyboard, between what the person did and the frame that
 /// settles it.
@@ -32,7 +31,7 @@ pub(crate) struct Handing {
     /// The tab, by its first pane, that takes the keyboard as it's next drawn
     /// (`Shell::keys_to_shown_tab`), and whether a chat's prompt may: one just opened only.
     to: Option<(u64, bool)>,
-    /// On a settings page, whether a pane had the keyboard when the workspace was left.
+    /// While the Settings tab is shown, whether a pane had the keyboard as it opened.
     left: Option<bool>,
     /// What the person asked for that hands it over, if they asked: else it's the tab shown.
     intent: Option<Intent>,
@@ -77,7 +76,6 @@ impl Shell {
             return false;
         }
         self.workspace.enter_pane(id);
-        self.navigate(Route::Workspace, cx);
         self.follow_selection(window, cx);
         self.make_shown(window, cx);
         let terminal = self.workspace.pane(id).and_then(Pane::terminal);
@@ -108,7 +106,6 @@ impl Shell {
     pub(crate) fn show_tab_holding(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
         let shown = self.select_tab_holding(id, cx);
         if shown {
-            self.navigate(Route::Workspace, cx);
             self.keys_to_shown_tab(cx);
         } else {
             self.keys.intent = None;
@@ -164,9 +161,12 @@ impl Shell {
     /// The pane of the shown tab that has the keyboard now, if one does.
     pub(super) fn pane_with_keyboard(&self, window: &Window, cx: &App) -> Option<u64> {
         let panes = self.workspace.tab_shown()?.panes();
-        let held =
-            |pane: &&Pane| (self.keys_of(pane, cx)).is_some_and(|keys| keys.held(window, cx));
-        panes.into_iter().find(held).map(|pane| pane.id)
+        panes.into_iter().find(|pane| self.has_keyboard(pane, window, cx)).map(|pane| pane.id)
+    }
+
+    /// Whether `pane` has the keyboard now.
+    fn has_keyboard(&self, pane: &Pane, window: &Window, cx: &App) -> bool {
+        (self.keys_of(pane, cx)).is_some_and(|keys| keys.held(window, cx))
     }
 
     /// Shows the tab at `tab` of the checkout at `branch` of `project`, as a press on its row
@@ -276,21 +276,20 @@ impl Shell {
         });
     }
 
-    /// The window shows `route` this frame. Leaving the workspace for a settings page takes
-    /// the keyboard from the pane that had it, which is no longer drawn; back on the
-    /// workspace, the tab shown has it again if one of its panes had.
-    pub(super) fn keys_follow_route(
+    /// The window shows the Settings tab this frame while `settings`. The Settings tab shown
+    /// over a tab takes the keyboard from the pane that had it, which is no longer drawn; once
+    /// it closes, the tab shown has it again if a pane had it as the Settings tab came.
+    pub(super) fn keys_follow_settings(
         &mut self,
-        route: Route,
+        settings: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         keyboard::key_state(window);
-        match (route == Route::Workspace, self.keys.left) {
+        match (!settings, self.keys.left) {
             (false, None) => {
-                let had =
-                    !self.focus.is_focused(window) && self.pane_with_keyboard(window, cx).is_some();
-                self.keys.left = Some(had);
+                let held = self.workspace.locate(|pane| self.has_keyboard(pane, window, cx));
+                self.keys.left = Some(!self.focus.is_focused(window) && held.is_some());
             }
             (true, Some(had)) => {
                 self.keys.left = None;

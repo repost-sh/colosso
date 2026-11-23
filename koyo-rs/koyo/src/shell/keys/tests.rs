@@ -160,7 +160,7 @@ fn the_settings_give_the_keyboard_back_to_the_pane_that_had_it(cx: &mut TestAppC
     assert_eq!(typing_in(window, &shell, cx), Some(page));
 
     cx.simulate_keystrokes(window, "cmd-,");
-    assert_eq!(typing_in(window, &shell, cx), None, "on a settings page");
+    assert_eq!(typing_in(window, &shell, cx), None, "on the Settings tab");
     cx.simulate_keystrokes(window, "escape");
     assert_eq!(typing_in(window, &shell, cx), Some(page), "back from them");
 

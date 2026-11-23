@@ -10,11 +10,12 @@ use gpui_kit::{
 use super::{Shell, switcher};
 use crate::files;
 use crate::model::PaneKind;
-use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
+use crate::model::SettingsTab;
+use crate::navigation::{CloseSettings, GoBack, GoForward};
 use crate::projects::{self, NewWorktree};
 use crate::settings::{self, Layout};
 use crate::settings_view::{
-    self, ClearClaudePath, EditBranchPrefix, EditClaudePath, EditPagesOpenAt,
+    self, ClearClaudePath, EditBranchPrefix, EditClaudePath, EditPagesOpenAt, ShowPage,
 };
 use crate::{browser, picker, terminals};
 
@@ -55,42 +56,38 @@ pub fn init(cx: &mut App) {
 }
 
 impl Shell {
-    /// The key context of the window's root: the settings' on a settings page, the spaces'
-    /// where the Arc sidebar shows them (`arc::bind_keys`).
-    pub(super) fn root_keys(route: Route, layout: Layout) -> KeyContext {
+    /// The key context of the window's root: the settings' while the Settings tab is shown, else
+    /// the spaces' where the Arc sidebar shows them (`arc::bind_keys`).
+    pub(super) fn root_keys(settings: bool, layout: Layout) -> KeyContext {
         let mut keys = KeyContext::default();
-        match (route, layout) {
-            (Route::Settings(_), _) => keys.add("Settings"),
-            (Route::Workspace, Layout::Arc) => keys.add(crate::arc::SPACES),
-            (Route::Workspace, Layout::Orca) => {}
+        match (settings, layout) {
+            (true, _) => keys.add("Settings"),
+            (false, Layout::Arc) => keys.add(crate::arc::SPACES),
+            (false, Layout::Orca) => {}
         }
         keys
     }
 
     /// What the window does with its actions, presses and drags, wherever they land.
     pub(super) fn handle_actions(root: Div, cx: &mut Context<Self>) -> Div {
-        root.on_action(cx.listener(|this, Navigate(route), _, cx| this.navigate(*route, cx)))
+        root.on_action(cx.listener(|this, ShowPage(page), _, cx| {
+            this.step_settings(|tab| tab.go(*page), cx);
+        }))
             .on_action(cx.listener(Self::open_settings))
-            .on_action(
-                cx.listener(|this, _: &CloseSettings, _, cx| this.navigate(Route::Workspace, cx)),
-            )
+            .on_action(cx.listener(|this, _: &CloseSettings, _, cx| this.close_settings(cx)))
             .on_action(cx.listener(|this, _: &GoBack, _, cx| {
-                this.update_history(NavigationHistory::go_back, cx);
+                this.step_settings(SettingsTab::back, cx);
             }))
             .on_action(cx.listener(|this, _: &GoForward, _, cx| {
-                this.update_history(NavigationHistory::go_forward, cx);
+                this.step_settings(SettingsTab::forward, cx);
             }))
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Back),
-                cx.listener(|this, _, _, cx| {
-                    this.update_history(NavigationHistory::go_back, cx);
-                }),
+                cx.listener(|this, _, _, cx| this.step_settings(SettingsTab::back, cx)),
             )
             .on_mouse_down(
                 MouseButton::Navigate(NavigationDirection::Forward),
-                cx.listener(|this, _, _, cx| {
-                    this.update_history(NavigationHistory::go_forward, cx);
-                }),
+                cx.listener(|this, _, _, cx| this.step_settings(SettingsTab::forward, cx)),
             )
             .on_action(cx.listener(Self::toggle_sidebar))
             .on_action(cx.listener(|this, _: &browser::ToggleDownloads, window, cx| {
@@ -100,8 +97,8 @@ impl Shell {
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
-                if matches!(this.route(cx), Route::Settings(_)) {
-                    this.navigate(Route::Workspace, cx);
+                if this.workspace.settings().is_some() {
+                    this.close_settings(cx);
                 } else if !this.close_apart_shown(window, cx)
                     && let Some(at) = this.workspace.shown_tab()
                 {

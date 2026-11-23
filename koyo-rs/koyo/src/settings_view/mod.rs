@@ -1,5 +1,5 @@
-//! Settings: a sidebar of pages that takes the workspace sidebar's place, and the page it
-//! selects in the card. Each page lives in a module of its own.
+//! Settings, shown in the Settings tab (`docs/arc-sidebar.md` 11.9): its pages listed at the
+//! tab's left, and the page picked beside them. Each page lives in a module of its own.
 
 mod about;
 mod accounts;
@@ -23,7 +23,7 @@ mod native_slider;
 mod native_switch;
 #[cfg(all(target_os = "macos", feature = "visual-check"))]
 pub mod native_visual;
-mod settings_sidebar;
+mod page_list;
 pub mod ticked_slider;
 #[cfg(feature = "visual-check")]
 pub mod visual;
@@ -35,28 +35,13 @@ pub use chat::{ClearClaudePath, EditClaudePath, edit_claude_path};
 pub use components::MenuButton;
 pub use general::{EditBranchPrefix, edit_branch_prefix};
 pub use mcp_agents::{EditPagesOpenAt, edit_pages_open_at};
-pub use settings_sidebar::SettingsSidebar;
+pub use page_list::{PageList, ShowPage, tab};
 
+use crate::navigation::SettingsPage;
 use components::{SettingsPageColumn, SettingsSection};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SettingsPage {
-    General,
-    Chat,
-    Accounts,
-    Editor,
-    Languages,
-    Appearance,
-    Browser,
-    KeyboardShortcuts,
-    McpServer,
-    AgentDesktop,
-    Devices,
-    About,
-}
-
-/// The settings sidebar's headings and the pages under each, in order.
-const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
+/// The headings of the Settings tab's list of pages, and the pages under each, in order.
+const PAGE_GROUPS: [(&str, &[SettingsPage]); 2] = [
     (
         "Preferences",
         &[
@@ -148,8 +133,8 @@ pub fn init(cx: &mut App) {
     devices::init(cx);
 }
 
-/// The page's contents for the card.
-pub fn page(page: SettingsPage, cx: &App) -> impl IntoElement {
+/// The page's contents, beside the Settings tab's list of pages.
+fn page(page: SettingsPage, cx: &App) -> impl IntoElement {
     SettingsPageColumn::new(page).children(page.sections(cx))
 }
 
@@ -225,8 +210,8 @@ mod tests {
     }
 
     #[test]
-    fn every_page_is_in_the_sidebar_once() {
-        let listed: Vec<_> = SIDEBAR_GROUPS
+    fn every_page_is_listed_once() {
+        let listed: Vec<_> = PAGE_GROUPS
             .iter()
             .flat_map(|(_, pages)| pages.iter())
             .collect();

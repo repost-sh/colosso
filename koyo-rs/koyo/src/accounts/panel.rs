@@ -27,7 +27,7 @@ use super::mark::mark;
 use super::model::{Bar, Provider, Row, View};
 use super::{Accounts, Job, words};
 use crate::menu::{self, MenuBody};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
 

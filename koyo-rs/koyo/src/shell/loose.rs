@@ -18,7 +18,6 @@ use super::reorder::{Drop, List, Reorder, TabHand};
 use super::splits::{Dragged, DraggedPane};
 use super::tab_face::Face;
 use crate::model::{ClosedFrom, ClosedTab, Loose};
-use crate::navigation::Route;
 use crate::settings::{self, LoosePages};
 use crate::theme::Palette;
 
@@ -96,13 +95,6 @@ impl Shell {
         self.workspace.apart_shown() || self.workspace.branch().is_none()
     }
 
-    /// What's shown just now is looked at, in the workspace: a page was moved and shows where
-    /// it went. The keyboard stays where it is, as it does for a tab moved (`shell/keys.rs`).
-    pub(crate) fn look_at_tab_shown(&mut self, cx: &mut Context<Self>) {
-        self.navigate(Route::Workspace, cx);
-        cx.notify();
-    }
-
     /// A loose page's row let go at another place of their list: it moves there.
     pub(crate) fn move_loose(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
         if self.workspace.move_loose(from, to) {
@@ -178,7 +170,7 @@ impl Shell {
     pub(crate) fn loosen_tab_of(&mut self, pane: u64, place: usize, cx: &mut Context<Self>) {
         let tab = self.page_tab_of(pane);
         if tab.is_some_and(|at| self.workspace.loosen_tab(at, place)) {
-            self.look_at_tab_shown(cx);
+            cx.notify();
         }
     }
 
@@ -193,7 +185,7 @@ impl Shell {
     ) {
         let at = self.workspace.loose_at(key);
         if at.is_some_and(|at| self.workspace.settle_loose(at, to, place)) {
-            self.look_at_tab_shown(cx);
+            cx.notify();
         }
     }
 
@@ -202,7 +194,7 @@ impl Shell {
     pub(crate) fn loosen_pinned(&mut self, key: u64, place: usize, cx: &mut Context<Self>) {
         let at = self.workspace.pinned_at(key);
         if at.is_some_and(|at| self.workspace.loosen_pinned(at, place)) {
-            self.look_at_tab_shown(cx);
+            cx.notify();
         }
     }
 
@@ -225,11 +217,10 @@ impl Shell {
     }
 
     /// The settings changed: every terminal's program follows the app's theme, its tab shown or
-    /// not; each project goes by the name the person gave it in Koyo, or its folder's; the loose
-    /// pages are those of the space shown; and the window's glass blurs as they say. A pinned or
-    /// a loose page shown stays shown whichever layout lists it.
-    pub(super) fn settings_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        super::state::blur_glass(window, cx);
+    /// not; each project goes by the name the person gave it in Koyo, or its folder's; and the
+    /// loose pages are those of the space shown. A pinned or a loose page shown stays shown
+    /// whichever layout lists it.
+    pub(super) fn settings_changed(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.terminals.tell_theme(cx);
         let settings = settings::get(cx);
         self.workspace.name_projects(&settings.project_looks);

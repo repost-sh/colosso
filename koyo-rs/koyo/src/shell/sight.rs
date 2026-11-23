@@ -7,15 +7,13 @@ use gpui_kit::{App, Context, Window};
 
 use super::Shell;
 use crate::model::Tab;
-use crate::navigation::Route;
 
 impl Shell {
-    /// The tab a person can see: the one shown, while the window shows the workspace, is seen
-    /// ([`crate::sight`]), and no page fills it full screen.
+    /// The tab a person can see: the one shown, while the window is seen ([`crate::sight`]) and
+    /// no page fills it full screen. None while the Settings tab is shown.
     pub(crate) fn tab_seen(&self, window: &Window, cx: &mut App) -> Option<&Tab> {
-        let seen = self.route(cx) == Route::Workspace
-            && crate::sight::window_seen(window)
-            && !crate::browser::fullscreen::fills_window(cx);
+        let seen =
+            crate::sight::window_seen(window) && !crate::browser::fullscreen::fills_window(cx);
         self.workspace.tab_shown().filter(|_| seen)
     }
 

@@ -25,9 +25,9 @@ Q=$PWD/.artifacts/qa/arc && mkdir -p $Q/tmp &&
 ```
 
 The Orca layout still lists every project. In both layouts the icon rail down the window's left
-is gone, a gutter in its place: **Settings…** is in the app's Koyo menu, ⌘, opens it, and the
-settings sidebar has a ← back to the workspace (Escape and ⌘W go there too). Switching layout
-is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu and in Settings.
+is gone, a gutter in its place: **Settings…** is in the app's Koyo menu, and ⌘, opens it, as a
+tab among the loose pages that closes once anything else shows (11.9). Switching layout is ⌘⇧M
+or the rails' right-click menu, and the appearance is in that menu and in Settings.
 
 ---
 
@@ -43,9 +43,10 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
   1. **The pinned pages**, a button each showing its page's site icon alone, in a pill: a
      rounded rectangle lighter than the rail, with no edge, the tell that they're every
      project's, not a checkout's tabs (11.2). With none pinned, the zone in its place (11.2).
-  2. **The space's loose pages**, as tabs like the checkout's (11.3).
+  2. **The space's loose pages**, as tabs like the checkout's (11.3), then the Settings tab
+     while it's open (11.9).
   3. A **hairline**, then **the selected checkout's tabs** and their **+**. The hairline is there
-     while the pill, the zone or a loose page is.
+     while the pill, the zone, a loose page or the Settings tab is.
   4. Empty glass that moves the window, at least 96 pt of it, the tabs narrowing to fit, and at
      the rail's end the selected worktree's Changes and Files buttons, the changes' saying how
      many lines they add and remove.
@@ -56,7 +57,7 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
 - Back, forward and reload on the right of the same row, in Arc's style. They act on the
   page of the pane the person is in (section 2), and in a pane of another kind on the tab's
   first page, so a page beside a chat can be reloaded from the chat. They're greyed out on a
-  tab with no page and on a settings page.
+  tab with no page and on the Settings tab.
 - A page has no toolbar of its own in this layout: the sidebar has its controls and its
   address. Responsive mode and the `DevTools` are in the page's right-click menu (Responsive
   mode, Inspect, Show or Hide DevTools), in either layout. The chip that said who drives a page
@@ -70,7 +71,7 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
   - **Terminal:** the program running in it, as its title says.
   - **Chat:** the chat's name.
   - **File tab:** "File".
-  - **Settings page:** "Settings".
+  - **The Settings tab:** "Settings".
 - In a split it says the pane the person is in: the one they last pressed in or gave the
   keyboard. Pressing the page of a chat and a page shows the page's host, pressing the chat
   the chat's name, and with two pages each has its turn. The pane is remembered while the
@@ -303,8 +304,8 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   is under way, they go on from the project, or the space, it's headed for. Past the first or
   last project of all, and at the first or last space, the space gives a little toward the side
   with none and springs back, as a swipe's rubber band does; they never wrap round. Held, they
-  repeat as the arrows do. In the Orca layout and on a settings page, where no spaces show,
-  they do nothing.
+  repeat as the arrows do. In the Orca layout, where no spaces show, and while the Settings tab
+  is shown, they do nothing.
 - **⌥↑** and **⌥↓** (`arc::PreviousTab`, `arc::NextTab`) show the tab above and below, down the
   sidebar's rows as it lists them: the space's loose pages, then the tabs of each of the
   project's worktrees, a collapsed worktree's passed over. The tab shown's pill passes from
@@ -357,7 +358,7 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
 - The keyboard is where the person puts it (`shell/keys.rs`), in either layout. A pane has it
   once they press in it, or ask for its tab: picked in the sidebar, opened (⌘T, a new terminal,
   a file), switched to (⌃⇥), opened again (⌘⇧T), shown in place of the tab or the split's pane
-  they were typing in and closed, or come back to from a settings page they left it for.
+  they were typing in and closed, or shown again as the Settings tab over it closes.
 - A chat's prompt is the exception: moving to a chat, by any of those or by another space or
   project shown, never puts the keyboard in its prompt, so ⌥← and ⌥→ go on moving between
   projects, ⌥⇧← and ⌥⇧→ between spaces, and ⌥↑ and ⌥↓ between tabs. The prompt has the
@@ -405,18 +406,27 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
     them the handle that resizes them.
   - The Changes or Files panel, the glass before it the handle that resizes it.
   - The places a symbol led to, and the bottom panel, under the panes.
-  - A settings page, and what's said where there's no tab.
+  - The Settings tab, and what's said where there's no tab.
 - Only in the Arc layout. Orca keeps its one card, holding the sidebar, the panes
   and the panel beside them, hairlines between them.
-- The card, Orca's one or Arc's islands, and the window's glass under it can be tuned in
-  Settings → Appearance, in either layout (`settings/layout.rs`): **Card glass**, how see-through
-  the card is, from clear (20 % opaque) through the theme's own at the middle to solid; and
-  **Glass blur**, how blurred the desktop behind the window looks, from none through macOS's own
-  at the middle to twice it. The card's colour follows the first in `theme::palette_for`; the
-  second sets the radius of the Gaussian blur macOS's `NSVisualEffectView` gives the window
-  (`shell::state::blur_glass`, `native::window::blur`, by way of `setKoyoBlurScale:` in
-  `vendor/gpui-fast-macos`), 30 points for this material on macOS 27, read back from Core
-  Animation as 0 and 60 at the ends. macOS blurs the whole window at one radius.
+- The sidebar's glass is tuned in Settings → Appearance, in its Layout section with the layout
+  and Unpinned pages, in either layout (`settings/layout.rs`); the cards stay the theme's own
+  colour. **Sidebar glass** is how see-through the sidebar is: from clear, the default, through
+  the card's own at the middle to solid. Its surface is the part of Orca's card it fills, whose
+  other parts paint the card's own colour (`theme::card::clear_island`), so by default Orca's
+  sidebar is the window's glass beside content on the card; in Arc it's what's on the glass short
+  of the margin before the islands, unfilled by default as it always was (`sidebar::fill`,
+  `SidebarFrame`). **Sidebar blur** is how blurred the desktop behind the sidebar looks, from
+  none through macOS's own at the middle to twice it. macOS blurs a window with one
+  `NSVisualEffectView` at one radius, the one GPUI puts under its view, which keeps its
+  material's; so while the slider is off the middle the sidebar has a second of the same class
+  (`BlurredView`), between that one and GPUI's view, over its surface alone, placed as the surface
+  is prepainted, clipped as the ⌘B slide and the card clip it, rounded at the card's corners, and
+  gone while the sidebar is folded away (`native::sidebar_blur`). At the middle, the default, it
+  has none, the window's own blurring it as it blurs the rest (`Settings::sidebar_blur_scale`
+  answers none there). The slider sets that view's Gaussian blur radius by way of
+  `setKoyoBlurScale:` in `vendor/gpui-fast-macos`: 30 points for this material on macOS 27,
+  0 and 60 at the ends.
 - A page is drawn in the window's own frame, so the island's rounded corners clip it as they
   clip the rest of what's on it.
 
@@ -436,7 +446,7 @@ From the top: **[asked]**
 2. **The pinned pages**, as tiles. The same in every space: they're outside what swipes, and
    stay where they are as a space goes out and the next comes in.
 3. **The space's loose pages**, as rows: the pages open in this space that are no project's.
-   Each space has its own, unless Settings → General → Unpinned pages shares them (11.3).
+   Each space has its own, unless Settings → Appearance → Unpinned pages shares them (11.3).
    Its own, they're the space's and swipe with it. Shared (2026-11-20, the owner: "when the
    unpinned tabs are shared they should not swipe with the space, they should stay there like
    the pinned ones on space change"), they're outside what swipes, as the pinned pages are,
@@ -537,7 +547,7 @@ to right, before the selected checkout's tabs (section 1). **[asked, 2026-11-23]
   end on hover and on the one shown. Another space lists its own, and a space shown again
   shows the loose page it showed last. **[asked: per space]**
 - **Or shared** (2026-11-20, the owner: "have the unpinned tabs be either shared per project
-  or not (in options)"). Settings → General → **Unpinned pages** is **Per space**, the
+  or not (in options)"). Settings → Appearance → **Unpinned pages** is **Per space**, the
   default, as above, or **Shared**: every space lists every loose page, one list in one
   order, whichever space or project is shown (`settings.json` `loose_pages`, `PerSpace` or
   `Shared`; app control's `loosePages`). The Orca layout's top rail lists the same pages the
@@ -748,7 +758,7 @@ menu is Arc's.
 | --- | --- |
 | `koyo/src/model/pinned.rs` | The pinned pages on the workspace: pinning, moving, closing, the pinned address, unpinning, removing |
 | `koyo/src/model/loose.rs` | The loose pages, each filed under a space, which a space lists (its own, or all of them shared), the tab shown among pinned, loose and a worktree's, and a page's tab moving between the three |
-| `koyo/src/settings/loose_pages.rs`, `settings_view/general.rs` | Unpinned pages, per space or shared, and its row in Settings → General |
+| `koyo/src/settings/loose_pages.rs`, `settings_view/appearance.rs` | Unpinned pages, per space or shared, and its row in Settings → Appearance's Layout section |
 | `koyo/src/shell/pinned.rs` | The shell's side of the pinned pages: what a pin takes, picking, closing, the pinned address |
 | `koyo/src/shell/loose.rs` | The shell's side of the loose pages: opening one, closing, moving |
 | `koyo/src/shell/browser_tabs.rs`, `shell/closing.rs`, `shell/keys.rs` | A page's events, closing a pane and showing a tab, one way for a worktree's, a pinned and a loose page (`Workspace::locate`, `Shell::show_tab_holding`) |
@@ -765,3 +775,37 @@ menu is Arc's.
 | `koyo/src/launcher/here.rs` | The launcher where no checkout is selected: a page only |
 | `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `orca/tests/rail.rs`, `shell/tile_grid/tests.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `settings/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs`, `control/tests/settings.rs` | The tests |
 | `koyo/src/arc/visual/pins.rs`, `arc/visual/rail.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`, `orca-rail-*.png`) |
+| `koyo/src/model/settings_tab.rs`, `navigation.rs` | The Settings tab on the workspace (11.9): opening it once, shown over the tab shown, closed by anything else shown, its pages and Back and Forward through them; Settings' pages |
+| `koyo/src/shell/settings_tab.rs`, `settings_view/page_list.rs` | The shell's side of the Settings tab, its row's close, and its content: Settings' own pages listed at its left, the page beside them |
+| `koyo/src/orca/loose.rs` (`settings_tab`), `arc/loose.rs` (`settings`) | The Settings tab's tab in the Orca rail and its row in the Arc sidebar |
+| `koyo/src/shell/settings_tab/tests.rs`, `model/settings_tab/tests.rs` | The Settings tab's tests |
+
+### 11.9 The Settings tab
+
+Written 2026-11-23. The owner: "make so settings becomes an unpinned tab (remove the <- next to
+settings) - going away from settings means closing the tab", with "a favicon like a gear or
+something from the icon pack we already have in the app".
+
+- ⌘,, **Settings…** in the app's Koyo menu and the rails' right-click menu, and app control's
+  `settings_open` open Settings as a tab among the loose pages: in the Arc sidebar, a row after
+  the space's loose pages, over the open project; in the Orca layout's top rail, a tab after
+  them, before the hairline (section 1). Its icon is the icon pack's gear (`IconName::Settings`),
+  where a page's own icon goes, and it says "Settings". There's one at most: opened while it's
+  open, it's picked, on the page asked for if one is. **[asked]**
+- It's shown over the tab that was shown, a worktree's, a pinned or a loose page, as a pinned
+  page is over a loose one (11.4), and the sidebar stays as it is beside it, in either layout.
+  Settings' own pages are listed inside the tab, at its left, under their search field, and the
+  page picked is beside them. They're the tab's content, on the card, not the sidebar's glass
+  or blur. There's no arrow back. **[asked]**
+- It's open only while it's shown: anything else shown closes it, another tab, a pinned or a
+  loose page, a worktree, a project or a space, a tab or a file opened, the Changes or Files
+  panel. So do its ×, a middle click on it, ⌘W, Escape and app control's `settings_close`; the
+  tab it was over shows again. **[asked]**
+- It keeps the pages it showed: Back and Forward (⌘[ and ⌘] outside a page, the mouse's side
+  buttons, the Orca rail's arrows) walk them as a page's walk its history, and stop at its first
+  and last page; while it's closed they have nothing to walk. A new Settings tab opens on the
+  page the last one showed, with nothing behind it. **[ours]**
+- It's no worktree's or space's, and only shows: it isn't dragged, pinned, copied or moved to a
+  worktree, isn't among the tabs ⌃⇥ switches between, isn't kept for the next launch, and closed
+  it isn't among the tabs ⌘⇧T brings back, which would bring back a tab that closes again as
+  soon as anything else shows. **[ours]**

@@ -175,7 +175,7 @@ impl Shell {
     ) {
         let at = self.workspace.pinned_at(key);
         if at.is_some_and(|at| self.workspace.unpin(at, to, place)) {
-            self.look_at_tab_shown(cx);
+            cx.notify();
         }
     }
 

@@ -10,7 +10,6 @@ accounts modal
 accounts native
 accounts popup
 accounts settings
-accounts settings_view
 accounts theme
 agent_desktop browser
 agent_desktop control
@@ -25,7 +24,6 @@ arc history
 arc launcher
 arc modal
 arc model
-arc navigation
 arc pane
 arc picker
 arc popup
@@ -57,7 +55,6 @@ browser theme
 changes checkout
 changes modal
 changes model
-changes navigation
 changes right_panel
 changes settings
 changes shell
@@ -73,7 +70,6 @@ chat menu
 chat modal
 chat model
 chat native
-chat navigation
 chat pane
 chat projects
 chat right_panel
@@ -100,11 +96,9 @@ control history
 control keyboard
 control main
 control model
-control navigation
 control new_worktree
 control right_panel
 control settings
-control settings_view
 control shell
 control terminals
 control theme
@@ -130,7 +124,6 @@ files language
 files modal
 files model
 files native
-files navigation
 files projects
 files right_panel
 files settings
@@ -185,7 +178,6 @@ main keyboard
 main language
 main launcher
 main native
-main navigation
 main popup
 main quitting
 main right_panel
@@ -213,7 +205,6 @@ model files
 model spaces
 native popup
 native theme
-navigation settings_view
 new_worktree modal
 new_worktree projects
 new_worktree settings
@@ -249,7 +240,6 @@ quitting files
 quitting main
 quitting modal
 quitting model
-quitting navigation
 quitting settings
 quitting terminals
 quitting theme
@@ -260,7 +250,6 @@ right_panel chat_backdrop
 right_panel checkout
 right_panel files
 right_panel language
-right_panel navigation
 right_panel settings
 right_panel shell
 right_panel theme
@@ -288,7 +277,6 @@ settings_view launcher
 settings_view modal
 settings_view model
 settings_view native
-settings_view navigation
 settings_view picker
 settings_view projects
 settings_view settings
@@ -314,7 +302,6 @@ shell language
 shell launcher
 shell model
 shell native
-shell navigation
 shell orca
 shell pane
 shell picker

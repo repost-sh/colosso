@@ -44,7 +44,7 @@ pub use fonts::{
     CHAT_SIZES, Fonts, SetChatTextSize, SetCodeFont, SetInterfaceFont, chat_size_menu,
 };
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
-pub use layout::{GLASS_OWN, GLASS_STOPS, Layout, SetLayout};
+pub use layout::{GLASS_CLEAR, GLASS_OWN, GLASS_STOPS, Layout, SetLayout};
 pub use loose_pages::{LoosePages, SetLoosePages};
 pub use picks::{SetBranchPrefix, SetMostLanguageServers, SetPreviewFiles};
 pub use project_scripts::{ProjectScript, ProjectScripts};
@@ -95,11 +95,11 @@ pub struct Settings {
     /// What text is in, and how big a chat's is.
     pub fonts: Fonts,
     pub layout: Layout,
-    /// How much of the window's glass the card lets through, along its slider
-    /// (`card_opacity`).
-    pub card_glass: f32,
-    /// How blurred the window's glass is, along its slider (`blur_scale`).
-    pub glass_blur: f32,
+    /// How much of the window's glass the sidebar lets through, along its slider
+    /// (`sidebar_opacity`).
+    pub sidebar_glass: f32,
+    /// How blurred the desktop behind the sidebar is, along its slider (`sidebar_blur_scale`).
+    pub sidebar_blur: f32,
     pub sidebar_width: f32,
     pub changes_files_width: f32,
     /// The Files panel's width, its tree's.
@@ -254,8 +254,8 @@ impl Default for Settings {
             dark_theme: GradientTheme::default(),
             fonts: Fonts::default(),
             layout: Layout::default(),
-            card_glass: GLASS_OWN,
-            glass_blur: GLASS_OWN,
+            sidebar_glass: GLASS_CLEAR,
+            sidebar_blur: GLASS_OWN,
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,

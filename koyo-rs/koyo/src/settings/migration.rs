@@ -11,7 +11,7 @@ const OLD_CHAT_SIZES: [f64; 7] = [13., 14., 15., 16., 18., 20., 22.];
 /// Settings a file may hold that the app no longer has, each where it was and why it went.
 /// A key that changes what it means goes here under its old name; one that only changes
 /// its name goes in [`RENAMED`].
-const RETIRED: [(&[&str], &str); 8] = [
+const RETIRED: [(&[&str], &str); 10] = [
     (&[], "files_width"),
     (&[], "files_panel_width"),
     (&[], "changes_width"),
@@ -20,6 +20,8 @@ const RETIRED: [(&[&str], &str); 8] = [
     (&["key_repeat"], "full_speed_after_ms"),
     (&["key_repeat"], "most_per_frame"),
     (&[], "native_pages"),
+    (&[], "card_glass"),
+    (&[], "glass_blur"),
 ];
 
 /// Settings a file may hold under a name the app no longer uses for them, each where it is,

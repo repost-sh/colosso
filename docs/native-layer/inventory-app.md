@@ -184,7 +184,7 @@ These call the modules above, or decide seam behaviour in GPUI terms. They are n
 | src/browser/view.rs:239, 421-439 | `keyboard::page_closed` on release; `focus_address`; `focus_moved` to `entered_page` or `left_page`. | 1 |
 | src/browser/dock.rs:141, 354 | ⌥⌘I out of DevTools: `keyboard::set`; docked tools' size rounded to whole points. | 1 |
 | src/shell.rs:139-146, 165 | Window activation observer: `keyboard::follow_focus` and `key_state`; GPUI's focus into the shell's root: `follow_focus`. | 1 |
-| src/shell/keys.rs:97-103, 250-278, 285 | `focus_pane`, the tab shown, `keys_follow_route` (each frame): `keyboard::set`, `tab_shown`, `key_state`. | 1 |
+| src/shell/keys.rs:97-103, 250-278, 285 | `focus_pane`, the tab shown, `keys_follow_settings` (each frame): `keyboard::set`, `tab_shown`, `key_state`. | 1 |
 | src/shell/switcher.rs:139, 210 | `window_glass::fill` on the panel; `popup::show`. | 4 |
 | src/shell/rails.rs:144 | `traffic_lights::fade`. | 0 |
 | src/menu/view.rs:58 | `native::window::callout` as a menu window's size changes. | 4 |

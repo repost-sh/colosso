@@ -12,7 +12,6 @@ use koyo_browser_ipc::Go;
 use super::{clear, delete_space, rename};
 use crate::browser::BrowserView;
 use crate::chat::Activity;
-use crate::navigation::Route;
 use crate::settings;
 use crate::shell::Shell;
 use crate::spaces::Space;
@@ -106,7 +105,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
     root.on_action(cx.listener(|this, _: &PageBack, _, cx| this.steer_page(Go::Back, cx)))
         .on_action(cx.listener(|this, _: &PageForward, _, cx| this.steer_page(Go::Forward, cx)))
         .on_action(cx.listener(|this, _: &PageReload, _, cx| {
-            if let Some(page) = this.shown_page(cx) {
+            if let Some(page) = this.shown_page() {
                 page.update(cx, BrowserView::reload_or_stop);
             }
         }))
@@ -212,8 +211,9 @@ impl Shell {
             .unwrap_or(Activity::Quiet)
     }
 
-    /// Shows space `index`, and the project it showed last, its first otherwise. An empty space
-    /// shows no project, so nothing of another space's shows, or is acted on, either.
+    /// Shows space `index`, and the project it showed last, its first otherwise, in place of the
+    /// Settings tab. An empty space shows no project, so nothing of another space's shows, or is
+    /// acted on, either.
     pub fn show_space(&mut self, index: usize, cx: &mut Context<Self>) {
         settings::update(cx, |settings| {
             settings.space = index.min(settings.spaces.len().saturating_sub(1));
@@ -224,16 +224,15 @@ impl Shell {
         let index = target.and_then(|path| self.workspace.project_index(path));
         self.workspace.select_project(index);
         self.follow_space_pages(cx);
-        self.navigate(Route::Workspace, cx);
+        self.workspace.close_settings();
         cx.notify();
     }
 
-    /// Selects the project at `index` from its tile, leaving a pinned or a loose page shown for
-    /// it.
+    /// Selects the project at `index` from its tile, leaving the Settings tab, a pinned or a
+    /// loose page shown for it.
     pub fn select_project(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.workspace.projects.len() {
             self.workspace.show_project(index);
-            self.navigate(Route::Workspace, cx);
             cx.notify();
         }
     }

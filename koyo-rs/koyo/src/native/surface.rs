@@ -21,7 +21,7 @@ use objc2_core_video::{
     CVPixelBuffer, CVPixelBufferCreate, kCVPixelFormatType_32BGRA, kCVReturnSuccess,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
-use objc2_quartz_core::CACornerMask;
+use objc2_quartz_core::{CACornerMask, CALayer};
 
 pub struct Surface {
     window: AnyWindowHandle,
@@ -153,18 +153,7 @@ impl Surface {
         if self.rounded.replace(rounded) == rounded {
             return;
         }
-        let mask = [
-            (corners.bottom_left, CACornerMask::LayerMinXMinYCorner),
-            (corners.bottom_right, CACornerMask::LayerMaxXMinYCorner),
-            (corners.top_left, CACornerMask::LayerMinXMaxYCorner),
-            (corners.top_right, CACornerMask::LayerMaxXMaxYCorner),
-        ]
-        .into_iter()
-        .filter(|(round, _)| *round)
-        .fold(CACornerMask::empty(), |mask, (_, corner)| mask | corner);
-        layer.setCornerRadius(radius);
-        layer.setMaskedCorners(mask);
-        layer.setMasksToBounds(!mask.is_empty());
+        round(&layer, corners, radius);
     }
 
     /// Shows or hides the surface, unless it's so already.
@@ -197,6 +186,23 @@ impl Surface {
             drop(surface);
         });
     }
+}
+
+/// Rounds `layer` by `radius` at those of its corners `corners` says, clipping what's in it there,
+/// and nowhere else.
+pub(crate) fn round(layer: &CALayer, corners: Corners<bool>, radius: f64) {
+    let mask = [
+        (corners.bottom_left, CACornerMask::LayerMinXMinYCorner),
+        (corners.bottom_right, CACornerMask::LayerMaxXMinYCorner),
+        (corners.top_left, CACornerMask::LayerMinXMaxYCorner),
+        (corners.top_right, CACornerMask::LayerMaxXMaxYCorner),
+    ]
+    .into_iter()
+    .filter(|(round, _)| *round)
+    .fold(CACornerMask::empty(), |mask, (_, corner)| mask | corner);
+    layer.setCornerRadius(radius);
+    layer.setMaskedCorners(mask);
+    layer.setMasksToBounds(!mask.is_empty());
 }
 
 /// A buffer to mark as a pane ([`Surface::mark`]), or as a chat's backdrop
@@ -241,14 +247,15 @@ pub fn on_whole_points(bounds: Bounds<Pixels>, clip: Bounds<Pixels>) -> Bounds<P
     )
 }
 
-/// What holds a native view in a surface of its own, given up when the view goes.
+/// What holds a native view in the window, taking it out when the view goes: a surface of its
+/// own, or the window's content view, as the sidebar's blur is in (`sidebar_blur.rs`).
 pub trait Hosted: 'static {
-    fn into_surface(self) -> Surface;
+    fn remove(self, cx: &mut App);
 }
 
 /// A native view an element keeps under one id for as long as it's drawn: made by `make`
-/// the frame it first shows, none where `make` makes none, and its surface taken out of the
-/// window the frame it isn't drawn.
+/// the frame it first shows, none where `make` makes none, and taken out of the window the
+/// frame it isn't drawn.
 pub struct Kept<T>(pub Option<T>);
 
 /// The native view kept under `id`, made by `make` the frame it first shows.
@@ -261,7 +268,7 @@ pub fn keep<T: Hosted>(
     window.use_keyed_state(id.into(), cx, |window, cx| {
         cx.on_release(|kept: &mut Kept<T>, cx| {
             if let Some(native) = kept.0.take() {
-                native.into_surface().remove(cx);
+                native.remove(cx);
             }
         })
         .detach();

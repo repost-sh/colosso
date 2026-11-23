@@ -1,7 +1,7 @@
 //! Whether what an agent makes or opens is shown: as its call's `select` says, else as the
 //! person set Switch to what agents open in Settings → MCP server, off until they turn it on.
 //! Not shown, it's listed and the window stays where it was: the checkout, the tab that
-//! checkout shows, the settings page and the keyboard.
+//! checkout shows, the Settings tab and the keyboard.
 
 use std::path::PathBuf;
 

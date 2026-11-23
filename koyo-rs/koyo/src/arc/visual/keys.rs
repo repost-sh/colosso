@@ -13,10 +13,9 @@ use std::time::Duration;
 use gpui_kit::{KeyUpEvent, Keystroke, Modifiers, PlatformInput, point, px};
 
 use super::acts::{Part, frames, save_with, settle};
-use crate::navigation::Route;
 use crate::settings;
-use crate::settings_view::SettingsPage;
-use crate::shell::NewChat;
+use crate::navigation::SettingsPage;
+use crate::shell::{NewChat, Shell};
 use crate::visual::{Drawn, Result};
 
 /// A frame of the display's, at 60 Hz.
@@ -285,13 +284,11 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 /// ⌥⇧← and ⌥⇧→ for the spaces.
 fn shortcuts_page(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
-    let go = |drawn: &mut Drawn, route| {
-        (drawn.cx).update(|cx| shell.update(cx, |shell, cx| shell.navigate(route, cx)));
-    };
-    go(drawn, Route::Settings(SettingsPage::KeyboardShortcuts));
+    let page = Some(SettingsPage::KeyboardShortcuts);
+    (drawn.cx).update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(page, cx)));
     settle(drawn)?;
     let path = drawn.save("keys-shortcuts-page.png")?;
     said.push(format!("saved {}", path.display()));
-    go(drawn, Route::Workspace);
+    (drawn.cx).update(|cx| shell.update(cx, Shell::close_settings));
     drawn.draw()
 }

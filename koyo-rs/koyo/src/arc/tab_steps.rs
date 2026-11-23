@@ -78,6 +78,6 @@ impl Shell {
             let at = cx.background_executor().now();
             self.swipe.glides.rows.start(leaving, coming, step > 0, at);
         }
-        self.look_at_tab_shown(cx);
+        cx.notify();
     }
 }

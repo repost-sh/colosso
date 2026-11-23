@@ -39,7 +39,6 @@ use gpui_kit::{
 };
 
 use crate::modal;
-use crate::navigation::Route;
 use crate::settings::{self, SaveScope};
 use crate::shell::{self, Shell};
 use crate::theme::Palette;
@@ -88,21 +87,18 @@ impl Shell {
             }))
     }
 
-    /// ⌘⇧V shows the markdown file shown as it reads, or as code again; on a settings page,
+    /// ⌘⇧V shows the markdown file shown as it reads, or as code again; on the Settings tab,
     /// or with any other file shown, nothing.
     fn toggle_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.route(cx), Route::Settings(_)) {
-            return;
-        }
         if let Some(file) = self.shown_file(window, cx) {
             file.update(cx, |file, cx| file.flip(window, cx));
         }
     }
 
     /// ⌘S saves the file shown or, as set, every file with unsaved edits in the window; on
-    /// a settings page, with no file in sight, nothing.
+    /// the Settings tab, with no file in sight, nothing.
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.route(cx), Route::Settings(_)) {
+        if self.workspace.settings().is_some() {
             return;
         }
         let editors = match settings::get(cx).save_scope {

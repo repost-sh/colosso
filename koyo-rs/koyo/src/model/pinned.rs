@@ -63,7 +63,8 @@ impl Workspace {
         &self.apart.pins.tabs
     }
 
-    /// The pinned page shown, by its place among them, if one is.
+    /// The pinned page shown, by its place among them, if one is: the Settings tab over it or
+    /// not.
     pub fn pinned_shown(&self) -> Option<usize> {
         self.apart.pins.shown()
     }
@@ -131,15 +132,16 @@ impl Workspace {
     /// Shows the pinned page at `at` in place of the selected checkout's tab. False when there's
     /// none there.
     pub fn show_pinned(&mut self, at: usize) -> bool {
-        let pins = &mut self.apart.pins;
-        let key = pins.tabs.get(at).map(Pinned::key);
+        let key = self.apart.pins.tabs.get(at).map(Pinned::key);
         if key.is_some() {
-            pins.shown = key;
+            self.apart.pins.shown = key;
+            self.apart.settings.close();
         }
         key.is_some()
     }
 
-    /// Leaves the pinned or the loose page shown for the selected checkout's tab.
+    /// Leaves the Settings tab, or the pinned or the loose page shown, for the selected
+    /// checkout's tab.
     pub fn leave_apart(&mut self) {
         self.apart.leave();
     }
@@ -155,12 +157,14 @@ impl Workspace {
     }
 
     /// Where the tab shown is, as `(project, branch, tab)`, when it's a checkout's: none while
-    /// a pinned or a loose page is shown in its place.
+    /// a pinned or a loose page is shown in its place. The Settings tab over it, it's still this
+    /// one.
     pub fn shown_checkout_tab(&self) -> Option<(usize, usize, usize)> {
         self.shown_tab().filter(|_| !self.apart_shown())
     }
 
-    /// Selects the project at `index` and shows its tab, in place of a pinned or a loose page.
+    /// Selects the project at `index` and shows its tab, in place of the Settings tab, a pinned or
+    /// a loose page.
     /// A space shown again selects its project without this, so what it showed stays shown.
     pub fn show_project(&mut self, index: usize) {
         self.apart.leave();

@@ -24,10 +24,9 @@ use image::{Rgb, RgbImage};
 use super::layout::Scaling;
 use super::screens;
 use super::wallpaper::Named;
-use crate::navigation::Route;
 use crate::right_panel::View;
 use crate::settings::{self, Quality};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout, out_dir};
 
@@ -132,7 +131,7 @@ fn draw() -> Result<Vec<String>> {
         cx.dispatch_action(&UseLightTheme);
         let shell = drawn.shell.clone();
         shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Settings(SettingsPage::Appearance), cx);
+            shell.open_settings_page(Some(SettingsPage::Appearance), cx);
         });
     });
     saved.push(drawn.save("settings-appearance.png")?);

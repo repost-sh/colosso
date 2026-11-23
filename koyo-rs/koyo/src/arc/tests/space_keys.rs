@@ -3,8 +3,8 @@
 //! and on, and a word's selection; ⌘⌥← and ⌘⌥→, and ⌘⌥⇧← and ⌘⌥⇧→, from wherever it is, the
 //! chat's composer and a terminal included. A chat's prompt has the keyboard only when the
 //! person puts it there. At the first or last project, and space, the keys show nothing new,
-//! and in the Orca layout and on a settings page nothing at all. `project_keys` has where ⌥←
-//! and ⌥→ go among a space's projects.
+//! and in the Orca layout and while the Settings tab is shown nothing at all. `project_keys` has
+//! where ⌥← and ⌥→ go among a space's projects.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};

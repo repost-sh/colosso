@@ -25,9 +25,8 @@ use koyo_agent::protocol::progress::{Plan, StepStatus};
 
 use crate::chat::thread::ChatThread;
 use crate::model::{BranchUnit, Edge, Tab};
-use crate::navigation::Route;
 use crate::settings::{self, ChatWidth};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
@@ -210,7 +209,7 @@ pub(super) fn draw() -> Result<Vec<String>> {
 
     drawn.cx.update(|cx| {
         shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Settings(SettingsPage::Chat), cx);
+            shell.open_settings_page(Some(SettingsPage::Chat), cx);
         });
     });
     drawn.draw()?;

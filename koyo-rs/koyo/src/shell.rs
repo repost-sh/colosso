@@ -1,6 +1,7 @@
 //! The window: translucent rails around a rounded content card, in Orca or Arc layout, folded
-//! away with the sidebar in compact mode (`rails`). The sidebar slot and the card show
-//! whichever route the navigation history is on: the workspace, or a settings page.
+//! away with the sidebar in compact mode (`rails`). The sidebar slot holds the layout's sidebar,
+//! and the card the tab shown: a checkout's, a pinned or a loose page's, or the Settings tab's
+//! pages (`settings_tab`).
 
 use std::rc::Rc;
 
@@ -17,14 +18,14 @@ use crate::bottom::StatusBar;
 use crate::chat::ChatTabs;
 use crate::files::Locations;
 use crate::language::ServersListed;
-use crate::model::{PaneKind, Tab, Workspace};
-use crate::navigation::{NavigationHistory, OpenSettings, Route};
+use crate::model::{Front, PaneKind, SettingsTab, Tab, Workspace};
+use crate::navigation::{OpenSettings, SettingsPage};
 use crate::right_panel::RightPanel;
 use crate::settings::{self, Layout};
-use crate::settings_view::{self, SettingsSidebar};
+use crate::settings_view::{self, PageList};
 use crate::sidebar::{SidebarFrame, slide_out};
 use crate::theme::Palette;
-use crate::theme::card::{island, part};
+use crate::theme::card::{clear_island, part};
 use crate::settings::Surface;
 use crate::{arc, backdrop, bottom, chat_backdrop, gradient, keyboard, orca, picker, theme};
 
@@ -46,6 +47,7 @@ mod pinned;
 mod rails;
 mod reopen;
 mod reorder;
+mod settings_tab;
 mod shown_page;
 mod sight;
 mod splits;
@@ -74,6 +76,7 @@ pub use elements::{
 pub use kept::{KeptWindow, reopen};
 pub use loose::{loose_close, loose_list, loose_row};
 pub(crate) use one_tab::Place;
+pub use settings_tab::{settings_close, settings_row};
 pub use reorder::{Drop, InHand, List, MOTION, Reorder, TabHand, key_of};
 pub use splits::{Dragged, DraggedPane, drag_chip};
 pub use tab_face::Face;
@@ -85,8 +88,8 @@ pub use tile_grid::{Arrange, Landing, TileGrid, TileHand};
 
 pub struct Shell {
     pub workspace: Workspace,
-    history: Entity<NavigationHistory>,
-    settings_sidebar: Entity<SettingsSidebar>,
+    /// What the Settings tab's list of pages keeps while the tab's closed.
+    settings_pages: Entity<PageList>,
     /// Closed, the window is in compact mode: the rails fold away with the sidebar.
     sidebar_open: bool,
     /// The sidebar's width while its edge is dragged, before it's saved.
@@ -142,8 +145,7 @@ impl Shell {
     pub fn new(window: &mut Window, kept: KeptWindow, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        let history = cx.new(|_| NavigationHistory::new());
-        let settings_sidebar = cx.new(|cx| SettingsSidebar::new(history.clone(), window, cx));
+        let settings_pages = cx.new(|cx| PageList::new(window, cx));
         let search = cx.new(|cx| SearchField::new(window, cx));
         let chat_tabs = ChatTabs::new(cx);
         Self::keep_on_the_way_out(cx);
@@ -154,7 +156,7 @@ impl Shell {
             cx.observe_window_bounds(window, |_, window, cx| {
                 crate::browser::fullscreen::window_resized(window, cx);
             }),
-            cx.observe(&history, |this, _, cx| this.went(cx)),
+            cx.observe(&settings_pages, |_, _, cx| cx.notify()),
             cx.observe_window_visibility(window, |this, visibility, window, cx| {
                 this.tell_sight(window, cx);
                 if visibility.is_visible() {
@@ -182,7 +184,8 @@ impl Shell {
                 this.keep_window(cx);
                 this.tell_arc_top(cx);
                 let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
-                let showing = (this.route(cx), Self::layout(cx), this.sidebar_open, pane);
+                let settings = this.workspace.settings().map(SettingsTab::page);
+                let showing = (settings, Self::layout(cx), this.sidebar_open, pane);
                 crate::popup::showing(window.window_handle(), &showing, cx);
             }),
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
@@ -190,7 +193,7 @@ impl Shell {
             settings::observe_in(window, cx, Self::settings_changed),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
             crate::browser::profiles::on_change(cx, |this, cx| {
-                if this.route(cx) == Route::Settings(settings_view::SettingsPage::Browser) {
+                if this.shows(SettingsPage::Browser) {
                     cx.notify();
                 }
             }),
@@ -201,13 +204,11 @@ impl Shell {
             cx.subscribe(&downloads, |_, _, _: &crate::browser::CameOrWent, cx| cx.notify()),
         ];
         Self::guard_closing(window, cx);
-        state::blur_glass(window, cx);
         let mut workspace = Workspace::new(&settings::get(cx).projects);
         workspace.name_projects(&settings::get(cx).project_looks);
         let mut shell = Shell {
             workspace,
-            history,
-            settings_sidebar,
+            settings_pages,
             sidebar_open: settings::get(cx).sidebar_open_on_launch,
             sidebar_dragged: None,
             rails: rails::Rails::default(),
@@ -246,35 +247,6 @@ impl Shell {
         settings::get(cx).layout
     }
 
-    pub fn route(&self, cx: &App) -> Route {
-        self.history.read(cx).current()
-    }
-
-    /// Moves through the history with `step`, which reports whether the route changed.
-    fn update_history(
-        &mut self,
-        step: impl FnOnce(&mut NavigationHistory) -> bool,
-        cx: &mut Context<Self>,
-    ) {
-        self.history.update(cx, |history, cx| {
-            if step(history) {
-                cx.notify();
-            }
-        });
-    }
-
-    pub fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
-        self.update_history(|history| history.push(route), cx);
-    }
-
-    /// Goes back to `route`, as Back does, when something opened out of sight just left it
-    /// for the workspace.
-    pub(crate) fn come_back(&mut self, route: Route, cx: &mut Context<Self>) {
-        if self.route(cx) != route {
-            self.update_history(NavigationHistory::go_back, cx);
-        }
-    }
-
     fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
         self.open_settings_page(None, cx);
     }
@@ -304,7 +276,7 @@ impl Shell {
             PaneKind::Chat | PaneKind::Browser | PaneKind::Editor => self.workspace.new_tab(kind),
         }
         self.keys_to_new_tab(kind, cx);
-        self.navigate(Route::Workspace, cx);
+        cx.notify();
     }
 
     fn show_rails_menu(
@@ -327,32 +299,25 @@ impl Shell {
             .show(event.position, window, cx);
     }
 
-    /// What the sidebar slot holds on the current route.
-    fn sidebar(
-        &self,
-        route: Route,
-        layout: Layout,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let frame = SidebarFrame::new(layout, self.sidebar_width(cx));
-        match (route, layout) {
-            (Route::Settings(_), _) => frame.child(self.settings_sidebar.clone()),
-            (Route::Workspace, Layout::Orca) => frame
+    /// What the sidebar slot holds in `layout`.
+    fn sidebar(&self, layout: Layout, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        #[cfg(target_os = "macos")]
+        let blur = settings::get(cx).sidebar_blur_scale().map(crate::native::sidebar_blur::behind);
+        #[cfg(not(target_os = "macos"))]
+        let blur = None;
+        let frame = SidebarFrame::new(layout, self.sidebar_width(cx)).blur(blur);
+        match layout {
+            Layout::Orca => frame
                 .children(chat_backdrop::backdrop(Surface::Sidebar, "sidebar-backdrop", cx))
                 .child(orca::sidebar(self, cx)),
-            (Route::Workspace, Layout::Arc) => frame.child(arc::sidebar(self, window, cx)),
+            Layout::Arc => frame.child(arc::sidebar(self, window, cx)),
         }
         .into_any_element()
     }
 
-    /// What the card shows beside the sidebar on the current route.
-    fn main(
-        &mut self,
-        route: Route,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    /// What the card shows beside the sidebar: the Settings tab while it's in front, else the
+    /// tab shown.
+    fn main(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
         let islands = theme::card::islands(cx);
         let column = div()
@@ -362,28 +327,23 @@ impl Shell {
             .flex()
             .flex_col()
             .when(islands, |column| column.gap(px(theme::GUTTER)));
-        match route {
-            Route::Settings(page) => column
-                .child(
-                    part(p, islands)
-                        .flex_1()
-                        .child(settings_view::page(page, cx)),
-                )
-                .into_any_element(),
-            Route::Workspace => {
-                let content = self.workspace_content(p, window, cx);
-                column
-                    .child(content)
-                    .children(
-                        (self.locations.clone())
-                            .map(|locations| part(p, islands).flex_shrink_0().child(locations)),
-                    )
-                    .when(self.bottom_panel_open, |main| {
-                        main.child(part(p, islands).flex_shrink_0().child(bottom::panel(p)))
-                    })
-                    .into_any_element()
-            }
+        if let Some(Front::Settings(tab)) = self.workspace.front() {
+            let settings = settings_view::tab(&self.settings_pages, tab.page(), cx);
+            return column
+                .child(part(p, islands).flex_1().child(settings))
+                .into_any_element();
         }
+        let content = self.workspace_content(p, window, cx);
+        column
+            .child(content)
+            .children(
+                (self.locations.clone())
+                    .map(|locations| part(p, islands).flex_shrink_0().child(locations)),
+            )
+            .when(self.bottom_panel_open, |main| {
+                main.child(part(p, islands).flex_shrink_0().child(bottom::panel(p)))
+            })
+            .into_any_element()
     }
 
     fn workspace_content(
@@ -429,13 +389,13 @@ impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(test)]
         crate::budget::shell_rendered();
-        let (route, layout) = (self.route(cx), Self::layout(cx));
+        let (settings, layout) = (self.workspace.settings().is_some(), Self::layout(cx));
         let root = crate::key_repeat::track(div(), window, cx)
-            .key_context(Self::root_keys(route, layout))
+            .key_context(Self::root_keys(settings, layout))
             .track_focus(&self.focus)
             .map(|root| Self::handle_actions(root, cx))
             .size_full();
-        self.keys_follow_route(route, window, cx);
+        self.keys_follow_settings(settings, window, cx);
         self.tell_sight(window, cx);
         if let Some(page) = crate::browser::fullscreen::settle(window, cx) {
             return root.bg(gpui_kit::black()).child(page).into_any_element();
@@ -445,7 +405,7 @@ impl Render for Shell {
         let width = self.sidebar_width(cx);
         let shown = self.move_rails(window, cx);
         let sidebar = (shown.open.0 > 0.).then(|| {
-            let sidebar = self.sidebar(route, layout, window, cx);
+            let sidebar = self.sidebar(layout, window, cx);
             slide_out(sidebar, width, shown.open.0).into_any_element()
         });
         let (card_sidebar, glass_sidebar) = match layout {
@@ -453,12 +413,18 @@ impl Render for Shell {
             Layout::Arc => (None, sidebar),
         };
         let islands = theme::card::islands(cx);
-        let on_workspace = route == Route::Workspace;
         let beside = rails::left_of_chat(self.sidebar_open, width);
         let next_to_page = self.workspace.tab_shown().is_some_and(Tab::shows_page);
-        let right_panel = (self.right_panel).render(on_workspace, beside, next_to_page, window, cx);
-        let main = self.main(route, window, cx);
-        let card = if islands { div() } else { island(p) }
+        let right_panel = (self.right_panel).render(!settings, beside, next_to_page, window, cx);
+        let content = div()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .flex()
+            .when(!islands, |content| content.bg(p.card))
+            .child(self.main(window, cx))
+            .children(right_panel);
+        let card = if islands { div() } else { clear_island() }
             .debug_selector(|| "shell-card".to_owned())
             .flex_1()
             .min_w_0()
@@ -467,8 +433,7 @@ impl Render for Shell {
             .relative()
             .flex()
             .children(card_sidebar)
-            .child(main)
-            .children(right_panel)
+            .child(content)
             .on_mouse_down(MouseButton::Right, |_, _, cx| {
                 picker::close(cx);
                 cx.stop_propagation();

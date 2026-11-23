@@ -9,7 +9,6 @@ use koyo_term_control::Handle;
 
 use super::super::Caller;
 use super::select::{self, TabAt};
-use crate::navigation::Route;
 use crate::shell::{Place, Shell};
 
 /// The tab `caller` runs in: its chat's, or its terminal's, when a tab shows it.
@@ -49,7 +48,6 @@ pub(crate) fn tab(
     if shown {
         let (project, branch, tab) = select::pane(&shell.workspace, pane).ok()?;
         shell.workspace.select_tab(project, branch, tab);
-        shell.navigate(Route::Workspace, cx);
         shell.follow_selection(window, cx);
         cx.notify();
     }

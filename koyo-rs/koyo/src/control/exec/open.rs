@@ -22,7 +22,6 @@ use crate::browser::agent::{self, SetBy};
 use crate::browser::profiles::By;
 use crate::files::{At, Place};
 use crate::model::{self, Content, Pane, Tab};
-use crate::navigation::Route;
 use crate::shell::Shell;
 
 /// A pane opened: now, or once the terminal daemon has answered.
@@ -313,7 +312,6 @@ fn open(
             let pane = shell.desktop_pane(shown, cx).ok_or_else(|| {
                 ControlError::not_found("No checkout is selected to open the agent desktop on.")
             });
-            shell.navigate(Route::Workspace, cx);
             cx.notify();
             Opened::Now(pane)
         }
@@ -327,7 +325,6 @@ fn open(
             let pane = shell.device_pane(None, shown, cx).ok_or_else(|| {
                 ControlError::not_found("No checkout is selected to open a device's tab on.")
             });
-            shell.navigate(Route::Workspace, cx);
             cx.notify();
             Opened::Now(pane)
         }
@@ -342,7 +339,6 @@ fn push(shell: &mut Shell, pane: Pane, beside: bool, cx: &mut Context<Shell>) ->
     } else {
         shell.workspace.push_tab(Tab::Single(pane));
     }
-    shell.navigate(Route::Workspace, cx);
     cx.notify();
     id
 }

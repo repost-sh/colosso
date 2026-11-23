@@ -30,9 +30,8 @@ use objc2_app_kit::{
 };
 
 use crate::key_repeat::KeyRepeat;
-use crate::navigation::Route;
 use crate::settings::{self, Fonts, LARGEST_CHAT_SIZE};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::shell::Shell;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::Result;
@@ -111,7 +110,7 @@ async fn check(
     let ns_window = ns_window(main)?;
     lines.push(views(&ns_window, "workspace").0);
 
-    go(shell, Route::Settings(SettingsPage::General), cx);
+    go(shell, Some(SettingsPage::General), cx);
     cx.update(|cx| {
         cx.dispatch_action(&UseLightTheme);
         settings::update(cx, |settings| settings.key_repeat = KeyRepeat::default());
@@ -176,16 +175,16 @@ async fn check(
     lines.push(shoot(&ns_window, out, "resized-dark.png", cx).await?);
     lines.extend(text_size(shell, &ns_window, out, cx).await?);
 
-    for (route, label) in [
-        (Route::Workspace, "closed"),
-        (Route::Settings(SettingsPage::General), "General again"),
-        (Route::Workspace, "closed again"),
+    for (page, label) in [
+        (None, "closed"),
+        (Some(SettingsPage::General), "General again"),
+        (None, "closed again"),
     ] {
-        go(shell, route, cx);
+        go(shell, page, cx);
         settle(cx).await;
         let (said, controls) = views(&ns_window, label);
         lines.push(said);
-        if route == Route::Workspace && controls != 0 {
+        if page.is_none() && controls != 0 {
             return fail("a native control outlived its page", &lines);
         }
     }
@@ -200,7 +199,7 @@ async fn text_size(
     out: &std::path::Path,
     cx: &mut AsyncApp,
 ) -> Result<Vec<String>> {
-    go(shell, Route::Settings(SettingsPage::Appearance), cx);
+    go(shell, Some(SettingsPage::Appearance), cx);
     cx.update(|cx| settings::update(cx, |settings| settings.fonts = Fonts::default()));
     settle(cx).await;
     let mut lines = vec![shoot(window, out, "text-size-dark.png", cx).await?];
@@ -230,8 +229,14 @@ async fn settle(cx: &mut AsyncApp) {
     cx.background_executor().timer(SETTLE).await;
 }
 
-fn go(shell: &Entity<Shell>, route: Route, cx: &mut AsyncApp) {
-    cx.update(|cx| shell.update(cx, |shell, cx| shell.navigate(route, cx)));
+/// Opens the Settings tab on `page`, or closes it with none.
+fn go(shell: &Entity<Shell>, page: Option<SettingsPage>, cx: &mut AsyncApp) {
+    cx.update(|cx| {
+        shell.update(cx, |shell, cx| match page {
+            Some(page) => shell.open_settings_page(Some(page), cx),
+            None => shell.close_settings(cx),
+        });
+    });
 }
 
 /// Scrolls the page by `down` points, the pointer over its title rather than a slider.

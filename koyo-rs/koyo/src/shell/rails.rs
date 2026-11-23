@@ -24,6 +24,7 @@ use gpui_kit::{
 
 use super::{Shell, ToggleSidebar, action_button, drag_area};
 use crate::browser::DownloadsButton;
+use crate::model::SettingsTab;
 use crate::navigation::{GoBack, GoForward};
 use crate::settings::Layout;
 use crate::theme;
@@ -207,8 +208,11 @@ impl Shell {
         let strength = LIGHTS_RESTING + (1. - LIGHTS_RESTING) * pointed;
         #[cfg(target_os = "macos")]
         crate::native::traffic_lights::fade(window, lights(shown.top) * strength);
-        let history = self.history.read(cx);
-        let (back, forward) = (history.can_go_back(), history.can_go_forward());
+        let settings = self.workspace.settings();
+        let (back, forward) = (
+            settings.is_some_and(SettingsTab::can_back),
+            settings.is_some_and(SettingsTab::can_forward),
+        );
         rail(Edge::Top, theme::TITLE_BAR_HEIGHT, shown.top, || {
             let toggle = action_button(
                 "toggle-sidebar",

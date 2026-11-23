@@ -11,7 +11,6 @@ use gpui_kit::{Context, Entity, Window};
 use super::Shell;
 use crate::files::FilePane;
 use crate::model::{ClosedFrom, ClosedTab, Content, Editor, EditorFile, Loose, Pane, Spot};
-use crate::navigation::Route;
 
 impl Shell {
     /// Opens the tab closed last again where it was, and shows it: a worktree's tab on its
@@ -64,7 +63,6 @@ impl Shell {
             }
         };
         self.make_shown(window, cx);
-        self.navigate(Route::Workspace, cx);
         self.intend(crate::keyboard::Intent::Reopen);
         self.keys_to_shown_tab(cx);
         Some(back)

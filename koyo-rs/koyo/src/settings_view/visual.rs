@@ -20,7 +20,6 @@ use gpui_kit::Action;
 use super::SettingsPage;
 use crate::files::Place;
 use crate::key_repeat::KeyRepeat;
-use crate::navigation::Route;
 use crate::settings::{self, CHAT_SIZES, Fonts, LARGEST_CHAT_SIZE};
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
@@ -60,7 +59,7 @@ fn draw() -> Result<Vec<String>> {
             settings.fonts = Fonts::default();
         });
         shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Settings(SettingsPage::General), cx);
+            shell.open_settings_page(Some(SettingsPage::General), cx);
         });
     });
     let mut saved = Vec::new();
@@ -79,7 +78,7 @@ fn draw() -> Result<Vec<String>> {
     drawn.cx.update(|cx| {
         cx.dispatch_action(&UseLightTheme);
         shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Settings(SettingsPage::Appearance), cx);
+            shell.open_settings_page(Some(SettingsPage::Appearance), cx);
         });
     });
     saved.push(drawn.save("appearance.png")?);
@@ -186,9 +185,9 @@ fn agent_desktop(drawn: &mut Drawn) -> Result<PathBuf> {
         screen_recording: false,
     };
     stands(drawn, crate::agent_desktop::State::Running, Some(grants));
-    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::AgentDesktop), cx)));
+    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(Some(SettingsPage::AgentDesktop), cx)));
     let saved = drawn.save("agent-desktop.png");
     stands(drawn, crate::agent_desktop::State::Off, None);
-    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::Appearance), cx)));
+    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(Some(SettingsPage::Appearance), cx)));
     saved
 }

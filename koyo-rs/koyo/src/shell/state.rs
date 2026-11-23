@@ -1,23 +1,11 @@
 //! The window's switches as the shell's keys and buttons set them, and as app control reads
-//! and sets them: the sidebar, the bottom panel and the settings pages; and how blurred its glass
-//! is. Where the keyboard is
-//! among the panes is `keys.rs`'s.
+//! and sets them: the sidebar and the bottom panel. Where the keyboard is among the panes is
+//! `keys.rs`'s, and the Settings tab `settings_tab.rs`'s.
 
-use gpui_kit::{App, AppContext as _, Context, SharedString, Window};
+use gpui_kit::{AppContext as _, Context, SharedString};
 
 use super::{Place, Shell};
 use crate::model::{Content, Pane, PaneKind};
-use crate::navigation::Route;
-use crate::settings_view::SettingsPage;
-
-/// Has the window's glass blur as the settings say (`Settings::blur_scale`): as it opens, and as
-/// they change.
-pub(super) fn blur_glass(window: &Window, cx: &App) {
-    #[cfg(target_os = "macos")]
-    crate::native::window::blur(window, crate::settings::get(cx).blur_scale());
-    #[cfg(not(target_os = "macos"))]
-    let _ = (window, cx);
-}
 
 impl Shell {
     /// What the sidebar's search field holds.
@@ -58,30 +46,6 @@ impl Shell {
             self.bottom_panel_open = open;
             cx.notify();
         }
-    }
-
-    /// The window shows something else: Settings → Devices lists Koyo's simulators afresh each
-    /// time it shows, and the window is drawn again.
-    pub(super) fn went(&mut self, cx: &mut Context<Self>) {
-        if self.shows(SettingsPage::Devices, cx) {
-            crate::devices::devices(cx).update(cx, crate::devices::Devices::refresh);
-        }
-        cx.notify();
-    }
-
-    /// Whether Settings shows `page`.
-    pub(super) fn shows(&self, page: SettingsPage, cx: &App) -> bool {
-        self.route(cx) == Route::Settings(page)
-    }
-
-    /// Shows Settings on `page`, or on the page shown last when `None`, as ⌘, does.
-    pub(crate) fn open_settings_page(
-        &mut self,
-        page: Option<SettingsPage>,
-        cx: &mut Context<Self>,
-    ) {
-        let page = page.unwrap_or_else(|| self.history.read(cx).last_settings_page());
-        self.navigate(Route::Settings(page), cx);
     }
 
     /// The agent desktop's pane: the one that's open, wherever it is, or a new one in a

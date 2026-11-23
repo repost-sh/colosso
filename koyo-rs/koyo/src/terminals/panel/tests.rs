@@ -7,9 +7,8 @@ use std::time::Duration;
 use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 
 use super::{ActivityPanel, PanelTab};
-use crate::navigation::Route;
 use crate::settings::Layout;
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::shell::Shell;
 use crate::terminals::budget::terminal_shown;
 use crate::test_support::{draw, on_screen, open_page, shell_on};
@@ -75,12 +74,12 @@ fn the_output_tab_reads_nothing_behind_settings_and_at_once_back_on_the_workspac
 ) {
     let (window, shell, root) = shell_on("panel-settings", Layout::Orca, cx);
     let (panel, _) = reading_output(window, &shell, &root, cx);
-    shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::General), cx));
+    shell.update(cx, |shell, cx| shell.open_settings_page(Some(SettingsPage::General), cx));
     draw(window, cx);
     let behind = reads_after(Duration::ZERO, &panel, cx);
     assert_eq!(reads_after(Duration::from_secs(3), &panel, cx), behind, "reads behind Settings");
 
-    shell.update(cx, |shell, cx| shell.navigate(Route::Workspace, cx));
+    shell.update(cx, Shell::close_settings);
     draw(window, cx);
     assert_eq!(reads_after(Duration::ZERO, &panel, cx), behind + 1, "back, it reads at once");
 }

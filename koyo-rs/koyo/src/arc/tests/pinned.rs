@@ -270,7 +270,7 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
     assert_eq!((space(cx), project(cx)), (2, None));
     still(cx);
     assert_eq!(super::said(&shell, cx), "example.com");
-    let steered = cx.read(|cx| (shell.read(cx).shown_page(cx)).map(|page| page.entity_id()));
+    let steered = cx.read(|cx| (shell.read(cx).shown_page()).map(|page| page.entity_id()));
     assert_eq!(steered, Some(view));
 
     shell.update(cx, |shell, cx| shell.show_space(0, cx));

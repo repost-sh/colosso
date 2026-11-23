@@ -11,8 +11,8 @@ use super::super::timeline::Timeline;
 use super::budget::{root_of, works};
 use super::chats_of;
 use super::drawing::{settled, shell_with_chat};
-use crate::navigation::Route;
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
+use crate::shell::Shell;
 use crate::test_support::{draw, on_screen, open_page};
 
 /// Whether the timeline shows a run at work, as the thread says once `works` has it.
@@ -77,7 +77,7 @@ fn a_chat_behind_settings_follows_nothing_and_catches_up_once_back(cx: &mut Test
     let (window, shell, view, thread) = shell_with_chat("chat-sight-settings", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     let timeline = view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
-    shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::General), cx));
+    shell.update(cx, |shell, cx| shell.open_settings_page(Some(SettingsPage::General), cx));
     draw(window, cx);
 
     works(&chats, &root, &thread, cx);
@@ -85,7 +85,7 @@ fn a_chat_behind_settings_follows_nothing_and_catches_up_once_back(cx: &mut Test
     assert!(!shows_work(&timeline, cx), "it kept up with its thread behind Settings");
     let back_at = Instant::now();
 
-    shell.update(cx, |shell, cx| shell.navigate(Route::Workspace, cx));
+    shell.update(cx, Shell::close_settings);
     draw(window, cx);
     assert!(shows_work(&timeline, cx), "back, it isn't the thread as it is");
     let since = running_since(&timeline, cx).expect("what's running");

@@ -64,8 +64,8 @@ struct Native {
 }
 
 impl Hosted for Native {
-    fn into_surface(self) -> Surface {
-        self.surface
+    fn remove(self, cx: &mut App) {
+        self.surface.remove(cx);
     }
 }
 

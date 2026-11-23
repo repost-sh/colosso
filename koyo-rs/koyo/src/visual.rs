@@ -26,7 +26,6 @@ use koyo_agent::protocol::model::Prompt;
 use koyo_project::Feed;
 
 use crate::chat::chosen::Settings;
-use crate::navigation::Route;
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
 use crate::theme::UseLightTheme;
@@ -348,7 +347,6 @@ impl Drawn {
         self.send(&id, prompt)?;
         self.cx.update(|cx| {
             shell.update(cx, |shell, cx| {
-                shell.navigate(Route::Workspace, cx);
                 shell.add_chat(root, id.clone(), true, cx);
             });
         });

@@ -14,9 +14,8 @@ use crate::browser::profiles::By;
 use crate::files::tests::{dialog, tabs};
 use crate::launcher::Launcher;
 use crate::model::{Browser, Content, Edge, Pane, PaneKind, Tab, Unloaded};
-use crate::navigation::Route;
 use crate::settings::{self, Layout};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::shell::{CloseTab, Shell};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
@@ -193,7 +192,7 @@ fn clear_asks_first_then_closes_every_tab_of_the_worktree(cx: &mut TestAppContex
 pub(super) fn said(shell: &Entity<Shell>, cx: &TestAppContext) -> String {
     cx.read(|cx| {
         let shell = shell.read(cx);
-        super::top::said(shell, shell.shown_page(cx).as_ref(), cx).0.to_string()
+        super::top::said(shell, shell.shown_page().as_ref()).0.to_string()
     })
 }
 
@@ -225,7 +224,7 @@ fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
         assert_eq!(said(&shell, cx), expected);
     }
     shell.update(cx, |shell, cx| {
-        shell.navigate(Route::Settings(SettingsPage::General), cx);
+        shell.open_settings_page(Some(SettingsPage::General), cx);
     });
     draw(window, cx);
     assert_eq!(said(&shell, cx), "Settings");
@@ -294,7 +293,7 @@ fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(cx: &m
     });
     draw(window, cx);
     let page = |cx: &TestAppContext| {
-        cx.read(|cx| (shell.read(cx).shown_page(cx)).map(|page| page.read(cx).address()))
+        cx.read(|cx| (shell.read(cx).shown_page()).map(|page| page.read(cx).address()))
     };
     let click = |pane: u64, cx: &mut TestAppContext| click_pane(window, pane, cx);
     click(app, cx);

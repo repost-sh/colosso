@@ -268,6 +268,20 @@ fn a_chat_text_size_picked_before_sizes_came_down_a_notch_keeps_its_place_on_the
 }
 
 #[test]
+fn the_cards_glass_and_the_windows_blur_picked_before_are_dropped_for_the_sidebars_defaults() {
+    let path = scratch("settings-sidebar-glass").join(FILE);
+    let old = serde_json::json!({ "layout": "Arc", "card_glass": 1., "glass_blur": 0.75 });
+    std::fs::write(&path, old.to_string()).unwrap();
+    let settings = read(&path).unwrap();
+    let json = serde_json::to_value(&settings).unwrap();
+    let defaults = serde_json::to_value(Settings::default()).unwrap();
+    assert_eq!(settings.layout, Layout::Arc);
+    assert_eq!(json["sidebar_glass"], defaults["sidebar_glass"]);
+    assert_eq!(json["sidebar_blur"], defaults["sidebar_blur"]);
+    assert!(json.get("card_glass").is_none() && json.get("glass_blur").is_none());
+}
+
+#[test]
 fn what_the_composer_shows_while_a_chat_works_is_kept() {
     for activity in ChatActivity::ALL {
         let settings = Settings {

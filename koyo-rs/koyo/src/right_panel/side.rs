@@ -8,7 +8,6 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{Context, Div, InteractiveElement as _};
 
 use super::{RightPanel, ShowFiles, ToggleChanges, ToggleFiles, View};
-use crate::navigation::Route;
 use crate::shell::{Shell, ToggleRightPanel};
 
 /// What a checkout's panel shows: the view it was last on, and whether it's open on it.
@@ -81,10 +80,10 @@ impl Shell {
     }
 
     /// Shows `view` in the selected checkout's panel, opening it if it's closed, and gives it
-    /// the keyboard.
+    /// the keyboard; the Settings tab, which the panel isn't drawn beside, closes.
     pub(crate) fn show(&mut self, view: View, cx: &mut Context<Self>) {
         self.set_open(true, Some(view), cx);
-        self.navigate(Route::Workspace, cx);
+        self.close_settings(cx);
     }
 
     /// Closes the selected checkout's panel if it shows `view`, and shows `view` otherwise.
@@ -118,7 +117,6 @@ impl Shell {
         } else {
             self.set_side(root, true, Some(view), cx);
             self.workspace.select_branch(project, branch);
-            self.navigate(Route::Workspace, cx);
         }
     }
 }

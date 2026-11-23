@@ -14,7 +14,7 @@ use gpui_kit::{
     Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
 
-use crate::model::Pinned;
+use crate::model::{Front, Pinned};
 use crate::shell::{Arrange, Dragged, DraggedPane, Landing, Shell, TileGrid};
 
 /// What the zone that says where a pinned page goes says, in either layout: to let a page go
@@ -86,9 +86,12 @@ impl Shell {
         if pinned.is_empty() {
             return None;
         }
-        let shown = self.workspace.pinned_shown();
+        let front = self.workspace.front();
         let slots = (pinned.iter().enumerate())
-            .map(|(at, pinned)| (pinned.key(), slot((at, pinned), shown == Some(at), cx)))
+            .map(|(at, pinned)| {
+                let shown = matches!(front, Some(Front::Pinned(shown)) if shown == at);
+                (pinned.key(), slot((at, pinned), shown, cx))
+            })
             .collect();
         let on_drop = cx.listener(|this, &(from, to): &(usize, usize), _, cx| {
             this.move_pinned(from, to, cx);

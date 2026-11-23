@@ -11,7 +11,6 @@ use super::super::{Caller, policy};
 use super::open::Opened;
 use super::{Exec, info, open, output, select, try_update_shell};
 use crate::model::{self, SPLIT_MIN, Tab};
-use crate::navigation::Route;
 
 impl From<Edge> for model::Edge {
     fn from(edge: Edge) -> model::Edge {
@@ -71,7 +70,6 @@ pub(crate) fn split(
             }
             if shown {
                 open::show_worktree(shell, (project, branch), window, cx);
-                shell.navigate(Route::Workspace, cx);
             } else if let Some(at) = showing.and_then(|first| unit.tab_with(first)) {
                 unit.active_tab = at;
             }

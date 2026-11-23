@@ -15,11 +15,11 @@ use crate::browser::profiles::{self, AgentPages};
 use crate::changes::Touched;
 use crate::files::tests::support::listed;
 use crate::keyboard::{self, Holder};
-use crate::navigation::Route;
 use crate::popup::{self, Kind};
 use crate::right_panel::ToggleFiles;
+use super::Shell;
+use crate::navigation::SettingsPage;
 use crate::settings::{self, Layout};
-use crate::settings_view::SettingsPage;
 use crate::test_support::{
     center_of, click, draw, hover, in_front, open_changes, open_page, open_page_view, scratch,
     shell_on, write,
@@ -429,7 +429,7 @@ fn a_change_of_the_profiles_builds_the_shell_while_settings_lists_them(cx: &mut 
     };
 
     ratchet(built_again(window, cx, changed), Built::default(), "the profiles changed, unlisted");
-    shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::Browser), cx));
+    shell.update(cx, |shell, cx| shell.open_settings_page(Some(SettingsPage::Browser), cx));
     settle(cx);
     let listed = Built {
         shell: 1,
@@ -470,10 +470,10 @@ fn a_change_of_what_a_settings_page_draws_from_builds_the_shell_while_it_is_show
     for (page, changed, hidden, shown) in pages {
         let what = |when: &str| format!("{page:?} changed, {when}");
         ratchet(built_again(window, cx, changed), hidden, &what("not shown"));
-        shell.update(cx, |shell, cx| shell.navigate(Route::Settings(page), cx));
+        shell.update(cx, |shell, cx| shell.open_settings_page(Some(page), cx));
         settle(cx);
         ratchet(built_again(window, cx, changed), shown, &what("shown"));
-        shell.update(cx, |shell, cx| shell.navigate(Route::Workspace, cx));
+        shell.update(cx, Shell::close_settings);
         settle(cx);
     }
 }

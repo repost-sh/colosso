@@ -21,8 +21,7 @@ use super::Look;
 use super::actions::{PageBack, PageForward, PageReload};
 use crate::browser::{BrowserView, Controls};
 use crate::launcher::OpenAddress;
-use crate::model::{Content, Pane};
-use crate::navigation::Route;
+use crate::model::{Content, Front, Pane, SettingsTab};
 use crate::settings::{self, Layout};
 use crate::shell::{Shell, action_button};
 
@@ -74,11 +73,11 @@ impl Shell {
         if settings::get(cx).layout != Layout::Arc {
             return;
         }
-        let page = self.shown_page(cx);
+        let page = self.shown_page();
         let shown = Shown {
-            said: said(self, page.as_ref(), cx),
+            said: said(self, page.as_ref()),
             page,
-            pages: self.pages_shown(cx),
+            pages: self.pages_shown(),
         };
         self.arc_top.tell(shown, cx);
     }
@@ -156,13 +155,9 @@ impl Render for PageControls {
 /// What the address bar says while `shown` is the page shown (`Shell::shown_page`), and
 /// whether that's a placeholder, said dimmer. A page's address is the one kept in the pane
 /// showing it, so a page's `DevTools` say their page's.
-pub(super) fn said(
-    shell: &Shell,
-    shown: Option<&Entity<BrowserView>>,
-    cx: &App,
-) -> (SharedString, bool) {
-    if matches!(shell.route(cx), Route::Settings(_)) {
-        return ("Settings".into(), false);
+pub(super) fn said(shell: &Shell, shown: Option<&Entity<BrowserView>>) -> (SharedString, bool) {
+    if let Some(Front::Settings(_)) = shell.workspace.front() {
+        return (SettingsTab::TITLE.into(), false);
     }
     let Some(tab) = shell.workspace.tab_shown() else {
         return ("No tab open".into(), true);

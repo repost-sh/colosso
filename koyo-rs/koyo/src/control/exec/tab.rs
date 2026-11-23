@@ -16,7 +16,6 @@ use super::super::{Caller, policy};
 use super::select::{self, TabAt};
 use super::{Exec, info, open, output, try_update_shell};
 use crate::model::Tab;
-use crate::navigation::Route;
 use crate::shell::Shell;
 
 /// The tabs of the worktree `input` names, or of every worktree.
@@ -180,7 +179,6 @@ pub(crate) fn select(
             }
         };
         shell.workspace.select_tab(project, branch, tab);
-        shell.navigate(Route::Workspace, cx);
         shell.follow_selection(window, cx);
         cx.notify();
         output(&info::place_at(shell, pane, (project, branch, tab)))

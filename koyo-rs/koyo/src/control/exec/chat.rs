@@ -26,7 +26,6 @@ use super::super::{Caller, policy};
 use super::{Exec, info, main_shell, output, select, try_update_shell, window_closed};
 use crate::chat::Chats;
 use crate::chat::chosen::Settings;
-use crate::navigation::Route;
 use crate::settings;
 use crate::shell::Shell;
 
@@ -224,7 +223,6 @@ pub(crate) fn create(
                         ControlError::not_found("The worktree went before its chat could show.")
                     })?;
                 if select {
-                    shell.navigate(Route::Workspace, cx);
                     shell.follow_selection(window, cx);
                 }
                 output(&ChatCreated {

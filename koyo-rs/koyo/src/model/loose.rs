@@ -4,7 +4,8 @@
 //! order of their rows. Its own, a space shows again the one it showed last when it's come back
 //! to; shared, the one shown stays shown as the space changes, as a pinned one does. A loose
 //! page shown is the tab shown in place of the selected checkout's, until a tab of a checkout
-//! is; a pinned page shown is shown over both. Only pages are loose; one's `DevTools`, detached,
+//! is; a pinned page shown is shown over both, and the Settings tab, listed after the loose
+//! pages, over all of them (`settings_tab.rs`). Only pages are loose; one's `DevTools`, detached,
 //! split its tab as they split any page's. A page's tab moves between a checkout's tabs, the
 //! loose pages and the pinned ones.
 
@@ -12,6 +13,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use super::pinned::Pins;
+use super::settings_tab::Settings;
 use super::{Pane, Pinned, Tab, Workspace};
 
 /// A loose page.
@@ -40,12 +42,14 @@ struct Filed {
     page: Loose,
 }
 
-/// The pages that are no checkout's: the pinned ones, common to every space, and the loose ones,
-/// each filed under a space. A space lists those filed under it, or every one while they're
-/// shared; which it lists is only a view, so sharing them and not loses or moves none.
+/// The tabs that are no checkout's: the pinned pages, common to every space, the loose ones,
+/// each filed under a space, and the Settings tab. A space lists those filed under it, or every
+/// one while they're shared; which it lists is only a view, so sharing them and not loses or
+/// moves none.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Apart {
     pub(super) pins: Pins,
+    pub(super) settings: Settings,
     /// Every loose page, in the order of their rows in any space that lists them.
     loose: Vec<Filed>,
     /// The loose page each space shows in place of the selected checkout's tab, by the space's
@@ -86,6 +90,7 @@ impl Apart {
         if let Some(key) = key {
             self.shown.insert(self.space, key);
             self.pins.leave();
+            self.settings.close();
         }
         key.is_some()
     }
@@ -105,29 +110,31 @@ impl Apart {
         Some(taken)
     }
 
-    /// The page shown in place of the selected checkout's tab, with the project whose profile
-    /// it keeps: the pinned page shown, else the loose page the space shown shows.
-    fn shown(&self) -> Option<(&Tab, &Path)> {
-        let pinned = || {
-            let pinned = self.pins.tabs.get(self.pins.shown()?)?;
-            Some((&pinned.tab, pinned.project.as_path()))
-        };
-        let loose = || {
-            let (_, filed) = self.listed().nth(self.shown_at()?)?;
-            Some((&filed.page.tab, filed.page.project.as_path()))
-        };
+    /// The listed page at `at`.
+    pub(super) fn listed_page(&self, at: usize) -> Option<&Loose> {
+        self.listed().nth(at).map(|(_, filed)| &filed.page)
+    }
+
+    /// The tab of the listed page at `at`, to change.
+    pub(super) fn listed_tab_mut(&mut self, at: usize) -> Option<&mut Tab> {
+        let (place, _) = self.listed().nth(at)?;
+        Some(&mut self.loose.get_mut(place)?.page.tab)
+    }
+
+    /// The tab shown in place of the selected checkout's, if a pinned or a loose page is, the
+    /// Settings tab over it or not: the pinned page shown, else the loose page the space shown
+    /// shows.
+    pub(super) fn shown_tab(&self) -> Option<&Tab> {
+        let pinned = || Some(&self.pins.tabs.get(self.pins.shown()?)?.tab);
+        let loose = || Some(&self.listed_page(self.shown_at()?)?.tab);
         pinned().or_else(loose)
     }
 
-    /// The tab shown in place of the selected checkout's, if a pinned or a loose page is.
-    pub(super) fn shown_tab(&self) -> Option<&Tab> {
-        self.shown().map(|(tab, _)| tab)
-    }
-
-    /// Neither a pinned page nor a loose one is shown from now on: the selected checkout's tab
-    /// is.
+    /// Neither the Settings tab, a pinned page nor a loose one is shown from now on: the
+    /// selected checkout's tab is.
     pub(super) fn leave(&mut self) {
         self.pins.leave();
+        self.settings.close();
         self.shown.remove(&self.space);
     }
 
@@ -211,7 +218,7 @@ impl Workspace {
     }
 
     /// The loose page that's the tab shown, by its place among those listed: none while a
-    /// pinned page is shown over it.
+    /// pinned page is shown over it. The Settings tab over it, it's still this one.
     pub fn loose_shown(&self) -> Option<usize> {
         let over = self.apart.pins.shown().is_some();
         self.apart.shown_at().filter(|_| !over)
@@ -363,11 +370,6 @@ impl Workspace {
         })
     }
 
-    /// The project whose profile the pinned or the loose page shown keeps, if one is shown.
-    pub fn shown_apart_project(&self) -> Option<&Path> {
-        self.apart.shown().map(|(_, project)| project)
-    }
-
     /// Every tab there is: the pinned, each space's loose ones, and every checkout's.
     fn tabs(&self) -> impl Iterator<Item = &Tab> {
         self.everywhere().map(|visited| visited.tab)
@@ -382,16 +384,6 @@ impl Workspace {
             .flat_map(|project| &mut project.branches)
             .flat_map(|unit| &mut unit.tabs);
         apart.tabs_mut().chain(open)
-    }
-
-    /// The tab shown, to change: the pinned page shown, else the space's loose page shown, else
-    /// the selected checkout's.
-    pub fn tab_shown_mut(&mut self) -> Option<&mut Tab> {
-        if let Some(shown) = self.apart_shown_key() {
-            return self.apart.tabs_mut().find(|tab| tab.first().id == shown);
-        }
-        let unit = self.branch_mut()?;
-        unit.tabs.get_mut(unit.active_tab)
     }
 
     /// Pane `id`, on whichever checkout it is, among the pinned or among any space's loose

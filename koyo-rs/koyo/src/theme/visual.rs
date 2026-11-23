@@ -14,9 +14,8 @@ use gpui_kit::{Action, App};
 
 use super::accent::{self, hex};
 use super::{UseDarkTheme, UseLightTheme, palette};
-use crate::navigation::Route;
 use crate::settings;
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
 use crate::visual::{Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
@@ -41,7 +40,7 @@ fn draw() -> Result<Vec<String>> {
     drawn.cx.update(|cx| {
         settings::update(cx, |settings| settings.sidebar_open_on_launch = true);
         shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Settings(SettingsPage::General), cx);
+            shell.open_settings_page(Some(SettingsPage::General), cx);
         });
     });
     let themes: [(&dyn Action, &str); 2] = [(&UseLightTheme, "light"), (&UseDarkTheme, "dark")];

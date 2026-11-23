@@ -6,7 +6,6 @@ use gpui_kit::{AppContext as _, Context, Entity, Window};
 
 use super::{ChangesEvent, ChangesPanel, ChangesTab};
 use crate::model::{Content, Editor, Pane, Tab};
-use crate::navigation::Route;
 use crate::shell::Shell;
 
 impl Shell {
@@ -39,7 +38,6 @@ impl Shell {
             self.workspace
                 .open_beside_shown(Tab::Single(Pane::of_changes(Some(changes))));
         }
-        self.navigate(Route::Workspace, cx);
         cx.notify();
     }
 

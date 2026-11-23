@@ -322,15 +322,14 @@ pub fn palette(cx: &App) -> Palette {
 
 /// The dark palette if `dark`, else the light one, whatever the appearance on screen, in the
 /// accent in use: for what's drawn on glass whose tone the page under it sets rather than the
-/// theme (`glass`). The card is as opaque as the person set it (`Settings::card_opacity`).
+/// theme (`glass`).
 pub fn palette_for(dark: bool, cx: &App) -> Palette {
     let palette = if dark { DARK } else { LIGHT };
     let primary = gradient::current(cx).primary();
-    let card = palette.card.alpha(settings::get(cx).card_opacity(palette.card.a));
     Palette {
         mono: fonts::code(cx),
         accent: accent::get(dark, cx),
-        card: tinted(card, primary, CARD_SATURATION),
+        card: tinted(palette.card, primary, CARD_SATURATION),
         glass_edge: tinted(palette.glass_edge, primary, EDGE_SATURATION),
         wash: tinted(palette.wash, primary, WASH_SATURATION),
         faint_wash: tinted(palette.faint_wash, primary, WASH_SATURATION),

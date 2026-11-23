@@ -3,32 +3,27 @@
 //! their page; in a pane of another kind, the shown tab's first page, so a page beside a chat
 //! can still be steered from the chat.
 
-use gpui_kit::{App, Context, Entity};
+use gpui_kit::{Context, Entity};
 use koyo_browser_ipc::Go;
 
 use super::Shell;
 use crate::browser::BrowserView;
 use crate::model::Pane;
-use crate::navigation::Route;
 
 impl Shell {
     /// Every page in the tab shown, each pane's own, `DevTools` too: what the launcher may float
     /// over, and takes its tone from (`theme::glass`).
-    pub fn pages_shown(&self, cx: &App) -> Vec<Entity<BrowserView>> {
-        let shown = self.workspace.tab_shown();
-        let Some(tab) = shown.filter(|_| self.route(cx) == Route::Workspace) else {
+    pub fn pages_shown(&self) -> Vec<Entity<BrowserView>> {
+        let Some(tab) = self.workspace.tab_shown() else {
             return Vec::new();
         };
         let panes = tab.panes().into_iter();
         panes.filter_map(|pane| pane.view().cloned()).collect()
     }
 
-    /// The page the sidebar's address, back, forward and reload, and ⌘L act on: none on a
-    /// settings page, or with no page in the tab shown.
-    pub fn shown_page(&self, cx: &App) -> Option<Entity<BrowserView>> {
-        if self.route(cx) != Route::Workspace {
-            return None;
-        }
+    /// The page the sidebar's address, back, forward and reload, and ⌘L act on: none while the
+    /// Settings tab is shown, or with no page in the tab shown.
+    pub fn shown_page(&self) -> Option<Entity<BrowserView>> {
         let tab = self.workspace.tab_shown()?;
         let page = (tab.current().steered_page())
             .or_else(|| tab.panes().into_iter().find_map(Pane::steered_page));
@@ -36,7 +31,7 @@ impl Shell {
     }
 
     pub(crate) fn steer_page(&mut self, to: Go, cx: &mut Context<Self>) {
-        if let Some(page) = self.shown_page(cx) {
+        if let Some(page) = self.shown_page() {
             page.update(cx, |page, cx| page.go(to, cx));
         }
     }

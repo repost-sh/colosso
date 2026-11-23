@@ -1,7 +1,6 @@
-//! General: how the sidebar opens, which layout holds it, whether the Arc sidebar's unpinned
-//! pages are each space's or shared, and how wide it is; where new worktrees go and what their
+//! General: how the sidebar opens and how wide it is; where new worktrees go and what their
 //! branches are named under; how a held arrow key repeats; and what quitting does with the
-//! terminals and chats still running.
+//! terminals and chats still running. The layout and what's its sidebar's are Appearance's.
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
@@ -42,9 +41,7 @@ fn quitting(cx: &App) -> SettingsSection {
 
 fn sidebar(cx: &App) -> SettingsSection {
     let p = theme::palette(cx);
-    let current = settings::get(cx);
-    let (layout, loose) = (current.layout, current.loose_pages);
-    let width = current.sidebar_width().round();
+    let width = settings::get(cx).sidebar_width().round();
     SettingsSection::new("Sidebar")
         .row(
             SettingRow::new("Show sidebar on launch")
@@ -54,27 +51,6 @@ fn sidebar(cx: &App) -> SettingsSection {
                     |settings| settings.sidebar_open_on_launch,
                     |settings, open| settings.sidebar_open_on_launch = open,
                 )),
-        )
-        .row(
-            SettingRow::new("Layout")
-                .description(
-                    "Orca keeps the sidebar and tabs inside the card. Arc lists tabs on the glass.",
-                )
-                .control(MenuButton::new("layout", layout.label(), |cx| {
-                    settings::get(cx).layout.menu()
-                })),
-        )
-        .row(
-            SettingRow::new("Unpinned pages")
-                .description(
-                    "In the Arc sidebar, the pages under the pinned ones that are no worktree's. \
-                     Per space, each space lists its own; Shared, every space lists them all. A \
-                     page opened while they're shared is the space's shown then, so going back \
-                     to Per space puts each in its space. Pinned pages are in every space.",
-                )
-                .control(MenuButton::new("loose-pages", loose.label(), |cx| {
-                    settings::get(cx).loose_pages.menu()
-                })),
         )
         .row(
             SettingRow::new("Sidebar width")

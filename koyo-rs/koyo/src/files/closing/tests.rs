@@ -11,7 +11,6 @@ use crate::files::tests::{
     answer, checkout, dialog, editing, new_chat, press, shell_showing, tabs, typed, with_shell,
 };
 use crate::modal;
-use crate::navigation::Route;
 
 #[gpui_kit::test]
 fn cmd_w_closes_what_is_looked_at_never_the_window(cx: &mut TestAppContext) {
@@ -41,12 +40,9 @@ fn cmd_w_closes_what_is_looked_at_never_the_window(cx: &mut TestAppContext) {
     answer(cx, SaveDialog::close);
     assert!(tabs(&shell, cx).is_empty());
     press(window, "cmd-,", cx);
-    assert!(matches!(
-        cx.read(|cx| shell.read(cx).route(cx)),
-        Route::Settings(_)
-    ));
+    assert!(cx.read(|cx| shell.read(cx).workspace.settings().is_some()));
     press(window, "cmd-w", cx);
-    assert_eq!(cx.read(|cx| shell.read(cx).route(cx)), Route::Workspace);
+    assert!(cx.read(|cx| shell.read(cx).workspace.settings().is_none()));
     assert_eq!(cx.read(|cx| cx.windows().len()), 1, "never the window");
     let _ = std::fs::remove_dir_all(&root);
 }

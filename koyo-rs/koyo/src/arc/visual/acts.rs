@@ -315,8 +315,8 @@ pub fn drag_tile(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 fn bar(drawn: &Drawn) -> (String, Option<String>) {
     drawn.cx.read(|cx| {
         let shell = drawn.shell.read(cx);
-        let said = crate::arc::top::said(shell, shell.shown_page(cx).as_ref(), cx).0.to_string();
-        let page = shell.shown_page(cx).map(|page| page.read(cx).address());
+        let said = crate::arc::top::said(shell, shell.shown_page().as_ref()).0.to_string();
+        let page = shell.shown_page().map(|page| page.read(cx).address());
         (said, page)
     })
 }

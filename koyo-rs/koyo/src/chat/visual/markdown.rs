@@ -24,9 +24,9 @@ use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::model::{Prompt, Status};
 
 use crate::chat::view::ChatView;
-use crate::navigation::Route;
 use crate::settings::{self, Preset};
-use crate::settings_view::SettingsPage;
+use crate::navigation::SettingsPage;
+use crate::shell::Shell;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout, prompt};
 
@@ -340,7 +340,7 @@ impl Check {
         let shell = self.drawn.shell.clone();
         self.drawn.cx.update(|cx| {
             shell.update(cx, |shell, cx| {
-                shell.navigate(Route::Settings(SettingsPage::Chat), cx);
+                shell.open_settings_page(Some(SettingsPage::Chat), cx);
             });
         });
         self.both("settings-chat")?;
@@ -349,7 +349,7 @@ impl Check {
                 settings.floating_prompts = true;
                 settings.chat_verbosity = Preset::Normal.verbosity();
             });
-            shell.update(cx, |shell, cx| shell.navigate(Route::Workspace, cx));
+            shell.update(cx, Shell::close_settings);
         });
         self.drawn.draw()
     }

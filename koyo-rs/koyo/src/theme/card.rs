@@ -1,7 +1,9 @@
 //! The islands the window's content sits on in the Arc layout: each pane of the tab shown, the
 //! panel beside them, what's listed under them, each a rounded card of its own, the window's
 //! glass between them as a thin margin (`docs/arc-sidebar.md` 10). The Orca layout has one card,
-//! an island holding them all, hairlines between them.
+//! an island holding them all, hairlines between them, whose parts paint their own colour: the
+//! sidebar as much of the card's as Settings → Appearance → Sidebar glass says, the rest the
+//! card's own.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -36,12 +38,16 @@ const SHADOW: BoxShadow = BoxShadow {
 /// ([`prepainted`]), which is when such a view is placed, and the view rounds the corners
 /// it shares with it.
 pub fn island(p: Palette) -> Div {
+    clear_island().bg(p.card)
+}
+
+/// An [`island`] with no colour of its own, for one whose parts paint theirs, as Orca's card does.
+pub fn clear_island() -> Div {
     div()
         .relative()
         .min_w_0()
         .min_h_0()
         .rounded(px(CARD_RADIUS))
-        .bg(p.card)
         .shadow(vec![SHADOW])
         .overflow_hidden()
         .child(

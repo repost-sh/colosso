@@ -19,7 +19,6 @@ use super::{Chats, ChatsEvent};
 use crate::files::Place;
 use crate::model::{PaneKind, Workspace};
 use crate::native::notifications;
-use crate::navigation::Route;
 use crate::shell::Shell;
 
 /// Shows the chat a person clicked a notification of, or only brings Koyo to the front for a
@@ -255,9 +254,7 @@ impl Shell {
     /// Hands `action`, heard at the window, on to the chat the person is in, where the
     /// workspace shows it.
     fn tell_chat(&mut self, action: &dyn Action, window: &mut Window, cx: &mut Context<Self>) {
-        let chat = (self.route(cx) == Route::Workspace)
-            .then(|| self.focused_pane(window, cx))
-            .flatten()
+        let chat = (self.focused_pane(window, cx))
             .and_then(|pane| self.chat_tabs.view(pane))
             .map(|chat| chat.focus_handle(cx));
         match chat {

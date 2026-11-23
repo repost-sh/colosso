@@ -5,7 +5,8 @@
 //! pinned; and a page's tab from a worktree, or a pinned page's tile, let go on them is one of
 //! them. Right-clicked, a row is copied into the selected worktree. With none, there's no list:
 //! a dotted strip takes one that's in hand. Each space's own, they're part of the space, and
-//! slide with it as it changes; shared, they stay where they are with the pinned pages.
+//! slide with it as it changes; shared, they stay where they are with the pinned pages. The
+//! Settings tab, while it's open, is the row after them, the pill, as it's shown (11.9).
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -14,14 +15,14 @@ use gpui_kit::{
     Stateful, StatefulInteractiveElement as _, Styled as _, div, px, relative,
 };
 
-use super::worktrees::{ROW_END, arc_row, pill_row, tab_icon};
+use super::worktrees::{ROW_END, TAB_ICON, arc_row, pill_row, tab_icon};
 use super::{DraggedPin, Look};
-use crate::model::Loose;
+use crate::model::{Front, Loose, SettingsTab};
 use crate::pane::{ROW_GLYPH, row_sized, sized_close_button};
 use crate::projects::with_menu;
 use crate::shell::{
-    CopyToWorktree, Dragged, DraggedPane, Shell, loose_close, loose_list, loose_row,
-    title_with_end,
+    CopyToWorktree, Dragged, DraggedPane, Shell, ellipsized, icon, loose_close, loose_list,
+    loose_row, settings_close, settings_row, title_with_end,
 };
 /// Between the rows, as between a worktree's.
 const GAP: f32 = 2.;
@@ -63,21 +64,51 @@ pub fn sliding(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>)
     Some(div().flex_shrink_0().pb(px(AFTER)).child(list))
 }
 
+/// The loose pages the space shown lists, then the Settings tab's row while it's open.
+fn list(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Option<Div> {
+    let pages = pages(shell, taking, look, cx);
+    let settings = shell.workspace.settings().map(|_| settings(look, cx));
+    if pages.is_none() && settings.is_none() {
+        return None;
+    }
+    Some(div().flex().flex_col().gap(px(GAP)).children(pages).children(settings))
+}
+
 /// The loose pages the space shown lists, in a list they're dragged along; with none, the strip
 /// that takes one while something they'd take is in hand, and nothing otherwise. `taking` says
 /// something is: a page's tab off a worktree's list, or a pinned page's tile away from the
 /// others.
-fn list(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Option<AnyElement> {
+fn pages(shell: &Shell, taking: bool, look: Look, cx: &mut Context<Shell>) -> Option<AnyElement> {
     let pages = shell.workspace.loose();
     if pages.is_empty() {
         return taking.then(|| strip(look, cx).into_any_element());
     }
-    let shown = shell.workspace.loose_shown();
+    let front = shell.workspace.front();
     let rows = (pages.iter().enumerate())
-        .map(|(at, page)| row(shell, (at, page), (shown == Some(at), taking), look, cx))
+        .map(|(at, page)| {
+            let shown = matches!(front, Some(Front::Loose(shown)) if shown == at);
+            row(shell, (at, page), (shown, taking), look, cx)
+        })
         .collect();
     let list = loose_list(&shell.tab_hand, (Axis::Vertical, px(GAP)), rows, cx);
     Some(list.into_any_element())
+}
+
+/// The Settings tab's row: the pill, as it's the tab shown, its gear where a page's icon goes,
+/// and its × at its end.
+fn settings(look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let p = look.p;
+    let close = row_sized(sized_close_button("arc-settings-tab-close", ROW_GLYPH, p));
+    let close =
+        settings_close(close, cx).debug_selector(|| "arc-settings-tab-close".to_owned());
+    let title = (div().id("arc-settings-tab-title").flex()).child(ellipsized(SettingsTab::TITLE));
+    let row = arc_row("arc-settings-tab")
+        .debug_selector(|| "arc-settings-tab".to_owned())
+        .bg(look.pill)
+        .pr(px(ROW_END))
+        .child(tab_icon(icon(SettingsTab::ICON, TAB_ICON).into_any_element(), p))
+        .child(title_with_end(title, close, true, "arc-settings-tab"));
+    settings_row(row, cx)
 }
 
 /// Has `row` take what's let go on it for the loose pages, at `place` among them: a page's tab
@@ -153,7 +184,7 @@ fn row(
             .id(("arc-loose-title", key))
             .flex()
             .child(face.label());
-        row.child(tab_icon(face, p))
+        row.child(tab_icon(face.icon(TAB_ICON), p))
             .child(title_with_end(title, close, active, "arc-loose"))
     });
     #[cfg(feature = "visual-check")]

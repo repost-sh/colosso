@@ -15,7 +15,6 @@ use crate::browser::{self, BrowserEvent, BrowserView, Responsive};
 use crate::history::Place;
 use crate::keyboard::Intent;
 use crate::model::{Edge, Located, Loose, Pane, Spot, Tab};
-use crate::navigation::Route;
 
 impl Shell {
     /// Opens a browser tab on the selected checkout, at `url` or on the start page with
@@ -88,7 +87,6 @@ impl Shell {
             self.intend(intent);
             self.keys_to_shown_tab(cx);
         }
-        self.navigate(Route::Workspace, cx);
         cx.notify();
         Some(id)
     }

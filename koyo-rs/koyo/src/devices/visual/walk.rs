@@ -98,7 +98,7 @@ fn settings(drawn: &mut Drawn, link: &gpui_kit::Entity<Link>, lines: &mut Vec<St
     let udid = drawn.cx.read(|cx| link.read(cx).udid.clone());
     let listed = |drawn: &mut Drawn| drawn.cx.read(|cx| registry.read(cx).simulator(&udid).map(|simulator| simulator.booted));
     let shell = drawn.shell.clone();
-    let page = crate::settings_view::SettingsPage::Devices;
+    let page = crate::navigation::SettingsPage::Devices;
     drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(Some(page), cx)));
     drawn.until(Duration::from_secs(20), |drawn| Ok(listed(drawn) == Some(true)))?;
     lines.push(format!("{}", drawn.save("walk-settings-running.png")?.display()));

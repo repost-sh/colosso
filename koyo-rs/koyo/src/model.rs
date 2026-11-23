@@ -12,22 +12,26 @@ mod chats;
 mod closed;
 mod content;
 mod entered;
+mod front;
 mod loose;
 mod moves;
 mod names;
 mod page;
 mod pane;
 mod pinned;
+mod settings_tab;
 mod shape;
 mod tab;
 mod terminals;
 mod visits;
 pub use closed::{ClosedFrom, ClosedTab};
 pub use content::{Content, Device, Editor, EditorFile};
+pub use front::Front;
 pub use loose::Loose;
 pub use page::{Browser, Unloaded};
 pub use pane::Pane;
 pub use pinned::Pinned;
+pub use settings_tab::SettingsTab;
 pub use tab::{Edge, SPLIT_MIN, Split, SplitAxis, Tab};
 pub use visits::{Located, Spot, Visited};
 
@@ -210,7 +214,8 @@ pub struct Workspace {
     turn: u64,
     /// What the pane the person entered last was stamped with (`enter_pane`).
     entered: u64,
-    /// The pages of no checkout: the pinned, and each space's loose ones (`loose.rs`).
+    /// The tabs of no checkout: the pinned pages, each space's loose ones and the Settings tab
+    /// (`loose.rs`).
     apart: loose::Apart,
 }
 
@@ -239,16 +244,6 @@ impl Workspace {
     /// Selects the project at `index`; with `None`, or a place past the list, shows none.
     pub fn select_project(&mut self, index: Option<usize>) {
         self.active_project = index.filter(|&index| index < self.projects.len());
-    }
-
-    /// The tab shown: the pinned page shown, whichever project is; else the loose page the
-    /// space shows; else the selected worktree's, if a project is shown and it has one.
-    pub fn tab_shown(&self) -> Option<&Tab> {
-        if let Some(apart) = self.apart.shown_tab() {
-            return Some(apart);
-        }
-        let unit = self.branch()?;
-        unit.tabs.get(unit.active_tab)
     }
 
     pub fn branch(&self) -> Option<&BranchUnit> {
@@ -459,8 +454,8 @@ impl Workspace {
         })
     }
 
-    /// Where the selected checkout's tab is, as `(project, branch, tab)`: the tab shown, unless a
-    /// pinned or a loose page is (`pinned_shown`, `loose_shown`).
+    /// Where the selected checkout's tab is, as `(project, branch, tab)`: the tab shown, unless
+    /// a pinned or a loose page is (`pinned_shown`, `loose_shown`), or the Settings tab is over it.
     pub fn shown_tab(&self) -> Option<(usize, usize, usize)> {
         let project = self.project()?;
         let unit = project.branch()?;

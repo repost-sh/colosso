@@ -8,7 +8,7 @@ use gpui_kit::{App, Image, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 
 use crate::history::{self, Place};
-use crate::model::PaneKind;
+use crate::model::{Front, PaneKind};
 use crate::shell::Shell;
 
 pub struct Here {
@@ -56,10 +56,12 @@ impl Here {
             worktree: unit.worktree.path.clone(),
             project: project.path.clone(),
         };
-        let shown: Vec<u64> = (workspace.shown_checkout_tab())
-            .and_then(|at| workspace.tab(at))
-            .map(|tab| tab.panes().iter().map(|pane| pane.id).collect())
-            .unwrap_or_default();
+        let shown: Vec<u64> = match workspace.front() {
+            Some(Front::Checkout(at)) => workspace.tab(at),
+            _ => None,
+        }
+        .map(|tab| tab.panes().iter().map(|pane| pane.id).collect())
+        .unwrap_or_default();
         let tabs = (unit.tabs.iter())
             .flat_map(|tab| tab.panes())
             .filter(|pane| !shown.contains(&pane.id))

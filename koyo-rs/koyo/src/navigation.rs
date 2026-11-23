@@ -1,29 +1,31 @@
-//! Where the window is: the workspace or a settings page, with back and forward history
-//! like a browser's. The shell owns the history; views move through it with actions.
+//! The window's Back and Forward, which walk the Settings tab's pages (a browser tab takes them
+//! for its own history, as a browser does), the keys that open and close Settings, and its
+//! pages. The shell answers them (`shell/settings_tab.rs`).
 
-use gpui_kit::base::History;
-use gpui_kit::{Action, App, KeyBinding, actions};
-
-use crate::settings_view::SettingsPage;
-
-/// How many steps back the history remembers.
-const HISTORY_LIMIT: usize = 50;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Route {
-    Workspace,
-    Settings(SettingsPage),
-}
+use gpui_kit::{App, KeyBinding, actions};
 
 actions!(navigation, [GoBack, GoForward, OpenSettings, CloseSettings]);
 
-/// Goes to `0`, recording where the window was so Back returns there.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = navigation, no_json)]
-pub struct Navigate(pub Route);
+/// A page of Settings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum SettingsPage {
+    #[default]
+    General,
+    Chat,
+    Accounts,
+    Editor,
+    Languages,
+    Appearance,
+    Browser,
+    KeyboardShortcuts,
+    McpServer,
+    AgentDesktop,
+    Devices,
+    About,
+}
 
-/// Where the window's Back and Forward keys don't reach: a browser tab takes them for its
-/// own history, as a browser does.
+/// Where the window's Back and Forward keys don't reach: a browser tab takes them for its own
+/// history, as a browser does.
 const OUTSIDE_BROWSER: &str = "!BrowserPage && !BrowserAddress && !BrowserFind";
 
 pub fn bind_keys(cx: &mut App) {
@@ -35,119 +37,9 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
-pub struct NavigationHistory {
-    routes: History<Route>,
-    /// The settings page Open Settings returns to.
-    last_settings_page: SettingsPage,
-}
-
-impl NavigationHistory {
-    pub fn new() -> Self {
-        let mut routes = History::new().max_entries(HISTORY_LIMIT);
-        routes.push(Route::Workspace);
-        NavigationHistory {
-            routes,
-            last_settings_page: SettingsPage::General,
-        }
-    }
-
-    pub fn current(&self) -> Route {
-        self.routes.current().copied().unwrap_or(Route::Workspace)
-    }
-
-    pub fn last_settings_page(&self) -> SettingsPage {
-        self.last_settings_page
-    }
-
-    pub fn can_go_back(&self) -> bool {
-        self.routes.can_back()
-    }
-
-    pub fn can_go_forward(&self) -> bool {
-        self.routes.can_forward()
-    }
-
-    /// Goes to `route` and drops the forward history; returns whether the route changed.
-    pub fn push(&mut self, route: Route) -> bool {
-        if route == self.current() {
-            return false;
-        }
-        self.routes.push(route);
-        self.arrived(route);
-        true
-    }
-
-    pub fn go_back(&mut self) -> bool {
-        self.routes
-            .back()
-            .map(|route| self.arrived(route))
-            .is_some()
-    }
-
-    pub fn go_forward(&mut self) -> bool {
-        self.routes
-            .forward()
-            .map(|route| self.arrived(route))
-            .is_some()
-    }
-
-    fn arrived(&mut self, route: Route) {
-        if let Route::Settings(page) = route {
-            self.last_settings_page = page;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use gpui_kit::{KeyContext, Keystroke};
-
-    use super::*;
-
-    #[test]
-    fn back_and_forward_retrace_the_pushed_routes() {
-        let mut history = NavigationHistory::new();
-        let appearance = Route::Settings(SettingsPage::Appearance);
-        assert!(history.push(Route::Settings(SettingsPage::General)));
-        assert!(history.push(appearance));
-        assert!(history.go_back());
-        assert_eq!(history.current(), Route::Settings(SettingsPage::General));
-        assert!(history.go_back());
-        assert_eq!(history.current(), Route::Workspace);
-        assert!(!history.go_back());
-        assert!(history.go_forward());
-        assert!(history.go_forward());
-        assert_eq!(history.current(), appearance);
-        assert!(!history.can_go_forward());
-    }
-
-    #[test]
-    fn pushing_drops_the_forward_history() {
-        let mut history = NavigationHistory::new();
-        history.push(Route::Settings(SettingsPage::About));
-        history.go_back();
-        assert!(history.can_go_forward());
-        history.push(Route::Settings(SettingsPage::General));
-        assert!(!history.can_go_forward());
-    }
-
-    #[test]
-    fn pushing_the_current_route_records_nothing() {
-        let mut history = NavigationHistory::new();
-        assert!(!history.push(Route::Workspace));
-        assert!(!history.can_go_back());
-    }
-
-    #[test]
-    fn open_settings_returns_to_the_last_page_shown() {
-        let mut history = NavigationHistory::new();
-        history.push(Route::Settings(SettingsPage::KeyboardShortcuts));
-        history.push(Route::Workspace);
-        assert_eq!(
-            history.last_settings_page(),
-            SettingsPage::KeyboardShortcuts
-        );
-    }
 
     #[gpui_kit::test]
     fn a_browser_tab_takes_back_and_forward_for_its_own_history(cx: &mut gpui_kit::TestAppContext) {

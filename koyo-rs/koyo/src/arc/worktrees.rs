@@ -21,11 +21,11 @@ use super::glide;
 use super::header::header;
 use super::{Look, space_colour, space_dot};
 use crate::chat::Activity;
-use crate::model::{BranchUnit, Project, Tab};
+use crate::model::{BranchUnit, Front, Project, Tab};
 use crate::pane::{ROW_GLYPH, row_sized};
 use crate::settings;
 use crate::shell::{
-    Dragged, DraggedPane, Drop, Face, List, MOTION, Reorder, Shell, add_project_row, ellipsized,
+    Dragged, DraggedPane, Drop, List, MOTION, Reorder, Shell, add_project_row, ellipsized,
     key_of, project_error, tab_close_button, tab_list, tab_row, title_with_end,
 };
 use crate::theme::Palette;
@@ -76,12 +76,12 @@ pub(super) fn pill_row(
         .children(light.map(|light| light.debug_selector(move || format!("arc-tab-light-{key}"))))
 }
 
-/// A tab's icon at the head of its row, a little fainter than its title.
-pub(super) fn tab_icon(face: &Face, p: Palette) -> Div {
+/// A tab's `icon`, `TAB_ICON` wide, at the head of its row, a little fainter than its title.
+pub(super) fn tab_icon(icon: AnyElement, p: Palette) -> Div {
     div()
         .flex_shrink_0()
         .text_color(p.text.opacity(0.75))
-        .child(face.icon(TAB_ICON))
+        .child(icon)
 }
 
 /// The space's loose pages, then the project shown's name and its worktrees, scrolling between
@@ -112,7 +112,10 @@ pub fn space(
         ),
         Some(_) if folded => {}
         Some((project_index, project)) => {
-            let shown = shell.workspace.shown_checkout_tab();
+            let shown = match shell.workspace.front() {
+                Some(Front::Checkout(at)) => Some(at),
+                _ => None,
+            };
             let worktrees = (project.branches.iter().enumerate())
                 .map(|(branch_index, unit)| {
                     let at = (project_index, branch_index);
@@ -305,7 +308,7 @@ fn tab_row_of(
                 .opacity(0.)
                 .group_hover("arc-tab", |style| style.opacity(1.))
         });
-        let icon = tab_icon(face, p);
+        let icon = tab_icon(face.icon(TAB_ICON), p);
         let end = div().relative().children(mark).child(close);
         let said = said.map(|said| {
             ellipsized(said)

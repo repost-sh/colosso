@@ -15,7 +15,6 @@ use crate::checkout::{Checkout, Document};
 use crate::go_to_file;
 use crate::language::{self, Found};
 use crate::model::{Content, Editor, EditorFile, Pane, Tab};
-use crate::navigation::Route;
 use crate::right_panel::View;
 use crate::settings;
 use crate::shell::Shell;
@@ -109,7 +108,6 @@ impl Shell {
                 file.focus(window, cx);
             }
         });
-        self.navigate(Route::Workspace, cx);
         cx.notify();
     }
 

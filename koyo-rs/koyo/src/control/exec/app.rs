@@ -1,5 +1,5 @@
-//! The window: its status, bringing it forward, its panels and layout, and the settings
-//! pages it shows.
+//! The window: its status, bringing it forward, its panels and layout, and the Settings tab
+//! and the page it shows.
 
 use futures::channel::oneshot;
 use gpui_kit::App;
@@ -12,10 +12,10 @@ use koyo_app_control::ops::shared::Layout;
 use serde_json::Value;
 
 use super::{Exec, main_shell, output, try_update_shell, update_shell};
-use crate::navigation::Route;
+use crate::model::SettingsTab;
+use crate::navigation::SettingsPage as Page;
 use crate::right_panel::View;
 use crate::settings;
-use crate::settings_view::SettingsPage as Page;
 use crate::shell::Shell;
 
 /// What the window shows, as `app_status` answers it.
@@ -53,7 +53,7 @@ pub(crate) fn status(cx: &mut App) -> AppStatusOutput {
             window_open: true,
             focused: window.is_window_active(),
             on_screen: window.is_visible(),
-            route: route(shell.route(cx)),
+            route: route(shell.workspace.settings()),
             sidebar_open: shell.sidebar_open(),
             right_panel: right_panel(shell),
             bottom_panel_open: shell.bottom_panel_open(),
@@ -133,7 +133,8 @@ pub(crate) fn layout_set(input: &LayoutSetInput, cx: &mut App) -> Result<Value, 
     output(&state)
 }
 
-/// Shows Settings on `page`, or on the page shown last.
+/// Opens the Settings tab on `page`, or picks it again if it's open: on the page it shows, or
+/// the last one showed, with none asked for.
 pub(crate) fn settings_open(
     page: Option<SettingsPage>,
     cx: &mut App,
@@ -160,9 +161,9 @@ pub(crate) fn settings_open(
     status_value(cx)
 }
 
-/// Leaves Settings for the workspace.
+/// Closes the Settings tab: the tab it was shown over shows again.
 pub(crate) fn settings_close(cx: &mut App) -> Result<Value, ControlError> {
-    update_shell(cx, |shell, _, cx| shell.navigate(Route::Workspace, cx))?;
+    update_shell(cx, |shell, _, cx| shell.close_settings(cx))?;
     status_value(cx)
 }
 
@@ -173,10 +174,12 @@ fn right_panel(shell: &Shell) -> Option<RightPanel> {
     })
 }
 
-fn route(route: Route) -> String {
-    match route {
-        Route::Workspace => "workspace".to_owned(),
-        Route::Settings(page) => format!(
+/// What `app_status` says the window shows: the Settings tab's page while it's open, as
+/// `settings:<page>`, and `workspace` otherwise.
+fn route(settings: Option<&SettingsTab>) -> String {
+    match settings.map(SettingsTab::page) {
+        None => "workspace".to_owned(),
+        Some(page) => format!(
             "settings:{}",
             match page {
                 Page::General => "general",
