@@ -94,21 +94,24 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   visible): a popup anchors to its extensions container, and there is no action to trigger
   without one.
 - The host talks to Chrome over a **browser-level DevTools pipe** inside Koyo's own
-  process: `--remote-debugging-pipe`, with the two descriptors named by
-  `--remote-debugging-io-pipes` (a patch: Chromium takes 3 and 4 on macOS, which Koyo has
-  long given away by the time the engine starts). No port is opened; nothing outside the
-  process can reach it.
-- **The pipe mustn't make Koyo an automation client** (`devtools-pipe-embedder`). Started
-  with no window of its own (`no-startup-window`) and a DevTools pipe, stock Chrome takes
-  whoever holds the pipe for one: it holds itself alive until the pipe hangs up, and when
-  it does, quits by itself (`ChromeDevToolsManagerDelegate`, `CloseBrowserSoon`). That
-  exit ran beside the host's own shutdown and ended the process before the profiles had
-  written theirs: the host's test of a sign-in across the engine quitting lost its cookies
-  every time. `[proven]` 2026-11-16, the engine as a process of its own; in the app's
-  process the sign-in was kept all the same, twice of twice. Leaving the pipe open instead
-  left an engine that never quit. With the patch Chrome does neither for a pipe whose ends
-  are named (`--remote-debugging-io-pipes`), the host hangs up as it stops, and the pipe
-  isn't made on a framework without the patch.
+  process, asked for by `--remote-debugging-io-pipes` alone, which names its two descriptors
+  (patches: Chromium takes 3 and 4 on macOS, which Koyo has long given away by the time the
+  engine starts, and starts the pipe only for `--remote-debugging-pipe`). No port is opened;
+  nothing outside the process can reach it.
+- **The pipe mustn't make Koyo an automation client** (`devtools-pipe-embedder`). Chromium
+  passes `--remote-debugging-pipe` on to every page's process, which then says it's a
+  browser under automation (`navigator.webdriver` true), as ChromeDriver's are: sites' bot
+  checks, Cloudflare's among them, challenged the person again at every answer, and a
+  person couldn't sign in to claude.ai. `[proven]` 2026-11-24, `tests/smoke/extensions.rs`:
+  true with the switch, false without. And stock Chrome, started with no window of its own
+  (`no-startup-window`) and a DevTools pipe, holds itself alive until the pipe hangs up and
+  then quits by itself (`ChromeDevToolsManagerDelegate`, `CloseBrowserSoon`). That exit ran
+  beside the host's own shutdown and ended the process before the profiles had written
+  theirs: the host's test of a sign-in across the engine quitting lost its cookies every
+  time. `[proven]` 2026-11-16, the engine as a process of its own. Without
+  `--remote-debugging-pipe` Chrome doesn't hold itself alive for the pipe, and with the
+  patch it doesn't quit when an embedder's pipe hangs up; the host hangs up as it stops, and
+  the pipe isn't made on a framework without the patch.
 - Over it, Koyo's additions to the `Extensions` domain: the installed extensions of every
   profile, an action run on a page, turning one on or off, removing, pinning, which page
   is the active one, and events when an action or the list changes (section 10). Pages are
@@ -319,7 +322,7 @@ aren't carried: Koyo's menu rows have none.
 | `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (from Cra); a page found by CEF's number for its browser |
 | `koyo-popup` | Koyo | A popup is Chrome's own from the press to its closing. It hangs from the icon Koyo draws, whose rectangle and corner `koyoTriggerAction` takes, and Chrome sizes it, keeps it there as its page resizes and keeps it on the screen. It has Chrome's title row with the extension's name and a close button. It shows as soon as its page has a size, not once the page has loaded. It closes on a press on its icon (`koyoActionPointerDown`, then the press), when another page becomes the active one, and when the keyboard leaves it for a window that isn't Chromium's |
 | `devtools-pipe-descriptors` | Koyo | `--remote-debugging-io-pipes=<read>,<write>` on macOS and Linux |
-| `devtools-pipe-embedder` | Koyo | With those descriptors named, Chrome doesn't wait on the pipe's client before it quits, and doesn't quit by itself when the client hangs up |
+| `devtools-pipe-embedder` | Koyo | Those descriptors named, Chrome starts the pipe without `--remote-debugging-pipe`, so no page says it's under automation, and doesn't quit by itself when the client hangs up |
 | `dialog-without-parent-titlebar` | Koyo | A window-modal dialog whose parent isn't one of Chromium's windows, Chrome's install dialog over a page in Koyo's, has no title bar drawn over its heading |
 | `extension-current-window-last-active` | Koyo | With no window focused, an extension's current window is the one active last, not the one made last |
 

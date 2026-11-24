@@ -27,7 +27,6 @@ wrap_app! {
                 command_line.append_switch(Some(&"use-mock-keychain".into()));
             }
             if let Some(ends) = crate::extensions::pipe_switch() {
-                command_line.append_switch(Some(&"remote-debugging-pipe".into()));
                 command_line.append_switch_with_value(
                     Some(&"remote-debugging-io-pipes".into()),
                     Some(&ends.as_str().into()),

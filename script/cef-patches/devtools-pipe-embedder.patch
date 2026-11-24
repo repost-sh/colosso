@@ -1,25 +1,3 @@
---- a/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
-+++ b/chrome/browser/devtools/chrome_devtools_manager_delegate.cc
-@@ -199,7 +199,18 @@
-   // manager daemon. The extra keep alive is not needed and makes ChromeOS
-   // not able to shutdown chrome properly. See https://crbug.com/40167603.
-   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
--  if ((command_line->HasSwitch(switches::kNoStartupWindow) ||
-+  // Koyo: an embedder that holds the pipe's other ends itself
-+  // (--remote-debugging-io-pipes, which names descriptors of this process) is
-+  // no automation process the browser waits on: it runs the browser's life,
-+  // and a keep alive of ours would hold its message loop past its quit.
-+  const bool embedder_pipe =
-+#if BUILDFLAG(IS_WIN)
-+      false;
-+#else
-+      command_line->HasSwitch("remote-debugging-io-pipes");
-+#endif
-+  if (!embedder_pipe &&
-+      (command_line->HasSwitch(switches::kNoStartupWindow) ||
-        command_line->HasSwitch(switches::kHeadless)) &&
-       (command_line->HasSwitch(switches::kRemoteDebuggingPipe) ||
-        command_line->HasSwitch(switches::kRemoteDebuggingPort))) {
 --- a/chrome/browser/devtools/remote_debugging_server.cc
 +++ b/chrome/browser/devtools/remote_debugging_server.cc
 @@ -12,6 +12,7 @@
@@ -38,23 +16,51 @@
  #include "chrome/browser/browser_process.h"
  #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
  #include "chrome/browser/devtools/devtools_window.h"
-@@ -323,6 +325,19 @@
+@@ -189,6 +191,20 @@
+   return local_state->GetBoolean(prefs::kDevToolsRemoteDebuggingEnabled);
+ }
+ 
++// Koyo: whether an embedder holds the pipe's other ends itself
++// (--remote-debugging-io-pipes, which names descriptors of this process). It
++// asks for the pipe with that switch alone: --remote-debugging-pipe is passed
++// on to every renderer, which takes it for a browser under automation
++// (navigator.webdriver), and the embedder's pipe drives no page.
++bool EmbedderHoldsPipe() {
++#if BUILDFLAG(IS_WIN)
++  return false;
++#else
++  return base::CommandLine::ForCurrentProcess()->HasSwitch(
++      "remote-debugging-io-pipes");
++#endif
++}
++
+ }  // namespace
+ 
+ int RemoteDebuggingServer::GetPortFromUserDataDir(
+@@ -323,6 +339,16 @@
  }
  
  void RemoteDebuggingServer::StartPipeHandler() {
-+#if !BUILDFLAG(IS_WIN)
-+  // Koyo: an embedder that holds the pipe's other ends itself
-+  // (--remote-debugging-io-pipes) stops the browser when it means to. Its end
-+  // closing, as it does when the embedder's process goes, is no request to
-+  // quit: the exit that would start here runs beside the embedder's own
-+  // shutdown and ends the process before the profiles have written theirs.
-+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-+          "remote-debugging-io-pipes")) {
++  // Koyo: an embedder that holds the pipe's other ends stops the browser when
++  // it means to. Its end closing, as it does when the embedder's process goes,
++  // is no request to quit: the exit that would start here runs beside the
++  // embedder's own shutdown and ends the process before the profiles have
++  // written theirs.
++  if (EmbedderHoldsPipe()) {
 +    content::DevToolsAgentHost::StartRemoteDebuggingPipeHandler(
 +        base::DoNothing());
 +    return;
 +  }
-+#endif
    content::DevToolsAgentHost::StartRemoteDebuggingPipeHandler(
        base::BindOnce(&ChromeDevToolsManagerDelegate::CloseBrowserSoon));
  }
+@@ -350,7 +376,8 @@
+ 
+   auto server = base::WrapUnique(new RemoteDebuggingServer());
+ 
+-  if (command_line.HasSwitch(switches::kRemoteDebuggingPipe)) {
++  if (command_line.HasSwitch(switches::kRemoteDebuggingPipe) ||
++      EmbedderHoldsPipe()) {
+     if (const auto maybe_allow_debugging =
+             IsRemoteDebuggingAllowed(is_default_user_data_dir, local_state);
+         !maybe_allow_debugging.has_value()) {

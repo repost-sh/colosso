@@ -1,8 +1,8 @@
-//! The browser-level `DevTools` pipe (`docs/extensions.md` 2.3): Chromium started with
-//! `--remote-debugging-pipe` reads protocol messages from one descriptor and writes its
-//! answers and events to another, each ended by a zero byte. In the app's own process the
-//! host holds the other two ends, so the engine has a client it trusts with the `Extensions`
-//! domain and no port is open to anyone else.
+//! The browser-level `DevTools` pipe (`docs/extensions.md` 2.3): Chromium started with the
+//! pipe's ends named (`--remote-debugging-io-pipes`) reads protocol messages from one and
+//! writes its answers and events to the other, each ended by a zero byte. In the app's own
+//! process the host holds the other two ends, so the engine has a client it trusts with the
+//! `Extensions` domain and no port is open to anyone else.
 
 use std::io::{BufRead, BufReader, PipeWriter, Write as _};
 use std::os::fd::IntoRawFd as _;
