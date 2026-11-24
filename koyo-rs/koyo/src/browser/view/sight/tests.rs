@@ -173,3 +173,21 @@ fn a_tab_left_by_a_press_and_release_at_once_tells_the_host_nothing_of_either_pa
     assert_eq!(told(&asked, left), [], "the host knows the page left isn't drawn: {asked:?}");
     assert_eq!(told(&asked, first), [], "nor that the page come to is: {asked:?}");
 }
+
+/// A page drawn while its window counted as unseen tells the host, at the next paint, once the
+/// window counts as seen, whatever made it so: what it last told is checked against what it
+/// would tell at every paint, not only as its pane or its window's visibility changes. Told
+/// only then, a page that counted as seen with no callback stayed hidden for the engine while
+/// it was drawn, and took no focus.
+#[gpui_kit::test]
+fn a_drawn_page_tells_the_host_its_window_is_seen_at_the_next_paint(cx: &mut TestAppContext) {
+    let (host, window, view) = out_of_sight("seen-at-paint", cx);
+    let pane = view.read_with(cx, |view, _| view.pane);
+    assert_eq!(told(&host.asked(cx), pane).last(), Some(&RESTS), "drawn unseen, it rests");
+
+    crate::sight::count_unseen(true);
+    view.update(cx, |_, cx| cx.notify());
+    draw(window, cx);
+    crate::sight::count_unseen(false);
+    assert_eq!(told(&host.asked(cx), pane), [(false, true)], "seen, it's told so as it's drawn");
+}

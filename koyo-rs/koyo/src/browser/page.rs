@@ -172,7 +172,7 @@ impl Element for PageSurface {
             let shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
             let shown = shown.downgrade();
             let view = self.view.read(cx);
-            if view.shown.as_ref() != Some(&shown) || view.told.is_none() {
+            if view.shown.as_ref() != Some(&shown) || view.told != Some(view.sight()) {
                 self.view.update(cx, |view, cx| {
                     view.shown = Some(shown);
                     view.tell_sight(cx);
