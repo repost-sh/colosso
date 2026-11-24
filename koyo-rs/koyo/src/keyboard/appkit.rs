@@ -209,12 +209,6 @@ impl Responders for Told {
         hooks::pressed(key, over, button);
     }
 
-    fn remounted(&self, window: &AnyObject) {
-        if let Some(key) = key_of(window) {
-            hooks::remounted(key);
-        }
-    }
-
     fn delivered(&self, window: &AnyObject, over: *mut AnyObject, button: isize) {
         let Some(key) = key_of(window) else {
             return;

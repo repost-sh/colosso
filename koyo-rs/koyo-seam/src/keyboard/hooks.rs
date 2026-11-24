@@ -236,27 +236,6 @@ pub fn page_leaving(pane: PaneId) {
     }
 }
 
-/// `window`'s native views were all taken out of it and put back (the window's surfaces
-/// changed: a page's developer tools docked or hidden). A page's view that had the first
-/// responder has lost it to the window, unheard, as `AppKit` says so through no
-/// `makeFirstResponder:`. On the next turn, the frame that did it over, the first responder is
-/// made what the holder wants again, so no key finds it astray.
-pub fn remounted(window: WindowKey) {
-    let Some(installed) = installed() else {
-        return;
-    };
-    let again = installed.clone();
-    (installed.later)(Duration::ZERO, Box::new(move || {
-        let Some((holder, _)) = super::held(window) else {
-            return;
-        };
-        if let Some(moved) = moving(|| reconcile::reconcile(holder, window, &*again.appkit)) {
-            let line = format!("keyboard: the window's views were put back; {moved}");
-            lines::write(log::Level::Info, &line);
-        }
-    }));
-}
-
 /// The views of the page in `pane` are in a window now: one whose holder wants them has them
 /// take the keyboard.
 pub fn page_arrived(pane: PaneId) {

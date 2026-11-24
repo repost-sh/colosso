@@ -34,7 +34,9 @@ use objc2::{
     runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel},
     sel,
 };
-use objc2_app_kit::{NSAutoresizingMaskOptions, NSEventType, NSViewLayerContentsRedrawPolicy};
+use objc2_app_kit::{
+    NSAutoresizingMaskOptions, NSEventType, NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
+};
 use objc2_foundation::{NSInteger, NSPoint, NSRect, NSSize};
 use parking_lot::Mutex;
 
@@ -81,9 +83,6 @@ pub(crate) struct MacComposition {
     // the press opened tracks it, a drag session takes it) left that owner on for good, and
     // every later drag in the window, of any button, went to it and so reached nobody.
     native_presses: FxHashMap<NSInteger, usize>,
-    // Koyo: the window's native views were taken out and put back since the app was last
-    // told (`set_composition_order`), which the window tells it of once that's done.
-    pub(crate) koyo_remounted: bool,
     input_forwarders: FxHashSet<usize>,
     event_result: gpui::DispatchEventResult,
     forwarding_scroll: bool,
@@ -101,7 +100,6 @@ impl MacComposition {
             input_order: Rc::new(Vec::new()),
             native_event: 0,
             native_presses: FxHashMap::default(),
-            koyo_remounted: false,
             input_forwarders: FxHashSet::default(),
             event_result: gpui::DispatchEventResult {
                 propagate: true,
@@ -806,6 +804,30 @@ pub(crate) fn create_native_surface(
     }
 }
 
+/// Koyo: puts each view of `order` above its parent's other subviews, in order, so the last
+/// is on top. Upstream took every view out of the window and added it back, and a view never
+/// in a window for that moment is a view that left it: the first responder among them went
+/// to the window, unasked, and a browser page's views heard their window lose key and stop
+/// being active, which nothing told them again once back, so a page took text with no caret.
+/// A view put above its siblings, or under another parent in the same window, never leaves
+/// the window, and the first responder stays where it was.
+///
+/// # Safety
+///
+/// Every view and parent of `order` is a live `NSView`.
+pub(crate) unsafe fn mount_in_order(order: &[(CompositionSurfaceId, usize, usize)]) {
+    for (_, view, parent) in order {
+        let _: () = unsafe {
+            msg_send![
+                *parent as Id,
+                addSubview: *view as Id,
+                positioned: NSWindowOrderingMode::Above,
+                relativeTo: ptr::null_mut::<AnyObject>()
+            ]
+        };
+    }
+}
+
 /// `PlatformWindow::set_composition_order`: creates and removes the views of
 /// GPUI surfaces, then puts every surface's view under its parent's, in
 /// order, at its bounds.
@@ -900,21 +922,13 @@ pub(crate) fn set_composition_order(
             })
             .collect::<Vec<_>>();
         // A geometry update must preserve AppKit's mouse tracking and first
-        // responder. Only a changed tree/order needs views detached and mounted.
+        // responder. Only a changed tree/order needs views moved.
         let parents_changed = view_order.iter().any(|(_, view, parent)| {
             let actual_parent: Id = msg_send![*view as Id, superview];
             actual_parent as usize != *parent
         });
         if lock.fast_composition.view_order != view_order || parents_changed {
-            for (_, view, _) in &view_order {
-                let _: () = msg_send![*view as Id, removeFromSuperview];
-            }
-            for (_, view, parent) in &view_order {
-                let _: () = msg_send![*parent as Id, addSubview: *view as Id];
-            }
-            // Koyo: a view that had the first responder as it was taken out left it to the
-            // window, and `AppKit` says so through no `makeFirstResponder:`.
-            lock.fast_composition.koyo_remounted = true;
+            mount_in_order(&view_order);
             lock.fast_composition.native_views = Rc::new(
                 view_order
                     .iter()

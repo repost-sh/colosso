@@ -30,14 +30,6 @@ pub trait Responders {
         let _ = (window, over, button);
     }
 
-    /// `window`'s native views were all taken out of it and put back, as the order or the
-    /// tree of its surfaces changed. A view that had the first responder then has lost it to
-    /// the window itself, with no `changed` told: `AppKit` moves it without asking. Told from
-    /// inside GPUI's frame: what's done about it is for the next turn.
-    fn remounted(&self, window: &AnyObject) {
-        let _ = window;
-    }
-
     /// A key going down or up is about to be delivered to `window`'s first responder.
     fn key(&self, window: &AnyObject);
 

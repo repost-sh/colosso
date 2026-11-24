@@ -2283,18 +2283,7 @@ impl PlatformWindow for MacWindow {
         &self,
         fast_surfaces: &[gpui::PlatformCompositionSurface],
     ) -> anyhow::Result<()> {
-        let done = crate::fast::composition::set_composition_order(&self.0, fast_surfaces);
-        // Koyo: the app is told the native views were put back, once the window's state is
-        // let go of (`responders`).
-        let remounted = {
-            let mut lock = self.0.lock();
-            std::mem::take(&mut lock.fast_composition.koyo_remounted).then_some(lock.native_window)
-        };
-        if let Some(window) = remounted {
-            // SAFETY: the window is live while it composes its surfaces.
-            crate::responders::tell(|responders| responders.remounted(unsafe { &*window }));
-        }
-        done
+        crate::fast::composition::set_composition_order(&self.0, fast_surfaces)
     }
 
     // GPUI calls this without waking the frame waker when a window only needs

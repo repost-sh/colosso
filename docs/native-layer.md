@@ -498,7 +498,6 @@ pub trait SeamHooks {
     fn pressed(&self, window: &NSWindow, event: &NSEvent, over: Option<&NSView>);
     fn press_routed(&self, window: &NSWindow, event: &NSEvent, to: Routed);   // Gpui | Native(view)
     fn released(&self, window: &NSWindow, event: &NSEvent);
-    fn remounted(&self, window: &NSWindow);                                    // under the lock
 
     // Decisions in. The fork asks and obeys.
     fn key(&self, window: &NSWindow, event: &NSEvent, keystroke: &Keystroke, pass: Pass) -> KeyRoute;
@@ -516,14 +515,12 @@ stop: it turns a `Keystroke` into the layer's `Key`, and a GPUI window into its
 `windowNumber`. The fork makes the `Keystroke`, since its conversion from an `NSEvent` is
 private to it (`events.rs:111`).
 
-**Two hooks run while the fork holds its window's lock**, and the contract says so.
-`presses_over` is asked inside `handle_view_event`. `remounted` is told inside
-`set_composition_order`, which holds the lock across upstream's detach and re-add
-(`fast/composition.rs:657,749-755`). Neither may send `AppKit` anything. Moving the first
-responder there could make `AppKit` ask GPUI's view for its text input, which takes the same
-lock (`window.rs:3989-3994`). So `remounted` only notes that the window's views were taken out
-and put back, and the layer makes the first responder right on the next turn of the run loop
-and, by K1, before the next key or press whichever comes first.
+**One hook runs while the fork holds its window's lock**, and the contract says so.
+`presses_over` is asked inside `handle_view_event`. It may not send `AppKit` anything: moving
+the first responder there could make `AppKit` ask GPUI's view for its text input, which takes
+the same lock (`window.rs:3989-3994`). A change of the window's composition needs no hook: the
+fork reorders its native views in place and never takes one out of the window
+(`mount_in_order`), so the first responder stays where it was.
 
 What the fork keeps, all mechanism:
 
@@ -638,8 +635,8 @@ window, frame)`, `park(page)`, `sleep(page)`, `close(page)`. Each transition tha
 out of a window first moves the keyboard off them (K4) inside the same call, so the pair of
 callbacks through the host (`Views::Leaving`, `Views::Arrived`) goes. L1 refuses a second
 container for a page in one frame, which is the one mechanism found that could show a page's
-views in the wrong place. The fork's `remounted` lets the layer put the keyboard
-back after upstream's detach and re-add (finding 6). Hosted controls and glass are
+views in the wrong place. The fork reorders a window's native views in place, never taking
+one out, so a change of composition leaves the keyboard where it was (finding 6). Hosted controls and glass are
 registered as natives that take no keys, with `refusesFirstResponder` set (K5).
 
 ## 8. What happens to `ce2f3c7fc`
@@ -880,6 +877,12 @@ To go into the repository's agent instructions at step 10. `[proposed]`
   the holder wants (`keyboard/hooks.rs`, `remounted`). `[proven]`: the journey passes, 24 of
   24, no first responder healed, and the log has "the window's views were put back; first
   responder the window → page 1" (`.superpowers/native-layer/step2/journeys-remounted.out`).
+  Replaced 2026-11-24: putting the first responder back the next turn was not enough. A
+  page's view taken out of the window hears it lose key, and Chromium makes the page inactive;
+  back in the window it is never made active again, so the page took text with no caret until
+  it reloaded (found with the tab switcher, ⌃⇥, on WhatsApp). The fork now reorders the views
+  in place (`mount_in_order`, `addSubview:positioned:relativeTo:`), no view leaves the window,
+  and `Responders::remounted` and the layer's `remounted` are gone.
 - **The harness's keys took the modifiers the person was holding.** Found 2026-11-17: an ⌥→
   of `arrows-in-page.sh` came with ⌘ in its flags and didn't move the caret. `press` made its
   events from no event source, and such an event takes the modifiers held on the keyboard at

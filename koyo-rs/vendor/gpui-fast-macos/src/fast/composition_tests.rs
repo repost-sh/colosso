@@ -1,5 +1,5 @@
 // Modified by Longbridge for gpui-fast.
-use super::whole_scene_layer;
+use super::{mount_in_order, whole_scene_layer};
 use gpui::{
     AppContext as _, Bounds, ComposedSceneLayer, CompositionSurfaceId, ContentMask, Context,
     DevicePixels, IntoElement, ParentElement as _, PlatformHeadlessRenderer as _, Quad, Render,
@@ -126,4 +126,75 @@ fn partial_or_split_layers_require_replay_even_when_primitives_match() {
         assert!(std::ptr::eq(borrowed, &empty));
     }
     assert!(whole_scene_layer(&empty, &[layer(vec![0..0]), layer(vec![0..0])]).is_none());
+}
+
+static LEFT_PARENT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+extern "C" fn tracked_will_move_to_superview(_: &objc2::runtime::AnyObject, _: objc2::runtime::Sel, to: *mut objc2::runtime::AnyObject) {
+    if to.is_null() {
+        LEFT_PARENT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn tracked_view() -> *mut objc2::runtime::AnyObject {
+    use objc2::{class, msg_send, runtime::{AnyClass, ClassBuilder}, sel};
+    let class = AnyClass::get(c"KoyoTrackedView").unwrap_or_else(|| {
+        let mut decl = ClassBuilder::new(c"KoyoTrackedView", class!(NSView)).unwrap();
+        // SAFETY: the method has `viewWillMoveToSuperview:`'s signature.
+        unsafe {
+            decl.add_method(
+                sel!(viewWillMoveToSuperview:),
+                tracked_will_move_to_superview as extern "C" fn(_, _, _),
+            );
+        }
+        decl.register()
+    });
+    // SAFETY: `NSView`'s initializer, on a class made from it.
+    unsafe {
+        let view: *mut objc2::runtime::AnyObject = msg_send![class, alloc];
+        msg_send![view, initWithFrame: objc2_foundation::NSRect::ZERO]
+    }
+}
+
+fn subviews(parent: *mut objc2::runtime::AnyObject) -> Vec<usize> {
+    use objc2::msg_send;
+    // SAFETY: a live view's subviews, an array of views.
+    unsafe {
+        let views: *mut objc2::runtime::AnyObject = msg_send![parent, subviews];
+        let count: usize = msg_send![views, count];
+        (0..count)
+            .map(|index| {
+                let view: *mut objc2::runtime::AnyObject = msg_send![views, objectAtIndex: index];
+                view as usize
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn views_put_in_a_new_order_never_leave_their_parent_and_so_never_their_window() {
+    use objc2::msg_send;
+    let (root, other) = (tracked_view(), tracked_view());
+    let (a, b, c) = (tracked_view(), tracked_view(), tracked_view());
+    let id = CompositionSurfaceId::default();
+    // SAFETY: live views, made above.
+    unsafe {
+        for view in [other, a, b, c] {
+            let _: () = msg_send![root, addSubview: view];
+        }
+    }
+    LEFT_PARENT.store(0, std::sync::atomic::Ordering::SeqCst);
+
+    let order = [(id, c as usize, root as usize), (id, a as usize, root as usize), (id, b as usize, root as usize)];
+    // SAFETY: live views, made above.
+    unsafe { mount_in_order(&order) };
+    assert_eq!(subviews(root), [other, c, a, b].map(|view| view as usize));
+
+    let moved = [(id, c as usize, root as usize), (id, a as usize, other as usize), (id, b as usize, root as usize)];
+    // SAFETY: live views, made above.
+    unsafe { mount_in_order(&moved) };
+    assert_eq!(subviews(root), [other, c, b].map(|view| view as usize));
+    assert_eq!(subviews(other), [a as usize]);
+
+    assert_eq!(LEFT_PARENT.load(std::sync::atomic::Ordering::SeqCst), 0, "a view was taken out of its parent");
 }
