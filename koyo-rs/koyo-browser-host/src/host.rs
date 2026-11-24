@@ -147,6 +147,11 @@ pub(crate) fn send(event: &HostEvent) {
     outgoing::send(outgoing::Outgoing::Event(event.clone()));
 }
 
+/// Whether the app closed the pane: a page it let go has nobody left to answer its questions.
+pub(crate) fn closing(pane: PaneId) -> bool {
+    with_pane(pane, |p| p.closing).unwrap_or(false)
+}
+
 /// Whether a shutdown was asked for and every pane has closed since.
 pub(crate) fn all_closed() -> bool {
     with(|host| host.shutting_down && host.panes.is_empty()) == Some(true)
