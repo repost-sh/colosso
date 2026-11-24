@@ -87,10 +87,24 @@ engine's helper apps running the browser host's binary, so what the host does in
   work put off from within its own turn, as Chromium's timers on the main thread are, and work
   left when a turn ran out of its 10 ms never ask, as Chromium leaves those wakeups to the pump
   and CEF's drops them. With nothing else running its work, work put off for 200 ms hadn't run
-  3 s on (2026-11-19), and in one run on a busy Mac a page didn't load in 30 s (2026-11-20). Koyo's framework carries a patch that asks for them, as
-  Chromium's own pumps do (`external-pump-wake-ups`, `script/cef-patches`), and there the timer
-  fires only when CEF asks. CEF upstream has no such change (to 2026-11-20); its own example
-  pump runs the work every 1/30 s whether asked or not (CEF issue 2968).
+  3 s on (2026-11-19), and in one run on a busy Mac a page didn't load in 30 s (2026-11-20).
+  Koyo's framework carries a patch that asks for them, as Chromium's own pumps do
+  (`external-pump-wake-ups`, `script/cef-patches`), and there the timer fires only when CEF
+  asks. The patch also makes a turn Chromium's own pump loop. It ends at `Quit()`:
+  `CefDoMessageLoopWork` is `RunUntilIdle()`, which quits once the thread is idle, and
+  `DoWork()` called after that runs one task and answers that no work is left. It ends once only
+  delayed work is left, rather than calling `DoWork()` until that comes due. And it rounds the
+  wait for that work up to the millisecond. `[proven]` Before, a turn went on calling `DoWork()`
+  to the end of its 10 ms, and work queued by a task that ran in that rest never asked for its
+  turn: a 200 ms timer set 2 ms into an idle turn hadn't run 2.6 s on in 5 of 8 rounds
+  (2026-11-24, `tests/embedded/pump.rs`). In a person's Koyo the main thread's work waited 16 s
+  to 15 minutes for something else to wake the pump, which failed IndexedDB's quota checks at
+  their 45 s timeout, and so WhatsApp Web's writes. Rounded down, a turn came up to a
+  millisecond early and asked again at once until the work was due: 50 to 80 wakeups a second
+  with an idle page on screen. Now an idle page costs Chromium's own timers, 1.0 to 1.9 wakeups
+  a second, with bursts of 4 or 5, once its profile has set itself up. CEF upstream has no such
+  change (to 2026-11-20); its own example pump runs the work every 1/30 s whether asked or not
+  (CEF issue 2968).
 - **The net, on CEF's own build.** A framework without the patch, which the host still runs
   with a warning (a debug engine packaged from CEF's own), also has the timer fire at the
   latest a while on. The while is 1/30 s after a turn someone asked for, or one that ran out of

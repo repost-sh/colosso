@@ -24,14 +24,15 @@ const SETTLE: Duration = Duration::from_secs(1);
 const WINDOW: Duration = Duration::from_secs(10);
 
 /// How long Chromium may take to go quiet once the page has loaded: what the load set going
-/// (its caches and history written, among them) takes longer on a busy Mac.
+/// (its caches and history written, among them) and what a profile made for the test sets up
+/// (its databases, thousands of tasks on the main thread) take longer on a busy Mac.
 const QUIET_WITHIN: Duration = Duration::from_secs(60);
 
 /// The most wakeups a second an idle page on screen may cost where CEF says when Chromium next
-/// has work: what Chromium's own timers and whatever else wakes a run loop `NSApp` runs. The
-/// pump's net alone fires at least once a second; without it, windows of none were seen
-/// between Chromium's bursts of work.
-const MOST: f64 = 0.5;
+/// has work: Chromium's own timers, a second or two apart, the short chains they set off, and
+/// whatever else wakes a run loop `NSApp` runs. Measured 1.0 to 1.9 a second, with bursts of 4
+/// or 5, once the profile had set itself up (2026-11-24, `docs/native-pages.md` 3.1).
+const MOST: f64 = 3.;
 
 /// The most on CEF's own build: the net's one, and the rest. It was over thirty, the pump
 /// running CEF's work every thirtieth of a second whether or not there was any.
