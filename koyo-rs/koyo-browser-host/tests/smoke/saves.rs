@@ -156,10 +156,34 @@ fn a_download_comes_in_where_the_app_says_and_one_canceled_saves_nothing() {
     close(session, &launch);
 }
 
+/// Waits for `pane`'s page to close and its download `id` to end after it, as Chrome's outlive
+/// their tab: whether its tab was said to close unasked, and how the download ended.
+fn closes_then_ends(session: &mut Session, pane: u64, id: u32) -> (bool, DownloadState) {
+    let (mut tab_closed, mut closed) = (false, false);
+    session.wait("the page to close", |event| match event {
+        HostEvent::TabClosed { pane: of } if *of == pane => {
+            tab_closed = true;
+            false
+        }
+        HostEvent::Download { pane: of, download } if *of == pane && download.id == id => {
+            assert_eq!(download.state, DownloadState::Going, "the download ended before its page closed");
+            false
+        }
+        HostEvent::Closed { pane: of } if *of == pane => {
+            closed = true;
+            true
+        }
+        _ => false,
+    });
+    assert!(closed);
+    let ended = until_state(session, pane, id, |state| *state != DownloadState::Going);
+    (tab_closed, ended.state)
+}
+
 #[test]
 #[ignore = "Needs a packaged browser engine; see the module docs"]
-fn a_page_closed_while_its_download_comes_in_stays_open_until_it_ends() {
-    let launch = launch("download-kept");
+fn a_page_closed_while_its_download_comes_in_goes_and_the_download_still_ends() {
+    let launch = launch("download-outlives-close");
     let mut session = Session::start(&launch);
     let address = serve();
     let path = folder(&launch).join("slow.bin");
@@ -168,28 +192,16 @@ fn a_page_closed_while_its_download_comes_in_stays_open_until_it_ends() {
     act(&mut session, 1, id, DownloadAct::SaveTo { path: path.to_string_lossy().into_owned() });
     until_state(&mut session, 1, id, |state| *state == DownloadState::Going);
     session.host.send(&AppRequest::Close { pane: 1 }).expect("close");
-    let (mut ended, mut closed_first) = (None, false);
-    session.wait("the page to close", |event| match event {
-        HostEvent::Download { pane: 1, download } if download.state != DownloadState::Going => {
-            ended = Some(download.state.clone());
-            false
-        }
-        HostEvent::Closed { pane: 1 } => {
-            closed_first = ended.is_none();
-            true
-        }
-        _ => false,
-    });
-    assert!(!closed_first, "the page closed before its download ended");
-    assert_eq!(ended, Some(DownloadState::Done));
+    let (_, ended) = closes_then_ends(&mut session, 1, id);
+    assert_eq!(ended, DownloadState::Done);
     assert_eq!(std::fs::read(&path).expect("the file").len(), PART.len() * PARTS);
     close(session, &launch);
 }
 
 #[test]
 #[ignore = "Needs a packaged browser engine; see the module docs"]
-fn a_page_that_closes_itself_while_its_download_comes_in_takes_it_with_it_and_says_so() {
-    let launch = launch("download-self-closed");
+fn a_page_that_closes_itself_while_its_download_comes_in_leaves_it_to_finish() {
+    let launch = launch("download-outlives-self-close");
     let mut session = Session::start(&launch);
     let address = serve();
     let path = folder(&launch).join("slow.bin");
@@ -201,36 +213,10 @@ fn a_page_that_closes_itself_while_its_download_comes_in_takes_it_with_it_and_sa
     let caller = koyo_browser_ipc::CdpCaller::Agent;
     let closing = AppRequest::Cdp { pane: 1, call: 950, caller, session: None, method: "Runtime.evaluate".into(), params };
     session.host.send(&closing).expect("the page closes itself");
-    let (mut tab_closed, mut ended, mut closed_first) = (false, None, false);
-    session.wait("the page to close", |event| match event {
-        HostEvent::TabClosed { pane: 1 } => {
-            tab_closed = true;
-            false
-        }
-        HostEvent::Download { pane: 1, download } if download.state != DownloadState::Going => {
-            ended = Some(download.state.clone());
-            false
-        }
-        HostEvent::Closed { pane: 1 } => {
-            closed_first = ended.is_none();
-            true
-        }
-        _ => false,
-    });
+    let (tab_closed, ended) = closes_then_ends(&mut session, 1, id);
     assert!(tab_closed, "the app is told its tab goes");
-    assert!(!closed_first, "the page went before its download was said to end");
-    let reason = "The page that started it closed before it finished.".to_owned();
-    assert_eq!(ended, Some(DownloadState::Failed { reason }));
-    let saved = || -> Vec<PathBuf> {
-        (std::fs::read_dir(path.parent().expect("a folder")).expect("the folder").flatten())
-            .map(|entry| entry.path())
-            .collect()
-    };
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !saved().is_empty() && Instant::now() < deadline {
-        std::thread::park_timeout(Duration::from_millis(100));
-    }
-    assert_eq!(saved(), Vec::<PathBuf>::new(), "Chromium cancels it, and takes what had come of it");
+    assert_eq!(ended, DownloadState::Done);
+    assert_eq!(std::fs::read(&path).expect("the file").len(), PART.len() * PARTS);
     close(session, &launch);
 }
 
