@@ -328,7 +328,8 @@ fn pull_request_row(pull: &PullRequest, p: Palette) -> Stateful<Div> {
     let line = row(IconName::GitPullRequest, p)
         .child(ellipsized(format!("#{} {}", pull.number, pull.title)).flex_1())
         .child(meta(word, color));
-    clickable(line, "chat-details-pull-request", p).on_click(move |_, _, cx| cx.open_url(&url))
+    clickable(line, "chat-details-pull-request", p)
+        .on_click(move |_, window, cx| crate::files::open_linked_page(&url, window, cx))
 }
 
 #[cfg(test)]

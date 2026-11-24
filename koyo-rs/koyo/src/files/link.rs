@@ -2,7 +2,8 @@
 //! after it as `#L42` or `:42`, relative to the chat's folder or absolute, or a `file://` URL.
 //! Clicked, the file opens in a tab, as a click in the tree opens it. What a link names is the
 //! terminal's to say, as it says it of the links a program prints. In a chat, such a link is
-//! drawn as the tree draws the file: its icon, and its name.
+//! drawn as the tree draws the file: its icon, and its name. A link to a page in a chat opens in
+//! a browser tab beside the chat's; in a markdown file's preview, in the system's browser.
 
 use std::path::PathBuf;
 
@@ -30,10 +31,42 @@ pub struct OpenLinked {
     pub at: Option<At>,
 }
 
-/// What clicking a link in text drawn for a chat, or for a markdown file, in `folder` does: a file it names opens in a
-/// tab, a page in the browser. A right click does nothing, as it does to any link.
+/// Opens the page at `url` in a browser tab right after the tab shown, and shows it, as a link
+/// opened beside its page is: what a link to a page in a chat asks of the shell.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = files, no_json)]
+pub struct OpenLinkedPage {
+    pub url: String,
+}
+
+/// Opens the page at `url` in a browser tab right after the tab shown, and shows it
+/// (`OpenLinkedPage`): what a link to a page in a chat, or a chat's pull request, does.
+pub fn open_linked_page(url: &str, window: &mut Window, cx: &mut App) {
+    window.dispatch_action(OpenLinkedPage { url: url.to_owned() }.boxed_clone(), cx);
+}
+
+/// What clicking a link in text drawn for a markdown file in `folder` does: a file it names opens
+/// in a tab, a page in the system's browser.
 pub fn opens_links(
     folder: PathBuf,
+) -> impl Fn(&SharedString, &ClickEvent, &mut Window, &mut App) + Send + Sync + 'static {
+    follows_links(folder, |url, _, cx| cx.open_url(url))
+}
+
+/// What clicking a link in what a chat in `folder` says does: a file it names opens in a tab, a
+/// page in a browser tab beside the chat's, shown (`OpenLinkedPage`).
+pub fn chat_opens_links(
+    folder: PathBuf,
+) -> impl Fn(&SharedString, &ClickEvent, &mut Window, &mut App) + Send + Sync + 'static {
+    follows_links(folder, open_linked_page)
+}
+
+/// What clicking a link in text drawn for `folder` does: a file it names opens in a tab, a page
+/// as `page` opens it, and a link of another kind, as `mailto:`, in what the system opens it
+/// with. A right click does nothing, as it does to any link.
+fn follows_links(
+    folder: PathBuf,
+    page: impl Fn(&str, &mut Window, &mut App) + Send + Sync + 'static,
 ) -> impl Fn(&SharedString, &ClickEvent, &mut Window, &mut App) + Send + Sync + 'static {
     let folders = [folder];
     move |link, event, window, cx| {
@@ -45,7 +78,7 @@ pub fn opens_links(
                 let at = line.map(At::printed_line);
                 window.dispatch_action(OpenLinked { path, at }.boxed_clone(), cx);
             }
-            Some(LinkTarget::Url(url)) => cx.open_url(&url),
+            Some(LinkTarget::Url(url)) => page(&url, window, cx),
             None if link.contains("://") || link.starts_with("mailto:") => cx.open_url(link),
             None => log::info!("{link} names no file in {}", folders[0].display()),
         }

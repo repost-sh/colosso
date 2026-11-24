@@ -151,7 +151,8 @@ impl Reorder {
     /// The space's loose pages, down the Arc sidebar or along the Orca layout's top rail as
     /// `axis` says, each by a key it keeps as it moves, with `gap` between them, `on_drop` doing
     /// what's done with one let go over the list: they move as tabs do and leave the list as tabs
-    /// do, but join none.
+    /// do, but join none, and they take the tabs of the other lists, which are off their own
+    /// over them.
     pub(super) fn pages(
         axis: Axis,
         pages: Vec<(u64, AnyElement)>,
@@ -257,6 +258,9 @@ impl Element for Reorder {
             keys: self.tabs.iter().map(|(key, _)| *key).collect(),
             bounds,
         };
+        if self.holds == Holds::Pages {
+            self.hand.takes_for(self.list, bounds);
+        }
         let pointer = window.mouse_position();
         let held = (self.hand).place(&list, &slots, pointer, cx.has_active_drag());
         let moving = held.is_some() || self.hand.settling(self.list);

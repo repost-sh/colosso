@@ -9,6 +9,9 @@
 //! ⌘L opens it on the page the person is in, as Arc's does: the page's address in the field, all
 //! of it selected, and what's typed over it loads in that page rather than a new tab. It needs
 //! a page: with none in the tab shown it opens nothing.
+//!
+//! The + after the unpinned pages opens it for an unpinned page only (`docs/layout.md`), as ⌘T
+//! does wherever the person is in no branch: the field alone, no kind to pick (`Opens`).
 
 mod act;
 mod here;
@@ -35,6 +38,9 @@ actions!(
     [
         /// Opens the launcher over the window, or closes it when it's open.
         NewTab,
+        /// Opens the launcher over the window for an unpinned page of the space shown, wherever
+        /// the person is: the + after the unpinned pages.
+        NewUnpinnedPage,
         /// The address of the page the person is in, to change: in the launcher opened on the
         /// page, or, in the Orca layout, in the page's own field.
         OpenAddress,
@@ -126,7 +132,7 @@ impl Kind {
     /// What the field says with nothing in it.
     pub fn placeholder(self) -> &'static str {
         match self {
-            Kind::Browser => "Search or enter address…",
+            Kind::Browser => "Search or enter address",
             Kind::Chat => "Ask a new chat…",
             Kind::Terminal => "Run a command in a new terminal…",
             Kind::Desktop => "Open the agent desktop",
@@ -148,20 +154,43 @@ impl Kind {
     }
 }
 
+/// What the launcher opens where it's opened (`docs/layout.md`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Opens {
+    /// Any kind of tab on the branch the person is in, or a worktree of its project: ⌘T's on a
+    /// branch's tab, and the + after a branch's tabs.
+    Tab,
+    /// A browser page only, unpinned in the space shown, and shown: the + after the unpinned
+    /// pages asks for it, and ⌘T opens it wherever the person is in no branch. With no kind to
+    /// pick, the field is alone.
+    UnpinnedPage,
+}
+
+impl Opens {
+    /// Whether it opens an unpinned page only: a browser page, with no other kind to step to.
+    pub fn unpinned(self) -> bool {
+        self == Opens::UnpinnedPage
+    }
+}
+
 impl Shell {
     /// What the window does with the launcher's actions, wherever the keyboard is: opens it over
-    /// the window on the selected checkout, for a new tab or, with a page shown, on that page.
+    /// the window, for a new tab where the person is or an unpinned page, or, with a page shown,
+    /// on that page.
     pub fn handle_launcher(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &NewTab, window, cx| this.open_launcher(window, cx)))
+            .on_action(cx.listener(|this, _: &NewUnpinnedPage, window, cx| {
+                this.open_launcher_on((Opens::UnpinnedPage, None), window, cx);
+            }))
             .on_action(
                 cx.listener(|this, _: &OpenAddress, window, cx| this.open_address(window, cx)),
             )
     }
 
-    /// Opens the launcher over the window, on the selected checkout; with none, for a page only,
-    /// a loose one of the space.
+    /// Opens the launcher over the window, for a tab of the branch the person is in; in none, as
+    /// with a pinned or an unpinned page shown or no branch selected, for an unpinned page only.
     pub fn open_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_launcher_on(None, window, cx);
+        self.open_launcher_on((Opens::Tab, None), window, cx);
     }
 
     /// ⌘L, or a click on the Arc sidebar's address: the address of the page shown, to change
@@ -181,16 +210,18 @@ impl Shell {
             return;
         }
         let address = view.read(cx).address();
-        self.open_launcher_on(Some(view::Page { pane, address }), window, cx);
+        self.open_launcher_on((Opens::Tab, Some(view::Page { pane, address })), window, cx);
     }
 
+    /// Opens the launcher over the window for what's `asked` for where the person is, on `page`
+    /// when it's given (`here::Here::of`).
     fn open_launcher_on(
         &mut self,
-        page: Option<view::Page>,
+        (asked, page): (Opens, Option<view::Page>),
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let here = here::Here::of(self, cx);
+        let here = here::Here::of(self, asked, cx);
         let pages = self.pages_shown();
         view::open(cx.entity().downgrade(), here, page, &pages, window, cx);
     }

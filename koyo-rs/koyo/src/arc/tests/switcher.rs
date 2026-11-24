@@ -6,7 +6,7 @@ use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 use super::{arc_shell, chat, shown};
 use crate::files::tests::{let_go, press};
 use crate::model::tests::loose;
-use crate::settings;
+use crate::settings::{self, LoosePages};
 use crate::shell::Shell;
 use crate::test_support::draw;
 
@@ -34,6 +34,7 @@ fn ctrl_tab_goes_back_across_projects_spaces_and_loose_pages(cx: &mut TestAppCon
     let (window, shell, roots) = arc_shell(&["switch-app", "switch-site"], cx);
     cx.update(|cx| {
         settings::update(cx, |settings| {
+            settings.loose_pages = LoosePages::PerSpace;
             let to = settings.add_space();
             settings.move_project(&roots[1], to);
         });

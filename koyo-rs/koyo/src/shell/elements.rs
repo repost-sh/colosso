@@ -1,5 +1,5 @@
 //! The pieces the window and its sidebars are drawn from: buttons on the glass, rows, the
-//! search field, and the + that opens a new tab.
+//! search field, the + that opens a new tab, and the + that opens an unpinned page.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
@@ -13,7 +13,7 @@ use gpui_kit::{
 };
 
 use super::Shell;
-use crate::launcher::NewTab;
+use crate::launcher::{NewTab, NewUnpinnedPage};
 use crate::pane::{row_sized, sized_close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
 use crate::theme::{self, Palette};
@@ -23,6 +23,12 @@ pub fn new_tab_button(id: impl Into<ElementId>, cx: &App) -> Button {
     glass_button(id, IconName::Plus, cx)
         .tooltip_with_action("New tab", &NewTab, None)
         .on_click(|_, window, cx| window.dispatch_action(Box::new(NewTab), cx))
+}
+
+/// The + after the unpinned pages, which opens the launcher for one, a browser page only,
+/// whatever tab is shown (`docs/layout.md`).
+pub fn new_page_button(id: &'static str, cx: &App) -> Button {
+    action_button(id, IconName::Plus, "New unpinned page", NewUnpinnedPage, cx)
 }
 
 /// Empty rail space that moves the window, since the app owns titlebar dragging.
@@ -106,6 +112,12 @@ pub fn icon(name: IconName, size: f32) -> Icon {
 
 /// A selectable row: highlighted when selected, tinted on hover otherwise.
 pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div> {
+    selectable(row_shape(id), selected, p)
+}
+
+/// A row's shape, without what the pointer does to it: a row high, rounded, what's in it in a
+/// line.
+pub fn row_shape(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)
         .h(px(theme::ROW_HEIGHT))
@@ -116,7 +128,12 @@ pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div
         .gap_2()
         .rounded(px(6.))
         .text_sm()
-        .cursor_pointer()
+}
+
+/// `row` under the pointer, as a selectable row is: highlighted when `selected`, tinted on hover
+/// otherwise.
+pub fn selectable(row: Stateful<Div>, selected: bool, p: Palette) -> Stateful<Div> {
+    row.cursor_pointer()
         .when(selected, |row| row.bg(p.selected))
         .when(!selected, |row| row.hover(|style| style.bg(p.hover)))
 }

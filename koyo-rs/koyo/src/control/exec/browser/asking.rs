@@ -188,7 +188,7 @@ fn copy(
             {
                 unit.active_tab = tab;
             }
-            shell.open_browser_tab(Some(url), true, mode, window, cx)
+            shell.open_browser_tab(Some(url), (false, true), mode, window, cx)
         },
     );
     opened.ok_or_else(|| ControlError::internal("The copy of the page didn't open."))

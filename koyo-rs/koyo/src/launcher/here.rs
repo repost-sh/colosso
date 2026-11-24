@@ -1,12 +1,14 @@
 //! Where the launcher opened: the checkout a tab would open on, the tabs open on it, which a row
-//! switches to rather than opening again, and its chats no tab shows, which a row brings back.
-//! Taken as it opens, as nothing changes behind it while it's up.
+//! switches to rather than opening again, and its chats no tab shows, which a row brings back;
+//! or, for an unpinned page, no project's place. Taken as it opens, as nothing changes behind it
+//! while it's up.
 
 use std::sync::Arc;
 
 use gpui_kit::{App, Image, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 
+use super::Opens;
 use crate::history::{self, Place};
 use crate::model::{Front, PaneKind};
 use crate::shell::Shell;
@@ -17,9 +19,9 @@ pub struct Here {
     pub tabs: Vec<OpenTab>,
     /// The checkout's chats no tab shows, the latest first.
     pub chats: Vec<(ThreadId, SharedString)>,
-    /// Whether only a page opens here: no checkout is selected for a chat, a terminal or a
-    /// worktree to open on, as in a space with no project (`docs/arc-sidebar.md` 11).
-    pub pages_only: bool,
+    /// What opens here: any kind of tab on the branch the person is in, or only an unpinned page
+    /// (`docs/layout.md`).
+    pub opens: Opens,
 }
 
 pub struct OpenTab {
@@ -34,23 +36,17 @@ pub struct OpenTab {
 }
 
 impl Here {
-    /// Where `shell` would open a tab now. With no checkout selected, as in a space with no
-    /// project, it still opens a page, a loose one of the space, and has a pinned or a loose
-    /// page's address to change: the place is no project's.
-    pub fn of(shell: &Shell, cx: &App) -> Here {
+    /// Where `shell` opens what's `asked` for now. A tab opens on the branch the person is in.
+    /// Asked for an unpinned page, or in no branch, as with a pinned or an unpinned page shown or
+    /// no branch selected, as in a space with no project, only a page opens, unpinned in the
+    /// space shown, and the place is no project's; a pinned or an unpinned page's address is
+    /// changed there too.
+    pub fn of(shell: &Shell, asked: Opens, cx: &App) -> Here {
         let workspace = &shell.workspace;
-        let (Some(project), Some(unit)) = (workspace.project(), workspace.branch()) else {
-            let nowhere = std::path::PathBuf::from(crate::browser::NO_PROJECT);
-            let place = Place {
-                worktree: nowhere.clone(),
-                project: nowhere,
-            };
-            return Here {
-                place,
-                tabs: Vec::new(),
-                chats: Vec::new(),
-                pages_only: true,
-            };
+        let in_branch = (workspace.project().zip(workspace.branch()))
+            .filter(|_| !asked.unpinned() && !shell.opens_loose());
+        let Some((project, unit)) = in_branch else {
+            return Here::unpinned();
         };
         let place = Place {
             worktree: unit.worktree.path.clone(),
@@ -88,7 +84,22 @@ impl Here {
             place,
             tabs,
             chats,
-            pages_only: false,
+            opens: Opens::Tab,
+        }
+    }
+
+    /// Where an unpinned page opens: no project's place, with no branch's tab or chat to go to.
+    fn unpinned() -> Here {
+        let nowhere = std::path::PathBuf::from(crate::browser::NO_PROJECT);
+        let place = Place {
+            worktree: nowhere.clone(),
+            project: nowhere,
+        };
+        Here {
+            place,
+            tabs: Vec::new(),
+            chats: Vec::new(),
+            opens: Opens::UnpinnedPage,
         }
     }
 

@@ -71,11 +71,12 @@ pub use switcher::visual::run as check_switcher;
 use elements::{SearchField, Searched};
 use elements::drag_area;
 pub use elements::{
-    action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,
-    no_matches, project_error, row, row_button, section_label, solid, tab_close_button,
+    action_button, add_project_row, ellipsized, glass, icon, icon_button, new_page_button,
+    new_tab_button, no_matches, project_error, row, row_button, row_shape, section_label,
+    selectable, solid, tab_close_button,
 };
 pub use kept::{KeptWindow, reopen};
-pub use loose::{loose_close, loose_list, loose_row};
+pub use loose::{loose_close, loose_list, loose_row, loose_spot, takes_tabs};
 pub(crate) use one_tab::Place;
 pub use settings_tab::{settings_close, settings_row};
 pub use reorder::{Drop, InHand, List, MOTION, Reorder, TabHand, key_of};

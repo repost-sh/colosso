@@ -281,11 +281,11 @@ impl Drawing {
     }
 
     /// What a click on a link in what the chat says does: a file it names opens in a tab, a
-    /// page in the browser.
+    /// page in a browser tab beside the chat's.
     pub(super) fn opens_links(
         &self,
     ) -> impl Fn(&SharedString, &ClickEvent, &mut Window, &mut App) + Send + Sync + 'static {
-        crate::files::opens_links(PathBuf::from(&*self.cwd))
+        crate::files::chat_opens_links(PathBuf::from(&*self.cwd))
     }
 
     fn answer(&self, id: &ItemId, text: &Entity<TextViewState>, meta: Option<String>) -> Div {
@@ -337,10 +337,10 @@ impl Drawing {
 }
 
 /// `text` drawn as what a chat says is: its links to files read as the tree names them, and open
-/// in a tab on a click, a link to a page in the browser.
+/// in a tab on a click, a link to a page in a browser tab beside the chat's.
 pub(super) fn markdown(text: TextView, cwd: &Path) -> TextView {
     text.plugin(FileLinks::new(cwd.to_owned()))
-        .on_link_click(crate::files::opens_links(cwd.to_owned()))
+        .on_link_click(crate::files::chat_opens_links(cwd.to_owned()))
 }
 
 /// The room over the row at `index`: the first's, or a prompt's over its bubble.

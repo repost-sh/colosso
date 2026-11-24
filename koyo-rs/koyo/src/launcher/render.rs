@@ -1,9 +1,9 @@
 //! How the launcher looks, after Zen's floating address bar: the field, the pill on its left
 //! saying, in the kind's own colour, what kind of tab Enter opens, and the kind Tab goes to on
-//! its right; then, past a hairline, a row for each thing found, its icon, its title with what
-//! matched in the accent colour, its address dimmed after it, and what picking it does at its
-//! end. The row picked that the history holds has a × that forgets it. The window grows and
-//! shrinks with the rows.
+//! its right, or the field alone where only a page opens; then, past a hairline, a row for each
+//! thing found, its icon, its title with what matched in the accent colour, its address dimmed
+//! after it, and what picking it does at its end. The row picked that the history holds has a
+//! × that forgets it. The window grows and shrinks with the rows.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::Input;
@@ -16,7 +16,9 @@ use gpui_kit::{
 
 use super::rows::{Act, Glyph, Row};
 use super::view::{FIELD, LIST_PADDING, Launcher, ROW, height};
-use super::{AcceptSuggestion, NewTab, NextKind, OpenAddress, PreviousKind, RemoveFromHistory};
+use super::{
+    AcceptSuggestion, Kind, NewTab, NextKind, OpenAddress, PreviousKind, RemoveFromHistory,
+};
 use crate::list::{SelectNext, SelectPrevious, styled};
 use crate::modal;
 use crate::pane::close_button;
@@ -65,9 +67,10 @@ impl Render for Launcher {
 }
 
 impl Launcher {
-    /// The pill, the field and, on its right, the kind Tab goes to.
+    /// The field, with the pill on its left and the kind Tab goes to on its right while there's
+    /// another kind to go to; alone where only a page opens.
     fn field(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let next = self.kind.step(1);
+        let next = self.next_kind();
         let input = Input::new(&self.input)
             .appearance(false)
             .ink(p.text, p.muted)
@@ -82,41 +85,32 @@ impl Launcher {
             .flex()
             .items_center()
             .gap(px(8.))
-            .child(
-                div()
-                    .id("launcher-kind")
-                    .debug_selector(|| "launcher-kind".into())
-                    .h(px(28.))
-                    .px(px(10.))
-                    .flex()
-                    .flex_shrink_0()
-                    .items_center()
-                    .gap(px(6.))
-                    .rounded_full()
-                    .bg(self.kind.color())
-                    .text_color(gpui_kit::white())
-                    .text_sm()
-                    .font_weight(FontWeight::MEDIUM)
-                    .cursor_pointer()
-                    .child(icon(self.kind.icon(), 14.))
-                    .child(self.kind.label())
-                    .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx))),
-            )
+            .children(next.map(|_| self.pill(cx)))
             .child(input)
-            .when(!self.pages_only(), |field| field.child(
-                div()
-                    .id("launcher-next-kind")
-                    .flex()
-                    .flex_shrink_0()
-                    .items_center()
-                    .gap(px(6.))
-                    .text_xs()
-                    .text_color(p.muted)
-                    .cursor_pointer()
-                    .child(next.label())
-                    .children(Keystroke::parse("tab").ok().map(Kbd::new))
-                    .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx))),
-            ))
+            .children(next.map(|next| next_kind(next, p, cx)))
+    }
+
+    /// The pill, in the kind's own colour, saying what kind of tab Enter opens: clicked, it goes
+    /// to the next.
+    fn pill(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id("launcher-kind")
+            .debug_selector(|| "launcher-kind".into())
+            .h(px(28.))
+            .px(px(10.))
+            .flex()
+            .flex_shrink_0()
+            .items_center()
+            .gap(px(6.))
+            .rounded_full()
+            .bg(self.kind.color())
+            .text_color(gpui_kit::white())
+            .text_sm()
+            .font_weight(FontWeight::MEDIUM)
+            .cursor_pointer()
+            .child(icon(self.kind.icon(), 14.))
+            .child(self.kind.label())
+            .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx)))
     }
 
     /// Row `at`, picked when clicked.
@@ -163,6 +157,23 @@ impl Launcher {
                 }
             }))
     }
+}
+
+/// The kind Tab goes to, `next`, and its key: clicked, it's gone to.
+fn next_kind(next: Kind, p: Palette, cx: &mut Context<Launcher>) -> impl IntoElement + use<> {
+    div()
+        .id("launcher-next-kind")
+        .debug_selector(|| "launcher-next-kind".into())
+        .flex()
+        .flex_shrink_0()
+        .items_center()
+        .gap(px(6.))
+        .text_xs()
+        .text_color(p.muted)
+        .cursor_pointer()
+        .child(next.label())
+        .children(Keystroke::parse("tab").ok().map(Kbd::new))
+        .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx)))
 }
 
 /// A row's icon: the page's own, its site's once read, or the kind's.

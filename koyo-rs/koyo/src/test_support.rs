@@ -36,9 +36,9 @@ mod pinned;
 mod pointer;
 mod started;
 #[cfg(test)]
-pub use panes::{iphone, terminals_listed};
+pub use panes::{iphone, orca_on_chat, terminals_listed};
 #[cfg(test)]
-pub use pinned::{pin, pinned};
+pub use pinned::{loose, pin, pinned};
 #[cfg(test)]
 pub use pointer::{GRAB, carry, drag, hold, hover, let_go, let_go_on, move_held, take_up};
 #[cfg(test)]
@@ -262,7 +262,7 @@ pub fn open_page(
     let url = url.map(str::to_owned);
     let opened = cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
-            shell.open_browser_tab(url, false, None, window, cx)
+            shell.open_browser_tab(url, (false, false), None, window, cx)
         })
     });
     opened.unwrap().expect("a checkout is selected")

@@ -2,15 +2,18 @@
 //! that are no project's: their list, down the Arc sidebar or along the Orca layout's top rail,
 //! and a page's row in it; one opened where the person is in no worktree, shown as its row is
 //! picked, moved among them, closed, taken from a checkout's tabs or to them, and to and from
-//! the pinned pages. What a page's events do, a link it opens, its `DevTools` beside it, what
-//! it tells the history, goes one way whichever kind of tab it's in (`browser_tabs.rs`).
+//! the pinned pages. A page's tab let go on a row lands there, and with none, on the dashed
+//! spot that shows where they'd be while one is in hand (`docs/layout.md`). What a page's
+//! events do, a link it opens, its `DevTools` beside it, what it tells the history, goes one way
+//! whichever kind of tab it's in (`browser_tabs.rs`).
 
 use std::rc::Rc;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Along as _, AnyElement, AppContext as _, Axis, Context, Div, InteractiveElement as _,
-    MouseButton, Pixels, Point, Stateful, StatefulInteractiveElement as _, Styled as _, Window,
+    Along as _, AnyElement, AppContext as _, Axis, Context, Div, Hsla, InteractiveElement as _,
+    MouseButton, ParentElement as _, Pixels, Point, Stateful, StatefulInteractiveElement as _,
+    Styled as _, Window,
 };
 
 use super::Shell;
@@ -76,6 +79,44 @@ pub fn loose_row(
             cx.new(|_| chip)
         });
     single(row, &face)
+}
+
+/// Has `row` take a page's tab let go on it from a checkout's list, at `place` among the loose
+/// pages, shown there: lit in `lit` under one while `taking` says one is in hand, off its list.
+pub fn takes_tabs(
+    row: Stateful<Div>,
+    (place, taking): (usize, bool),
+    lit: Hsla,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    row.drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
+        Dragged::Tab(..) if taking => style.bg(lit),
+        _ => style,
+    })
+    .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
+        if let (Dragged::Tab(..), [face]) = (held.what, held.faces.as_slice()) {
+            this.loosen_tab_of(face.id, place, cx);
+        }
+    }))
+}
+
+/// `spot`, laid out as a row of the loose pages' list is, where the first of them goes while the
+/// space has none: edged in dashes and saying so in `ink`, it takes a page's tab let go on it as
+/// their rows do, the last of them, lit in `lit` under it.
+pub fn loose_spot(
+    spot: Stateful<Div>,
+    (ink, lit): (Hsla, Hsla),
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    let spot = spot
+        .justify_center()
+        .border_1()
+        .border_dashed()
+        .border_color(ink.opacity(0.6))
+        .text_xs()
+        .text_color(ink)
+        .child("Drop to keep it here");
+    takes_tabs(spot, (0, true), lit, cx)
 }
 
 /// `button`, the × of the loose page known by `key`: pressed, the page closes, and its row isn't

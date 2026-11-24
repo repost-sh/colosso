@@ -1036,7 +1036,8 @@ Layout, top to bottom inside the pane's card:
 - **The details card.** A floating glass card at the top right of a chat says where it works:
   its branch and folder, an editor to open that in, a project's scripts, which run in a terminal
   tab and are kept in settings by project, what can be done next with its work (commit,
-  publish or push, pull, create a pull request, or the one it has), what's changed there, its
+  publish or push, pull, create a pull request, or the one it has, which opens in a browser tab
+  beside the chat's as a link in the chat does), what's changed there, its
   subagents (those working, then "Previous agents" behind a line), and how full its conversation
   is. What's known of the branch is read as the card's drawn, asking its remote, if that's over a
   minute old, `HEAD` moved, or a person is back from another app. Pull requests are the GitHub CLI's, where it's installed. Last comes how far the plan of its task has
@@ -1117,7 +1118,9 @@ Layout, top to bottom inside the pane's card:
     the one its session said it ran on (`session.ready`'s `model`, kept on the run as its mode
     is), else the provider's default as the footer names it. A link to a file that's there
     reads as the file tree names it, its icon and name (`files::file_label`), and opens it on a
-    click as any link to a file does; a link to a page stays a link. What markdown sets apart
+    click as any link to a file does; a link to a page stays a link, and a click opens the page
+    in a Koyo browser tab right after the chat's, shown, as a link opened beside its page is
+    (`files::OpenLinkedPage`), never in the system's browser. What markdown sets apart
     is washed, never the kit's solid greys, which sat on a card of any colour as slabs of
     another (`theme/text.rs`, every text view): a code block and a table's body in `faint_wash`,
     a table's head and inline code in `wash`, their edges, rules and a quote's bar in

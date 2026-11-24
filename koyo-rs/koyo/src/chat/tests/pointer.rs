@@ -1,5 +1,6 @@
 //! What the pointer does on a chat's rows: a drag over a step copies its words or what it printed,
-//! a click opens it, and a click on a link to a file opens the file.
+//! a click opens it, a click on a link to a file opens the file, and one on a link to a page opens
+//! the page in a browser tab.
 
 use gpui_kit::base::TextSelection;
 use gpui_kit::{
@@ -9,6 +10,7 @@ use koyo_agent::protocol::model::{ItemBody, Tool, ToolFamily};
 
 use super::drawing::{settled, settled_with, shell_with_chat, shows_of};
 use super::tabs;
+use crate::model::PaneKind;
 use crate::settings::Shows;
 use crate::test_support::draw;
 
@@ -105,4 +107,38 @@ fn a_link_to_a_file_shows_as_the_tree_names_it_and_opens_it(cx: &mut TestAppCont
         after.iter().any(|tab| tab.contains("README.md")),
         "{after:?}"
     );
+}
+
+/// A click on a link to a page in an answer opens the page in a Koyo browser tab right after the
+/// chat's, shown, as a link opened beside its page does, and never in the system's browser.
+#[gpui_kit::test]
+fn a_link_to_a_page_opens_it_in_a_browser_tab_beside_the_chat(cx: &mut TestAppContext) {
+    let url = "https://example.com/guide";
+    let mut shown = settled("0001");
+    let said = format!("[Read the whole guide on the site]({url})");
+    if let Some(ItemBody::AssistantText(text)) = shown.items.last_mut().map(|item| &mut item.body) {
+        text.text = said;
+    }
+    let (window, shell, _, _) = shell_with_chat("chat-page-link", shown, cx);
+    draw(window, cx);
+    let answer = VisualTestContext::from_window(window, cx)
+        .debug_bounds("chat-row-2")
+        .expect("the answer's row is drawn");
+    let on_link = point(answer.left() + px(60.), answer.top() + px(8.));
+    let mut visual = VisualTestContext::from_window(window, cx);
+    let none = Modifiers::default();
+    visual.simulate_mouse_move(on_link, None, none);
+    visual.simulate_mouse_down(on_link, MouseButton::Left, none);
+    visual.simulate_mouse_up(on_link, MouseButton::Left, none);
+    draw(window, cx);
+    assert_eq!(cx.opened_url(), None, "the system's browser opened nothing");
+    let (kinds, shown) = shell.read_with(cx, |shell, _| {
+        let unit = shell.workspace.branch().expect("a checkout is selected");
+        let kinds = (unit.tabs.iter()).map(|tab| tab.first().kind()).collect::<Vec<_>>();
+        let shown = (shell.workspace.tab_shown())
+            .and_then(|tab| tab.first().address().map(str::to_owned));
+        (kinds, shown)
+    });
+    assert_eq!(kinds, [PaneKind::Chat, PaneKind::Browser]);
+    assert_eq!(shown.as_deref(), Some(url), "the page's tab is shown");
 }

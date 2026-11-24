@@ -25,7 +25,9 @@ pub use closing::ask;
 pub use editor::{FileEditor, MOST_COLOURED};
 pub use file_pane::{FilePane, name as file_name};
 pub use icons::file as file_icon;
-pub use link::{FileLinks, OpenLinked, opens_links};
+pub use link::{
+    FileLinks, OpenLinked, OpenLinkedPage, chat_opens_links, open_linked_page, opens_links,
+};
 pub use locations::Locations;
 pub use markdown::{Mode as MarkdownMode, SetMarkdownOpensAs};
 pub use panel::FilesPanel;
@@ -81,6 +83,9 @@ impl Shell {
         root.on_action(cx.listener(|this, _: &Save, window, cx| this.save(window, cx)))
             .on_action(cx.listener(|this, open: &OpenLinked, window, cx| {
                 this.open_path(&open.path, open.at.clone(), window, cx);
+            }))
+            .on_action(cx.listener(|this, open: &OpenLinkedPage, window, cx| {
+                this.open_browser_tab(Some(open.url.clone()), (false, true), None, window, cx);
             }))
             .on_action(cx.listener(|this, _: &TogglePreview, window, cx| {
                 this.toggle_preview(window, cx);

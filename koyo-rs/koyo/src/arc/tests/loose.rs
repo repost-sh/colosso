@@ -14,15 +14,11 @@ use crate::files::tests::{dialog, press};
 use crate::launcher::{Launcher, NewTab};
 use crate::settings::{self, LoosePages};
 use crate::shell::{CloseTab, CopyToWorktree, PinnedMenu, ReopenClosedTab, Shell};
-use crate::test_support::{click, draw, open_page};
+use crate::test_support::{click, draw, loose, open_page};
 
-/// The loose pages of the space shown, by the addresses they show, in the order of their rows.
-fn loose(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
-    cx.read(|cx| {
-        (shell.read(cx).workspace.loose().into_iter())
-            .map(|page| page.tab.first().address().unwrap_or_default().to_owned())
-            .collect()
-    })
+/// Each space lists its own loose pages, as these tests ask, not the shared ones of the default.
+fn per_space(cx: &mut TestAppContext) {
+    cx.update(|cx| settings::update(cx, |settings| settings.loose_pages = LoosePages::PerSpace));
 }
 
 /// The address of the page the panes show, and whether it's a loose one.
@@ -37,6 +33,7 @@ fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
 #[gpui_kit::test]
 fn a_page_opened_where_no_project_is_shown_is_a_loose_page_of_that_space(cx: &mut TestAppContext) {
     let (window, shell, roots) = arc_shell(&["arc-loose-open"], cx);
+    per_space(cx);
     shell.update(cx, |shell, cx| {
         shell.workspace.push_tab(chat("A chat"));
         cx.notify();
@@ -190,6 +187,7 @@ fn a_pages_tab_moves_between_a_worktree_the_loose_pages_and_the_pinned_by_draggi
 #[gpui_kit::test]
 fn a_loose_page_closed_comes_back_where_it_was_with_cmd_shift_t(cx: &mut TestAppContext) {
     let (window, shell, _) = arc_shell(&["arc-loose-reopen"], cx);
+    per_space(cx);
     act(window, NewSpace, cx);
     let page = |name: &str| format!("https://example.org/{name}");
     for name in ["one", "two", "three"] {
@@ -255,6 +253,7 @@ fn shared_loose_pages_are_the_same_in_every_space_and_each_goes_back_to_its_own(
     cx: &mut TestAppContext,
 ) {
     let (window, shell, _) = arc_shell(&["arc-loose-shared"], cx);
+    per_space(cx);
     let (one, two) = ("https://one.example/", "https://two.example/");
     act(window, NewSpace, cx);
     open_page(window, &shell, Some(one), cx);

@@ -78,7 +78,7 @@ pub fn open(
         Some(page) => (page.address.clone(), Kind::Browser),
         None => take_dismissed(cx),
     };
-    let kind = if here.pages_only { Kind::Browser } else { kind };
+    let kind = if here.opens.unpinned() { Kind::Browser } else { kind };
     let query = Query {
         kind,
         typed: &text,
@@ -310,14 +310,15 @@ impl Launcher {
         }));
     }
 
-    /// Whether only a page opens where it opened, with no kind to go to.
-    pub(super) fn pages_only(&self) -> bool {
-        self.here.pages_only
+    /// The kind Tab goes to from the one picked; none where only a page opens.
+    pub(super) fn next_kind(&self) -> Option<Kind> {
+        (!self.here.opens.unpinned()).then(|| self.kind.step(1))
     }
 
-    /// Goes to the kind `by` steps on, what's typed kept, a completion let go.
+    /// Goes to the kind `by` steps on, what's typed kept, a completion let go. Where only a page
+    /// opens there's no other kind, and nothing changes.
     pub(super) fn step_kind(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.here.pages_only {
+        if self.here.opens.unpinned() {
             return;
         }
         self.kind = self.kind.step(by);
@@ -420,7 +421,8 @@ impl Launcher {
         self.picked = true;
         let (shell, behind, place) = (self.shell.clone(), self.behind, self.here.place.clone());
         let page = self.page.as_ref().map(|page| page.pane);
+        let opens = self.here.opens;
         modal::dismiss(window, cx);
-        super::act::launch(&shell, behind, act, (&place, page), cx);
+        super::act::launch(&shell, behind, act, (&place, page, opens), cx);
     }
 }

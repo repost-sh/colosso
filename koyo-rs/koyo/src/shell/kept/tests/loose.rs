@@ -70,6 +70,7 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
     let ids = cx.update(|cx| {
         settings::update(cx, |settings| {
             settings.layout = Layout::Arc;
+            settings.loose_pages = LoosePages::PerSpace;
             settings.add_space();
         });
         let spaces = &settings::get(cx).spaces;

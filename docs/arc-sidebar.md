@@ -547,11 +547,12 @@ to right, before the selected checkout's tabs (section 1). **[asked, 2026-11-23]
   end on hover and on the one shown. Another space lists its own, and a space shown again
   shows the loose page it showed last. **[asked: per space]**
 - **Or shared** (2026-11-20, the owner: "have the unpinned tabs be either shared per project
-  or not (in options)"). Settings → Appearance → **Unpinned pages** is **Per space**, the
-  default, as above, or **Shared**: every space lists every loose page, one list in one
-  order, whichever space or project is shown (`settings.json` `loose_pages`, `PerSpace` or
-  `Shared`; app control's `loosePages`). The Orca layout's top rail lists the same pages the
-  Arc sidebar does. The pinned pages are every space's either way. **[asked]**
+  or not (in options)"). Settings → Appearance → **Unpinned pages** is **Per space**, as
+  above, or **Shared**, the default since `docs/layout.md`: every space lists every loose
+  page, one list in one order, whichever space or project is shown (`settings.json`
+  `loose_pages`, `PerSpace` or `Shared`; app control's `loosePages`). A stored choice is
+  kept. The Orca layout's top rail lists the same pages the Arc sidebar does. The pinned
+  pages are every space's either way. **[asked]**
   - Each loose page is filed under a space whichever is chosen: the one it was opened in,
     dragged or unpinned into, or that took it from a space deleted. Shared, a page opened
     is filed under the space shown then, wherever it goes in the list. The setting only says
@@ -580,11 +581,12 @@ to right, before the selected checkout's tabs (section 1). **[asked, 2026-11-23]
     goes where that row is; a pinned page's tile let go there is unpinned there. Either
     shows.
   - With no loose page yet there are no rows: once a page's tab is off its list, or a pinned
-    tile well away from the others, a dotted row under the pinned pages says "Drop to keep
-    it in this space" and takes it. It stays until what's in hand is let go, and doesn't
-    show for a tab moved along its own list. **[ours]**
-- In a space with no project ⌘T opens the launcher for a page only: Tab goes to no other
-  kind there, as a chat, a terminal and a worktree need a project. **[ours]**
+    tile well away from the others, a dashed row under the pinned pages says "Drop to keep
+    it here" and takes it. It stays until what's in hand is let go, and doesn't show for a
+    tab moved along its own list. **[ours; the words `docs/layout.md`'s]**
+- Wherever the person is in no worktree, a space with no project or a pinned or a loose page
+  shown, ⌘T opens the launcher for an unpinned page only (`docs/new-tab.md`): Tab goes to no
+  other kind there. **[`docs/layout.md`]**
 - A row is dragged among the others, as a tab along its list, but joins none: each stays a
   page. Dragged onto a worktree's tab or header it's a tab of that worktree, shown; onto the
   pinned pages, pinned. **[ours]**
@@ -603,11 +605,15 @@ to right, before the selected checkout's tabs (section 1). **[asked, 2026-11-23]
 - A space deleted hands its loose pages on with its projects: to the space that takes them,
   after that space's own; they close when the projects are taken out of Koyo. **[ours]**
 - **In the Orca layout's top rail** the space's loose pages are tabs like the checkout's,
-  after the pinned pages' pill and before the hairline and the checkout's tabs
+  after the pinned pages' pill and before their **+**, the hairline and the checkout's tabs
   (`orca/loose.rs`): the one shown lit, picked to show, closed by their × or a middle click,
-  dragged along among themselves, or onto the pill, where they're pinned (11.2). The rail has
-  no strip for a first loose page: a page's tab isn't made loose by dragging it there. **[asked:
-  before the checkout's tabs, a separator between; ours: the rest]**
+  dragged along among themselves, or onto the pill, where they're pinned (11.2). A page's tab
+  of the checkout's let go on one goes where that tab is, shown; with none, a dashed spot
+  where they'd be says "Drop to keep it here" while one is in hand, and takes it, the last
+  loose page, shown. The **+**, always there, opens the launcher for an unpinned page
+  whatever tab is shown (`docs/new-tab.md`), and the hairline is drawn while a worktree is
+  selected. **[asked: before the checkout's tabs, a separator between; `docs/layout.md`: the
+  spot and the +; ours: the rest]**
 
 ### 11.4 The tab shown
 
@@ -772,11 +778,11 @@ menu is Arc's.
 | `koyo/src/arc/loose.rs` | The loose rows, their menu, and the strip that takes the first |
 | `koyo/src/control/exec/browser/pages/` (`listing.rs`, `consent.rs`, `grants.rs`), `asking.rs`, `asker.rs` | App control's reach: the person's pages listed, the gate and the consents it keeps, the prompts, and who asks |
 | `koyo/src/shell/tile_grid.rs` | The grid the projects' tiles and the pinned pages share in both layouts, each with its own `TileHand`, and a page from elsewhere landing among them |
-| `koyo/src/orca/pinned.rs`, `orca/loose.rs`, `orca.rs` (`pages`) | The Orca layout's top rail: the pinned pages' pill and zone, the loose pages' tabs, the hairline |
+| `koyo/src/orca/pinned.rs`, `orca/loose.rs`, `orca.rs` (`pages`) | The Orca layout's top rail: the pinned pages' pill and zone, the loose pages' tabs and their spot, their +, the hairline |
 | `koyo/src/arc/card.rs`, `hover.rs` | A pinned page's card |
-| `koyo/src/shell/reorder.rs`, `reorder/hand.rs` | The loose rows' list, and a tab off its list (`TabHand::left_list`, `taken_at`) |
+| `koyo/src/shell/reorder.rs`, `reorder/hand.rs` | The loose rows' list, and a tab off its list (`TabHand::left_list`, `taken_at`, `takes_for`) |
 | `koyo/src/spaces.rs` | A space's `id` |
-| `koyo/src/launcher/here.rs` | The launcher where no checkout is selected: a page only |
+| `koyo/src/launcher/here.rs`, `launcher/mod.rs` (`Opens`) | The launcher where the person is in no worktree, or asked for by the loose pages' +: an unpinned page only |
 | `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `orca/tests/rail.rs`, `shell/tile_grid/tests.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `settings/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs`, `control/tests/settings.rs` | The tests |
 | `koyo/src/arc/visual/pins.rs`, `arc/visual/rail.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`, `orca-rail-*.png`) |
 | `koyo/src/model/settings_tab.rs`, `navigation.rs` | The Settings tab on the workspace (11.9): opening it once, shown over the tab shown, closed by anything else shown, its pages and Back and Forward through them; Settings' pages |

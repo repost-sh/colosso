@@ -26,6 +26,10 @@ pub struct TabHand {
     /// at the Arc sidebar's head or in the Orca layout's top rail (`docs/arc-sidebar.md` 11).
     /// Over it, a tab is off its list.
     elsewhere: Cell<Option<Bounds<Pixels>>>,
+    /// Where the lists that take the tabs of the others are, as last drawn, each by the list it
+    /// is: the loose pages, or the spot that stands for them while there's none
+    /// (`docs/layout.md`). Over one, a tab of another list is off its own.
+    takers: RefCell<Vec<(List, Bounds<Pixels>)>>,
 }
 
 struct Drag {
@@ -80,6 +84,7 @@ impl TabHand {
     /// Takes up the tab `key` of `list`, in slot `at`, held `grab` in from its start.
     pub fn take(&self, list: List, key: u64, at: usize, grab: Pixels) {
         self.elsewhere.set(None);
+        self.takers.borrow_mut().clear();
         *self.drag.borrow_mut() = Some(Drag {
             list,
             key,
@@ -104,6 +109,22 @@ impl TabHand {
     /// the tab in hand: the next one taken up starts with none.
     pub fn taken_at(&self, place: Bounds<Pixels>) {
         self.elsewhere.set(Some(place));
+    }
+
+    /// Notes where `list` takes a tab let go of another list, as it's drawn there, or the spot
+    /// that stands for it while it's empty. It holds for the tab in hand, as `taken_at` does.
+    pub fn takes_for(&self, list: List, place: Bounds<Pixels>) {
+        let mut takers = self.takers.borrow_mut();
+        takers.retain(|(taker, _)| *taker != list);
+        takers.push((list, place));
+    }
+
+    /// Whether a tab of `list` at `at` is over where it's taken off its list: the pinned pages'
+    /// region, or another list that takes it.
+    fn taken(&self, list: List, at: Point<Pixels>) -> bool {
+        let elsewhere = (self.elsewhere.get()).is_some_and(|place| place.contains(&at));
+        let takers = self.takers.borrow();
+        elsewhere || (takers.iter()).any(|(taker, place)| *taker != list && place.contains(&at))
     }
 
     /// The tab in hand, by its key.
@@ -182,7 +203,7 @@ impl TabHand {
         let outside = outside(axis, bounds, at);
         let tabs = matches!(list.holds, Holds::Tabs { .. });
         let leaves = !matches!(list.holds, Holds::Rows);
-        let taken = (self.elsewhere.get()).is_some_and(|place| place.contains(&at));
+        let taken = self.taken(drag.list, at);
         drag.off = leaves
             && (taken
                 || beyond_ends(axis, bounds, at)
@@ -243,7 +264,8 @@ pub(super) enum Holds {
     Rows,
     /// A space's loose pages, down the Arc sidebar or along the Orca layout's top rail
     /// (`docs/arc-sidebar.md` 11): they move, and one taken off the list is a chip for a
-    /// checkout's list or the pinned pages, but none joins another, as each is a page.
+    /// checkout's list or the pinned pages, but none joins another, as each is a page. They take
+    /// the tabs of the other lists: one held over them is off its own.
     Pages,
 }
 

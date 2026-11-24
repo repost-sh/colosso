@@ -88,15 +88,21 @@ impl Shell {
         })
     }
 
-    /// Whether what's in hand is something the loose pages take, once it has left where it was
-    /// taken from: what their rows light up for, and what their strip shows for. They take a
-    /// page's tab off a checkout's list, and a pinned page's tile well away from the others;
-    /// not while it's still on the list or the grid it was taken from.
+    /// Whether what's in hand is something the Arc sidebar's loose pages take, once it has left
+    /// where it was taken from: what their rows light up for, and what their strip shows for.
+    /// They take a page's tab off a checkout's list (`loose_taking_tab`), and a pinned page's
+    /// tile well away from the others; not while it's still on the grid it was taken from.
     pub(crate) fn loose_taking(&self) -> bool {
-        let tab = (self.tab_hand.left_list()).is_some_and(|pane| {
+        self.loose_taking_tab() || self.pinned_hand.left_grid()
+    }
+
+    /// Whether a page's tab is in hand that has left the checkout's list it was taken from: what
+    /// the loose pages take, along the top rail and down the Arc sidebar, and what the spot that
+    /// takes the first of them shows for. Not while it's still on its list.
+    pub(crate) fn loose_taking_tab(&self) -> bool {
+        (self.tab_hand.left_list()).is_some_and(|pane| {
             self.workspace.loose_at(pane).is_none() && self.page_tab_of(pane).is_some()
-        });
-        tab || self.pinned_hand.left_grid()
+        })
     }
 
     /// Pins the tab holding pane `pane`, a checkout's or a loose page's, at the address its page

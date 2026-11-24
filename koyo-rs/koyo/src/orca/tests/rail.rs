@@ -1,16 +1,16 @@
 //! The Orca layout's top rail before the selected checkout's tabs (`docs/arc-sidebar.md` 1, 11):
 //! the pinned pages as buttons in a pill, picked to show and dragged among themselves; the zone
 //! that says where one goes while none is, put away and back for a page's tab in hand; a page's
-//! tab let go on the pill, pinned where the buttons made room for it; and the space's loose
-//! pages as tabs, a hairline between them and the checkout's tabs.
+//! tab let go on the pill, pinned where the buttons made room for it; the space's loose pages as
+//! tabs, their + and a hairline between them and the checkout's tabs; and a page's tab let go
+//! among them, or on the spot that shows where they'd be while there's none (`docs/layout.md`).
 
 use gpui_kit::{AnyWindowHandle, Bounds, Entity, Pixels, Point, TestAppContext, point, px};
 
-use crate::model::PaneKind;
-use crate::settings::{self, Layout};
+use crate::settings;
 use crate::shell::Shell;
 use crate::test_support::{
-    carry, click, draw, drawn, hold, let_go, let_go_on, open_page, pin, pinned, shell_on,
+    carry, click, drawn, hold, let_go, let_go_on, loose, open_page, orca_on_chat, pin, pinned,
     take_up,
 };
 use crate::theme::TITLE_BAR_HEIGHT;
@@ -18,19 +18,6 @@ use crate::theme::TITLE_BAR_HEIGHT;
 /// Whether `bounds` lie in the top rail.
 fn in_rail(bounds: Bounds<Pixels>) -> bool {
     bounds.top() >= px(0.) && bounds.bottom() <= px(TITLE_BAR_HEIGHT)
-}
-
-/// The shell in the Orca layout on a checkout whose first tab is a chat, motion reduced so what
-/// moves is where it goes at once.
-fn orca(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
-    let (window, shell, _) = shell_on(name, Layout::Orca, cx);
-    cx.update(|cx| cx.set_reduce_motion(true));
-    shell.update(cx, |shell, cx| {
-        shell.workspace.new_tab(PaneKind::Chat);
-        cx.notify();
-    });
-    draw(window, cx);
-    (window, shell)
 }
 
 /// The address of the page the panes show, the pinned page shown and the loose page shown, by
@@ -63,7 +50,7 @@ fn drag(
 /// shows its page, in place of the checkout's tab, and one dragged along the pill moves there.
 #[gpui_kit::test]
 fn the_pinned_pages_sit_in_a_pill_in_the_rail_and_one_picked_shows(cx: &mut TestAppContext) {
-    let (window, shell) = orca("orca-rail-pins", cx);
+    let (window, shell) = orca_on_chat("orca-rail-pins", cx);
     let pages = ["https://a.example/", "https://b.example/", "https://c.example/"];
     pin(window, &shell, &pages, cx);
     let pill = drawn(window, "orca-pinned", cx).expect("the pinned pages' pill");
@@ -97,7 +84,7 @@ fn the_pinned_pages_sit_in_a_pill_in_the_rail_and_one_picked_shows(cx: &mut Test
 fn with_none_pinned_a_zone_says_where_one_goes_and_comes_back_for_a_tab_in_hand(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell) = orca("orca-rail-zone", cx);
+    let (window, shell) = orca_on_chat("orca-rail-zone", cx);
     open_page(window, &shell, Some("https://example.com/"), cx);
     let zone = drawn(window, "orca-pinned-zone", cx).expect("the zone");
     assert!(in_rail(zone), "{zone:?}");
@@ -124,7 +111,7 @@ fn with_none_pinned_a_zone_says_where_one_goes_and_comes_back_for_a_tab_in_hand(
 fn a_pages_tab_let_go_on_the_pill_lands_where_the_buttons_made_room_for_it(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell) = orca("orca-rail-land", cx);
+    let (window, shell) = orca_on_chat("orca-rail-land", cx);
     let [one, two, three, four, five, six] = [
         "https://one.example/",
         "https://two.example/",
@@ -163,14 +150,14 @@ fn a_pages_tab_let_go_on_the_pill_lands_where_the_buttons_made_room_for_it(
     assert_eq!(pinned(&shell, cx), [four, five, one, two, three, six], "after the last");
 }
 
-/// The space's loose pages are tabs after back and forward and before the checkout's tabs, a
-/// hairline between: picked, one shows; dragged, it moves among them; closed, it's gone, and
-/// with none left and no pinned pages' pill, so is the hairline.
+/// The space's loose pages are tabs after back and forward and before the checkout's tabs, their
+/// + and a hairline between: picked, one shows; dragged, it moves among them; closed, it's gone,
+/// and with none left the + and the hairline stay, as a checkout is selected.
 #[gpui_kit::test]
 fn the_spaces_loose_pages_come_before_the_checkouts_tabs_a_hairline_between(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell) = orca("orca-rail-loose", cx);
+    let (window, shell) = orca_on_chat("orca-rail-loose", cx);
     cx.update(|cx| settings::update(cx, |settings| settings.pinned_zone_dismissed = true));
     let news = open_page(window, &shell, Some("https://news.example/"), cx);
     let maps = open_page(window, &shell, Some("https://maps.example/"), cx);
@@ -180,11 +167,13 @@ fn the_spaces_loose_pages_come_before_the_checkouts_tabs_a_hairline_between(
     });
     let first = drawn(window, "orca-loose-0", cx).expect("the first loose page's tab");
     let second = drawn(window, "orca-loose-1", cx).expect("the second's");
+    let plus = drawn(window, "orca-new-page", cx).expect("their +");
     let hairline = drawn(window, "orca-rail-separator", cx).expect("the hairline");
     let chat = drawn(window, "tab-0-0-0", cx).expect("the chat's tab");
-    assert!([first, second, hairline, chat].into_iter().all(in_rail));
+    assert!([first, second, plus, hairline, chat].into_iter().all(in_rail));
     assert!(first.right() <= second.left(), "{first:?} {second:?}");
-    assert!(second.right() <= hairline.left(), "{second:?} {hairline:?}");
+    assert!(second.right() <= plus.left(), "{second:?} {plus:?}");
+    assert!(plus.right() <= hairline.left(), "{plus:?} {hairline:?}");
     assert!(hairline.right() <= chat.left(), "{hairline:?} {chat:?}");
 
     click(window, "tab-0-0-0", cx);
@@ -195,16 +184,45 @@ fn the_spaces_loose_pages_come_before_the_checkouts_tabs_a_hairline_between(
 
     let past = point(second.center().x + px(10.), second.center().y);
     drag(window, first.center(), past, cx);
-    let order = cx.read(|cx| {
-        (shell.read(cx).workspace.loose().iter())
-            .map(|page| page.tab.first().address().unwrap_or_default().to_owned())
-            .collect::<Vec<_>>()
-    });
-    assert_eq!(order, ["https://maps.example/", "https://news.example/"]);
+    assert_eq!(loose(&shell, cx), ["https://maps.example/", "https://news.example/"]);
 
     click(window, "orca-loose-close-0", cx);
     assert!(drawn(window, "orca-rail-separator", cx).is_some(), "one left");
     click(window, "orca-loose-close-0", cx);
     assert!(cx.read(|cx| shell.read(cx).workspace.loose().is_empty()));
-    assert!(drawn(window, "orca-rail-separator", cx).is_none(), "none left, no pill");
+    assert!(drawn(window, "orca-new-page", cx).is_some(), "none left, the + stays");
+    assert!(drawn(window, "orca-rail-separator", cx).is_some(), "and the hairline before the chat");
+}
+
+/// With no loose pages, a dashed spot shows where they'd be, before their +, only while a page's
+/// tab is in hand off the checkout's list: let go there, it's the last loose page, and shows.
+/// With some, a page's tab let go on one takes its place among them, and shows.
+#[gpui_kit::test]
+fn a_pages_tab_let_go_on_the_spot_is_the_last_loose_page_and_shows(cx: &mut TestAppContext) {
+    let (window, shell) = orca_on_chat("orca-rail-spot", cx);
+    let (news, maps) = ("https://news.example/", "https://maps.example/");
+    open_page(window, &shell, Some(news), cx);
+    open_page(window, &shell, Some(maps), cx);
+    click(window, "tab-0-0-0", cx);
+    assert!(drawn(window, "orca-loose-spot", cx).is_none(), "nothing in hand");
+
+    take_up(window, "tab-0-0-0", cx);
+    assert!(drawn(window, "orca-loose-spot", cx).is_none(), "a chat's tab isn't kept there");
+    let_go_on(window, "tab-0-0-0", cx);
+
+    take_up(window, "tab-0-0-1", cx);
+    let spot = drawn(window, "orca-loose-spot", cx).expect("the spot, for the page in hand");
+    let plus = drawn(window, "orca-new-page", cx).expect("the loose pages' +");
+    assert!(in_rail(spot) && spot.right() <= plus.left(), "{spot:?} before {plus:?}");
+    let_go_on(window, "orca-loose-spot", cx);
+    assert_eq!(loose(&shell, cx), [news]);
+    assert_eq!(shown(&shell, cx), (Some(news.into()), None, Some(0)), "shown");
+    assert!(drawn(window, "orca-loose-spot", cx).is_none(), "gone with a loose page");
+    let tabs = cx.read(|cx| shell.read(cx).workspace.branch().map(|unit| unit.tabs.len()));
+    assert_eq!(tabs, Some(2), "off the checkout's tabs");
+
+    take_up(window, "tab-0-0-1", cx);
+    let_go_on(window, "orca-loose-0", cx);
+    assert_eq!(loose(&shell, cx), [maps, news], "in the place of the one it's let go on");
+    assert_eq!(shown(&shell, cx), (Some(maps.into()), None, Some(0)));
 }

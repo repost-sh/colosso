@@ -108,7 +108,9 @@ fn devtools_dock_at_every_side_detach_into_a_split_and_close_with_their_page(
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
     cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.open_browser(None, window, cx));
+        shell.update(cx, |shell, cx| {
+            shell.open_browser_tab(None, (false, false), None, window, cx)
+        });
     })
     .unwrap();
     draw(window, cx);
@@ -191,7 +193,9 @@ fn docked_devtools_take_the_room_their_divider_is_dragged_to_and_keep_it(cx: &mu
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
     cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.open_browser(None, window, cx));
+        shell.update(cx, |shell, cx| {
+            shell.open_browser_tab(None, (false, false), None, window, cx)
+        });
     })
     .unwrap();
     draw(window, cx);

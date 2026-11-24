@@ -1,11 +1,14 @@
-//! What the tests of the panes' kinds share: terminals the daemon lists, and a device to show.
+//! What the tests of the panes' kinds share: terminals the daemon lists, a device to show, and a
+//! chat shown.
 
 use std::path::Path;
 
-use gpui_kit::{Entity, TestAppContext};
+use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 
-use super::terminal_listed;
+use super::{draw, shell_on, terminal_listed};
 use crate::devices::Chosen;
+use crate::model::PaneKind;
+use crate::settings::Layout;
 use crate::shell::Shell;
 
 /// The daemon lists the terminals `listed`, each by its handle and its name, at their prompts in
@@ -30,4 +33,17 @@ pub fn iphone(udid: &str) -> Chosen {
         ipad: false,
         phone: false,
     }
+}
+
+/// The shell in the Orca layout over a checkout of its own whose one tab, a chat, is shown,
+/// motion reduced so what moves is where it goes at once: the window and the shell.
+pub fn orca_on_chat(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
+    let (window, shell, _) = shell_on(name, Layout::Orca, cx);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    shell.update(cx, |shell, cx| {
+        shell.workspace.new_tab(PaneKind::Chat);
+        cx.notify();
+    });
+    draw(window, cx);
+    (window, shell)
 }

@@ -345,21 +345,23 @@ fn the_pinned_tabs_zone_shows_until_a_person_puts_it_away_which_is_kept() {
 }
 
 #[test]
-fn loose_pages_are_each_spaces_until_a_person_shares_them_which_is_kept() {
+fn loose_pages_are_shared_until_a_person_keeps_them_per_space_which_is_kept() {
     use super::LoosePages;
     let missing: Settings = serde_json::from_str("{}").unwrap();
     assert_eq!(
         missing.loose_pages,
-        LoosePages::PerSpace,
-        "a file from before"
+        LoosePages::Shared,
+        "a file without the key"
     );
-    let shared = Settings {
-        loose_pages: LoosePages::Shared,
+    let stored: Settings = serde_json::from_str(r#"{"loose_pages": "PerSpace"}"#).unwrap();
+    assert_eq!(stored.loose_pages, LoosePages::PerSpace, "a stored choice wins");
+    let per_space = Settings {
+        loose_pages: LoosePages::PerSpace,
         ..Settings::default()
     };
-    let json = serde_json::to_value(&shared).unwrap();
-    assert_eq!(json["loose_pages"], "Shared");
-    assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), shared);
+    let json = serde_json::to_value(&per_space).unwrap();
+    assert_eq!(json["loose_pages"], "PerSpace");
+    assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), per_space);
 }
 
 #[test]

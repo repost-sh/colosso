@@ -1,11 +1,12 @@
 //! Orca layout: projects and their branch units in the sidebar inside the card, the wallpaper
 //! behind them, and in the top rail the pages that are no checkout's, then the selected
 //! checkout's tabs: the pinned pages in a pill (`pinned.rs`), the space's loose pages and the
-//! Settings tab as tabs (`loose.rs`), a hairline, and the checkout's tabs, as the Arc sidebar
-//! lists them from its head down (`docs/arc-sidebar.md` 11). A project's row folds its branches away under it and
-//! brings them back, and a project or a branch dragged by its row goes to another place among
-//! its own, as Arc's worktrees do (`shell/reorder.rs`), the order kept for the next launch. The
-//! selected branch's Changes and Files buttons are at the top rail's end (`shell/rails.rs`).
+//! Settings tab as tabs (`loose.rs`) and their +, a hairline, and the checkout's tabs, as the
+//! Arc sidebar lists them from its head down (`docs/arc-sidebar.md` 11). A project's row folds
+//! its branches away under it and brings them back, and a project or a branch dragged by its row
+//! goes to another place among its own, as Arc's worktrees do (`shell/reorder.rs`), the order
+//! kept for the next launch. The selected branch's Changes and Files buttons are at the top
+//! rail's end (`shell/rails.rs`).
 
 use std::rc::Rc;
 
@@ -23,8 +24,8 @@ use crate::pane::CLOSE;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
     Drop, InHand, List, Reorder, Shell, action_button, add_project_row, ellipsized, icon,
-    icon_button, key_of, new_tab_button, no_matches, project_error, row, section_label,
-    tab_close_button, tab_list, tab_row,
+    icon_button, key_of, new_page_button, new_tab_button, no_matches, project_error, row,
+    row_shape, section_label, selectable, tab_close_button, tab_list, tab_row,
 };
 use crate::theme::{self, Palette};
 
@@ -269,26 +270,28 @@ fn branch_row(
 }
 
 /// What the top rail shows after the window's buttons and before the selected checkout's tabs:
-/// the pinned pages in their pill, or the zone that says where one goes; the space's loose pages
-/// and the Settings tab, while it's open, as tabs; and a hairline between them and the
-/// checkout's tabs. None while there's none of them.
-pub fn pages(shell: &Shell, cx: &mut Context<Shell>) -> Option<Div> {
+/// the pinned pages in their pill, or the zone that says where one goes; the space's loose pages,
+/// or the spot that takes the first while a page's tab is in hand, and the Settings tab, while
+/// it's open, as tabs; their +, always there, which opens the launcher for a loose page only
+/// (`docs/layout.md`); and, while a checkout is selected, a hairline between them and its tabs.
+pub fn pages(shell: &Shell, cx: &mut Context<Shell>) -> Div {
     let p = theme::palette(cx);
     let pinned = pinned::region(shell, shell.pinned_taking(), p, cx);
     let loose = loose::tabs(shell, p, cx);
     let settings = loose::settings_tab(shell, p, cx);
-    if pinned.is_none() && loose.is_none() && settings.is_none() {
-        return None;
-    }
-    let hairline = (div().w(px(1.)).h(px(18.)).mx_1().flex_shrink_0())
-        .debug_selector(|| "orca-rail-separator".to_owned())
-        .bg(p.muted.opacity(0.35));
-    let pages = (div().min_w_0().h_full().flex().items_center().gap_1())
+    let new_page = (new_page_button("orca-new-page", cx).small())
+        .debug_selector(|| "orca-new-page".to_owned());
+    let hairline = shell.workspace.branch().map(|_| {
+        (div().w(px(1.)).h(px(18.)).mx_1().flex_shrink_0())
+            .debug_selector(|| "orca-rail-separator".to_owned())
+            .bg(p.muted.opacity(0.35))
+    });
+    (div().min_w_0().h_full().flex().items_center().gap_1())
         .children(pinned)
         .children(loose)
         .children(settings)
-        .child(hairline);
-    Some(pages)
+        .child(new_page)
+        .children(hairline)
 }
 
 /// The selected checkout's tabs, in the top rail after the pages that are no checkout's, and the
@@ -364,12 +367,13 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
 /// A tab in the top rail, a checkout's or a loose page's: a row 28 high that narrows to fit
 /// beside the others, its text muted unless it's `active`.
 fn rail_tab(id: impl Into<ElementId>, active: bool, p: Palette) -> Stateful<Div> {
-    row(id, active, p)
-        .h(px(28.))
-        .flex_shrink(1.)
-        .min_w_0()
-        .overflow_hidden()
-        .when(!active, |tab| tab.text_color(p.muted))
+    selectable(rail_shape(id), active, p).when(!active, |tab| tab.text_color(p.muted))
+}
+
+/// A tab's shape in the top rail, without what the pointer does to it: a row 28 high that
+/// narrows to fit beside the others.
+fn rail_shape(id: impl Into<ElementId>) -> Stateful<Div> {
+    row_shape(id).h(px(28.)).flex_shrink(1.).min_w_0().overflow_hidden()
 }
 
 /// What a rail tab of a single page or of Settings shows, at most 220 wide: its `icon`, `dot`

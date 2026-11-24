@@ -17,37 +17,28 @@ use crate::keyboard::Intent;
 use crate::model::{Edge, Located, Loose, Pane, Spot, Tab};
 
 impl Shell {
-    /// Opens a browser tab on the selected checkout, at `url` or on the start page with
-    /// the address ready to type in, and shows it.
-    pub fn open_browser(
-        &mut self,
-        url: Option<String>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_browser_tab(url, false, None, window, cx);
-    }
-
-    /// Opens a browser tab on the selected checkout, at `url` or on the start page with the
-    /// address ready to type in, after its last tab or, when `beside`, right after the tab
-    /// shown, its page starting in responsive `mode` when one is given (an agent's page,
-    /// `docs/responsive.md` 9); shows it, and gives back its pane.
+    /// Opens a browser tab at `url` or on the start page with the address ready to type in,
+    /// shows it, and gives back its pane: asked for an unpinned page (`unpinned`), as the
+    /// launcher opened for one asks, or where the person is in no branch (`opens_loose`), a loose
+    /// page of the space shown; else a tab of the selected checkout, after its last tab or, when
+    /// `beside`, right after the tab shown, its page starting in responsive `mode` when one is
+    /// given (an agent's page, `docs/responsive.md` 9).
     pub(crate) fn open_browser_tab(
         &mut self,
         url: Option<String>,
-        beside: bool,
+        (unpinned, beside): (bool, bool),
         mode: Option<Responsive>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
-        let loose = self.opens_loose();
+        let loose = unpinned || self.opens_loose();
         self.open_page(url, (loose, beside), mode.filter(|_| !loose), window, cx)
     }
 
     /// Opens a page at `url`, or the start page, and shows it: when `loose`, a loose page of the
     /// space shown (`docs/arc-sidebar.md` 11), after the loose page shown or after them all, of
-    /// the person's own profile, taking the keyboard; else a tab of the selected checkout, as
-    /// `open_browser_tab` says. Its pane.
+    /// the person's own profile, taking the keyboard, whatever tab was shown; else a tab of the
+    /// selected checkout, as `open_browser_tab` says. Its pane.
     pub(super) fn open_page(
         &mut self,
         url: Option<String>,
@@ -359,7 +350,9 @@ mod tests {
         let (window, shell) = shell_with(&[&root], cx);
         select(&shell, &root, cx);
         cx.update_window(window, |_, window, cx| {
-            shell.update(cx, |shell, cx| shell.open_browser(None, window, cx));
+            shell.update(cx, |shell, cx| {
+                shell.open_browser_tab(None, (false, false), None, window, cx)
+            });
         })
         .unwrap();
         cx.run_until_parked();

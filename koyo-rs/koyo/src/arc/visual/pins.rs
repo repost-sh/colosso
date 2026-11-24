@@ -276,7 +276,7 @@ fn loose_pages(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         shell.update(cx, |shell, cx| {
             shell.open_browser_tab(
                 Some("https://news.example.com/".into()),
-                false,
+                (false, false),
                 None,
                 window,
                 cx,
@@ -374,7 +374,7 @@ fn across_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         shell.update(cx, |shell, cx| {
             shell.open_browser_tab(
                 Some("https://maps.example.com/".into()),
-                false,
+                (false, false),
                 None,
                 window,
                 cx,

@@ -2,11 +2,12 @@
 //! on: a tab opened empty, at a page or a search, a chat asked or a command run in a new one,
 //! or a tab shown; or the New Worktree dialog opened on its project with the name typed. What was
 //! typed for it the history keeps. Opened on a page (⌘L), a page or a search picked loads in
-//! that page instead of a new tab, as an address typed in its own field would.
+//! that page instead of a new tab, as an address typed in its own field would. Opened for an
+//! unpinned page, the page opens unpinned in the space shown, whatever tab is shown.
 
 use gpui_kit::{AnyWindowHandle, App, Context, WeakEntity, Window};
 
-use super::Kind;
+use super::{Kind, Opens};
 use super::rows::Act;
 use crate::browser::Address;
 use crate::history::{self, Place};
@@ -15,12 +16,12 @@ use crate::new_worktree;
 use crate::shell::Shell;
 
 /// Does `act` in `behind`, the window `shell` shows, for what was typed at `place`, in the page
-/// of the pane `on` when the launcher opened on one.
+/// of the pane `on` when the launcher opened on one, a page opening as `opens` says.
 pub fn launch(
     shell: &WeakEntity<Shell>,
     behind: AnyWindowHandle,
     act: Act,
-    (place, on): (&Place, Option<u64>),
+    (place, on, opens): (&Place, Option<u64>, Opens),
     cx: &mut App,
 ) {
     let done = behind.update(cx, |_, window, cx| {
@@ -30,7 +31,7 @@ pub fn launch(
                 None => Some(act),
             };
             if let Some(act) = act {
-                act_on(shell, act, place, window, cx);
+                act_on(shell, act, (place, opens), window, cx);
             }
         })
     });
@@ -57,15 +58,20 @@ fn load_in_page(shell: &mut Shell, pane: u64, act: Act, cx: &mut Context<Shell>)
     None
 }
 
+/// Does `act` for what was typed at `place`: a page it opens is an unpinned one when `opens`
+/// says so, else a tab where the person is (`Shell::open_browser_tab`).
 fn act_on(
     shell: &mut Shell,
     act: Act,
-    place: &Place,
+    (place, opens): (&Place, Opens),
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) {
+    let opening = (opens.unpinned(), false);
     match act {
-        Act::Empty(Kind::Browser) => shell.open_browser(None, window, cx),
+        Act::Empty(Kind::Browser) => {
+            shell.open_browser_tab(None, opening, None, window, cx);
+        }
         Act::Empty(kind) => {
             if let Some(pane) = kind.pane() {
                 shell.new_tab(pane, cx);
@@ -75,14 +81,14 @@ fn act_on(
             new_worktree::open_named(cx.weak_entity(), place.project.clone(), &name, window, cx);
         }
         Act::Visit(url) => {
-            if let Some(pane) = shell.open_browser_tab(Some(url), false, None, window, cx) {
+            if let Some(pane) = shell.open_browser_tab(Some(url), opening, None, window, cx) {
                 shell.mark_typed(pane, cx);
             }
         }
         Act::Search(words) => {
             history::used(history::Kind::Search, &words, place, cx);
             let results = crate::settings::get(cx).search_engine.results(&words);
-            shell.open_browser(Some(results), window, cx);
+            shell.open_browser_tab(Some(results), opening, None, window, cx);
         }
         Act::Switch(pane) => {
             shell.focus_pane(pane, Intent::Launcher, window, cx);

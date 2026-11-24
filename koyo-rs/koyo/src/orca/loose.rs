@@ -1,46 +1,54 @@
 //! The space's loose pages in the Orca layout's top rail (`docs/arc-sidebar.md` 1, 11), the
 //! pages open in it that are no project's, as the Arc sidebar lists them under the pinned pages:
-//! tabs as the checkout's are, after the pinned pages' pill and before a hairline and the
+//! tabs as the checkout's are, after the pinned pages' pill and before their + and the
 //! checkout's tabs. The one shown is lit; picked, its page shows; dragged, it moves among them,
-//! or onto the pill, where it's pinned; closed, by its × or a middle click, it's gone. The
-//! Settings tab, while it's open, comes after them, lit, as it's shown (11.9).
+//! or onto the pill, where it's pinned; closed, by its × or a middle click, it's gone. A page's
+//! tab off the checkout's list let go on one lands there; with none, a dashed spot shows where
+//! they'd be while one is in hand, and takes it (`docs/layout.md`). The Settings tab, while it's
+//! open, comes after them, lit, as it's shown (11.9).
 
+use gpui_kit::base::ElementExt as _;
 use gpui_kit::{
-    AnyElement, Axis, Context, InteractiveElement as _, IntoElement as _, Stateful, Div, px,
+    AnyElement, Axis, Context, Div, InteractiveElement as _, IntoElement as _, Stateful,
+    Styled as _, px,
 };
 
-use super::{rail_tab, single_page};
+use super::{rail_shape, rail_tab, single_page};
 use crate::model::{Front, Loose, SettingsTab};
 use crate::pane::close_button;
 use crate::shell::{
-    Reorder, Shell, ellipsized, icon, loose_close, loose_list, loose_row, settings_close,
-    settings_row,
+    List, Shell, ellipsized, icon, loose_close, loose_list, loose_row, loose_spot,
+    settings_close, settings_row, takes_tabs,
 };
 use crate::theme::Palette;
 
-/// The loose pages the space shown lists, as tabs in a list they're dragged along; none while
-/// it lists none.
-pub(super) fn tabs(shell: &Shell, p: Palette, cx: &mut Context<Shell>) -> Option<Reorder> {
+/// The loose pages the space shown lists, as tabs in a list they're dragged along, each taking
+/// a page's tab let go on it; with none, the spot that takes the first while a page's tab is in
+/// hand, off the checkout's list, and nothing otherwise. A tab of the checkout's held over them
+/// is off its list.
+pub(super) fn tabs(shell: &Shell, p: Palette, cx: &mut Context<Shell>) -> Option<AnyElement> {
+    let taking = shell.loose_taking_tab();
     let pages = shell.workspace.loose();
     if pages.is_empty() {
-        return None;
+        return taking.then(|| spot(shell, p, cx).into_any_element());
     }
     let front = shell.workspace.front();
     let tabs = (pages.into_iter().enumerate())
         .map(|(at, page)| {
             let shown = matches!(front, Some(Front::Loose(shown)) if shown == at);
-            tab(shell, (at, page), shown, p, cx)
+            tab(shell, (at, page), (shown, taking), p, cx)
         })
         .collect();
     let list = (Axis::Horizontal, px(4.));
-    Some(loose_list(&shell.tab_hand, list, tabs, cx))
+    Some(loose_list(&shell.tab_hand, list, tabs, cx).into_any_element())
 }
 
-/// The tab of the loose page `page`, in place `at`, lit while it's the tab shown (`active`).
+/// The tab of the loose page `page`, in place `at`, lit while it's the tab shown (`active`), and
+/// under a page's tab in hand while `taking`.
 fn tab(
     shell: &Shell,
     (at, page): (usize, &Loose),
-    active: bool,
+    (active, taking): (bool, bool),
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> (u64, AnyElement) {
@@ -54,11 +62,21 @@ fn tab(
         single_page(tab, (face.icon(13.), face.label()), None, close)
     });
     #[cfg(feature = "visual-check")]
-    let tab = {
-        use gpui_kit::base::ElementExt as _;
-        tab.on_prepaint(crate::visual::noting(format!("orca-loose-{at}")))
-    };
-    (key, tab.into_any_element())
+    let tab = tab.on_prepaint(crate::visual::noting(format!("orca-loose-{at}")));
+    (key, takes_tabs(tab, (at, taking), p.hover, cx).into_any_element())
+}
+
+/// Where the space's first loose page goes while it has none and a page's tab is in hand: a
+/// tab high, edged in dashes and saying so. It notes where it's drawn for the tab in hand, which,
+/// held over it, is off the checkout's list, as over the loose pages' own.
+fn spot(shell: &Shell, p: Palette, cx: &mut Context<Shell>) -> Stateful<Div> {
+    let hand = shell.tab_hand.clone();
+    let spot = rail_shape("orca-loose-spot")
+        .debug_selector(|| "orca-loose-spot".to_owned())
+        .px_3()
+        .flex_shrink_0()
+        .on_prepaint(move |bounds, _, _| hand.takes_for(List::Loose, bounds));
+    loose_spot(spot, (p.text, p.hover), cx)
 }
 
 /// The Settings tab, after the loose pages, while it's open: lit, as it's the tab shown, its gear

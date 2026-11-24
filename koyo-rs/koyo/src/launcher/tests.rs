@@ -8,7 +8,7 @@ use gpui_kit::{AnyWindowHandle, App, Entity, TestAppContext};
 
 use super::here::{Here, OpenTab};
 use super::rows::{self, Act, Query};
-use super::{Kind, Launcher};
+use super::{Kind, Launcher, Opens};
 use crate::files::tests::{dialog, press, tabs};
 use crate::history::{self, Place};
 use crate::model::PaneKind;
@@ -18,6 +18,7 @@ use crate::test_support::{draw, repo, select, shell_with};
 
 mod icons;
 mod on_page;
+mod unpinned;
 
 /// A shell over a checkout of its own, selected.
 fn shell(
@@ -380,7 +381,7 @@ fn a_page_a_tab_shows_is_switched_to_and_searches_share_the_rows(cx: &mut TestAp
             "https://github.com/zen-browser/desktop",
         )],
         chats: Vec::new(),
-        pages_only: false,
+        opens: Opens::Tab,
     };
     cx.update(|cx| {
         let elsewhere = place(Path::new("/elsewhere"));
@@ -464,7 +465,7 @@ fn the_page_the_first_row_visits_is_not_listed_again(cx: &mut TestAppContext) {
         place: place(Path::new("/work/app")),
         tabs: Vec::new(),
         chats: Vec::new(),
-        pages_only: false,
+        opens: Opens::Tab,
     };
     cx.update(|cx| {
         history::visited(

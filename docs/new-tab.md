@@ -14,6 +14,13 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
 - **⌘T**, or the **+** in a tab strip (Orca and Arc layouts), opens the launcher over the
   window, for a tab on the selected checkout. ⌘T again, Escape, or a click outside it
   closes it.
+- **For an unpinned page only** (`docs/layout.md`, `launcher::Opens`): the **+** after the
+  unpinned pages on the top rail (`NewUnpinnedPage`) opens it whatever tab is shown, and ⌘T
+  does wherever the person is in no branch: a space with no project, or a pinned or an
+  unpinned page shown. There is no kind pill and no other kind on the right, and Tab changes
+  nothing: the field is alone, "Search or enter address". Enter opens an unpinned page in the
+  space shown, after the one shown or after them all, and shows it, even while a branch's tab
+  was shown; its place in the history is no project's. ⌘T on a branch's tab offers every kind.
 - **⌘L**, from anywhere in the window, or a click on the Arc sidebar's address bar, opens it
   **on the page shown** (`launcher::OpenAddress`, `Shell::open_address`), as Arc's ⌘L does.
   It changes a page's address, so it needs a page:
@@ -24,15 +31,17 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   - Enter on a Visit or a Search row loads in that page, as an address typed in its own field
     would: a typed visit, a search the history keeps, and the page takes the keyboard after.
     No tab opens. With the field emptied, Enter does nothing, as in any address bar.
-  - Every other row does what it does after ⌘T: a Switch to Tab row switches, and Tab goes on
-    to a chat, a terminal or a worktree, which open as usual.
+  - Every other row does what it does after ⌘T: a Switch to Tab row switches, and on a
+    branch's page Tab goes on to a chat, a terminal or a worktree, which open as usual; on a
+    pinned or an unpinned page, as after ⌘T there, it goes to no other kind.
   - ⌘L in the open launcher selects the field's text again.
   - With no page in the tab shown, a chat's, a terminal's, a file's, or no tab at all, ⌘L
     opens nothing and no tab: the key goes on to whatever has the keyboard, as one the
     window doesn't take, and a click on the bar does nothing. A new tab is ⌘T's.
   - In the Orca layout a page has its own toolbar, so ⌘L puts the keyboard in that page's
     address field instead, from anywhere in the tab.
-- A pill on the left of the field names the **kind** of tab Enter opens: **Browser**, **Chat**
+- A pill on the left of the field names the **kind** of tab Enter opens, while there's another
+  kind to go to: **Browser**, **Chat**
   or **Terminal**, in that order on purpose, then **Desktop**, the agent desktop's one tab
   (`docs/agent-desktop.md` 9), **Device**, the tab of an iPhone or iPad simulator, or of the
   person's own iPhone or iPad plugged in (`docs/devices.md` 8), and last **Worktree**, which opens no tab

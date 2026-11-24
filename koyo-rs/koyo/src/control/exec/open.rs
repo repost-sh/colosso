@@ -285,7 +285,7 @@ fn open(
         }
         PaneKind::Browser => Opened::Now(
             shell
-                .open_browser_tab(spec.url.clone(), beside, mode, window, cx)
+                .open_browser_tab(spec.url.clone(), (false, beside), mode, window, cx)
                 .ok_or_else(|| {
                     ControlError::not_found("No checkout is selected to open a page on.")
                 }),

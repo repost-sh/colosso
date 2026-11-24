@@ -4,9 +4,10 @@
 //! a worktree's tabs, where it's a tab of that worktree, or onto the pinned pages, where it's
 //! pinned; and a page's tab from a worktree, or a pinned page's tile, let go on them is one of
 //! them. Right-clicked, a row is copied into the selected worktree. With none, there's no list:
-//! a dotted strip takes one that's in hand. Each space's own, they're part of the space, and
-//! slide with it as it changes; shared, they stay where they are with the pinned pages. The
-//! Settings tab, while it's open, is the row after them, the pill, as it's shown (11.9).
+//! a dashed strip, "Drop to keep it here", takes one that's in hand. Each space's own, they're
+//! part of the space, and slide with it as it changes; shared, they stay where they are with the
+//! pinned pages. The Settings tab, while it's open, is the row after them, the pill, as it's
+//! shown (11.9).
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -21,8 +22,8 @@ use crate::model::{Front, Loose, SettingsTab};
 use crate::pane::{ROW_GLYPH, row_sized, sized_close_button};
 use crate::projects::with_menu;
 use crate::shell::{
-    CopyToWorktree, Dragged, DraggedPane, Shell, ellipsized, icon, loose_close, loose_list,
-    loose_row, settings_close, settings_row, title_with_end,
+    CopyToWorktree, Shell, ellipsized, icon, loose_close, loose_list, loose_row, loose_spot,
+    settings_close, settings_row, takes_tabs, title_with_end,
 };
 /// Between the rows, as between a worktree's.
 const GAP: f32 = 2.;
@@ -112,47 +113,42 @@ fn settings(look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
 }
 
 /// Has `row` take what's let go on it for the loose pages, at `place` among them: a page's tab
-/// from a worktree's list, or a pinned page's tile, which is unpinned there. Lit under either
-/// while `taking`.
+/// from a worktree's list (`takes_tabs`), or a pinned page's tile, which is unpinned there. Lit
+/// under either while `taking`.
 fn takes_pages(
     row: Stateful<Div>,
     (place, taking): (usize, bool),
     look: Look,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    row.drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
-        Dragged::Tab(..) if taking => style.bg(look.row_hover),
-        _ => style,
-    })
-    .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
-        if let (Dragged::Tab(..), [face]) = (held.what, held.faces.as_slice()) {
-            this.loosen_tab_of(face.id, place, cx);
-        }
-    }))
-    .drag_over::<DraggedPin>(move |style, _, _, _| style.bg(look.row_hover))
-    .on_drop(cx.listener(move |this, pin: &DraggedPin, _, cx| {
-        this.loosen_pinned(pin.key, place, cx);
-    }))
+    takes_pins(takes_tabs(row, (place, taking), look.row_hover, cx), place, look, cx)
 }
 
-/// Where a page let go is the space's first loose one, while it has none: a dotted row saying
-/// so.
+/// Has `row` take a pinned page's tile let go on it, unpinned at `place` among the loose pages,
+/// lit under it.
+fn takes_pins(
+    row: Stateful<Div>,
+    place: usize,
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    row.drag_over::<DraggedPin>(move |style, _, _, _| style.bg(look.row_hover))
+        .on_drop(cx.listener(move |this, pin: &DraggedPin, _, cx| {
+            this.loosen_pinned(pin.key, place, cx);
+        }))
+}
+
+/// Where a page let go is the space's first loose one, while it has none: the dashed spot that
+/// says so, a row of their list, which takes a pinned page's tile too.
 fn strip(look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
-    let strip = arc_row("arc-loose-strip")
-        .debug_selector(|| "arc-loose-strip".to_owned())
-        .justify_center()
-        .border_1()
-        .border_dashed()
-        .border_color(look.label.opacity(0.6))
-        .text_xs()
-        .text_color(look.label)
-        .child("Drop to keep it in this space");
+    let strip = arc_row("arc-loose-strip").debug_selector(|| "arc-loose-strip".to_owned());
+    let strip = loose_spot(strip, (look.label, look.row_hover), cx);
     #[cfg(feature = "visual-check")]
     let strip = {
         use gpui_kit::base::ElementExt as _;
         strip.on_prepaint(crate::visual::noting("arc-loose-strip".into()))
     };
-    takes_pages(strip, (0, true), look, cx)
+    takes_pins(strip, 0, look, cx)
 }
 
 /// The row of the loose page `page`, in place `at`: a pill when it's the tab shown (`active`),

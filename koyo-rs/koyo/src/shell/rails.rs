@@ -247,7 +247,7 @@ impl Shell {
                         action_button("forward", IconName::ArrowRight, "Forward", GoForward, cx)
                             .disabled(!forward),
                     )
-                    .children(crate::orca::pages(self, cx))
+                    .child(crate::orca::pages(self, cx))
                     .child(crate::orca::tabs(self, cx))
                     .child(
                         drag_area("title")
