@@ -29,23 +29,24 @@ use cef::{BrowserSettings, BrowserView, ImplPanel, ImplWindow, RequestContext, V
 use koyo_browser_ipc::{PaneId, Viewport};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindow};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_app_kit::{NSView, NSWindow};
+use objc2_foundation::{NSRect, NSSize};
 
 mod adopt;
 mod holder;
 mod parts;
 mod report;
+mod settle;
 mod strays;
 #[cfg(test)]
 pub(crate) mod tests;
 
-pub(crate) use adopt::{abandoned, adopt, holder_of, shown_window_of};
+pub(crate) use adopt::{abandoned, adopt};
 use adopt::{adopted, adopting};
 use holder::{closing, hold};
-pub(crate) use holder::tied_to;
 use parts::{HolderDelegate, PageViewDelegate};
-pub(crate) use strays::{alpha, client as stray_client, close_all as close_strays, count as strays, set_alpha};
+use settle::{park, settle};
+pub(crate) use strays::{client as stray_client, close_all as close_strays, count as strays};
 pub use report::describe;
 
 /// Chromium's view that hosts a window's compositor, the page's view over it, and the view in
@@ -64,7 +65,11 @@ struct Entry {
     /// The app's own view in the window the page was last shown in, which takes the keys the
     /// page leaves.
     home: Option<Retained<NSView>>,
-    /// Whether the page is on screen for the engine.
+    /// What the app says of the page's sight: whether an agent keeps it on screen for the
+    /// engine, and whether the window its pane draws it in counts as seen.
+    kept: bool,
+    seen: bool,
+    /// Whether the page is on screen for the engine, as its views were last put.
     on_screen: bool,
     /// The page's size in points, for its holder while no pane says where it is.
     size: NSSize,
@@ -137,6 +142,8 @@ pub(crate) fn create(
         views: None,
         shown_in: None,
         home: None,
+        kept: true,
+        seen: true,
         on_screen: true,
         size: NSSize::new(f64::from(viewport.width.max(1)), f64::from(viewport.height.max(1))),
     };
@@ -209,93 +216,6 @@ fn window_created(pane: PaneId, window: &Window, view: &BrowserView) {
     }
     crate::embedded::showing(|| window.show());
     settle(pane);
-}
-
-/// Puts a holder of `size` where it is while no pane shows its page: all but a point of it
-/// past the screen's bottom left corner, where it still counts as on screen.
-fn park(holder: &NSWindow, size: NSSize) {
-    let parked = NSRect::new(NSPoint::new(1. - size.width, 1. - size.height), size);
-    if holder.frame() != parked {
-        holder.setFrame_display(parked, false);
-    }
-}
-
-/// Puts `pane`'s views where they belong now. While the page is on screen for the engine:
-/// in the app's view if a pane draws it, else parked in the holder off the screen. Else out
-/// of every window, which is what hides it: Chromium is told not to judge by what covers a
-/// window (`app.rs`), so a parked page is awake whatever is in front. The holder stays shown
-/// either way (`docs/native-pages.md` 5); the windows Chromium ties to it go where the views
-/// are ([`holder::rehome`]).
-fn settle(pane: PaneId) {
-    let settled = page(pane, |entry| {
-        let (_, holder) = entry.holder.clone()?;
-        let views = entry.views.clone();
-        Some((holder, views, entry.shown_in.clone(), entry.on_screen, entry.size))
-    });
-    let Some(Some((holder, known, shown_in, on_screen, size))) = settled else {
-        return;
-    };
-    let made = || {
-        let content = holder.contentView()?;
-        Some((find_view(&content, COMPOSITOR)?, find_view(&content, WEB_CONTENTS)?))
-    };
-    let Some((compositor, web)) = known.clone().or_else(made) else {
-        return;
-    };
-    if known.is_none() {
-        page(pane, |entry| entry.views = Some((compositor.clone(), web.clone())));
-        // SAFETY: both are live views, on the main thread.
-        unsafe {
-            koyo_seam::pages::register(
-                pane,
-                Retained::as_ptr(&compositor).cast_mut().cast(),
-                Retained::as_ptr(&web).cast_mut().cast(),
-            );
-        }
-    }
-    let into = |parent: &NSView| {
-        let bounds = parent.bounds();
-        for view in [&compositor, &web] {
-            if !view.isDescendantOf(parent) {
-                parent.addSubview(view);
-                view.setAutoresizingMask(
-                    NSAutoresizingMaskOptions::ViewWidthSizable
-                        | NSAutoresizingMaskOptions::ViewHeightSizable,
-                );
-            }
-            if view.frame() != bounds {
-                view.setFrame(bounds);
-            }
-        }
-    };
-    let to = match (&shown_in, on_screen, holder.contentView()) {
-        (Some(container), true, _) => Some(container.clone()),
-        (None, true, Some(content)) => Some(content),
-        _ => None,
-    };
-    let to_window = to.as_ref().and_then(|parent| parent.window());
-    let leaving = web.window().is_some_and(|now| {
-        (to_window.as_ref()).is_none_or(|to| !std::ptr::eq(&raw const *now, &raw const **to))
-    });
-    if leaving {
-        tell_keyboard(pane, Views::Leaving);
-    }
-    let arriving = to_window.is_some();
-    let from_window = web.window();
-    if let Some(parent) = to {
-        into(&parent);
-    } else {
-        compositor.removeFromSuperview();
-        web.removeFromSuperview();
-    }
-    if shown_in.is_none() {
-        park(&holder, size);
-    }
-    let apps = |window: &&NSWindow| !std::ptr::eq(std::ptr::from_ref(*window), &raw const *holder);
-    holder::rehome(&holder, from_window.as_deref().filter(apps), to_window.as_deref().filter(apps));
-    if arriving {
-        tell_keyboard(pane, Views::Arrived);
-    }
 }
 
 /// Shows `pane`'s page in `container`, a view of the app's, which the page's views fill, and
@@ -380,11 +300,15 @@ pub(crate) fn off_screen(pane: PaneId) -> bool {
     PAGES.with(|pages| pages.try_borrow().ok()?.get(&pane).map(|entry| !entry.on_screen)) == Some(true)
 }
 
-/// Whether `pane`'s page is on screen for the engine.
-pub(crate) fn on_screen(pane: PaneId, visible: bool) {
-    let changed = page(pane, |entry| std::mem::replace(&mut entry.on_screen, visible) != visible);
+/// What the app says of `pane`'s page's sight: whether an agent keeps it on screen for the
+/// engine, and whether the window its pane draws it in counts as seen.
+pub(crate) fn sight(pane: PaneId, kept: bool, seen: bool) {
+    let changed = page(pane, |entry| {
+        let was = (entry.kept, entry.seen);
+        (entry.kept, entry.seen) = (kept, seen);
+        was != (kept, seen)
+    });
     if changed == Some(true) {
-        crate::sight::shown(pane, visible);
         settle(pane);
     }
 }

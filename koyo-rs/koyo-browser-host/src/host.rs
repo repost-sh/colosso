@@ -28,7 +28,7 @@ pub(crate) use panes::{
     navigate_later, page_changed, progressed, renderer_gone,
 };
 pub(crate) use panes::{adopt, close_later, never_made};
-use panes::{close, exit_fullscreen, navigate, open, resize, view, visible};
+use panes::{close, exit_fullscreen, navigate, open, resize, sight, view};
 pub(crate) use panes::leave_fullscreen;
 pub use profiles::{drop_cleared, forget_profile, keeps_profile};
 pub(crate) use profiles::kept;
@@ -153,8 +153,8 @@ pub(crate) fn all_closed() -> bool {
 }
 
 /// What the engine works for: waited on while it isn't up, a request of the app's waits for
-/// it, a window of Chrome's own is open or an extension's popup is expected; shown while a page
-/// is on screen or being opened; idle with no page and no window at all; unseen otherwise.
+/// it or a window of Chrome's own is open; shown while a page is on screen or being opened;
+/// idle with no page and no window at all; unseen otherwise.
 pub(crate) fn load() -> Load {
     let Some((ready, empty, none_on_screen)) = with(|host| {
         let none_on_screen = host.panes.keys().all(|&pane| crate::native::off_screen(pane));
@@ -162,10 +162,7 @@ pub(crate) fn load() -> Load {
     }) else {
         return Load::Waited;
     };
-    let waited_on = !ready
-        || queue::drain_pending()
-        || crate::native::strays() > 0
-        || crate::extensions::popup_expected();
+    let waited_on = !ready || queue::drain_pending() || crate::native::strays() > 0;
     if waited_on {
         Load::Waited
     } else if !none_on_screen {
@@ -313,10 +310,7 @@ fn handle(request: AppRequest) {
             permission,
             allowed,
         } => site::set(pane, permission, allowed),
-        AppRequest::Visible {
-            pane,
-            visible: shown,
-        } => visible(pane, shown),
+        AppRequest::Sight { pane, kept, seen } => sight(pane, kept, seen),
         AppRequest::View { pane, action } => view(pane, action),
         AppRequest::Edit { pane, command } => {
             if let Some(frame) = browser_of(pane).and_then(|browser| browser.focused_frame()) {
@@ -360,12 +354,15 @@ fn handle(request: AppRequest) {
             method,
             params,
         } => cdp(pane, call, (caller, session), &method, params),
+        AppRequest::ExtensionPointerDown { pane, extension } => {
+            crate::extensions::pointer_down(pane, &extension);
+        }
         AppRequest::ExtensionAct {
             pane,
             extension,
-            at,
+            bounds,
             corner,
-        } => crate::extensions::act(pane, &extension, at, corner),
+        } => crate::extensions::act(pane, &extension, bounds, corner),
         AppRequest::ChangeExtension {
             profile,
             extension,

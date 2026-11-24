@@ -4,6 +4,7 @@ use std::cell::Cell;
 
 use objc2_foundation::NSSize;
 
+use super::settle::{Spot, spot};
 use super::{Entry, PAGES, PaneId, Views, closed, page};
 
 thread_local! {
@@ -24,6 +25,8 @@ pub(crate) fn opened(pane: PaneId) {
         views: None,
         shown_in: None,
         home: None,
+        kept: true,
+        seen: true,
         on_screen: true,
         size: NSSize::new(800., 600.),
     };
@@ -39,4 +42,15 @@ fn a_page_closing_tells_the_keyboard_while_the_page_is_still_there() {
     HEARD.set(None);
     closed(7);
     assert_eq!(HEARD.get(), None, "a page closed already tells nothing");
+}
+
+/// A page a pane stops drawing that no agent keeps leaves every window at once: it isn't
+/// parked in its holder first, which woke it and hid it again as a tab was left.
+#[test]
+fn a_page_no_pane_draws_and_no_agent_keeps_is_in_no_window() {
+    assert_eq!(spot(false, false, true), Spot::Nowhere, "a tab the person left");
+    assert_eq!(spot(false, true, true), Spot::Holder, "a page an agent uses out of sight");
+    assert_eq!(spot(true, false, true), Spot::Pane, "a tab the person sees");
+    assert_eq!(spot(true, false, false), Spot::Nowhere, "its window covered or minimized");
+    assert_eq!(spot(true, true, false), Spot::Pane, "an agent uses it, its window unseen");
 }

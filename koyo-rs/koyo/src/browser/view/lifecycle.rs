@@ -118,7 +118,7 @@ impl BrowserView {
             self.send(AppRequest::BringBack { pane: self.pane, session }, cx);
         }
         self.opened = Some(epoch);
-        self.visible = None;
+        self.told = None;
         self.seen = false;
         self.send(request, cx);
         self.tell_sight(cx);

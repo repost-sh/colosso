@@ -4,7 +4,7 @@
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, Bounds, Context, Pixels, Point, Window};
-use koyo_browser_ipc::{AppRequest, Corner, ExtensionChange, PaneId};
+use koyo_browser_ipc::{AppRequest, Corner, ExtensionChange, PaneId, ScreenRect};
 
 use super::{MANAGE, STORE, Shown};
 use crate::browser::view::{BrowserEvent, BrowserView};
@@ -39,6 +39,14 @@ pub struct ExtensionPick {
 /// in the right half (a toolbar's end) to the left, as under Chrome's own toolbar.
 fn hangs_by(icon: Bounds<Pixels>, width: Pixels) -> Corner {
     if icon.center().x < width / 2. { Corner::Left } else { Corner::Right }
+}
+
+/// Where `icon`, drawn in `window`, is on the screen, in points from the main screen's bottom
+/// left, as `AppKit` counts them; none for a test's window.
+fn on_screen(icon: Bounds<Pixels>, window: &Window) -> Option<ScreenRect> {
+    let [left, top] = crate::native::window::on_screen(window, icon.origin)?;
+    let [right, bottom] = crate::native::window::on_screen(window, icon.bottom_right())?;
+    Some(ScreenRect { x: left.min(right), y: bottom.min(top), width: (right - left).abs(), height: (top - bottom).abs() })
 }
 
 /// The rows of `shown`'s menu, by what each says: a separator is none.
@@ -94,6 +102,13 @@ impl BrowserView {
         self.browsers.read(cx).extensions.changes()
     }
 
+    /// The pointer went down on `extension`'s icon: its popup open over the page closes, and
+    /// the press it starts opens none, as in Chrome.
+    pub(in crate::browser) fn extension_pointer_down(&mut self, extension: &str, cx: &mut Context<Self>) {
+        let (pane, extension) = (self.pane, extension.to_owned());
+        self.send_to_page(AppRequest::ExtensionPointerDown { pane, extension }, cx);
+    }
+
     /// A press on `extension`'s icon, drawn at `icon` in `window`: Chrome runs its action on
     /// the page, and a popup it opens hangs from under the icon, towards the window's middle,
     /// so it's over the window from an icon at either side of it.
@@ -105,15 +120,11 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) {
         let corner = hangs_by(icon, window.viewport_size().width);
-        let x = match corner {
-            Corner::Left => icon.left(),
-            Corner::Right => icon.right(),
-        };
-        let Some(at) = crate::native::window::on_screen(window, Point { x, y: icon.bottom() }) else {
+        let Some(bounds) = on_screen(icon, window) else {
             return;
         };
         let (pane, extension) = (self.pane, extension.to_owned());
-        self.send_to_page(AppRequest::ExtensionAct { pane, extension, at, corner }, cx);
+        self.send_to_page(AppRequest::ExtensionAct { pane, extension, bounds, corner }, cx);
     }
 
     /// A right press on `shown`'s icon: its menu opens at `at` in `window`.

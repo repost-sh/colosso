@@ -31,7 +31,7 @@ impl BrowserView {
         let mut view = Self::with_kind(Some(pane), url, kind, window, cx);
         view.opener = Some(opener);
         view.opened = Some(view.browsers.read(cx).epoch());
-        view.visible = None;
+        view.told = None;
         view.tell_sight(cx);
         view.session_opened(cx);
         view

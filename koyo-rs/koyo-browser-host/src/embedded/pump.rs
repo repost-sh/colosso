@@ -52,8 +52,8 @@ pub(crate) enum Load {
     Unseen,
     /// A page on screen or being opened, and nothing else.
     Shown,
-    /// The engine starting, a request of the app's waiting for it, a window of Chrome's own, or
-    /// an extension's popup expected: Chrome's own windows draw from timers on this thread.
+    /// The engine starting, a request of the app's waiting for it, or a window of Chrome's own:
+    /// Chrome's own windows draw from timers on this thread.
     Waited,
 }
 
@@ -104,8 +104,6 @@ unsafe extern "C" {
     fn CFRunLoopAddTimer(run_loop: *mut c_void, timer: *mut c_void, mode: *const c_void);
     fn CFRunLoopTimerSetNextFireDate(timer: *mut c_void, fire_date: f64);
     fn CFRunLoopWakeUp(run_loop: *mut c_void);
-    fn CFRunLoopTimerInvalidate(timer: *mut c_void);
-    fn CFRelease(object: *mut c_void);
     static kCFRunLoopCommonModes: *const c_void;
 }
 
@@ -125,53 +123,6 @@ pub fn on_main(then: impl FnOnce() + Send + 'static) {
         later.push(Box::new(then));
     }
     schedule(0);
-}
-
-/// What a run-loop timer is made with (`CFRunLoopTimerContext`).
-#[repr(C)]
-struct TimerContext {
-    version: isize,
-    info: *mut c_void,
-    retain: *const c_void,
-    release: *const c_void,
-    copy_description: *const c_void,
-}
-
-/// Runs `tick` on the main thread every `interval` seconds, in the common modes, until it
-/// answers false. From the main thread.
-pub(crate) fn every(interval: f64, tick: fn() -> bool) {
-    extern "C" fn fire(timer: *mut c_void, info: *mut c_void) {
-        // SAFETY: `info` is the `fn() -> bool` the timer was made with, below.
-        let tick: fn() -> bool = unsafe { std::mem::transmute(info) };
-        if !tick() {
-            // SAFETY: the timer firing, which the run loop holds until it's invalidated.
-            unsafe { CFRunLoopTimerInvalidate(timer) };
-        }
-    }
-    let mut context = TimerContext {
-        version: 0,
-        info: tick as *mut c_void,
-        retain: std::ptr::null(),
-        release: std::ptr::null(),
-        copy_description: std::ptr::null(),
-    };
-    // SAFETY: CF's run-loop calls on the main thread's run loop; the context is copied by
-    // the create call, and the run loop keeps the timer, so the one reference made here goes.
-    unsafe {
-        let timer = CFRunLoopTimerCreate(
-            std::ptr::null(),
-            CFAbsoluteTimeGetCurrent() + interval,
-            interval,
-            0,
-            0,
-            fire,
-            (&raw mut context).cast(),
-        );
-        if !timer.is_null() {
-            CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);
-            CFRelease(timer);
-        }
-    }
 }
 
 /// CEF has started: its work runs from here on.

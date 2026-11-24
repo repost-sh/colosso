@@ -75,7 +75,7 @@ pub fn each_change_once(host: &mut Connection, incoming: &Receiver<Incoming>) ->
 }
 
 fn visible(host: &mut Connection, visible: bool) -> Result<(), String> {
-    host.send(&AppRequest::Visible { pane: 1, visible })
+    host.send(&AppRequest::Sight { pane: 1, kept: visible, seen: true })
         .map_err(|error| format!("visible: {error}"))
 }
 

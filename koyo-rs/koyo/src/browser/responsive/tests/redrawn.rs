@@ -81,7 +81,8 @@ fn a_page_is_measured_once_told_its_size_and_only_of_that_size(cx: &mut TestAppC
     view.read_with(cx, |view, _| {
         assert!(view.ready_to_measure(shown), "its own report says it's there");
     });
-    view.update(cx, |view, cx| view.set_visible(false, cx));
+    let hidden = crate::browser::view::sight::Told { kept: false, seen: false };
+    view.update(cx, |view, cx| view.set_sight(hidden, cx));
     let tablet = device(find("ipad-mini").unwrap());
     let target = view.update(cx, |view, cx| view.agent_viewport(&agent, &tablet, cx));
     let target = target.unwrap().unwrap();

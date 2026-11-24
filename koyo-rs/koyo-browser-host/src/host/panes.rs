@@ -163,10 +163,11 @@ pub(crate) fn found(pane: PaneId, count: i32, active: i32) {
     });
 }
 
-/// Whether the page is on screen for the engine, which is where its views are: a page whose
-/// browser is still to come is noted so, and made as it is by then (`native.rs`).
-pub(super) fn visible(pane: PaneId, visible: bool) {
-    crate::native::on_screen(pane, visible);
+/// What the app says of the page's sight, which with where a pane draws it is where its
+/// views are: a page whose browser is still to come is noted so, and made as it is by then
+/// (`native.rs`).
+pub(super) fn sight(pane: PaneId, kept: bool, seen: bool) {
+    crate::native::sight(pane, kept, seen);
 }
 
 pub(super) fn navigate(pane: PaneId, url: &str) {

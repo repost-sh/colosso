@@ -10,8 +10,6 @@ use std::os::raw::c_int;
 
 use cef::{BrowserView, Client, ImplBrowser as _, ImplBrowserHost as _, ImplBrowserView as _, ImplClient as _};
 use koyo_browser_ipc::{HostEvent, PaneId};
-use objc2::rc::Retained;
-use objc2_app_kit::NSWindow;
 
 use super::{Entry, HolderDelegate, PAGES, page};
 
@@ -56,6 +54,8 @@ pub(crate) fn adopt(opener: PaneId, popup: c_int, url: &str, active: bool) -> Op
         views: None,
         shown_in: None,
         home: None,
+        kept: true,
+        seen: true,
         on_screen: true,
         size,
     };
@@ -79,17 +79,6 @@ pub(crate) fn abandoned(opener: PaneId, popup: c_int) {
         PAGES.with(|pages| pages.borrow_mut().remove(&pane));
         crate::host::never_made(pane);
     }
-}
-
-/// The holder of `pane`'s page: the window Chrome's own bubbles for the page are children of.
-pub(crate) fn holder_of(pane: PaneId) -> Option<Retained<NSWindow>> {
-    page(pane, |entry| entry.holder.as_ref().map(|(_, holder)| holder.clone()))?
-}
-
-/// The app's window `pane`'s page is drawn in, while a pane draws it: the window a pop-up of
-/// the page's belongs over (`koyo_seam::windows::adopt`).
-pub(crate) fn shown_window_of(pane: PaneId) -> Option<Retained<NSWindow>> {
-    page(pane, |entry| entry.shown_in.as_ref().and_then(|view| view.window()))?
 }
 
 /// The pane of the page being opened that Chrome makes a browser view for with `client`.

@@ -247,10 +247,17 @@ the views out of every window. Shown again, the views go back into the pane and 
 whether macOS ever counts it as covered there, which would hide the page, wasn't seen in these
 runs and isn't ruled out.
 
-As built (`koyo-browser-host/src/native.rs`): the app's `Visible` request says whether a page
-is on screen for the engine, as before. On screen, its views are in the pane's view while a
-pane draws it, else parked in its holder, the holder moved past the screen's corner; not on
-screen, they're out of every window, which is what hides it. Chromium is started with
+As built (`koyo-browser-host/src/native.rs`): a page is on screen for the engine while a pane
+draws it in a window that's seen, or while an agent keeps it. The host knows itself whether a
+pane draws it (`native::place`, `native::release`); the app's `Sight` request says the rest,
+whether an agent keeps it and whether its pane's window is seen. On screen, its views are in
+the pane's view while a pane draws it, else parked in its holder, the holder moved past the
+screen's corner; not on screen, they're out of every window, which is what hides it. Until
+2026-11-24 the app's `Visible` request said whether the page was on screen, drawn or kept in
+one flag, and came after the release it followed from: the views of a tab the person left were
+parked first, as a kept page's are, and the page went hidden, visible and hidden in 40 ms each
+time (`.artifacts/pin/timeline.txt`); now a page no agent keeps leaves every window as its pane
+lets it go, and is hidden once. Chromium is started with
 `--disable-backgrounding-occluded-windows`, so it never hides a page by what covers its
 window: without it a parked page went `hidden` whenever Koyo was behind another app or the
 screen was locked, and an agent's page stopped getting frames. `[proven]`: with the screen
@@ -512,7 +519,7 @@ holder) and `browser/native` in the app (a page's view in its pane).
   hands the page itself; GPUI has no key handler on a native page. A press is still heard on
   its way to the page, so GPUI's focus follows it and the person has the page.
 - **What goes over the protocol as before:** `Edit` (⌘C and the rest are the engine's
-  commands in the focused frame), `Visible`, `Resize` (the size of a page no pane draws).
+  commands in the focused frame), `Sight`, `Resize` (the size of a page no pane draws).
 - **What the app calls directly**, because it carries views: `native::place` as it draws the
   pane (the page's views into the pane's view, its holder over it on screen),
   `native::release` when the pane stops drawing it, and for the keyboard `native::key_view`,

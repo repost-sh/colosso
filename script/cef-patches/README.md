@@ -26,9 +26,11 @@ the old one out, rather than building it beside the new.
 | `extension-tabs-create` | Cra | `cef/libcef/browser/chrome/`, `chrome/browser/extensions/api/tabs/tabs_api.cc` |
 | `extensions-normal-windows` | Cra | `chrome/browser/extensions/api/extension_action/`, `chrome/browser/extensions/browser_extension_window_controller.cc` |
 | `koyo-extensions-protocol` | Koyo, parts after Cra | the `Extensions` DevTools domain (`Extensions.pdl`, `extensions_handler.{h,cc}`, `inspector_protocol_config.json`), `cef/libcef/browser/chrome/browser_delegate.h`, `chrome_browser_delegate.cc` |
+| `koyo-popup` | Koyo | the `Extensions` domain again (`koyoActionPointerDown`, the button `koyoTriggerAction` takes), `chrome/browser/ui/extensions/extension_popup_types.h`, `extension_action_delegate.h`, `chrome/browser/ui/views/extensions/extension_action_delegate_desktop.{h,cc}`, `extension_popup.{h,cc}`, `extension_view_views.{h,cc}`, `ui/views/bubble/bubble_dialog_delegate_view.{h,cc}` |
 
 - **Order matters where two touch a file.** `koyo-extensions-protocol` goes over
-  `extension-tab-activate` and `extension-tabs-create` in CEF's browser delegate, and
+  `extension-tab-activate` and `extension-tabs-create` in CEF's browser delegate,
+  `koyo-popup` over `koyo-extensions-protocol` in the `Extensions` domain's files, and
   `external-pump-wake-ups` over `external-pump-idle-work` in CEF's message loop; the names
   sort that way.
 - **Made against** CEF 156.0.14 (`4fa4ab5`) on Chromium 156.0.8078.48. On another version

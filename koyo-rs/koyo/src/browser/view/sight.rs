@@ -51,6 +51,15 @@ pub(crate) const AWAKE_AFTER: Duration = Duration::from_secs(5);
 /// sign-in's) doesn't bring it in front of the person.
 const AGENTS_FOR: Duration = Duration::from_secs(90);
 
+/// What the app tells the host of a page's sight (`AppRequest::Sight`): whether an agent keeps
+/// it on screen for the engine, a pane drawing it or not, and whether the window its pane
+/// draws it in counts as seen. Where a pane draws it is the host's to know.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Told {
+    pub(crate) kept: bool,
+    pub(crate) seen: bool,
+}
+
 /// An agent's use of a page, which keeps it on screen for the engine though no pane draws it.
 #[derive(Default)]
 pub(crate) struct Awake {
@@ -130,12 +139,14 @@ impl BrowserView {
         self.drawn() || !agents || crate::control::policy(cx).show_what_agents_open
     }
 
-    /// Tells the host whether the page is on screen ([`BrowserView::on_screen`]), and, as
-    /// the person comes to see it, that it's the page they're on, until another has the
-    /// keys. The two differ: a page an agent opened is on screen for the engine before its
-    /// pane draws it, and was never told as the one the person is on.
+    /// Tells the host what only the app knows of the page's sight ([`Told`]), and, as the
+    /// person comes to see it, that it's the page they're on, until another has the keys. The
+    /// host knows itself whether a pane draws the page, and with this whether it's on screen
+    /// for the engine ([`BrowserView::on_screen`]): a page an agent opened is on screen for the
+    /// engine before its pane draws it, and was never told as the one the person is on.
     pub(in crate::browser) fn tell_sight(&mut self, cx: &mut Context<Self>) {
-        self.set_visible(self.on_screen(), cx);
+        let seen = self.window_visible || crate::sight::unseen_counts();
+        self.set_sight(Told { kept: self.awake.until.is_some(), seen }, cx);
         let drawn = self.drawn();
         if drawn && !std::mem::replace(&mut self.seen, drawn) {
             self.tell_active(cx);
@@ -143,12 +154,11 @@ impl BrowserView {
         self.seen = drawn;
     }
 
-    /// Tells the host whether the page is on screen, when that changed; out of sight it
-    /// stops painting.
-    pub(in crate::browser) fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
-        if self.visible.replace(visible) != Some(visible) {
-            let pane = self.pane;
-            self.send_to_page(AppRequest::Visible { pane, visible }, cx);
+    /// Tells the host `told`, when it changed.
+    pub(in crate::browser) fn set_sight(&mut self, told: Told, cx: &mut Context<Self>) {
+        if self.told.replace(told) != Some(told) {
+            let (pane, Told { kept, seen }) = (self.pane, told);
+            self.send_to_page(AppRequest::Sight { pane, kept, seen }, cx);
         }
     }
 }

@@ -61,12 +61,6 @@ pub(super) fn clear() {
     STRAYS.with(|strays| strays.borrow_mut().clear());
 }
 
-/// How opaque `window` is, from 0, clear, to 1.
-pub(crate) fn alpha(window: &NSWindow) -> f64 {
-    // SAFETY: `NSWindow`'s own getter, a `CGFloat`.
-    unsafe { objc2::msg_send![window, alphaValue] }
-}
-
 /// Makes `window` that opaque: clear at 0, where it's still there and takes no part. So a
 /// window of Chrome's own stays unseen until it's known what it is and where it goes.
 pub(crate) fn set_alpha(window: &NSWindow, alpha: f64) {

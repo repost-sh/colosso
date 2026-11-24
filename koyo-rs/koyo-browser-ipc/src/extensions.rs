@@ -50,16 +50,29 @@ pub enum ExtensionSource {
     Other,
 }
 
-/// Which of its top corners an extension's popup hangs by.
+/// Which of its top corners an extension's popup hangs by, at the same corner of its icon.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Corner {
-    /// Its top left: the popup opens to the right of the point, as from an icon at the
-    /// window's left.
+    /// Its top left: the popup opens to the right, as from an icon at the window's left.
     Left,
-    /// Its top right, as under Chrome's own toolbar: the popup opens to the left of it.
+    /// Its top right, as under Chrome's own toolbar: the popup opens to the left.
     #[default]
     Right,
+}
+
+/// A rectangle of the screen, in points from the main screen's bottom left, as `AppKit`
+/// counts them: `x` and `y` are its bottom left corner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ScreenRect {
+    /// Its left edge.
+    pub x: f64,
+    /// Its bottom edge.
+    pub y: f64,
+    /// Its width.
+    pub width: f64,
+    /// Its height.
+    pub height: f64,
 }
 
 /// What an extension set its toolbar action to, for one page or for every page. An empty

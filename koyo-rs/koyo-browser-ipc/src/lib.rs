@@ -37,7 +37,9 @@ pub use devtools::{DevToolsAsk, DevToolsDock};
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use downloads::{Download, DownloadAct, DownloadState, Print};
 pub use events::{Cursor, Framework, HostEvent, PageState, SiteSetting, Zoom};
-pub use extensions::{Corner, Extension, ExtensionAction, ExtensionChange, ExtensionSource};
+pub use extensions::{
+    Corner, Extension, ExtensionAction, ExtensionChange, ExtensionSource, ScreenRect,
+};
 pub use input::{Point, Viewport};
 pub use passkeys::{
     Assertion, AuthenticatorSelection, Bytes, Created, Creation, CredentialDescriptor,
@@ -94,7 +96,13 @@ pub use tone::Tone;
 /// 20: an agent's commands and events in the sessions of a page's cross-origin frames
 /// ([`AppRequest::Cdp`]'s and [`HostEvent::CdpEvent`]'s `session`), whose attaching it hears
 /// once it asked for it (`Target.setAutoAttach`).
-pub const PROTOCOL: u32 = 20;
+/// 21: an extension's popup is the engine's from the press to its closing: a press carries
+/// the icon's rectangle ([`AppRequest::ExtensionAct`]'s `bounds`) where it carried a point,
+/// and the pointer going down on the icon comes before it ([`AppRequest::ExtensionPointerDown`]);
+/// and the app says of a page only what it alone knows of its sight, whether an agent keeps it
+/// and whether its pane's window is seen ([`AppRequest::Sight`]), where it said whether it was on
+/// screen, so a page a pane stops drawing leaves every window at once rather than once told.
+pub const PROTOCOL: u32 = 21;
 
 /// Surfaces in a ring sent over a mach service ([`mach`]): one shown, one being drawn, one
 /// spare. The device and desktop hosts send their pictures so.

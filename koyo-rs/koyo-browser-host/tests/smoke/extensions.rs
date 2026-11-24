@@ -5,7 +5,7 @@
 //! it's pinned, turned off and removed.
 use std::path::Path;
 
-use koyo_browser_ipc::{AppRequest, Extension, ExtensionChange, HostEvent};
+use koyo_browser_ipc::{AppRequest, Corner, Extension, ExtensionChange, HostEvent, ScreenRect};
 
 use crate::support::{Session, VIEWPORT, close, launch, serve};
 
@@ -25,6 +25,22 @@ fn listed(session: &mut Session, what: &str, want: impl Fn(Option<&Extension>) -
         _ => false,
     });
     found
+}
+
+/// A press on the extension's icon for the page, as the app makes one: the pointer going
+/// down on it, then the press, with the icon's rectangle of the screen.
+fn press(session: &mut Session, extension: &str) -> std::io::Result<()> {
+    let extension = extension.to_owned();
+    (session.host)
+        .send(&AppRequest::ExtensionPointerDown { pane: 1, extension: extension.clone() })
+        .and_then(|()| {
+            session.host.send(&AppRequest::ExtensionAct {
+                pane: 1,
+                extension,
+                bounds: ScreenRect { x: 200., y: 600., width: 24., height: 24. },
+                corner: Corner::Right,
+            })
+        })
 }
 
 #[test]
@@ -64,14 +80,7 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
 
     (session.host)
         .send(&AppRequest::Active { pane: 1 })
-        .and_then(|()| {
-            session.host.send(&AppRequest::ExtensionAct {
-                pane: 1,
-                extension: id.clone(),
-                at: [200., 200.],
-                corner: koyo_browser_ipc::Corner::Right,
-            })
-        })
+        .and_then(|()| press(&mut session, &id))
         .expect("act");
     let (mut said, mut opened, mut got_tab) = (None, None, false);
     session.wait("the action run and its tab opened", |event| {
@@ -100,14 +109,7 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
         matches!(event, HostEvent::Page { pane, state } if *pane == tab && state.url == url && !state.loading)
     });
 
-    (session.host)
-        .send(&AppRequest::ExtensionAct {
-            pane: 1,
-            extension: id.clone(),
-            at: [200., 200.],
-            corner: koyo_browser_ipc::Corner::Right,
-        })
-        .expect("act again");
+    press(&mut session, &id).expect("act again");
     let (mut went, mut closed) = (false, false);
     session.wait("the tab the extension closed", |event| {
         match event {

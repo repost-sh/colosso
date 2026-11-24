@@ -4,10 +4,9 @@
 //!
 //! It all goes over the `DevTools` protocol at the browser's level (`pipe.rs`), in the
 //! `Extensions` domain, most of it Koyo's own additions to that domain
-//! (`script/cef-patches/koyo-extensions-protocol.patch`): pages are named there by their CEF
-//! browser's identifier, profiles by their folder's name. Only where pages are native
-//! (`docs/native-pages.md`): an off-screen page is no tab to an extension, and has no toolbar
-//! for a popup to hang from.
+//! (`script/cef-patches/koyo-extensions-protocol.patch`, `koyo-popup.patch`): pages are named
+//! there by their CEF browser's identifier, profiles by their folder's name. Only where pages
+//! are native (`docs/native-pages.md`): an off-screen page is no tab to an extension.
 //!
 //! Everything but the pipe's reader runs on CEF's UI thread.
 
@@ -16,13 +15,20 @@ use std::collections::{BTreeMap, HashMap};
 
 use koyo_browser_ipc::{
     Corner, Extension, ExtensionAction, ExtensionChange, ExtensionSource, HostEvent, PaneId,
+    ScreenRect,
 };
+use objc2::MainThreadMarker;
+use objc2_app_kit::NSScreen;
 use serde_json::{Value, json};
 
 use crate::host;
 
 mod pipe;
-mod popup;
+
+/// Koyo's patches the engine's framework needs for extensions to have their icons and popups:
+/// the pipe on named descriptors, which doesn't make Koyo an automation client, and Chrome's
+/// own popup hanging from the icon the app draws.
+const NEEDED: [&str; 3] = ["devtools-pipe-descriptors", "devtools-pipe-embedder", "koyo-popup"];
 
 /// What the host asked Chromium and waits to hear back about.
 enum Asked {
@@ -56,12 +62,13 @@ thread_local! {
 
 /// Makes the pipe as Chromium's command line is put together, and answers the switch value
 /// that names its ends (`--remote-debugging-io-pipes`); none where the engine's framework
-/// wasn't built with Koyo's patches for it (`framework.rs`), as CEF's own isn't, or the pipe
-/// couldn't be made, and then there are no extension controls.
+/// wasn't built with the patches extensions need ([`NEEDED`], `framework.rs`), as CEF's own
+/// isn't, or the pipe couldn't be made, and then there are no extension controls.
 pub(crate) fn pipe_switch() -> Option<String> {
-    let patched = crate::framework::patched;
-    if !(patched("devtools-pipe-descriptors") && patched("devtools-pipe-embedder")) {
-        log::info!("extensions: the engine is CEF's own, without Koyo's patches; their icons and popups are off");
+    if let Some(missing) = NEEDED.into_iter().find(|patch| !crate::framework::patched(patch)) {
+        log::info!(
+            "extensions: the engine's framework wasn't built with Koyo's patch {missing}; their icons and popups are off"
+        );
         return None;
     }
     let switch = pipe::open(host::protocol_heard);
@@ -69,11 +76,6 @@ pub(crate) fn pipe_switch() -> Option<String> {
         log::warn!("extensions: no DevTools pipe to the engine; their icons and popups are off");
     }
     switch
-}
-
-/// Whether an extension's popup is expected or open.
-pub(crate) fn popup_expected() -> bool {
-    popup::expected()
 }
 
 /// Whether extensions have their icons and popups: the host talks to the engine about them.
@@ -97,7 +99,6 @@ pub(crate) fn started() {
 /// ([`pipe_switch`]), it's nothing but the client going.
 pub(crate) fn stopping() {
     pipe::close();
-    popup::forget();
 }
 
 /// Sends `method` with `params`, and keeps what its answer is for.
@@ -287,16 +288,16 @@ fn action_updated(params: &Value) {
     host::send(&HostEvent::ExtensionAction { profile, extension, pane, action });
 }
 
-/// The person is on `pane`'s page: Chromium is told, and extensions get it as the current
-/// window's active tab. Told each time the app says so, were it the same page as before: a
-/// window of Chrome's own may have been the one in between, which the host doesn't hear of.
-/// A page whose browser isn't made yet is told when it is ([`browser_created`]).
+/// The person is on `pane`'s page: Chromium is told, extensions get it as the current
+/// window's active tab, and a popup open over another page closes. Told each time the app
+/// says so, were it the same page as before: a window of Chrome's own may have been the one
+/// in between, which the host doesn't hear of. A page whose browser isn't made yet is told
+/// when it is ([`browser_created`]).
 pub(crate) fn active(pane: PaneId) {
     if !pipe::is_open() {
         return;
     }
     STATE.with(|state| state.borrow_mut().active = Some(pane));
-    popup::close_unless(pane);
     tell_active(pane);
 }
 
@@ -321,9 +322,8 @@ pub(crate) fn browser_created(pane: PaneId) {
     }
 }
 
-/// `pane` closed: it's no longer the page the person is on, and a popup open over it goes.
+/// `pane` closed: it's no longer the page the person is on.
 pub(crate) fn pane_closed(pane: PaneId) {
-    popup::close_of(pane);
     STATE.with(|state| {
         let mut state = state.borrow_mut();
         if state.active == Some(pane) {
@@ -337,23 +337,57 @@ pub(crate) fn active_pane() -> Option<PaneId> {
     STATE.with(|state| state.borrow().active)
 }
 
-/// A press on `extension`'s icon for `pane`'s page: Chrome runs its action there, and a popup
-/// it opens hangs by its `corner` from `at` (a point of the screen, from the bottom left).
-/// A press on the icon whose popup is open closes it and runs nothing, as in Chrome.
-pub(crate) fn act(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner) {
+/// The pointer went down on `extension`'s icon for `pane`'s page: Chrome closes the
+/// extension's popup open over the page, and the press that follows ([`act`]) opens none.
+pub(crate) fn pointer_down(pane: PaneId, extension: &str) {
     let Some(browser) = host::browser_id(pane) else {
         return;
     };
-    if popup::pressed_shut(pane, extension) {
-        return;
-    }
-    active(pane);
-    popup::expect(pane, extension, at, corner);
     ask(
-        "Extensions.koyoTriggerAction",
+        "Extensions.koyoActionPointerDown",
         &json!({ "id": extension, "browserId": browser }),
-        Asked::Done("an action"),
+        Asked::Done("the pointer down on an icon"),
     );
+}
+
+/// A press on `extension`'s icon for `pane`'s page, drawn at `icon`: Chrome closes its popup
+/// if it's open or the press began on it ([`pointer_down`]), and otherwise runs its action
+/// there, a popup it opens hanging from the icon by its `corner`.
+pub(crate) fn act(pane: PaneId, extension: &str, icon: ScreenRect, corner: Corner) {
+    let Some(browser) = host::browser_id(pane) else {
+        return;
+    };
+    let Some(primary) = primary_height() else {
+        log::warn!("extensions: no screen to hang a popup on; the press on an icon is dropped");
+        return;
+    };
+    active(pane);
+    ask("Extensions.koyoTriggerAction", &trigger(extension, browser, icon, corner, primary), Asked::Done("an action"));
+}
+
+/// The height of the primary screen, the one with the menu bar: `AppKit` counts the screen's
+/// points up from its bottom left, Chromium's views down from its top left.
+fn primary_height() -> Option<f64> {
+    let screens = NSScreen::screens(MainThreadMarker::new()?);
+    screens.iter().next().map(|primary| primary.frame().size.height)
+}
+
+/// What `Extensions.koyoTriggerAction` is sent with for a press on `extension`'s icon for the
+/// page of CEF browser `browser`: the icon's rectangle as Chromium's views count the screen,
+/// from the top left of the primary screen, `primary` points high, and the popup's corner.
+fn trigger(extension: &str, browser: i32, icon: ScreenRect, corner: Corner, primary: f64) -> Value {
+    json!({
+        "id": extension,
+        "browserId": browser,
+        "x": icon.x,
+        "y": primary - (icon.y + icon.height),
+        "width": icon.width,
+        "height": icon.height,
+        "corner": match corner {
+            Corner::Left => "left",
+            Corner::Right => "right",
+        },
+    })
 }
 
 /// Turns `extension` of `profile` on or off, pins it, or removes it. Chromium says the list
@@ -397,6 +431,21 @@ mod tests {
         ];
         let names: Vec<String> = in_order(listed).into_iter().map(|extension| extension.name).collect();
         assert_eq!(names, ["uBlock Origin Lite", "Bitwarden", "Annotate", "zotero"]);
+    }
+
+    #[test]
+    fn a_press_tells_chromium_the_icon_counted_from_the_primary_screens_top_left() {
+        let icon = ScreenRect { x: 1200., y: 820., width: 24., height: 24. };
+        let sent = trigger("abc", 7, icon, Corner::Right, 900.);
+        assert_eq!(
+            sent,
+            json!({ "id": "abc", "browserId": 7, "x": 1200.0, "y": 56.0, "width": 24.0, "height": 24.0,
+                    "corner": "right" })
+        );
+        let below = ScreenRect { x: -300., y: -500., width: 26., height: 26. };
+        let sent = trigger("abc", 7, below, Corner::Left, 900.);
+        assert_eq!((sent["x"].as_f64(), sent["y"].as_f64()), (Some(-300.), Some(1374.)));
+        assert_eq!(sent["corner"], "left");
     }
 
     #[test]

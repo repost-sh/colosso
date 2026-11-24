@@ -110,10 +110,7 @@ pub fn idle(long: Duration) {
 /// Opens the page, shows it, and leaves the engine to go quiet.
 fn quiet_on_screen(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
     open(host, incoming)?;
-    host.send(&AppRequest::Visible {
-        pane: 1,
-        visible: true,
-    })
+    host.send(&AppRequest::Sight { pane: 1, kept: true, seen: true })
     .map_err(|error| format!("visible: {error}"))?;
     idle(SETTLE);
     Ok(())

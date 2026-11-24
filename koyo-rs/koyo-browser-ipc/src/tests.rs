@@ -248,20 +248,29 @@ fn a_pages_tone_progress_and_whose_command_have_stable_wire_names() {
 #[test]
 fn extensions_have_stable_wire_names() {
     use serde_json::json;
+    let down = AppRequest::ExtensionPointerDown { pane: 3, extension: "abc".into() };
+    assert_eq!(down.pane(), Some(3));
+    assert_eq!(
+        serde_json::to_value(down).unwrap(),
+        json!({ "type": "extensionPointerDown", "pane": 3, "extension": "abc" })
+    );
     let act = AppRequest::ExtensionAct {
         pane: 3,
         extension: "abc".into(),
-        at: [100., 640.5],
+        bounds: ScreenRect { x: 100., y: 640.5, width: 24., height: 24. },
         corner: Corner::Left,
     };
+    assert_eq!(act.pane(), Some(3));
     assert_eq!(
         serde_json::to_value(act).unwrap(),
-        json!({ "type": "extensionAct", "pane": 3, "extension": "abc", "at": [100.0, 640.5],
-                "corner": "left" })
+        json!({ "type": "extensionAct", "pane": 3, "extension": "abc",
+                "bounds": { "x": 100.0, "y": 640.5, "width": 24.0, "height": 24.0 }, "corner": "left" })
     );
-    let plain: AppRequest =
-        serde_json::from_value(json!({ "type": "extensionAct", "pane": 3, "extension": "abc", "at": [1.0, 2.0] }))
-            .unwrap();
+    let plain: AppRequest = serde_json::from_value(json!({
+        "type": "extensionAct", "pane": 3, "extension": "abc",
+        "bounds": { "x": 1.0, "y": 2.0, "width": 3.0, "height": 4.0 },
+    }))
+    .unwrap();
     assert!(matches!(plain, AppRequest::ExtensionAct { corner: Corner::Right, .. }));
     let change = |change| {
         serde_json::to_value(AppRequest::ChangeExtension {

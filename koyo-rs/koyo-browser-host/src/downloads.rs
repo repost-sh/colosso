@@ -131,7 +131,7 @@ pub(crate) fn keep_open(pane: PaneId, browser: &Browser) -> bool {
         return false;
     }
     KEPT.with(|kept| kept.borrow_mut().insert(pane));
-    crate::native::on_screen(pane, false);
+    crate::native::sight(pane, false, false);
     if let Some(host) = browser.host() {
         host.set_audio_muted(1);
     }

@@ -55,7 +55,7 @@ fn a_page_opens_at_its_size_draws_while_on_screen_and_rests_out_of_sight() {
     let drawn = evaluate(&mut session, FRAMES).as_u64().expect("a count");
     assert!(drawn > 15, "{drawn} frames in half a second on screen");
     let visible = |session: &mut Session, visible| {
-        (session.host.send(&AppRequest::Visible { pane: 1, visible })).expect("visible");
+        (session.host.send(&AppRequest::Sight { pane: 1, kept: visible, seen: true })).expect("visible");
     };
     visible(&mut session, false);
     until(

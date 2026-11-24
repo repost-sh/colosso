@@ -1,11 +1,11 @@
 use super::{Load, Pane, load, queue, with};
 use crate::native;
 
-/// A pane with a page the engine has been told is on screen or not.
-fn page(pane: u64, on_screen: bool) {
+/// A pane with a page no pane draws, which an agent keeps on screen for the engine or not.
+fn page(pane: u64, kept: bool) {
     with(|host| host.panes.insert(pane, Pane::new("https://example.com")));
     native::tests::opened(pane);
-    native::on_screen(pane, on_screen);
+    native::sight(pane, kept, true);
 }
 
 /// What the engine works for follows what's open: waited on while it isn't up or a request of
@@ -26,9 +26,9 @@ fn what_the_engine_works_for_follows_what_is_open() {
     queue::pretend_drain_pending(true);
     assert_eq!(load(), Load::Waited, "a request waiting, as one to show a page does");
     queue::pretend_drain_pending(false);
-    native::on_screen(2, true);
+    native::sight(2, true, true);
     assert_eq!(load(), Load::Shown, "one on screen");
-    native::on_screen(2, false);
+    native::sight(2, false, true);
     with(|host| host.panes.insert(3, Pane::new("https://example.com")));
     assert_eq!(load(), Load::Shown, "one being opened, with no page yet");
 }

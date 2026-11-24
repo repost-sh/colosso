@@ -231,46 +231,39 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
 
 ## 6. Popups
 
+The popup is Chrome's own from the press to its closing (`koyo-popup.patch`, 2026-11-23).
+Until then the host found Chrome's bubble by polling the window list every 1/120 s, kept it
+clear until it had moved it under the icon, and moved it back there whenever Chrome anchored
+it to its hidden toolbar again; a Bitwarden popup was caught at the page's left edge before
+the poll moved it (`.artifacts/browser-perf/watch-live-1.txt`).
+
 - A press on an icon asks the host to trigger the action on that pane's page
-  (`Extensions.koyoTriggerAction`): Chrome grants `activeTab`, then opens the popup or fires
-  `action.onClicked`.
-- Chrome opens the popup as a bubble of its own under its hidden toolbar. The host finds
-  the new window and puts it where the app said: a top corner of it under the icon,
-  kept on the screen, and put back there whenever Chrome anchors it to its toolbar again,
-  which it does as the popup's page resizes. Until it's placed it's clear, so it doesn't
-  flash at the page's top. The window is known for the popup by what it is: a new bubble
-  of Chromium's that is a child of the page's holder, or, where Chromium has given it no
-  parent yet, lies over the page.
+  (`Extensions.koyoTriggerAction`) with the icon's rectangle on the screen and the corner
+  the popup hangs by: Chrome grants `activeTab`, then opens the popup or fires
+  `action.onClicked`. The app measures the icon as it's drawn and says where it is in
+  `AppKit`'s points (`ScreenRect`); the host turns that once into Chromium's, counted down
+  from the primary screen's top left, as it sends it.
+- Chrome hangs the bubble from that rectangle instead of its hidden toolbar, sizes it, hangs
+  it again as the popup's page resizes and keeps it on the screen. It frames it as its
+  other bubbles: the extension's name in a title row with a close button, round corners.
+- The bubble shows at the popup page's first size, not after its page has loaded, so a slow
+  popup (Bitwarden's) shows its own first picture at once.
 - **Which corner** (`Corner`) is the app's to say: the one that keeps the popup over
   Koyo's window. From an icon in the window's left half, the site controls of the
   sidebar's address field, it hangs by its top left and opens to the right; from one in
   the right half, a toolbar's end, by its top right, as under Chrome's toolbar. By its top
   right from the sidebar it hung out over the desktop to the window's left (seen
   2026-11-16).
-- **A press on the icon of the popup that's open closes it** and opens no other, and a
-  popup goes when its page stops being the one the person is on (another tab chosen, its
-  own closed). Chrome does both through its toolbar, which is hidden here, so the host
-  does them (`popup.rs`): left to Chrome, a second press opened a second popup.
-- A press that opens no popup (`action.onClicked`) is waited on for five seconds, a new
-  bubble kept clear meanwhile, then let be.
-- **What it rests on.** Nothing of Chrome's says which window a popup is: the host takes
-  the first new bubble over the page within those five seconds, a sheet excepted (the
-  dialog Chrome asks an extension's permissions in). A bubble of Chrome's own that an
-  action brings up instead of a popup would be taken for one and put under the icon. The
-  engine saying which window it opened would end the guessing; that is a patch not written.
-  `[open]`
-- **A popup that had the keyboard and lost it closes** (`popup.rs`), which is how a press
-  anywhere else, or another app coming in front, shuts it. Chrome's own rule can't: it
-  closes a popup when its browser's window becomes active again, and a page's window, its
-  holder, never is. In the owner's build of 2026-11-17 a popup stayed open behind Koyo's
-  window for 21 seconds, holding the keyboard for 8 of them, until another tab was shown
-  (`.superpowers/ext/evidence`, the window server's record). One that opened while Koyo
-  wasn't in front never had the keys, and stays until its icon is pressed again or its
-  page leaves. That it showed behind Koyo's window at all is mended with the native layer:
-  as the host places the popup it makes it a child of Koyo's window the page is drawn in
-  (`koyo_seam::windows::adopt`), and again on any later look that finds Chrome has tied it
-  back to the holder; the log says so each time it takes it. `[open]` until seen on a real
-  desktop: the agent desktop doesn't show the fault.
+- **Closing is the engine's.** The pointer going down on an icon is told first
+  (`Extensions.koyoActionPointerDown`): Chrome closes that extension's popup if it's open,
+  and its own guard against reopening keeps the press that follows from opening another.
+  A popup goes when another page becomes the one the person is on
+  (`Extensions.koyoSetActivePage`), and when the keyboard leaves its windows for a window
+  that isn't Chromium's, which is how a press anywhere in Koyo or another app coming in
+  front shuts it: Chrome's own rule closes a popup when its browser's window becomes
+  active, and a page's holder never does. A list or bubble the popup opened keeps it open.
+- As before, the holder hands the bubble to Koyo's window the page is drawn in
+  (`native/holder.rs`), so it opens over Koyo's window, not under it.
 - The popup is the extension's `popup` view: it sizes itself and takes the keyboard, as in
   Chrome. Two patches take out a two-second wait before its
   page loads and a quarter second's animation of the hidden toolbar.
@@ -324,6 +317,7 @@ aren't carried: Koyo's menu rows have none.
 | `extension-popup-no-popout-wait` | Cra | No animation of the hidden toolbar before the popup |
 | `extension-install-ui-null-tab` | Cra | No "installed" bubble; an install with no active tab doesn't crash |
 | `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (from Cra); a page found by CEF's number for its browser |
+| `koyo-popup` | Koyo | A popup is Chrome's own from the press to its closing. It hangs from the icon Koyo draws, whose rectangle and corner `koyoTriggerAction` takes, and Chrome sizes it, keeps it there as its page resizes and keeps it on the screen. It has Chrome's title row with the extension's name and a close button. It shows as soon as its page has a size, not once the page has loaded. It closes on a press on its icon (`koyoActionPointerDown`, then the press), when another page becomes the active one, and when the keyboard leaves it for a window that isn't Chromium's |
 | `devtools-pipe-descriptors` | Koyo | `--remote-debugging-io-pipes=<read>,<write>` on macOS and Linux |
 | `devtools-pipe-embedder` | Koyo | With those descriptors named, Chrome doesn't wait on the pipe's client before it quits, and doesn't quit by itself when the client hangs up |
 | `dialog-without-parent-titlebar` | Koyo | A window-modal dialog whose parent isn't one of Chromium's windows, Chrome's install dialog over a page in Koyo's, has no title bar drawn over its heading |
@@ -344,7 +338,6 @@ change to a patch is the files it touches and the framework's link.
 | `koyo-browser-ipc/src/extensions.rs` | An extension, an action's state and a change, as the protocol carries them (since version 15) |
 | `koyo-browser-host/src/extensions.rs` | The host's part: the pipe's switches, what's asked of the engine and heard from it, the list and the actions told to the app, an action run, the page the person is on |
 | `koyo-browser-host/src/extensions/pipe.rs` | The browser-level DevTools pipe inside the process |
-| `koyo-browser-host/src/extensions/popup.rs` | Chrome's popup found and put under the icon |
 | `koyo-browser-host/src/native/adopt.rs` | A tab an extension opens, taken in as a pane |
 | `koyo-browser-host/src/native/strays.rs` | Browsers Chrome makes on its own: a window that stays, a tabbed one whose page becomes a tab |
 | `koyo-browser-host/src/native/parts.rs` | A page's hidden Chrome toolbar; the browser view of a page an extension opens |
@@ -356,13 +349,13 @@ change to a patch is the files it touches and the framework's link.
 | `koyo/src/browser/site/panel.rs`, `toolbar.rs`, `extensions/pinned.rs` | The popover's row; the pinned icons, on the toolbar and in the sidebar's address field |
 | `koyo/src/browser/view/extensions.rs` | A view for a page the host made already; telling which page the person is on |
 | `koyo/src/shell/browser_tabs.rs` | The tab given to a page an extension opened, beside its opener's wherever that is (`open_beside`); a tab brought in front |
-| `koyo/src/native/window.rs` | A point of a window as a point of the screen, for where a popup hangs |
+| `koyo/src/native/window.rs` | A point of a window as a point of the screen, for the icon a popup hangs from |
 | `koyo/src/browser/native/probe/look.rs` | The harness's `tick` keeps menus and popovers shown on a desktop where Koyo is never in front |
 
 ## 12. Checked
 
 By tests that need no engine: the protocol's wire names (`koyo-browser-ipc` `tests.rs`);
-the pipe's framing, a list entry read, a popup's place on the screen by either corner, a
+the pipe's framing, a list entry read, the icon's rectangle as Chromium counts the screen, a
 tabbed window told from a popup by its style (`koyo-browser-host`); the store's order and
 what a page shows, a badge's colours, an icon's letter and picture, an icon's menu, which
 corner a popup hangs by, the popover's height with the row, a tab asked for shown and a

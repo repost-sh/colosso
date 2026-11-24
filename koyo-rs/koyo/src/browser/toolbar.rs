@@ -3,7 +3,11 @@
 //! start page, a notice when the engine or the page failed, and the bar that says who has the
 //! page when it's contested.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use gpui_kit::assets::IconName;
+use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -60,7 +64,9 @@ fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserVie
     let shown = view.extensions(true, cx);
     let buttons = shown.into_iter().enumerate().map(|(index, shown)| {
         let says = shown.title.clone();
-        let (pressed, asked) = (shown.id.clone(), shown.clone());
+        let (pressed, asked, held) = (shown.id.clone(), shown.clone(), shown.id.clone());
+        let drawn = Rc::new(Cell::new(Bounds::default()));
+        let measured = drawn.clone();
         div()
             .id(("browser-extension", index))
             .debug_selector(move || format!("browser-extension-{index}"))
@@ -73,14 +79,15 @@ fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserVie
             .cursor_pointer()
             .hover(move |button| button.bg(p.hover))
             .tooltip(move |window, cx| Tooltip::new(says.clone()).build(window, cx))
-            .child(icon::face(&shown, p.text, p.selected))
-            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                let half = px(icon::BUTTON / 2.);
-                let at = Bounds::new(
-                    point(event.position().x - half, this.origin.y - px(icon::BUTTON)),
-                    size(px(icon::BUTTON), px(icon::BUTTON)),
-                );
-                this.extension_act(&pressed, at, window, cx);
+            .child(icon::face(&shown, p.text, p.selected).on_prepaint(move |bounds, _, _| measured.set(bounds)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &gpui_kit::MouseDownEvent, _, cx| {
+                    this.extension_pointer_down(&held, cx);
+                }),
+            )
+            .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                this.extension_act(&pressed, drawn.get(), window, cx);
             }))
             .on_mouse_down(
                 MouseButton::Right,

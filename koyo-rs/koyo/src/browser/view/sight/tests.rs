@@ -1,5 +1,6 @@
-//! A page out of sight is on screen for the engine while an agent's command on it runs, and
-//! for a few seconds after, then rests; the page of a tab the person leaves is told so once.
+//! A page out of sight is kept on screen for the engine while an agent's command on it runs,
+//! and for a few seconds after, then rests; a tab the person leaves or comes to tells the host
+//! nothing, which knows itself that a pane stopped or started drawing the page.
 
 use std::path::Path;
 use std::time::Duration;
@@ -35,15 +36,20 @@ fn out_of_sight(name: &str, cx: &mut TestAppContext) -> (FakeHost, AnyWindowHand
     (host, window, view)
 }
 
-/// What the host was told of whether `pane`'s page is on screen, in order.
-fn told(asked: &[AppRequest], pane: PaneId) -> Vec<bool> {
+/// What the host was told of `pane`'s page's sight, in order: whether an agent keeps it, and
+/// whether its window is seen.
+fn told(asked: &[AppRequest], pane: PaneId) -> Vec<(bool, bool)> {
     (asked.iter())
         .filter_map(|asked| match asked {
-            AppRequest::Visible { pane: of, visible } if *of == pane => Some(*visible),
+            AppRequest::Sight { pane: of, kept, seen } if *of == pane => Some((*kept, *seen)),
             _ => None,
         })
         .collect()
 }
+
+/// Out of sight, kept by an agent or not.
+const KEPT: (bool, bool) = (true, false);
+const RESTS: (bool, bool) = (false, false);
 
 /// The number of the agent command on `pane` among `asked`.
 fn command(asked: &[AppRequest], pane: PaneId) -> u64 {
@@ -61,17 +67,17 @@ fn a_page_out_of_sight_is_awake_while_an_agents_command_runs_and_rests_soon_afte
 ) {
     let (host, _window, view) = out_of_sight("awake-command", cx);
     let pane = view.read_with(cx, |view, _| view.pane);
-    assert_eq!(told(&host.asked(cx), pane).last(), Some(&false), "out of sight, it rests");
+    assert_eq!(told(&host.asked(cx), pane).last(), Some(&RESTS), "out of sight, it rests");
 
     let params = json!({ "expression": "1" });
     let answer = cx.update(|cx| agent::cdp(&view, None, None, "Runtime.evaluate", params, LIMIT, cx));
     let _answer = answer.expect("the page takes commands");
     let asked = host.asked(cx);
     let call = command(&asked, pane);
-    assert_eq!(told(&asked, pane), [true], "woken before the command: {asked:?}");
+    assert_eq!(told(&asked, pane), [KEPT], "woken before the command: {asked:?}");
 
     cx.executor().advance_clock(LIMIT.saturating_sub(Duration::from_secs(5)));
-    assert_eq!(told(&host.asked(cx), pane), [false; 0], "awake while the command runs");
+    assert_eq!(told(&host.asked(cx), pane), [], "awake while the command runs");
 
     let reply = HostEvent::CdpReply {
         pane,
@@ -81,9 +87,9 @@ fn a_page_out_of_sight_is_awake_while_an_agents_command_runs_and_rests_soon_afte
     };
     host.says(reply, cx);
     cx.executor().advance_clock(AWAKE_AFTER.saturating_sub(Duration::from_secs(1)));
-    assert_eq!(told(&host.asked(cx), pane), [false; 0], "awake a moment after the answer");
+    assert_eq!(told(&host.asked(cx), pane), [], "awake a moment after the answer");
     cx.executor().advance_clock(Duration::from_secs(2));
-    assert_eq!(told(&host.asked(cx), pane), [false], "rests a few seconds after the answer");
+    assert_eq!(told(&host.asked(cx), pane), [RESTS], "rests a few seconds after the answer");
 }
 
 #[gpui_kit::test]
@@ -96,9 +102,9 @@ fn a_command_given_up_on_keeps_its_page_awake_no_longer_than_it_could_have_run(
     let params = json!({ "expression": "1" });
     let answer = cx.update(|cx| agent::cdp(&view, None, None, "Runtime.evaluate", params, LIMIT, cx));
     drop(answer.expect("the page takes commands"));
-    assert_eq!(told(&host.asked(cx), pane), [true]);
+    assert_eq!(told(&host.asked(cx), pane), [KEPT]);
     cx.executor().advance_clock(LIMIT + AWAKE_AFTER + Duration::from_secs(1));
-    assert_eq!(told(&host.asked(cx), pane), [false], "it rests once the command could be over");
+    assert_eq!(told(&host.asked(cx), pane), [RESTS], "it rests once the command could be over");
 }
 
 #[gpui_kit::test]
@@ -112,7 +118,8 @@ fn a_page_the_person_sees_stays_on_screen_after_an_agents_command(cx: &mut TestA
     let answer = cx.update(|cx| agent::cdp(&view, None, None, "Runtime.evaluate", params, LIMIT, cx));
     drop(answer.expect("the page takes commands"));
     cx.executor().advance_clock(LIMIT + AWAKE_AFTER + Duration::from_secs(1));
-    assert_eq!(told(&host.asked(cx), pane), [false; 0], "shown, it never rests");
+    let told = told(&host.asked(cx), pane);
+    assert!(told.iter().all(|&(_, seen)| seen), "shown, its window is seen throughout: {told:?}");
 }
 
 /// Two pages in tabs of their own, the second shown, its page with the keyboard: the window,
@@ -130,7 +137,7 @@ fn two_tabs(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, FakeHost, 
 }
 
 #[gpui_kit::test]
-fn the_page_of_a_tab_the_person_leaves_is_told_out_of_sight_once(cx: &mut TestAppContext) {
+fn a_tab_the_person_leaves_for_another_tells_the_host_nothing_of_either_page(cx: &mut TestAppContext) {
     let (window, host, first, left) = two_tabs("sight-leave", cx);
     let tab = center_of(window, "tab-0-0-0", cx);
     hover(window, tab, cx);
@@ -139,19 +146,19 @@ fn the_page_of_a_tab_the_person_leaves_is_told_out_of_sight_once(cx: &mut TestAp
     visual.simulate_mouse_down(tab, MouseButton::Left, Modifiers::default());
     draw(window, cx);
     let pressed = host.asked(cx);
-    assert_eq!(told(&pressed, left), [false; 0], "a press on a tab leaves nothing yet: {pressed:?}");
+    assert_eq!(told(&pressed, left), [], "a press on a tab leaves nothing yet: {pressed:?}");
     let mut visual = VisualTestContext::from_window(window, cx);
     visual.simulate_mouse_up(tab, MouseButton::Left, Modifiers::default());
     for _ in 0..3 {
         draw(window, cx);
     }
     let asked = host.asked(cx);
-    assert_eq!(told(&asked, left), [false], "the page left is told once: {asked:?}");
-    assert_eq!(told(&asked, first), [true], "the page come to is told once: {asked:?}");
+    assert_eq!(told(&asked, left), [], "the host knows the page left isn't drawn: {asked:?}");
+    assert_eq!(told(&asked, first), [], "nor that the page come to is: {asked:?}");
 }
 
 #[gpui_kit::test]
-fn the_page_of_a_tab_left_by_a_press_and_release_at_once_is_told_out_of_sight_once(
+fn a_tab_left_by_a_press_and_release_at_once_tells_the_host_nothing_of_either_page(
     cx: &mut TestAppContext,
 ) {
     let (window, host, first, left) = two_tabs("sight-leave-at-once", cx);
@@ -163,6 +170,6 @@ fn the_page_of_a_tab_left_by_a_press_and_release_at_once_is_told_out_of_sight_on
         draw(window, cx);
     }
     let asked = host.asked(cx);
-    assert_eq!(told(&asked, left), [false], "the page left is told once: {asked:?}");
-    assert_eq!(told(&asked, first), [true], "the page come to is told once: {asked:?}");
+    assert_eq!(told(&asked, left), [], "the host knows the page left isn't drawn: {asked:?}");
+    assert_eq!(told(&asked, first), [], "nor that the page come to is: {asked:?}");
 }

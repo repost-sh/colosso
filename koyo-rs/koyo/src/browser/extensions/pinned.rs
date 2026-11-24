@@ -26,7 +26,8 @@ pub fn icons(view: &Entity<BrowserView>, cx: &App) -> Vec<AnyElement> {
         let (pressed, asked) = (shown.id.clone(), shown.clone());
         let drawn = Rc::new(Cell::new(Bounds::default()));
         let measured = drawn.clone();
-        let (acts, asks) = (view.clone(), view.clone());
+        let (acts, asks, downs) = (view.clone(), view.clone(), view.clone());
+        let held = pressed.clone();
         div()
             .id(("pinned-extension", index))
             .debug_selector(move || format!("pinned-extension-{index}"))
@@ -40,7 +41,10 @@ pub fn icons(view: &Entity<BrowserView>, cx: &App) -> Vec<AnyElement> {
             .hover(move |button| button.bg(p.hover))
             .tooltip(move |window, cx| Tooltip::new(says.clone()).build(window, cx))
             .child(icon::face(&shown, p.text, p.selected).on_prepaint(move |bounds, _, _| measured.set(bounds)))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                cx.stop_propagation();
+                downs.update(cx, |page, cx| page.extension_pointer_down(&held, cx));
+            })
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
                 acts.update(cx, |page, cx| page.extension_act(&pressed, drawn.get(), window, cx));

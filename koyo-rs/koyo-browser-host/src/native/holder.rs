@@ -398,12 +398,3 @@ pub(super) fn rehome(holder: &NSWindow, from: Option<&NSWindow>, to: Option<&NSW
         }
     }
 }
-
-/// Whether `window` is one Chromium tied to `holder`: the holder's child, or the app's
-/// window's in its place ([`add_child`]).
-pub(crate) fn tied_to(window: &NSWindow, holder: &NSWindow) -> bool {
-    window.parentWindow().is_some_and(|parent| {
-        std::ptr::eq(&raw const *parent, std::ptr::from_ref(holder))
-            || elsewhere(object(holder), object(window), false)
-    })
-}

@@ -143,8 +143,9 @@ pub struct BrowserView {
     pub(super) fullscreen: super::fullscreen::Fullscreen,
     /// The page element's state while the page is drawn: let go, the page is out of sight.
     pub(super) shown: Option<WeakEntity<Shown>>,
-    /// Whether the host was last told the page is on screen.
-    pub(super) visible: Option<bool>,
+    /// What the host was last told of the page's sight ([`sight::Told`]): whether an agent keeps
+    /// it, and whether its window is seen.
+    pub(super) told: Option<sight::Told>,
     /// Whether the person saw the page when its sight was last told ([`Self::tell_sight`]).
     pub(super) seen: bool,
     /// Whether the page's window is on screen: minimized or on another desktop it draws
@@ -310,7 +311,7 @@ impl BrowserView {
             asked_in: super::dialog::Put::Dialog,
             fullscreen: super::fullscreen::Fullscreen::default(),
             shown: None,
-            visible: None,
+            told: None,
             seen: false,
             window_visible: window.is_visible(),
             awake: sight::Awake::default(),

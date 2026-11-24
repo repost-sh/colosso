@@ -57,14 +57,14 @@ fn a_page_says_its_tone_as_it_shows_and_changes_and_nothing_left_alone() {
     let dark = dark.last().expect("the page said it turned dark");
     assert!(all(dark, |cell| cell < 0.05) && dark.canvas == [0; 3], "{dark:?}");
 
-    session.host.send(&AppRequest::Visible { pane: 1, visible: false }).expect("hide");
+    session.host.send(&AppRequest::Sight { pane: 1, kept: false, seen: true }).expect("hide");
     let state = "JSON.stringify(document.visibilityState)";
     until(&mut session, state, "the page hidden", Duration::from_secs(10), |state| state == "hidden");
     paint(&mut session, 2, "rgb(255, 255, 255)");
     let hidden = told(&mut session, Duration::from_secs(3), |_, _| false);
     assert_eq!(hidden, [], "a hidden page said its tone");
 
-    session.host.send(&AppRequest::Visible { pane: 1, visible: true }).expect("show");
+    session.host.send(&AppRequest::Sight { pane: 1, kept: true, seen: true }).expect("show");
     let shown = told(&mut session, Duration::from_secs(10), |_, tones| !tones.is_empty());
     let shown = shown.last().expect("shown again, the page said what changed meanwhile");
     assert!(all(shown, |cell| cell > 0.95), "{shown:?}");

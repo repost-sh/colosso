@@ -1,0 +1,918 @@
+--- a/third_party/blink/public/devtools_protocol/domains/Extensions.pdl
++++ b/third_party/blink/public/devtools_protocol/domains/Extensions.pdl
+@@ -95,20 +95,55 @@
+   # Koyo: says which page the person is on. Its browser becomes the last
+   # active one, which is what extensions get as the current window. The
+   # embedder's pages are not in windows that become key, so nothing else says.
++  # A popup open over any other page closes.
+   command koyoSetActivePage
+     parameters
+       # The page's CEF browser identifier (CefBrowser::GetIdentifier).
+       integer browserId
+ 
+-  # Koyo: runs an extension's toolbar action on a page, as a click on its
+-  # toolbar button does: `triggerAction` for a page the embedder knows by its
+-  # CEF browser identifier.
++  # Koyo: the pointer went down on an extension's toolbar button that the
++  # embedder draws for a page in place of the browser's own; the press it
++  # starts follows as `koyoTriggerAction`. A popup of the extension open over
++  # the page closes, and that press opens none. Nor does it when the popup
++  # closed less than a tenth of a second before this came, as one does when
++  # the press takes the keyboard from it.
++  command koyoActionPointerDown
++    parameters
++      # Extension id.
++      string id
++      # The page's CEF browser identifier.
++      integer browserId
++
++  # Koyo: a press on an extension's toolbar button that the embedder draws
++  # for a page in place of the browser's own, as a click on the browser's
++  # button: it closes the extension's popup when one is open over the page or
++  # the press began on one (`koyoActionPointerDown`), and otherwise runs the
++  # action, `triggerAction` for a page the embedder knows by its CEF browser
++  # identifier. A popup the action opens hangs from the button: under it, by
++  # the top corner `corner` names, sized by its page and kept on the screen.
++  # The button's rectangle is in the screen coordinates Chromium's views use:
++  # DIPs (points on macOS) from the top left corner of the primary display,
++  # y growing downwards. From AppKit's rectangle of the screen, which counts y
++  # up from the primary screen's bottom left: the same x, width and height,
++  # and y = the primary screen's height (NSScreen.screens[0]) - its maxY.
+   command koyoTriggerAction
+     parameters
+       # Extension id.
+       string id
+       # The page's CEF browser identifier.
+       integer browserId
++      # The button's left edge.
++      number x
++      # The button's top edge.
++      number y
++      number width
++      number height
++      # Which top corner of the popup is at the same corner of the button:
++      # `left` hangs it by its top left and opens it to the right, `right` by
++      # its top right and opens it to the left.
++      enum corner
++        left
++        right
+ 
+   # Koyo: an extension changed its toolbar action. Empty values are ones the
+   # extension did not set: the manifest's default applies, or for a tab, the
+--- a/chrome/browser/devtools/inspector_protocol_config.json
++++ b/chrome/browser/devtools/inspector_protocol_config.json
+@@ -39,7 +39,7 @@
+             },
+             {
+                 "domain": "Extensions",
+-                "include": [ "triggerAction", "koyoSetUpdatesEnabled", "koyoGetInstalled", "koyoSetEnabled", "koyoUninstall", "koyoSetPinned", "koyoSetActivePage", "koyoTriggerAction", "loadUnpacked", "getStorageItems", "setStorageItems", "removeStorageItems", "clearStorageItems", "uninstall", "getExtensions" ],
++                "include": [ "triggerAction", "koyoSetUpdatesEnabled", "koyoGetInstalled", "koyoSetEnabled", "koyoUninstall", "koyoSetPinned", "koyoSetActivePage", "koyoActionPointerDown", "koyoTriggerAction", "loadUnpacked", "getStorageItems", "setStorageItems", "removeStorageItems", "clearStorageItems", "uninstall", "getExtensions" ],
+                 "async": [ "loadUnpacked", "getStorageItems", "setStorageItems", "removeStorageItems", "clearStorageItems", "uninstall" ]
+             },
+             {
+--- a/chrome/browser/devtools/protocol/extensions_handler.h
++++ b/chrome/browser/devtools/protocol/extensions_handler.h
+@@ -18,7 +18,9 @@
+ #include "extensions/browser/api/storage/storage_frontend.h"
+ #include "extensions/common/extension.h"
+ 
++class ExtensionActionDelegate;
+ class Profile;
++class ToolbarActionViewModel;
+ 
+ namespace content {
+ class BrowserContext;
+@@ -62,11 +64,31 @@
+                                            const protocol::String& profile,
+                                            bool pinned) override;
+   protocol::DispatchResponse KoyoSetActivePage(int browser_id) override;
+-  protocol::DispatchResponse KoyoTriggerAction(const protocol::String& id,
+-                                               int browser_id) override;
++  protocol::DispatchResponse KoyoActionPointerDown(const protocol::String& id,
++                                                   int browser_id) override;
++  protocol::DispatchResponse KoyoTriggerAction(
++      const protocol::String& id,
++      int browser_id,
++      double x,
++      double y,
++      double width,
++      double height,
++      const protocol::String& corner) override;
+   // Koyo: runs `extension_id`'s action on the tab holding `web_contents`.
+   protocol::DispatchResponse RunAction(const std::string& extension_id,
+                                        content::WebContents* web_contents);
++  // Koyo: `extension_id`'s action in the browser of the tab holding
++  // `web_contents`, in `out_action`, or why there is none.
++  protocol::DispatchResponse FindAction(const std::string& extension_id,
++                                        content::WebContents* web_contents,
++                                        ToolbarActionViewModel** out_action);
++  // Koyo: in `out_delegate`, what takes presses on the button the embedder
++  // draws for `extension_id`'s action on the page it knows as CEF browser
++  // `browser_id`; or why there is none.
++  protocol::DispatchResponse KoyoEmbedderButton(
++      const std::string& extension_id,
++      int browser_id,
++      ExtensionActionDelegate** out_delegate);
+   // ProfileManagerObserver:
+   void OnProfileAdded(Profile* profile) override;
+   void OnProfileManagerDestroying() override;
+--- a/chrome/browser/devtools/protocol/extensions_handler.cc
++++ b/chrome/browser/devtools/protocol/extensions_handler.cc
+@@ -31,7 +31,9 @@
+ #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
++#include "chrome/browser/ui/extensions/extension_action_delegate.h"
+ #include "chrome/browser/ui/extensions/extension_action_view_model.h"
++#include "chrome/browser/ui/extensions/extension_popup_types.h"
+ #include "chrome/browser/ui/extensions/extensions_container.h"
+ #include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
+ #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
+@@ -59,6 +61,8 @@
+ #include "extensions/common/manifest_handlers/options_page_info.h"
+ #include "extensions/common/mojom/manifest.mojom.h"
+ #include "ui/gfx/codec/png_codec.h"
++#include "ui/gfx/geometry/rect_conversions.h"
++#include "ui/gfx/geometry/rect_f.h"
+ #include "ui/gfx/image/image.h"
+ #include "ui/gfx/image/image_skia.h"
+ #include "ui/gfx/image/image_skia_rep.h"
+@@ -697,9 +701,52 @@
+   return protocol::Response::Success();
+ }
+ 
+-protocol::DispatchResponse ExtensionsHandler::KoyoTriggerAction(
++protocol::DispatchResponse ExtensionsHandler::KoyoActionPointerDown(
+     const protocol::String& id,
+     int browser_id) {
++  ExtensionActionDelegate* delegate = nullptr;
++  protocol::DispatchResponse response =
++      KoyoEmbedderButton(id, browser_id, &delegate);
++  if (!response.IsSuccess()) {
++    return response;
++  }
++  delegate->OnEmbedderButtonPointerDown();
++  return protocol::Response::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoTriggerAction(
++    const protocol::String& id,
++    int browser_id,
++    double x,
++    double y,
++    double width,
++    double height,
++    const protocol::String& corner) {
++  EmbedderActionButton::Corner hang_by;
++  if (corner == protocol::Extensions::KoyoTriggerAction::CornerEnum::Left) {
++    hang_by = EmbedderActionButton::Corner::kLeft;
++  } else if (corner ==
++             protocol::Extensions::KoyoTriggerAction::CornerEnum::Right) {
++    hang_by = EmbedderActionButton::Corner::kRight;
++  } else {
++    return protocol::Response::InvalidParams("Unknown corner.");
++  }
++  ExtensionActionDelegate* delegate = nullptr;
++  protocol::DispatchResponse response =
++      KoyoEmbedderButton(id, browser_id, &delegate);
++  if (!response.IsSuccess()) {
++    return response;
++  }
++  delegate->PressEmbedderButton(
++      {.bounds = gfx::ToEnclosingRect(gfx::RectF(x, y, width, height)),
++       .corner = hang_by});
++  return protocol::Response::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoEmbedderButton(
++    const std::string& extension_id,
++    int browser_id,
++    ExtensionActionDelegate** out_delegate) {
+   if (!allow_loading_extensions_) {
+     return protocol::Response::ServerError("Method not available.");
+   }
+@@ -707,7 +754,16 @@
+   if (!web_contents) {
+     return protocol::Response::ServerError("No page for the provided id.");
+   }
+-  return RunAction(id, web_contents);
++  ToolbarActionViewModel* action = nullptr;
++  protocol::DispatchResponse response =
++      FindAction(extension_id, web_contents, &action);
++  if (!response.IsSuccess()) {
++    return response;
++  }
++  // The actions of a browser's extensions container are its extensions', as
++  // ExtensionActionDelegateDesktop::GetPopupOwnerDelegate() takes them to be.
++  *out_delegate = static_cast<ExtensionActionViewModel*>(action)->delegate();
++  return protocol::Response::Success();
+ }
+ 
+ protocol::DispatchResponse ExtensionsHandler::KoyoSetActivePage(
+@@ -729,7 +785,10 @@
+ #if BUILDFLAG(ENABLE_CEF)
+   // The embedder's other pages stop being the active one: none of their
+   // windows is ever key, so nothing else tells them. A window of Chrome's own
+-  // hears it from its widget and is left alone.
++  // hears it from its widget and is left alone. A popup open over one of them
++  // closes, as one in Chrome does when its tab stops being the active one
++  // (ExtensionPopup::OnTabStripModelChanged): each page is a browser of its
++  // own here, with a single tab.
+   std::vector<BrowserWindowInterface*> others;
+   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+       [&](BrowserWindowInterface* other) {
+@@ -743,6 +802,9 @@
+     if (BrowserActiveStateManager* other_state =
+             BrowserActiveStateManager::From(other)) {
+       other_state->DidBecomeInactive();
++    }
++    if (ExtensionsContainer* container = ExtensionsContainer::From(*other)) {
++      container->HideActivePopup();
+     }
+   }
+ #endif
+@@ -784,6 +846,23 @@
+ protocol::DispatchResponse ExtensionsHandler::RunAction(
+     const std::string& extension_id,
+     content::WebContents* web_contents) {
++  ToolbarActionViewModel* extension_model = nullptr;
++  protocol::DispatchResponse response =
++      FindAction(extension_id, web_contents, &extension_model);
++  if (!response.IsSuccess()) {
++    return response;
++  }
++
++  extension_model->ExecuteUserAction(
++      ExtensionActionViewModel::InvocationSource::kCdp);
++
++  return protocol::DispatchResponse::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::FindAction(
++    const std::string& extension_id,
++    content::WebContents* web_contents,
++    ToolbarActionViewModel** out_action) {
+   BrowserWindowInterface* browser =
+       extensions::browser_window_util::GetBrowserForTabContents(*web_contents);
+   // Koyo: answer with an error instead of crashing. A disabled or uninstalled
+@@ -808,9 +887,7 @@
+         "No enabled extension with the provided id.");
+   }
+ 
+-  extension_model->ExecuteUserAction(
+-      ExtensionActionViewModel::InvocationSource::kCdp);
+-
++  *out_action = extension_model;
+   return protocol::DispatchResponse::Success();
+ }
+ 
+--- a/chrome/browser/ui/extensions/extension_popup_types.h
++++ b/chrome/browser/ui/extensions/extension_popup_types.h
+@@ -6,6 +6,7 @@
+ #define CHROME_BROWSER_UI_EXTENSIONS_EXTENSION_POPUP_TYPES_H_
+ 
+ #include "base/functional/callback_forward.h"
++#include "ui/gfx/geometry/rect.h"
+ #include "ui/gfx/geometry/size.h"
+ 
+ namespace extensions {
+@@ -27,4 +28,15 @@
+ using ShowPopupCallback =
+     base::OnceCallback<void(extensions::ExtensionHost* popup_host)>;
+ 
++// Koyo: an extension's toolbar button that an embedder draws in place of the
++// browser's own, where the action's popup hangs from: its rectangle of the
++// screen, in DIPs, and the top corner of the popup that is at the same corner
++// of it.
++struct EmbedderActionButton {
++  enum class Corner { kLeft, kRight };
++
++  gfx::Rect bounds;
++  Corner corner;
++};
++
+ #endif  // CHROME_BROWSER_UI_EXTENSIONS_EXTENSION_POPUP_TYPES_H_
+--- a/chrome/browser/ui/extensions/extension_action_delegate.h
++++ b/chrome/browser/ui/extensions/extension_action_delegate.h
+@@ -75,6 +75,16 @@
+   // Returns the active WebContents associated with this action, or nullptr if
+   // callers should fall back to the browser's active tab.
+   virtual content::WebContents* GetActiveWebContents() const;
++
++  // Koyo: the pointer went down on the action's toolbar button that an
++  // embedder draws in place of the browser's own (Extensions.pdl,
++  // koyoActionPointerDown); the press it starts follows as
++  // PressEmbedderButton(). Only the desktop's delegate takes such presses.
++  virtual void OnEmbedderButtonPointerDown() {}
++
++  // Koyo: a press on that button, which the embedder draws at `button`
++  // (koyoTriggerAction).
++  virtual void PressEmbedderButton(const EmbedderActionButton& button) {}
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_EXTENSIONS_EXTENSION_ACTION_DELEGATE_H_
+--- a/chrome/browser/ui/views/extensions/extension_action_delegate_desktop.h
++++ b/chrome/browser/ui/views/extensions/extension_action_delegate_desktop.h
+@@ -5,12 +5,15 @@
+ #ifndef CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSION_ACTION_DELEGATE_DESKTOP_H_
+ #define CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSION_ACTION_DELEGATE_DESKTOP_H_
+ 
++#include <optional>
++
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/raw_ref.h"
+ #include "base/memory/weak_ptr.h"
+ #include "base/scoped_observation.h"
+ #include "chrome/browser/ui/extensions/extension_action_delegate.h"
+ #include "chrome/browser/ui/extensions/extensions_container.h"
++#include "chrome/browser/ui/views/bubble/webui_bubble_reopen_suppressor.h"
+ #include "extensions/browser/extension_host_observer.h"
+ #include "ui/base/accelerators/accelerator.h"
+ 
+@@ -59,11 +62,13 @@
+                       bool by_user,
+                       ShowPopupCallback callback);
+ 
+-  // Shows the popup with the given |host|.
++  // Shows the popup with the given |host|. Koyo: hanging from
++  // `embedder_button` when a press on it opened the popup.
+   void ShowPopup(std::unique_ptr<extensions::ExtensionViewHost> host,
+                  PopupShowAction show_action,
+                  bool by_user,
+-                 ShowPopupCallback callback);
++                 ShowPopupCallback callback,
++                 std::optional<EmbedderActionButton> embedder_button);
+ 
+   // Handles cleanup after the popup closes.
+   void OnPopupClosed();
+@@ -83,6 +88,8 @@
+   void ShowContextMenuAsFallback() override;
+   void CloseExtensionsMenuIfOpen() override;
+   content::WebContents* GetActiveWebContents() const override;
++  void OnEmbedderButtonPointerDown() override;
++  void PressEmbedderButton(const EmbedderActionButton& button) override;
+ 
+   // ui::AcceleratorTarget:
+   bool AcceleratorPressed(const ui::Accelerator& accelerator) override;
+@@ -116,6 +123,16 @@
+   // for (to show the popup).
+   std::unique_ptr<ui::Accelerator> action_keybinding_;
+ 
++  // Koyo: the embedder's button for the action while a press on it is handled
++  // (PressEmbedderButton()); a popup the press opens hangs from it.
++  std::optional<EmbedderActionButton> pressed_embedder_button_;
++
++  // Koyo: keeps the press that began on an open popup of the action, or on one
++  // that had just closed, from opening it again. The embedder's button is in a
++  // window of the embedder's, so the press reaches Chrome only after it took
++  // the keyboard from the popup, which closed on losing it (ExtensionPopup).
++  WebUIBubbleReopenSuppressor embedder_button_reopen_suppressor_;
++
+   base::ScopedObservation<extensions::ExtensionHost,
+                           extensions::ExtensionHostObserver>
+       popup_host_observation_{this};
+--- a/chrome/browser/ui/views/extensions/extension_action_delegate_desktop.cc
++++ b/chrome/browser/ui/views/extensions/extension_action_delegate_desktop.cc
+@@ -6,6 +6,7 @@
+ 
+ #include <utility>
+ 
++#include "base/auto_reset.h"
+ #include "base/check.h"
+ #include "base/check_deref.h"
+ #include "chrome/browser/extensions/extension_view_host.h"
+@@ -62,14 +63,15 @@
+       model_->GetId(),
+       base::BindOnce(&ExtensionActionDelegateDesktop::ShowPopup,
+                      weak_factory_.GetWeakPtr(), std::move(host), show_action,
+-                     by_user, std::move(callback)));
++                     by_user, std::move(callback), pressed_embedder_button_));
+ }
+ 
+ void ExtensionActionDelegateDesktop::ShowPopup(
+     std::unique_ptr<extensions::ExtensionViewHost> host,
+     PopupShowAction show_action,
+     bool by_user,
+-    ShowPopupCallback callback) {
++    ShowPopupCallback callback,
++    std::optional<EmbedderActionButton> embedder_button) {
+   // It's possible that the popup should be closed before it finishes opening
+   // (since it can open asynchronously). Check before proceeding.
+   if (!popup_host_) {
+@@ -89,10 +91,19 @@
+   views::BubbleBorder::Arrow arrow =
+       extensions_container_views_ ? extensions_container_views_->GetPopupArrow()
+                                   : views::BubbleBorder::TOP_RIGHT;
++  // Koyo: a popup that a press on an embedder's button opened hangs from that
++  // button, by the top corner the embedder names.
++  std::optional<gfx::Rect> embedder_button_bounds;
++  if (embedder_button) {
++    embedder_button_bounds = embedder_button->bounds;
++    arrow = embedder_button->corner == EmbedderActionButton::Corner::kLeft
++                ? views::BubbleBorder::TOP_LEFT
++                : views::BubbleBorder::TOP_RIGHT;
++  }
+   ExtensionPopup::ShowPopup(
+       browser_, std::move(host),
+       extensions_container_views_->GetReferenceButtonForPopup(model_->GetId()),
+-      arrow, show_action, std::move(callback));
++      arrow, show_action, std::move(callback), embedder_button_bounds);
+ 
+   extensions_container_views_->OnPopupShown(model_->GetId(), by_user);
+ }
+@@ -102,6 +113,7 @@
+   popup_host_observation_.Reset();
+   popup_host_ = nullptr;
+   has_opened_popup_ = false;
++  embedder_button_reopen_suppressor_.RecordBubbleClosed();
+   extensions_container_views_->SetPopupOwner(nullptr);
+   if (extensions_container_views_->GetPoppedOutActionId() == model_->GetId()) {
+     extensions_container_views_->UndoPopOut();
+@@ -205,6 +217,36 @@
+   return extensions_container_->GetActiveWebContents();
+ }
+ 
++void ExtensionActionDelegateDesktop::OnEmbedderButtonPointerDown() {
++  // Koyo: as the pointer going down on the toolbar's own button does
++  // (ToolbarActionView::OnMousePressed), it closes the action's open popup,
++  // and the press it starts opens none.
++  const bool showing = IsShowingPopup();
++  embedder_button_reopen_suppressor_.OnMousePressed(
++      /*extra_suppress_condition=*/showing);
++  if (showing) {
++    HidePopup();
++  }
++}
++
++void ExtensionActionDelegateDesktop::PressEmbedderButton(
++    const EmbedderActionButton& button) {
++  if (embedder_button_reopen_suppressor_.ShouldSuppressBubbleShow(
++          /*is_pointer_interaction=*/true)) {
++    return;
++  }
++  // A press that came with no pointer going down before it, as from the
++  // keyboard, closes the open popup too.
++  if (IsShowingPopup()) {
++    HidePopup();
++    return;
++  }
++  base::AutoReset<std::optional<EmbedderActionButton>> pressed(
++      &pressed_embedder_button_, button);
++  model_->ExecuteUserAction(
++      ToolbarActionViewModel::InvocationSource::kToolbarButton);
++}
++
+ bool ExtensionActionDelegateDesktop::AcceleratorPressed(
+     const ui::Accelerator& accelerator) {
+   return model_->TryHandleAcceleratorPress();
+--- a/chrome/browser/ui/views/extensions/extension_popup.h
++++ b/chrome/browser/ui/views/extensions/extension_popup.h
+@@ -5,9 +5,13 @@
+ #ifndef CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSION_POPUP_H_
+ #define CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSION_POPUP_H_
+ 
++#include <optional>
++
++#include "base/callback_list.h"
+ #include "base/functional/callback.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/scoped_observation.h"
++#include "build/build_config.h"
+ #include "chrome/browser/ui/extensions/extension_popup_types.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+@@ -19,6 +23,7 @@
+ #include "extensions/browser/extension_registry.h"
+ #include "extensions/browser/extension_registry_observer.h"
+ #include "ui/base/metadata/metadata_header_macros.h"
++#include "ui/gfx/geometry/rect.h"
+ #include "ui/views/bubble/bubble_dialog_delegate_view.h"
+ #include "ui/views/widget/widget_observer.h"
+ 
+@@ -60,12 +65,17 @@
+   // BOTTOM_*, then the popup 'pops up', otherwise the popup 'drops down'.
+   // The actual display of the popup is delayed until the page contents
+   // finish loading in order to minimize UI flashing and resizing.
+-  static void ShowPopup(BrowserWindowInterface* browser,
+-                        std::unique_ptr<extensions::ExtensionViewHost> host,
+-                        views::BubbleAnchor anchor,
+-                        views::BubbleBorder::Arrow arrow,
+-                        PopupShowAction show_action,
+-                        ShowPopupCallback callback);
++  // Koyo: given `embedder_button_bounds`, the rectangle of the screen where an
++  // embedder draws the action's button, the popup hangs from that instead of
++  // |anchor|, which then gives only the widget it belongs to.
++  static void ShowPopup(
++      BrowserWindowInterface* browser,
++      std::unique_ptr<extensions::ExtensionViewHost> host,
++      views::BubbleAnchor anchor,
++      views::BubbleBorder::Arrow arrow,
++      PopupShowAction show_action,
++      ShowPopupCallback callback,
++      std::optional<gfx::Rect> embedder_button_bounds = std::nullopt);
+ 
+   ExtensionPopup(const ExtensionPopup&) = delete;
+   ExtensionPopup& operator=(const ExtensionPopup&) = delete;
+@@ -87,6 +97,8 @@
+   // ExtensionViewViews::Container:
+   gfx::Size GetMinBounds() override;
+   gfx::Size GetMaxBounds() override;
++  bool ShowsPageOnceSized() override;
++  void OnPageSized() override;
+ 
+   // extensions::ExtensionRegistryObserver:
+   void OnExtensionUnloaded(content::BrowserContext* browser_context,
+@@ -120,7 +132,8 @@
+                  views::BubbleAnchor anchor,
+                  views::BubbleBorder::Arrow arrow,
+                  PopupShowAction show_action,
+-                 ShowPopupCallback callback);
++                 ShowPopupCallback callback,
++                 std::optional<gfx::Rect> embedder_button_bounds);
+ 
+   // Shows the bubble, focuses its content, and registers listeners.
+   void ShowBubble();
+@@ -137,8 +150,26 @@
+   // Handles a signal from the extension host to close.
+   void HandleCloseExtensionHost(extensions::ExtensionHost* host);
+ 
++#if BUILDFLAG(IS_MAC)
++  // Koyo: the popup's widget tree became the active one or stopped being it
++  // (views::Widget::ShouldPaintAsActive()).
++  void OnPaintAsActiveChanged();
++
++  // Koyo: notes whether the keyboard is in the popup's widget tree, and
++  // closes the popup once the keyboard, having been there, is in a window
++  // that isn't Chromium's.
++  void FollowKeyboard();
++#endif
++
+   raw_ptr<BrowserWindowInterface> browser_;
+ 
++  // Koyo: whether the popup is over a page of an embedder's, a CEF browser in
++  // its views, whose window is the embedder's and never active. It has a
++  // title row with the extension's name and a close button, shows as soon as
++  // its page has a size, and closes when the keyboard leaves it for a window
++  // that isn't Chromium's.
++  const bool embedder_page_;
++
+   // The contained host for the view.
+   std::unique_ptr<extensions::ExtensionViewHost> host_;
+ 
+@@ -165,6 +196,15 @@
+   base::ScopedObservation<views::Widget, views::WidgetObserver>
+       anchor_widget_observation_{this};
+ 
++#if BUILDFLAG(IS_MAC)
++  base::CallbackListSubscription paint_as_active_subscription_;
++
++  // Koyo: whether the keyboard has been in the popup's widget tree. A popup
++  // that never had it, as one shown while the embedder isn't the active app,
++  // has lost nothing when another window has it.
++  bool had_keyboard_ = false;
++#endif
++
+   base::WeakPtrFactory<ExtensionPopup> deferred_close_weak_ptr_factory_;
+ };
+ 
+--- a/chrome/browser/ui/views/extensions/extension_popup.cc
++++ b/chrome/browser/ui/views/extensions/extension_popup.cc
+@@ -7,7 +7,9 @@
+ #include "base/check.h"
+ #include "base/functional/bind.h"
+ #include "base/memory/raw_ptr.h"
++#include "base/strings/utf_string_conversions.h"
+ #include "base/task/single_thread_task_runner.h"
++#include "cef/libcef/features/features.h"
+ #include "chrome/browser/devtools/devtools_window.h"
+ #include "chrome/browser/extensions/extension_view_host.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+@@ -17,6 +19,7 @@
+ #include "components/web_modal/web_modal_utils.h"
+ #include "content/public/browser/browser_context.h"
+ #include "content/public/browser/web_contents.h"
++#include "extensions/common/extension.h"
+ #include "ui/base/metadata/metadata_impl_macros.h"
+ #include "ui/base/mojom/dialog_button.mojom.h"
+ #include "ui/gfx/geometry/insets.h"
+@@ -41,15 +44,33 @@
+ 
+ #if BUILDFLAG(IS_MAC)
+ #include "base/message_loop/message_pump_apple.h"
++#include "chrome/browser/platform_util.h"
+ #endif
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
++
+ constexpr gfx::Size ExtensionPopup::kMinSize;
+ constexpr gfx::Size ExtensionPopup::kMaxSize;
+ 
+ // The most recently constructed popup; used for testing purposes.
+ ExtensionPopup* g_last_popup_for_testing = nullptr;
+ 
++namespace {
+ 
++// Koyo: whether `browser` is a page of an embedder's: a CEF browser hosted in
++// its views, which a Chrome-style CEF page is.
++bool IsEmbedderPage(BrowserWindowInterface* browser) {
++#if BUILDFLAG(ENABLE_CEF)
++  return browser->cef_delegate() && browser->cef_delegate()->IsViewsHosted();
++#else
++  return false;
++#endif
++}
++
++}  // namespace
++
+ // static
+ ExtensionPopup* ExtensionPopup::last_popup_for_testing() {
+   return g_last_popup_for_testing;
+@@ -62,9 +83,11 @@
+     views::BubbleAnchor anchor,
+     views::BubbleBorder::Arrow arrow,
+     PopupShowAction show_action,
+-    ShowPopupCallback callback) {
++    ShowPopupCallback callback,
++    std::optional<gfx::Rect> embedder_button_bounds) {
+   auto* popup = new ExtensionPopup(browser, std::move(host), anchor, arrow,
+-                                   show_action, std::move(callback));
++                                   show_action, std::move(callback),
++                                   embedder_button_bounds);
+   views::BubbleDialogDelegateView::CreateBubble(popup);
+ 
+   // Check that the preferred adjustment is set to mirror to match
+@@ -112,15 +135,30 @@
+         ui::Accelerator(ui::VKEY_ESCAPE, ui::EF_NONE));
+   }
+ 
+-  const gfx::RoundedCornersF& radii = GetBubbleFrameView()->GetRoundedCorners();
++  gfx::RoundedCornersF radii = GetBubbleFrameView()->GetRoundedCorners();
+   CHECK_EQ(radii.upper_left(), radii.upper_right());
+   CHECK_EQ(radii.lower_left(), radii.lower_right());
++  // Koyo: the title row of a popup over an embedder's page is over the
++  // contents' top corners.
++  if (embedder_page_) {
++    radii.set_upper_left(0);
++    radii.set_upper_right(0);
++  }
+ 
+   const bool contents_has_rounded_corners =
+       extension_view_->holder()->SetNativeViewCornerRadii(radii);
+   SetBorder(views::CreateEmptyBorder(gfx::Insets::TLBR(
+       contents_has_rounded_corners ? 0 : radii.upper_left(), 0,
+       contents_has_rounded_corners ? 0 : radii.lower_left(), 0)));
++
++#if BUILDFLAG(IS_MAC)
++  if (embedder_page_) {
++    paint_as_active_subscription_ =
++        GetWidget()->RegisterPaintAsActiveChangedCallback(
++            base::BindRepeating(&ExtensionPopup::OnPaintAsActiveChanged,
++                                base::Unretained(this)));
++  }
++#endif
+ }
+ 
+ views::View* ExtensionPopup::GetInitiallyFocusedView() {
+@@ -130,6 +168,9 @@
+ void ExtensionPopup::OnWidgetDestroying(views::Widget* widget) {
+   BubbleDialogDelegateView::OnWidgetDestroying(widget);
+   anchor_widget_observation_.Reset();
++#if BUILDFLAG(IS_MAC)
++  paint_as_active_subscription_ = {};
++#endif
+   extension_registry_observation_.Reset();
+   security_dialog_tracker_observation_.Reset();
+   extension_view_ = nullptr;
+@@ -194,13 +235,29 @@
+   gfx::Size max_size = kMaxSize;
+   max_size.SetToMin(
+       BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
+-          GetAnchor(), arrow(), adjust_if_offscreen(),
++          GetAnchorRect(), arrow(), adjust_if_offscreen(),
+           views::BubbleFrameView::PreferredArrowAdjustment::kMirror));
+   max_size.SetToMax(kMinSize);
+ 
+   return max_size;
+ }
+ 
++bool ExtensionPopup::ShowsPageOnceSized() {
++  return embedder_page_;
++}
++
++void ExtensionPopup::OnPageSized() {
++  if (GetWidget()->IsClosed() || GetWidget()->IsVisible()) {
++    return;
++  }
++  // Koyo: shown as soon as its page has a size, a popup over an embedder's
++  // page shows what the page draws while it loads, a spinner most often,
++  // where Chrome's would wait for the load to end. It takes the size now:
++  // its widget's own resizing to it is still to come.
++  SizeToContents();
++  ShowBubble();
++}
++
+ void ExtensionPopup::OnExtensionUnloaded(
+     content::BrowserContext* browser_context,
+     const extensions::Extension* extension,
+@@ -256,12 +313,14 @@
+     views::BubbleAnchor anchor,
+     views::BubbleBorder::Arrow arrow,
+     PopupShowAction show_action,
+-    ShowPopupCallback callback)
++    ShowPopupCallback callback,
++    std::optional<gfx::Rect> embedder_button_bounds)
+     : BubbleDialogDelegateView(anchor,
+                                arrow,
+                                views::BubbleBorder::STANDARD_SHADOW,
+                                /*autosize=*/true),
+       browser_(browser),
++      embedder_page_(IsEmbedderPage(browser)),
+       host_(std::move(host)),
+       show_action_(show_action),
+       shown_callback_(std::move(callback)),
+@@ -277,6 +336,30 @@
+   // the correct value while calculating max bounds.
+   set_adjust_if_offscreen(views::PlatformStyle::kAdjustBubbleIfOffscreen);
+ 
++  // Koyo: a popup over an embedder's page has no browser window round it, so
++  // it is a bubble that says whose it is and closes as a dialog does: Chrome's
++  // title row with the extension's name and a close button, round corners,
++  // and wholly on the screen.
++  if (embedder_page_) {
++    SetTitle(base::UTF8ToUTF16(host_->extension()->name()));
++    SetShowTitle(true);
++    SetShowCloseButton(true);
++    set_use_round_corners(true);
++    set_clamp_to_work_area(true);
++  }
++
++  // Koyo: it hangs from the button the embedder draws for the action, not
++  // from the toolbar's own, which an embedder's page carries hidden. The
++  // toolbar's widget stays the anchor widget: the bubble's parent, whose
++  // activation closes it (OnWidgetTreeActivated()). Set before
++  // |extension_view_| is, which takes its largest size from the anchor.
++  if (embedder_button_bounds) {
++    views::Widget* const toolbar_widget = anchor_widget();
++    SetAnchor(views::BubbleAnchor());
++    SetAnchorWidget(toolbar_widget);
++    SetAnchorRect(*embedder_button_bounds);
++  }
++
+   // The popup is not shown until the page finishes its first load (see the
+   // has_loaded_once() branch below), so a user is waiting on a load that
+   // PerformanceManager would otherwise treat as a background load. Taken
+@@ -317,8 +400,10 @@
+   // and not show.  This seems to happen in single-process mode.
+   if (host_->has_loaded_once()) {
+     ShowBubble();
+-  } else {
++  } else if (!embedder_page_) {
+     // Wait to show the popup until the contained host finishes loading.
++    // Koyo: one over an embedder's page shows once its page has a size
++    // (OnPageSized()).
+     Observe(host_->host_contents());
+   }
+ }
+@@ -414,5 +499,41 @@
+   CloseDeferredIfNecessary();
+ }
+ 
++#if BUILDFLAG(IS_MAC)
++void ExtensionPopup::OnPaintAsActiveChanged() {
++  // Koyo: a popup over an embedder's page closes when the keyboard leaves its
++  // widget tree for a window that isn't Chromium's: the embedder's window, the
++  // page's, or another app's. Chrome closes a popup when its browser's window
++  // becomes active again (OnWidgetTreeActivated()), and the window an
++  // embedder's page is in is never one of Chromium's. AppKit says which window
++  // has the keyboard only after the one that lost it has heard so
++  // (AppController's -windowDidResignKey:), so it is asked once the change is
++  // over.
++  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&ExtensionPopup::FollowKeyboard,
++                                deferred_close_weak_ptr_factory_.GetWeakPtr()));
++}
++
++void ExtensionPopup::FollowKeyboard() {
++  views::Widget* const keyboard =
++      views::Widget::GetWidgetForNativeWindow(platform_util::GetActiveWindow());
++  // The popup has it, or a widget of its own does: a list or a bubble it
++  // opened.
++  for (views::Widget* widget = keyboard; widget; widget = widget->parent()) {
++    if (widget == GetWidget()) {
++      had_keyboard_ = true;
++      return;
++    }
++  }
++  // A window of Chromium's has it: one of its page's, whose activation closes
++  // the popup already, or another of Chrome's, which leaves it open, as in
++  // Chrome. Or the popup never had it to lose.
++  if (keyboard || !had_keyboard_) {
++    return;
++  }
++  CloseUnlessBlockedByInspectionOrJSDialog();
++}
++#endif
++
+ BEGIN_METADATA(ExtensionPopup)
+ END_METADATA
+--- a/chrome/browser/ui/views/extensions/extension_view_views.h
++++ b/chrome/browser/ui/views/extensions/extension_view_views.h
+@@ -38,6 +38,13 @@
+ 
+     virtual gfx::Size GetMinBounds() = 0;
+     virtual gfx::Size GetMaxBounds() = 0;
++
++    // Koyo: whether the view shows as soon as its page has laid out to a
++    // size, rather than once the page has loaded (OnLoaded()), and the
++    // container is told each time the page lays out to one, from the first
++    // (OnPageSized()).
++    virtual bool ShowsPageOnceSized() { return false; }
++    virtual void OnPageSized() {}
+   };
+ 
+   class Observer : public base::CheckedObserver {
+--- a/chrome/browser/ui/views/extensions/extension_view_views.cc
++++ b/chrome/browser/ui/views/extensions/extension_view_views.cc
+@@ -103,6 +103,21 @@
+ void ExtensionViewViews::ResizeDueToAutoResize(
+     content::WebContents* web_contents,
+     const gfx::Size& new_size) {
++  // Koyo: a container that shows its page once it has a size has it shown at
++  // the first size the page lays out to, which a page not yet shown reports
++  // as soon as anything lays it out (a script that measures it, or at the
++  // latest its load); not at the none OnLoaded() passes on when the page
++  // loaded before it laid out.
++  if (container_ && container_->ShowsPageOnceSized()) {
++    if (new_size.IsEmpty()) {
++      return;
++    }
++    SetVisible(true);
++    WebView::ResizeDueToAutoResize(web_contents, new_size);
++    container_->OnPageSized();
++    return;
++  }
++
+   // Don't actually do anything with this information until we have been shown.
+   // Size changes will not be honored by lower layers while we are hidden.
+   if (!GetVisible()) {
+--- a/ui/views/bubble/bubble_dialog_delegate_view.h
++++ b/ui/views/bubble/bubble_dialog_delegate_view.h
+@@ -552,6 +552,14 @@
+   // screen coordinates are not available.
+   static gfx::Size GetMaxAvailableScreenSpaceToPlaceBubble(
+       BubbleAnchor anchor,
++      BubbleBorder::Arrow arrow,
++      bool adjust_if_offscreen,
++      BubbleFrameView::PreferredArrowAdjustment arrow_adjustment);
++  // Koyo: the same for a bubble anchored to |anchor_rect|, a rectangle of the
++  // screen, which GetAnchorRect() gives for an anchor view, a tracked element
++  // and SetAnchorRect() alike.
++  static gfx::Size GetMaxAvailableScreenSpaceToPlaceBubble(
++      const gfx::Rect& anchor_rect,
+       BubbleBorder::Arrow arrow,
+       bool adjust_if_offscreen,
+       BubbleFrameView::PreferredArrowAdjustment arrow_adjustment);
+--- a/ui/views/bubble/bubble_dialog_delegate_view.cc
++++ b/ui/views/bubble/bubble_dialog_delegate_view.cc
+@@ -875,6 +875,24 @@
+ // static
+ gfx::Size BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
+     BubbleAnchor anchor,
++    BubbleBorder::Arrow arrow,
++    bool adjust_if_offscreen,
++    BubbleFrameView::PreferredArrowAdjustment arrow_adjustment) {
++  gfx::Rect anchor_rect;
++  if (View* view = anchor.GetIfView()) {
++    anchor_rect = view->GetAnchorBoundsInScreen();
++  } else {
++    ui::TrackedElement* element = anchor.GetIfElement();
++    CHECK(element);
++    anchor_rect = element->GetScreenBounds();
++  }
++  return GetMaxAvailableScreenSpaceToPlaceBubble(
++      anchor_rect, arrow, adjust_if_offscreen, arrow_adjustment);
++}
++
++// static
++gfx::Size BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
++    const gfx::Rect& anchor_rect,
+     BubbleBorder::Arrow arrow,
+     bool adjust_if_offscreen,
+     BubbleFrameView::PreferredArrowAdjustment arrow_adjustment) {
+@@ -893,14 +911,6 @@
+              .supports_global_screen_coordinates);
+ #endif
+ 
+-  gfx::Rect anchor_rect;
+-  if (View* view = anchor.GetIfView()) {
+-    anchor_rect = view->GetAnchorBoundsInScreen();
+-  } else {
+-    ui::TrackedElement* element = anchor.GetIfElement();
+-    CHECK(element);
+-    anchor_rect = element->GetScreenBounds();
+-  }
+   gfx::Rect screen_rect =
+       display::Screen::Get()
+           ->GetDisplayNearestPoint(anchor_rect.CenterPoint())

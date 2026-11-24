@@ -24,10 +24,7 @@ const AWAY: NSPoint = NSPoint::new(-20000., -20000.);
 /// then taking the bubble from the holder takes it from the app's window.
 pub fn leave_and_return(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
     open(host, incoming)?;
-    host.send(&AppRequest::Visible {
-        pane: 1,
-        visible: true,
-    })
+    host.send(&AppRequest::Sight { pane: 1, kept: true, seen: true })
     .map_err(|error| format!("visible: {error}"))?;
     let (done, said) = mpsc::channel();
     embedded::on_main(move || {

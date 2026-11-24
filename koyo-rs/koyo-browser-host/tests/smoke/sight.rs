@@ -40,14 +40,14 @@ fn a_page_out_of_sight_runs_its_timers_slowly_and_draws_at_once_when_back() {
     let shown = ticks(&mut session);
     assert!(shown > 100, "{shown} ticks in two seconds on screen");
 
-    (session.host.send(&AppRequest::Visible { pane: 1, visible: false })).expect("visible");
+    (session.host.send(&AppRequest::Sight { pane: 1, kept: false, seen: true })).expect("visible");
     becomes(&mut session, "hidden");
     let hidden = ticks(&mut session);
     eprintln!("ticks in two seconds: {shown} on screen, {hidden} out of sight");
     assert!(hidden <= 5, "{hidden} ticks in two seconds out of sight");
 
     let back = Instant::now();
-    (session.host.send(&AppRequest::Visible { pane: 1, visible: true })).expect("visible");
+    (session.host.send(&AppRequest::Sight { pane: 1, kept: true, seen: true })).expect("visible");
     let frame = "new Promise(done => requestAnimationFrame(() => done(document.visibilityState)))";
     let drawn = evaluate(&mut session, frame);
     eprintln!("the first frame back came {:?} after it was asked for", back.elapsed());
@@ -79,7 +79,7 @@ fn a_silent_page_out_of_sight_past_chromes_grace_still_runs_its_timer_each_secon
     let grace = "enable-features=IntensiveWakeUpThrottling:grace_period_seconds/5";
     let mut session = Session::start_with(&launch, &[("KOYO_NATIVE_SWITCHES", grace)]);
     open(&mut session, EACH_SECOND, "each second");
-    (session.host.send(&AppRequest::Visible { pane: 1, visible: false })).expect("visible");
+    (session.host.send(&AppRequest::Sight { pane: 1, kept: false, seen: true })).expect("visible");
     becomes(&mut session, "hidden");
     session.pump(Instant::now() + Duration::from_secs(30), |_| false);
     let longest = evaluate(&mut session, LONGEST).as_f64().expect("seconds");

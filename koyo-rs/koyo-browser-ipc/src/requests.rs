@@ -69,12 +69,17 @@ pub enum AppRequest {
         /// What changes.
         action: ViewAction,
     },
-    /// The pane came into sight or went out of it: a page out of sight stops painting.
-    Visible {
+    /// What the app knows of whether the page is to be seen: the host knows itself whether a
+    /// pane draws it (`docs/native-pages.md` 5). The page is on screen for the engine while a
+    /// pane draws it in a window that's `seen`, or while it's `kept`; out of sight it stops
+    /// painting.
+    Sight {
         /// The pane.
         pane: PaneId,
-        /// Whether it's on screen.
-        visible: bool,
+        /// Whether an agent keeps the page on screen for the engine, a pane drawing it or not.
+        kept: bool,
+        /// Whether the window the page's pane draws it in counts as seen.
+        seen: bool,
     },
     /// The page is to leave full screen: the person pressed Escape, or took the window out
     /// of it.
@@ -175,18 +180,26 @@ pub enum AppRequest {
         #[serde(default)]
         params: serde_json::Value,
     },
-    /// Run an extension's toolbar action on the pane's page, as a press on its icon does
-    /// (`docs/extensions.md` 6): its popup opens, or it hears `action.onClicked`, with
-    /// `activeTab` for the page either way.
+    /// The pointer went down on an extension's icon for the pane's page; the press it starts
+    /// follows as [`AppRequest::ExtensionAct`] (`docs/extensions.md` 6). The extension's popup
+    /// open over the page closes, and that press opens none.
+    ExtensionPointerDown {
+        /// The page.
+        pane: PaneId,
+        /// The extension's id.
+        extension: String,
+    },
+    /// A press on an extension's icon for the pane's page, as on its button in Chrome's
+    /// toolbar (`docs/extensions.md` 6): its open popup closes, or its action runs, opening
+    /// its popup or telling it `action.onClicked`, with `activeTab` for the page either way.
     ExtensionAct {
         /// The page.
         pane: PaneId,
         /// The extension's id.
         extension: String,
-        /// Where its popup hangs from: a point of the screen, in points from the main
-        /// screen's bottom left, as `AppKit` counts them.
-        at: [f64; 2],
-        /// Which of the popup's top corners is put there.
+        /// The icon pressed, which its popup hangs from.
+        bounds: crate::ScreenRect,
+        /// Which of the popup's top corners is at the same corner of the icon.
         #[serde(default)]
         corner: crate::Corner,
     },
@@ -244,7 +257,7 @@ impl AppRequest {
             | Self::Navigate { pane, .. }
             | Self::Go { pane, .. }
             | Self::Close { pane }
-            | Self::Visible { pane, .. }
+            | Self::Sight { pane, .. }
             | Self::ExitFullscreen { pane }
             | Self::SiteSettings { pane }
             | Self::SetSiteSetting { pane, .. }
@@ -253,6 +266,7 @@ impl AppRequest {
             | Self::Answer { pane, .. }
             | Self::Passkey { pane, .. }
             | Self::MenuCommand { pane, .. }
+            | Self::ExtensionPointerDown { pane, .. }
             | Self::ExtensionAct { pane, .. }
             | Self::Active { pane }
             | Self::Print { pane, .. }
