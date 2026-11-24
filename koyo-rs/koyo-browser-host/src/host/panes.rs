@@ -1,7 +1,7 @@
 //! Panes from open to closed: their profiles, their browsers made and gone, and what each
 //! page reports meanwhile.
 use super::inspect::{cdp_failed, frontend_loaded, to_page};
-use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
+use super::{Going, Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
     Browser, CefString, ImplBrowser, ImplBrowserHost, ImplFrame, ImplPreferenceManager,
     ImplRequestContextHandler, ImplValue, RequestContext, RequestContextHandler,
@@ -188,10 +188,30 @@ pub(super) fn close_asked(pane: PaneId) {
     if let Some(browser) = browser_of(pane)
         && crate::downloads::keep_open(pane, &browser)
     {
-        with_pane(pane, |p| p.closing = true);
+        with_pane(pane, |p| p.going = Going::Closing);
         return;
     }
     close(pane);
+}
+
+/// The person closed `pane`'s page: it's asked first, as Chrome asks it, by being closed as a
+/// page is that may refuse. One that asks to confirm leaving asks the person
+/// (`pane/prompts.rs`) and goes once they leave, staying open when they stay; one that doesn't
+/// goes at once. One whose browser is still to come goes as when the app closes it.
+pub(super) fn leave(pane: PaneId) {
+    let Some(host) = host_of(pane) else {
+        close(pane);
+        return;
+    };
+    let leaving = with_pane(pane, |p| {
+        if p.going == Going::Open {
+            p.going = Going::Leaving;
+        }
+        p.going == Going::Leaving
+    });
+    if leaving == Some(true) {
+        host.try_close_browser();
+    }
 }
 
 /// Closes a page kept open for its downloads, once the current callback has returned.
@@ -214,7 +234,8 @@ pub(super) fn close(pane: PaneId) {
         to_page(target, &[end]);
     }
     if let Some(host) = host_of(pane) {
-        with_pane(pane, |p| p.closing = true);
+        with_pane(pane, |p| p.going = Going::Closing);
+        crate::dialogs::let_go(pane);
         host.close_browser(1);
     } else {
         with(|host| host.panes.remove(&pane));
@@ -256,7 +277,7 @@ pub(crate) fn browser_closed(pane: PaneId) {
     let (done, devtools, calls, unasked) = with(|host| {
         let mut closed = host.panes.remove(&pane);
         let unasked = !host.shutting_down
-            && closed.as_ref().is_some_and(|c| !c.closing && c.inspector.is_none());
+            && closed.as_ref().is_some_and(|c| c.going == Going::Open && c.inspector.is_none());
         let mut calls: Vec<u64> = (closed.as_mut())
             .map(|c| std::mem::take(&mut c.calls).into_values().collect())
             .unwrap_or_default();

@@ -81,9 +81,8 @@ struct Pane {
     inspector: Option<(PaneId, crate::devtools::Bridge)>,
     /// Requests that need the browser, made before it was created.
     waiting: Vec<AppRequest>,
-    /// Whether the app asked for the pane to close: one that closes unasked was closed by
-    /// an extension (`chrome.tabs.remove`) or by its own page.
-    closing: bool,
+    /// How far the page is on its way out.
+    going: Going,
     /// The host's own commands in the page's session, until answered.
     own: std::collections::HashSet<i64>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
@@ -104,6 +103,19 @@ struct Pane {
     progress: Option<u8>,
 }
 
+/// How far a pane's page is on its way out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Going {
+    /// It stays: one that closes now closes unasked, by an extension (`chrome.tabs.remove`) or
+    /// by its own page.
+    Open,
+    /// The person closes it ([`AppRequest::Leave`]): it asks them first if it asks to confirm
+    /// leaving, and is open again once they stay.
+    Leaving,
+    /// The app let it go ([`AppRequest::Close`]): it goes, and nobody is left to answer for it.
+    Closing,
+}
+
 impl Pane {
     fn new(url: &str) -> Self {
         let page = PageState {
@@ -121,7 +133,7 @@ impl Pane {
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
-            closing: false,
+            going: Going::Open,
             own: std::collections::HashSet::new(),
             observer: None,
             calls: HashMap::new(),
@@ -149,7 +161,17 @@ pub(crate) fn send(event: &HostEvent) {
 
 /// Whether the app closed the pane: a page it let go has nobody left to answer its questions.
 pub(crate) fn closing(pane: PaneId) -> bool {
-    with_pane(pane, |p| p.closing).unwrap_or(false)
+    with_pane(pane, |p| p.going == Going::Closing).unwrap_or(false)
+}
+
+/// The person stayed on `pane`'s page as it asked them to confirm leaving: one they were
+/// closing is open again.
+pub(crate) fn stayed(pane: PaneId) {
+    with_pane(pane, |p| {
+        if p.going == Going::Leaving {
+            p.going = Going::Open;
+        }
+    });
 }
 
 /// Whether a shutdown was asked for and every pane has closed since.
@@ -308,6 +330,7 @@ fn handle(request: AppRequest) {
         }
         AppRequest::Go { pane, to } => go(pane, to),
         AppRequest::Close { pane } => panes::close_asked(pane),
+        AppRequest::Leave { pane } => panes::leave(pane),
         AppRequest::ExitFullscreen { pane } => exit_fullscreen(pane),
         AppRequest::SiteSettings { pane } => site::tell(pane),
         AppRequest::SetSiteSetting {

@@ -180,7 +180,8 @@ wrap_jsdialog_handler! {
         }
 
         /// A page the app closed leaves at once, as the app let it go and nobody is left to
-        /// answer for it; any other asks the person whether to leave.
+        /// answer for it; any other asks the person whether to leave, one they're closing
+        /// included (`AppRequest::Leave`).
         fn on_before_unload_dialog(
             &self,
             browser: Option<&mut Browser>,
@@ -206,7 +207,7 @@ wrap_jsdialog_handler! {
                 Dialog::BeforeUnload {
                     reload: is_reload != 0,
                 },
-                Waiting::Script(callback.clone()),
+                Waiting::BeforeUnload(callback.clone()),
             );
             1
         }

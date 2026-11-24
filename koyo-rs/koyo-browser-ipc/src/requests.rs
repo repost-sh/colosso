@@ -57,8 +57,17 @@ pub enum AppRequest {
         /// What to do.
         to: Go,
     },
-    /// Close the pane and release its surfaces.
+    /// Close the pane and release its surfaces. The app let the page go: one that asks to
+    /// confirm leaving isn't asked, and goes all the same.
     Close {
+        /// The pane.
+        pane: PaneId,
+    },
+    /// The person closes the page, which is asked first, as Chrome asks it: one that asks to
+    /// confirm leaving asks the person ([`crate::HostEvent::Dialog`] with
+    /// [`crate::Dialog::BeforeUnload`]). The host says [`crate::HostEvent::Closed`] once the
+    /// page went, and nothing when the person stays; a [`Self::Close`] meanwhile lets it go.
+    Leave {
         /// The pane.
         pane: PaneId,
     },
@@ -257,6 +266,7 @@ impl AppRequest {
             | Self::Navigate { pane, .. }
             | Self::Go { pane, .. }
             | Self::Close { pane }
+            | Self::Leave { pane }
             | Self::Sight { pane, .. }
             | Self::ExitFullscreen { pane }
             | Self::SiteSettings { pane }

@@ -13,7 +13,8 @@ use crate::model::{ClosedFrom, ClosedTab, Pane, Spot, Tab};
 
 impl Shell {
     /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
-    /// file has unsaved edits or its terminal runs something. Its terminal ends.
+    /// file has unsaved edits, its terminal runs something or its page asks to confirm leaving.
+    /// Its terminal ends.
     pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let pane = self.workspace.pane(id);
         let editors = (pane.and_then(|pane| pane.file()))
@@ -21,6 +22,7 @@ impl Shell {
             .into_iter()
             .collect();
         let terminals = pane.and_then(Pane::terminal).into_iter().collect();
+        let to_ask = Self::page_among(pane.as_slice(), cx);
         let typing = self.pane_with_keyboard(window, cx) == Some(id);
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             shell.close_pane_now(id, cx);
@@ -28,7 +30,7 @@ impl Shell {
                 shell.keys_to_shown_tab(cx);
             }
         };
-        self.ask_then(editors, terminals, close, window, cx);
+        self.ask_then((editors, terminals, to_ask), close, window, cx);
     }
 
     /// Closes pane `id`, wherever it is, whatever its file has: out of its split, or with its
@@ -55,7 +57,8 @@ impl Shell {
     }
 
     /// Closes the tab at `at`, as `(project, branch, tab)`, asking first when its files have
-    /// unsaved edits or its terminals run something. Its terminals end.
+    /// unsaved edits, its terminals run something or its one page asks to confirm leaving. Its
+    /// terminals end.
     pub fn close_tab_at(
         &mut self,
         at: (usize, usize, usize),
@@ -69,6 +72,7 @@ impl Shell {
         let terminals = (tab.panes().into_iter())
             .filter_map(Pane::terminal)
             .collect();
+        let page = Self::page_among(&tab.panes(), cx);
         let shown = self.workspace.shown_checkout_tab() == Some(at);
         let typing = shown && self.pane_with_keyboard(window, cx).is_some();
         let id = tab.first().id;
@@ -80,15 +84,15 @@ impl Shell {
                 }
             }
         };
-        self.ask_then(editors, terminals, close, window, cx);
+        self.ask_then((editors, terminals, page), close, window, cx);
     }
 
-    /// Ends `terminals` and does `close`, asking first about what's running in them and then
-    /// about what's unsaved in `editors`: once it's agreed, and saved or let go.
+    /// Ends `terminals` and does `close`, asking first about what's running in them, then
+    /// about what's unsaved in `editors`, then `page` whether it may leave (`leaving.rs`): once
+    /// it's agreed, saved or let go, and the page went.
     fn ask_then(
         &mut self,
-        editors: Vec<Entity<FileEditor>>,
-        terminals: Vec<u64>,
+        (editors, terminals, page): (Vec<Entity<FileEditor>>, Vec<u64>, Option<Entity<BrowserView>>),
         close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -99,7 +103,10 @@ impl Shell {
                 shell.end_terminals(&terminals, cx);
                 close(shell, cx);
             };
-            shell.ask_about_files_then(editors, close, window, cx);
+            let ask_page = move |shell: &mut Self, cx: &mut Context<Self>| {
+                shell.ask_page_then(page, close, cx);
+            };
+            shell.ask_about_files_then(editors, ask_page, window, cx);
         };
         self.ask_to_end_terminals(&asked, then, window, cx);
     }

@@ -227,9 +227,9 @@ pub enum HostEvent {
         /// The pane.
         pane: PaneId,
     },
-    /// The pane's browser is gone: the app closed it, its page closed
-    /// (`DevTools` go with their page), or the host is shutting down. Its
-    /// surfaces are released.
+    /// The pane's browser is gone: the app closed it, the person left it
+    /// ([`crate::AppRequest::Leave`]), its page closed (`DevTools` go with their page), or the
+    /// host is shutting down. Its surfaces are released.
     Closed {
         /// The pane.
         pane: PaneId,

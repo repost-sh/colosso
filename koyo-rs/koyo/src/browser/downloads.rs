@@ -68,6 +68,12 @@ pub(super) fn at(page: Option<&BrowserView>) -> At {
     }
 }
 
+/// Whether `pane`'s page has downloads still coming in: being placed, or going.
+pub(super) fn coming_in(pane: PaneId, cx: &App) -> bool {
+    let of_page = |entry: &&Entry| matches!(entry.key, Key::Engine { pane: of, .. } if of == pane);
+    Downloads::listed(cx).iter().filter(of_page).any(|entry| !entry.stage.ended())
+}
+
 /// A download in the list.
 #[derive(Clone)]
 pub(super) struct Entry {

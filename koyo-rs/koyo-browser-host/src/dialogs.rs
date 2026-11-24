@@ -21,8 +21,10 @@ use std::sync::Mutex;
 
 /// A callback CEF waits on.
 pub(crate) enum Waiting {
-    /// `alert`, `confirm`, `prompt` and `beforeunload`.
+    /// `alert`, `confirm` and `prompt`.
     Script(JsdialogCallback),
+    /// Whether to leave the page or reload it, as its `beforeunload` asks.
+    BeforeUnload(JsdialogCallback),
     /// A sign-in.
     Auth(AuthCallback),
     /// A permission prompt, with CEF's id for it.
@@ -62,7 +64,7 @@ enum Asked {
 impl Waiting {
     fn asked(&self) -> Asked {
         match self {
-            Waiting::Script(_) => Asked::Script,
+            Waiting::Script(_) | Waiting::BeforeUnload(_) => Asked::Script,
             Waiting::Auth(_) => Asked::Auth,
             Waiting::Prompt { .. } => Asked::Prompt,
             Waiting::Media { .. } => Asked::Media,
@@ -105,7 +107,8 @@ pub(crate) fn ask(pane: PaneId, origin: &str, question: Dialog, waiting: Waiting
     });
 }
 
-/// The person answered: an answer that doesn't fit the question says no.
+/// The person answered: an answer that doesn't fit the question says no. Staying on a page
+/// they were closing keeps it open (`host::stayed`).
 pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
     if let Some(waiting) = with(|dialogs| dialogs.remove(pane, dialog)) {
         let answer = if fits(waiting.asked(), &answer) {
@@ -114,18 +117,30 @@ pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
             log::warn!("pane {pane}'s question {dialog} was answered as another kind; said no");
             Answer::Dismiss
         };
-        if let Waiting::Media { bits, origin, .. } = &waiting
-            && !matches!(answer, Answer::Dismiss)
-        {
-            host::keep_media(pane, origin, *bits);
+        match &waiting {
+            Waiting::Media { bits, origin, .. } if !matches!(answer, Answer::Dismiss) => {
+                host::keep_media(pane, origin, *bits);
+            }
+            Waiting::BeforeUnload(_) if matches!(answer, Answer::Dismiss) => host::stayed(pane),
+            _ => {}
         }
         resolve(waiting, answer);
     }
 }
 
+/// The app let `pane`'s page go: whether to leave it, asked still, is answered yes, as nobody
+/// is left to answer it, and the app hears the question is withdrawn.
+pub(crate) fn let_go(pane: PaneId) {
+    let leaving = |p: PaneId, waiting: &Waiting| p == pane && matches!(waiting, Waiting::BeforeUnload(_));
+    for (dialog, waiting) in with(|dialogs| dialogs.take(leaving)) {
+        host::send(&HostEvent::DialogClosed { pane, dialog });
+        resolve(waiting, Answer::Accept);
+    }
+}
+
 /// The page navigated or reloaded: its script dialogs are void.
 pub(crate) fn reset(pane: PaneId) {
-    withdraw(pane, |waiting| matches!(waiting, Waiting::Script(_)));
+    withdraw(pane, |waiting| matches!(waiting, Waiting::Script(_) | Waiting::BeforeUnload(_)));
 }
 
 /// The engine took a permission prompt back.
@@ -164,6 +179,7 @@ fn decline(waiting: Waiting) {
 fn resolve(waiting: Waiting, answer: Answer) {
     let accepted = !matches!(answer, Answer::Dismiss);
     match waiting {
+        Waiting::BeforeUnload(callback) => callback.cont(i32::from(accepted), None),
         Waiting::Script(callback) => {
             let text = match &answer {
                 Answer::Text { text } => Some(text.as_str().into()),

@@ -593,7 +593,9 @@ to right, before the selected checkout's tabs (section 1). **[asked, 2026-11-23]
   no worktree selected. **[asked: the item; ours: a menu of that one item]**
 - ⌘W, its ×, or a middle click closes a loose page: it's gone. The one before it shows in
   its place, the one after when it was the first, and the selected worktree's tab when it
-  was the only one. **[ours]** It's among the tabs ⌘⇧T brings back, from the one history
+  was the only one. **[ours]** A page that asks to confirm leaving asks first, and goes only
+  once the person leaves; Cancel keeps it (`docs/browser.md` 17). **[asked, 2026-11-24: as
+  Chrome]** It's among the tabs ⌘⇧T brings back, once it went, from the one history
   worktrees' tabs are kept in: back at its place among its space's loose pages, that space
   shown, at the address it showed, of the profile it kept (the space shown's if its own is
   gone). App control's `tab_reopen` brings back worktrees' tabs only, and leaves a closed
@@ -667,7 +669,9 @@ menu is Arc's.
   `DevTools` go, its tile stays, fainter, and what the space shows under it shows in its
   place. Picked again, it opens at the address it's pinned at. Closing it is how it's taken
   back there. **[asked: closing doesn't unpin; ours: that it goes back to the pinned address
-  rather than the one it last showed]**
+  rather than the one it last showed]** A page that asks to confirm leaving asks first, shown
+  if it wasn't, and the tile's page closes only once the person leaves; Cancel keeps it open
+  (`docs/browser.md` 17). **[asked, 2026-11-24: as Chrome]**
 - Right-clicking a tile opens its menu, as Arc's for a pinned tab: **[asked]**
   - **Edit Pinned Page ›**
     - **Replace Pinned URL with Current**: pins it at the address its page shows. Greyed out

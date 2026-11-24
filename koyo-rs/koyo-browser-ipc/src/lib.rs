@@ -102,7 +102,9 @@ pub use tone::Tone;
 /// and the app says of a page only what it alone knows of its sight, whether an agent keeps it
 /// and whether its pane's window is seen ([`AppRequest::Sight`]), where it said whether it was on
 /// screen, so a page a pane stops drawing leaves every window at once rather than once told.
-pub const PROTOCOL: u32 = 21;
+/// 22: a page the person closes is asked first ([`AppRequest::Leave`]), and one the app closes
+/// goes unasked ([`AppRequest::Close`]).
+pub const PROTOCOL: u32 = 22;
 
 /// Surfaces in a ring sent over a mach service ([`mach`]): one shown, one being drawn, one
 /// spare. The device and desktop hosts send their pictures so.

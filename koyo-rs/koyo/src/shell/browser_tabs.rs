@@ -150,6 +150,8 @@ impl Shell {
             }
             BrowserEvent::Activate => self.tab_asked_for(view, cx),
             BrowserEvent::ClosedItself => self.page_closed_itself(view, cx),
+            BrowserEvent::Left => self.page_left(view, cx),
+            BrowserEvent::Stayed => self.page_stayed(view),
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
             BrowserEvent::Closed if view.read(cx).is_inspector() => {
@@ -237,7 +239,8 @@ impl Shell {
         }
     }
 
-    /// An extension asked for `view`'s tab in front.
+    /// `view`'s tab is wanted in front: an extension asked, or its page asks the person
+    /// closing it to confirm leaving.
     pub(super) fn tab_asked_for(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         if let Some(pane) = self.pane_showing(view) {
             self.show_tab_holding(pane, cx);

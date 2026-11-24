@@ -128,8 +128,8 @@ impl Shell {
     }
 
     /// Closes the pinned or the loose page known by `key` with `close`, as the person asks by
-    /// its ×, its menu or ⌘W: closed with the keyboard in it, what shows in its place has the
-    /// keyboard, as a closed tab's does (`close_tab_at`).
+    /// its ×, its menu or ⌘W, once its page went (`leaving.rs`): closed with the keyboard in it,
+    /// what shows in its place has the keyboard, as a closed tab's does (`close_tab_at`).
     pub(crate) fn close_apart(
         &mut self,
         key: u64,
@@ -139,10 +139,14 @@ impl Shell {
     ) {
         let shown = self.workspace.apart_shown_key() == Some(key);
         let typing = shown && self.pane_with_keyboard(window, cx).is_some();
-        close(self, key, cx);
-        if typing {
-            self.keys_to_shown_tab(cx);
-        }
+        let page = self.workspace.pane(key).and_then(|page| page.view().cloned());
+        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
+            close(shell, key, cx);
+            if typing {
+                shell.keys_to_shown_tab(cx);
+            }
+        };
+        self.ask_page_then(page, close, cx);
     }
 
     /// The `DevTools` of the pinned or the loose page known by `key` close, their pane with

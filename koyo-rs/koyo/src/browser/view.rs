@@ -57,8 +57,13 @@ pub enum BrowserEvent {
         url: String,
         active: bool,
     },
-    /// An extension asked for this page's tab in front (`chrome.tabs.update`).
+    /// This page's tab is wanted in front: an extension asked (`chrome.tabs.update`), or the
+    /// page asks the person closing it to confirm leaving, which they see there.
     Activate,
+    /// The page the person closed went, as it was asked to (`lifecycle.rs`): its tab goes.
+    Left,
+    /// The person stayed on the page they closed, as it asked them to confirm leaving.
+    Stayed,
     /// The page closed without the app asking: an extension closed its tab
     /// (`chrome.tabs.remove`), or a page a script opened closed itself. Its tab goes.
     ClosedItself,
@@ -122,6 +127,8 @@ pub struct BrowserView {
     pub(super) viewport: Option<Viewport>,
     /// The host epoch the page was opened in.
     opened: Option<u64>,
+    /// The person closed the page, which was asked to leave and hasn't gone yet (`lifecycle.rs`).
+    leaving: bool,
     /// The page that opened this one in a tab or a window of its own, which the person goes
     /// back to when this one closes itself in front of them, as a sign-in's popup does.
     opener: Option<WeakEntity<BrowserView>>,
@@ -301,6 +308,7 @@ impl BrowserView {
             target: url,
             viewport: None,
             opened: None,
+            leaving: false,
             opener: None,
             bar_dark: None,
             tone: None,
@@ -343,17 +351,6 @@ impl BrowserView {
             passkey: super::passkeys::Passkey::default(),
             _subscriptions: subscriptions,
         }
-    }
-
-    /// The host closed this browser.
-    pub(super) fn closed(&mut self, cx: &mut Context<Self>) {
-        self.opened = None;
-        self.forget_passkey();
-        if self.is_fullscreen() {
-            self.fullscreen_changed(false, cx);
-        }
-        cx.emit(BrowserEvent::Closed);
-        cx.notify();
     }
 
     /// Shows the element at `at` of the inspected page, `page`, in the open inspector, or

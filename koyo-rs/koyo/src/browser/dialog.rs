@@ -68,6 +68,7 @@ impl BrowserView {
             }
             return;
         }
+        self.leave_asked(&question, cx);
         self.dialogs.push_back(Question {
             id,
             origin,
@@ -140,8 +141,10 @@ impl BrowserView {
             self.asked = None;
             self.asked_in = Put::Dialog;
         }
-        if let Some(at) = self.dialogs.iter().position(|question| question.id == id) {
-            self.dialogs.remove(at);
+        if let Some(at) = self.dialogs.iter().position(|question| question.id == id)
+            && let Some(question) = self.dialogs.remove(at)
+        {
+            self.leave_answered(&question.asked, &answer, cx);
             self.send_answer(id, answer, cx);
         }
         cx.notify();
