@@ -66,6 +66,8 @@ pub(crate) struct MacComposition {
     base_surface: Option<CompositionSurfaceId>,
     /// Every GPUI surface but the base one.
     gpui_surfaces: FxHashMap<CompositionSurfaceId, MacGpuiSurface>,
+    // Koyo: what the base surface's layer last showed ([`Drawn`]).
+    base_drawn: Option<Drawn>,
     /// What the window's renderer was created with, for the surfaces'.
     renderer_context: renderer::Context,
     /// Native identities, parents and sibling order, independent of geometry.
@@ -92,6 +94,7 @@ impl MacComposition {
         Self {
             base_surface: None,
             gpui_surfaces: FxHashMap::default(),
+            base_drawn: None,
             renderer_context,
             view_order: Vec::new(),
             native_views: Rc::new(Vec::new()),
@@ -118,6 +121,8 @@ enum InputLayer {
 struct MacGpuiSurface {
     view: NonNull<AnyObject>,
     renderer: renderer::Renderer,
+    // Koyo: what its layer last showed ([`Drawn`]).
+    drawn: Option<Drawn>,
     /// Prepared GPUI hitboxes, shared with the overlay view on the UI thread.
     input_regions: Rc<RefCell<Vec<gpui::Hitbox>>>,
 }
@@ -650,9 +655,57 @@ extern "C" fn dealloc_overlay_view(this: &AnyObject, _: Sel) {
     }
 }
 
+// Koyo: what a GPUI surface's layer last showed: the scene drawn into it, at the drawable size
+// it was drawn at. A layer whose scene draws like it (`Scene::draws_like`) at that size isn't
+// drawn again and shows that frame still: a frame that changed one layer, a spinner turning
+// under a browser page, draws that layer alone, and the layers over the page ask Core
+// Animation for no drawable, which a window on another Space can wait for without end.
+struct Drawn {
+    scene: Scene,
+    size: NSSize,
+}
+
+/// A layer's part of a frame: the frame's whole scene when the layer holds all of it, else
+/// its own, replayed.
+enum LayerScene<'a> {
+    Whole(&'a Scene),
+    Replayed(Scene),
+}
+
+/// Draws `scene` with `renderer`, unless the layer shows it already ([`Drawn`]).
+fn draw_layer(renderer: &mut renderer::Renderer, drawn: &mut Option<Drawn>, scene: LayerScene<'_>) {
+    let size = renderer.layer().map(|layer| layer.drawableSize());
+    match scene {
+        LayerScene::Whole(scene) => {
+            renderer.draw(scene);
+            *drawn = None;
+        }
+        LayerScene::Replayed(scene) => {
+            let shown = drawn.as_ref().is_some_and(|drawn| {
+                Some(drawn.size) == size && scene.draws_like(&drawn.scene)
+            });
+            if shown {
+                return;
+            }
+            renderer.draw(&scene);
+            *drawn = size.map(|size| Drawn { scene, size });
+        }
+    }
+}
+
+/// Koyo: forgets what each layer of the window last showed, so the next frame draws them all:
+/// macOS may let go of a window's layers' contents while it can't be seen.
+pub(crate) fn forget_drawn(state: &mut MacWindowState) {
+    state.fast_composition.base_drawn = None;
+    for surface in state.fast_composition.gpui_surfaces.values_mut() {
+        surface.drawn = None;
+    }
+}
+
 /// `PlatformWindow::draw_composed`: draws each GPUI surface's part of the
 /// scene with that surface's renderer, or the whole scene on the window's
-/// view until the window composes.
+/// view until the window composes; a surface whose part is what its layer
+/// shows already isn't drawn again ([`Drawn`]).
 pub(crate) fn draw_composed(window_state: &Rc<Mutex<MacWindowState>>, scene: ComposedScene<'_>) {
     let mut lock = window_state.lock();
     let state = &mut *lock;
@@ -662,29 +715,27 @@ pub(crate) fn draw_composed(window_state: &Rc<Mutex<MacWindowState>>, scene: Com
     };
     let whole_scene = whole_scene_layer(scene.scene(), scene.layers());
     for (layer_index, layer) in scene.layers().iter().enumerate() {
-        let replayed_scene;
         let surface_scene = match whole_scene {
-            Some((target_index, whole_scene)) if target_index == layer_index => whole_scene,
-            _ => {
-                replayed_scene = match scene.layer_scene(layer) {
-                    Ok(surface_scene) => surface_scene,
-                    Err(error) => {
-                        log::error!("replaying AppKit composition scene: {error:#}");
-                        return;
-                    }
-                };
-                &replayed_scene
+            Some((target_index, whole_scene)) if target_index == layer_index => {
+                LayerScene::Whole(whole_scene)
             }
+            _ => match scene.layer_scene(layer) {
+                Ok(surface_scene) => LayerScene::Replayed(surface_scene),
+                Err(error) => {
+                    log::error!("replaying AppKit composition scene: {error:#}");
+                    return;
+                }
+            },
         };
         if layer.surface == base_surface {
-            state.renderer.draw(surface_scene);
+            draw_layer(&mut state.renderer, &mut state.fast_composition.base_drawn, surface_scene);
         } else if let Some(surface) = state.fast_composition.gpui_surfaces.get_mut(&layer.surface) {
             {
                 let mut regions = surface.input_regions.borrow_mut();
                 regions.clear();
                 regions.extend(scene.layer_hitboxes(layer).iter().cloned());
             }
-            surface.renderer.draw(surface_scene);
+            draw_layer(&mut surface.renderer, &mut surface.drawn, surface_scene);
         } else {
             log::error!(
                 "missing AppKit GPUI composition surface {:?}",
@@ -985,6 +1036,7 @@ unsafe fn create_gpui_surface(
     Ok(MacGpuiSurface {
         view: NonNull::new(view).context("GPUI composition view is null")?,
         renderer,
+        drawn: None,
         input_regions,
     })
 }

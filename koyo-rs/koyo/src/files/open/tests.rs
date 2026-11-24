@@ -221,7 +221,7 @@ fn a_key_typed_into_an_unsaved_file_leaves_the_shell_alone(cx: &mut TestAppConte
 
     let held = Built {
         shell: 0,
-        views: 3,
+        views: 2,
         frames: 1,
     };
     let key = |cx: &mut TestAppContext| typed(window, &editor, "y", cx);

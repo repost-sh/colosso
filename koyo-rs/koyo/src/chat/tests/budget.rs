@@ -151,14 +151,14 @@ fn a_chats_summary_renders_nothing_when_only_what_the_shell_does_not_show_change
 
 /// While a chat works out of sight, as one in another checkout does while a person reads a chat
 /// at rest, its spinners on its tab and its checkout's row turn at each beat (`crate::beat`), and
-/// each beat renders the shell, where the spinners' own views were meant to be all it builds
-/// (`chat/spinner.rs`). GPUI draws a view around the views nested in it that changed only if
-/// every deferred draw in it is inside one of those (gpui-fast's `splice_layout`), and the chat
-/// shown draws some outside the spinners: its details toggle (`view/details.rs`) and its floating
-/// bars (`view/floating.rs`). Here the chat shown is the one the host says works, its own thread
-/// at rest, so nothing in it moves but the spinners.
+/// each beat builds the spinners' own views and the views around them, never the shell
+/// (`chat/spinner.rs`). The chat shown defers draws outside the spinners, its details toggle
+/// (`view/details.rs`) and its floating bars (`view/floating.rs`), and GPUI copies them from last
+/// frame, holding nothing that changed (gpui-fast's `splice_layout`, `vendor/README.md`). Here
+/// the chat shown is the one the host says works, its own thread at rest, so nothing in it moves
+/// but the spinners.
 #[gpui_kit::test]
-fn a_chat_working_out_of_sight_renders_the_shell_at_each_beat_of_its_spinners(
+fn a_chat_working_out_of_sight_builds_its_spinners_and_never_the_shell_at_each_beat(
     cx: &mut TestAppContext,
 ) {
     let (window, shell, _, _) = chat_card_down("budget-spinner", settled("0001"), cx);
@@ -166,13 +166,13 @@ fn a_chat_working_out_of_sight_renders_the_shell_at_each_beat_of_its_spinners(
     hears(&chats, at(&root, Status::Working), cx);
 
     let held_behind = Built {
-        shell: 10,
-        views: 30,
+        shell: 0,
+        views: 20,
         frames: 10,
     };
     let held_in_front = Built {
-        shell: 30,
-        views: 90,
+        shell: 0,
+        views: 60,
         frames: 30,
     };
     held_behind_and_in_front(window, SECOND, held_behind, held_in_front, cx);
@@ -255,33 +255,34 @@ fn a_working_chat_draws_its_spinners_edge_and_live_row(cx: &mut TestAppContext) 
 
     let held_behind = Built {
         shell: 0,
-        views: 46,
+        views: 43,
         frames: 11,
     };
     let held_in_front = Built {
         shell: 0,
-        views: 240,
+        views: 180,
         frames: 50,
     };
     held_behind_and_in_front(window, SECOND, held_behind, held_in_front, cx);
 }
 
 /// With the edge held still or turned off in Settings, nothing in the shown chat steps with the
-/// spinners, and each beat renders the shell, as for a chat at work out of sight.
+/// spinners, and each beat builds the spinners and leaves the shell alone, as for a chat at work
+/// out of sight.
 #[gpui_kit::test]
-fn a_working_chat_with_its_edge_still_or_off_renders_the_shell_at_each_beat(
+fn a_working_chat_with_its_edge_still_or_off_leaves_the_shell_alone_at_each_beat(
     cx: &mut TestAppContext,
 ) {
     let (window, shell, _, thread) = chat_card_down("budget-edge-still", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
     let held_behind = Built {
-        shell: 10,
-        views: 37,
+        shell: 0,
+        views: 23,
         frames: 11,
     };
     let held_in_front = Built {
-        shell: 30,
-        views: 230,
+        shell: 0,
+        views: 120,
         frames: 50,
     };
 
@@ -397,12 +398,12 @@ fn a_running_items_time_builds_the_timeline_each_second_where_it_is_seen(cx: &mu
 
     let held_behind = Built {
         shell: 0,
-        views: 11,
+        views: 7,
         frames: 2,
     };
     let held_in_front = Built {
         shell: 0,
-        views: 10,
+        views: 6,
         frames: 2,
     };
     held_behind_and_in_front(window, 2 * SECOND, held_behind, held_in_front, cx);
@@ -442,9 +443,5 @@ fn a_focused_composers_caret_builds_the_composer_at_each_blink(cx: &mut TestAppC
         "two seconds of it behind another app's",
     );
     in_front(window, true, cx);
-    let again = Built {
-        views: 20,
-        ..held_blinking
-    };
-    ratchet(two_seconds(cx), again, "two seconds of it in front again");
+    ratchet(two_seconds(cx), held_blinking, "two seconds of it in front again");
 }

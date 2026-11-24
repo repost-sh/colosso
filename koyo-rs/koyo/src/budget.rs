@@ -24,6 +24,8 @@ use std::time::Duration;
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, TestAppContext, Window};
 
 use crate::settings::Layout;
+
+mod deferred;
 use crate::test_support::{in_front, shell_on};
 
 thread_local! {

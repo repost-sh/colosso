@@ -3402,6 +3402,8 @@ extern "C" fn window_did_change_occlusion_state(this: &AnyObject, _: Sel, _: *mu
     } else {
         lock.stop_display_link();
     }
+    // Koyo: a window seen again draws each of its layers, whatever they last showed.
+    crate::fast::composition::forget_drawn(&mut lock);
     drop(lock);
     // The only visibility source: AppKit posts this for covering, minimizing,
     // hiding, Space switches, and display sleep alike.

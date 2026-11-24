@@ -6,7 +6,8 @@ gpui-kit's code editor, forked so it can be made fast enough for large files (me
 | --- | --- | --- | --- |
 | `gpui-base/` | `gpui-base` | 0.10.0 | [longbridge/gpui-kit](https://github.com/longbridge/gpui-kit) `crates/base` at `f697c3133d55c64fa8a5b67926147fb3dadd276d` |
 | `gpui-component/` | `gpui-component` | 0.10.0 | [longbridge/gpui-kit](https://github.com/longbridge/gpui-kit) `crates/component` at the same commit |
-| `gpui-fast-apple/` | `gpui-fast-apple` | 0.1.17 | the crates.io package, unpacked from the `.crate` whose checksum crates.io publishes for that version (the package names no commit) |
+| `gpui-fast/` | `gpui-fast` | 0.1.17 | the crates.io package ([longbridge/gpui-fast](https://github.com/longbridge/gpui-fast)), unpacked from the `.crate` whose checksum crates.io publishes for that version (the package names no commit) |
+| `gpui-fast-apple/` | `gpui-fast-apple` | 0.1.17 | the crates.io package, unpacked the same way |
 | `gpui-fast-macos/` | `gpui-fast-macos` | 0.1.17 | the crates.io package ([longbridge/gpui-fast](https://github.com/longbridge/gpui-fast)), unpacked the same way |
 
 Both started as the crates.io packages unpacked as they are, `Cargo.toml` (as normalized by crates.io), `Cargo.toml.orig`, `Cargo.lock`, `.cargo_vcs_info.json` and `LICENSE-APACHE` included; each `.crate` matched the checksum in the workspace's `Cargo.lock` before it was unpacked. `git log -- koyo-rs/vendor/` shows what has changed since.
@@ -17,7 +18,19 @@ The workspace's `Cargo.toml` (`koyo-rs/Cargo.toml`) puts them in place of the re
 
 Neither crate is a workspace member. They keep upstream's code style and their own `[lints]` table; the workspace lint policy and `script/hygiene` cover the `koyo-rs/koyo*` crates only. Being path dependencies, their warnings aren't capped as a registry crate's are: `script/lint` holds them to rustc's and Clippy's defaults with every warning an error.
 
-All four are licensed Apache-2.0, as is this repository; their license files (`LICENSE-APACHE`, `LICENSE`) stay with them.
+All five are licensed Apache-2.0, as is this repository; their license files (`LICENSE-APACHE`, `LICENSE`) stay with them.
+
+## gpui-fast
+
+GPUI's core, vendored for three changes, each marked `Koyo:`. The first, in `src/fast/splice.rs`, `src/fast/retained.rs` and `src/window.rs`: a view drawn from last frame around the views nested in it that have to be built again copies what it deferred outside them too, a bar or a popover drawn over it, unless that would replay something that changed. Upstream builds such a view again whenever it deferred anything outside them: a deferred draw is prepainted after the views around it have closed their records, so a view drawn in it is no record nested in them and is never one of the views built again, and copying the draw could replay it dirty. A chat's floating bars and its details toggle are deferred (`koyo-rs/koyo/src/chat/view/floating.rs`, `details.rs`), and each beat of a spinner on its tab or its checkout's row, 30 a second in front, built the whole shell for it.
+
+Here the view is built again only when a draw it deferred outside them, or one deferred from that draw in turn, holds a dirty view, or what drawing it read or was hovered by has changed (`Window::deferred_outside_gaps_changed`). A draw keeps what it read and was hovered by in prepaint and paint, the views drawn in it included (`DeferredReads`, which `finish_deferred` now hands back), and each copy of it keeps that too. It keeps the retained records of the views drawn in it as well, and a copy of the draw copies them into the frame, shifted as the records nested in a subtree drawn from last frame are (`reuse_deferred_prepaint`, `reuse_deferred_paint`): a view drawn in a copied draw, a chat's composer in its floating bar, is then drawn from last frame around what is built again in it, its edge stepping, as one drawn anywhere else is.
+
+The second, in `src/fast/dependencies.rs`: `RenderDependencies::union` merges the write marks of a recording that read nothing. Upstream returned the first side whole when the other read no entity, global or state, dropping the other's own stretch of writes: a view whose prepaint read nothing itself, while a view nested in it wrote, as an input writes its own state each time it's drawn, kept only its layout's marks, found that write foreign on the next frame and was built again. The sidebar's search field was built again at every key typed in the editor with the file tree open, and a chat's composer at each blink of its caret after the window came back in front.
+
+The third, in `src/scene.rs`: the primitives compare by value, and `Scene::draws_like` says whether a finished scene draws what another does, which `gpui-fast-macos` uses to leave a layer that shows its frame already undrawn (below). A scene that composites a scroll layer's tiles or paints a surface never draws like another, as what those show changes with no primitive changing.
+
+The published package's own tests don't build from it (the fonts, the example image and the `util_macros` crate they read aren't in it), so the change is tested in Koyo: `koyo-rs/koyo/src/budget/deferred.rs` checks that what is copied is drawn as the window built whole draws it, and the budgets in `koyo-rs/koyo/src/chat/tests/budget.rs` hold what a beat builds: the spinners' views, never the shell, and what a caret's blink builds, the same before the window leaves the front and after it's back.
 
 ## gpui-fast-apple
 
@@ -43,6 +56,8 @@ GPUI's macOS windows, vendored for changes marked `Koyo:` in `src/fast/compositi
 - A made-up release is logged (`lost_releases`): one line at `koyo::input` for each release GPUI is told of that it never heard, naming the button only.
 - How strongly a `BlurredView` blurs (`setKoyoBlurScale:`, `scale_blur`). The radius of the Gaussian blur filter `NSVisualEffectView` gives its backdrop layer has no public setting; a view's scale of it is set again after each of `AppKit`'s updates by `blurred_view_update_layer`, as it already strips the material's tint and saturation, from the radius the material first had, kept on the view. The window's own `BlurredView` stays at scale 1, its material's radius, as upstream leaves it. The app makes a second `BlurredView` of its own, through the class's `initWithFrame:`, and puts it in the window's content view between the window's and GPUI's view, over the sidebar alone, and scales that one (`koyo-rs/koyo/src/native/sidebar_blur.rs`): macOS blurs a window with one view at one strength.
 - A key equivalent matched by its event (`handle_key_event`). Upstream lets a key press go by when it's the same keystroke as the last key equivalent, which AppKit sends first for some keys; a key a page leaves comes to GPUI as a key equivalent with no key press after it, and the next same key typed in GPUI was lost. The two are matched by the event's time too.
+
+- A layer drawn only when what it shows changed (`src/fast/composition.rs`, `draw_composed`, `Drawn`). Upstream draws every GPUI surface of a window that composes native views at every frame. Here each surface keeps the scene its layer last showed and the drawable size it was drawn at, and a part of a frame that draws like it (`Scene::draws_like` in `gpui-fast`) at that size isn't drawn again: the layer shows that frame still. A spinner turning under a browser page draws its own layer alone, and the layers over the page ask Core Animation for no drawable, which upstream waited for without end on a Space being switched away from (240 ms seen in the owner's app, `-[CAMetalLayer nextDrawable]` under `draw_composed`). The layer that holds the frame's whole scene, borrowed rather than replayed, is drawn each frame as before. What each layer showed is forgotten whenever the window's occlusion changes (`forget_drawn`), as macOS may let go of a hidden window's layers' contents.
 
 ## What the update to 0.10.0 and 0.1.17 left out
 

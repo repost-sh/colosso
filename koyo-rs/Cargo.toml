@@ -90,6 +90,9 @@ gpui-kit = { version = "0.10.0", features = ["gpui-fast"] }
 [patch.crates-io]
 gpui-base = { path = "vendor/gpui-base" }
 gpui-component = { path = "vendor/gpui-component" }
+# GPUI's core: a view drawn around the views nested in it that changed copies what it deferred
+# outside them unless that holds something that changed (vendor/README.md).
+gpui-fast = { path = "vendor/gpui-fast" }
 gpui-fast-apple = { path = "vendor/gpui-fast-apple" }
 # GPUI's macOS windows: a mouse button's drag and release go to whoever took its press, a
 # native view or GPUI (vendor/README.md).

@@ -33,7 +33,7 @@ fn a_busy_servers_spinner_builds_the_servers_view_at_each_beat(cx: &mut TestAppC
     };
     let held_in_front = Built {
         shell: 0,
-        views: 38,
+        views: 34,
         frames: 32,
     };
     held_behind_and_in_front(
