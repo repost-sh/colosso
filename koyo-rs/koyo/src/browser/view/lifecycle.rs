@@ -229,12 +229,9 @@ impl BrowserView {
     /// Asks the page to leave, as the person closed it, the way Chrome asks a tab it closes
     /// (`docs/browser.md` 17): whether it was asked. It says it left ([`BrowserEvent::Left`])
     /// once it's gone, or that the person stayed ([`BrowserEvent::Stayed`]) when it asked them
-    /// to confirm leaving and they didn't. A page not open has nothing to ask, nor one with
-    /// downloads still coming in: the engine asks a page only as it closes it, and a page
-    /// closed tells nothing more of its downloads, so it's let go as the app lets a page go,
-    /// kept for them out of sight.
+    /// to confirm leaving and they didn't. A page not open has nothing to ask.
     pub fn leave(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.is_open(cx) || crate::browser::downloads::coming_in(self.pane, cx) {
+        if !self.is_open(cx) {
             return false;
         }
         self.leaving = true;

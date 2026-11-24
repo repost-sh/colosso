@@ -1,0 +1,68 @@
+--- a/cef/libcef/browser/download_manager_delegate_impl.h
++++ b/cef/libcef/browser/download_manager_delegate_impl.h
+@@ -10,6 +10,7 @@
+ 
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/weak_ptr.h"
++#include "cef/include/cef_download_handler.h"
+ #include "cef/libcef/browser/browser_host_base.h"
+ #include "cef/libcef/browser/download_manager_delegate.h"
+ #include "components/download/public/common/download_item.h"
+@@ -66,6 +67,16 @@
+   using ItemBrowserMap =
+       std::map<raw_ptr<download::DownloadItem>, raw_ptr<CefBrowserHostBase>>;
+   ItemBrowserMap item_browser_map_;
++
++  // Koyo: the browser each download started in and its download handler, kept
++  // from when it started. Once the browser is destroyed, the handler is still
++  // told how the download stands until it ends, as Chrome keeps a closed tab's
++  // downloads and goes on showing them.
++  using ItemHandlerMap =
++      std::map<raw_ptr<download::DownloadItem>,
++               std::pair<CefRefPtr<CefBrowserHostBase>,
++                         CefRefPtr<CefDownloadHandler>>>;
++  ItemHandlerMap item_handler_map_;
+ };
+ 
+ #endif  // CEF_LIBCEF_BROWSER_DOWNLOAD_MANAGER_DELEGATE_IMPL_H_
+--- a/cef/libcef/browser/download_manager_delegate_impl.cc
++++ b/cef/libcef/browser/download_manager_delegate_impl.cc
+@@ -331,6 +331,16 @@
+   CefRefPtr<CefDownloadHandler> handler;
+   if (browser.get()) {
+     handler = GetDownloadHandler(browser);
++  }
++  if (!handler.get()) {
++    // Koyo: the download outlived its browser, or its browser is going and has
++    // no client left. The handler it started with is told, with the browser
++    // it started in, which says it's no longer valid.
++    if (auto kept = item_handler_map_.find(download);
++        kept != item_handler_map_.end()) {
++      browser = kept->second.first;
++      handler = kept->second.second;
++    }
+   }
+ 
+   if (handler.get()) {
+@@ -347,6 +357,7 @@
+ 
+ void CefDownloadManagerDelegateImpl::OnDownloadDestroyed(DownloadItem* item) {
+   item->RemoveObserver(this);
++  item_handler_map_.erase(item);
+ 
+   CefBrowserHostBase* browser = nullptr;
+ 
+@@ -503,6 +514,13 @@
+ 
+   item_browser_map_.insert(std::make_pair(item, browser.get()));
+ 
++  // Koyo: keep the handler the download starts with, while its browser is
++  // alive, so it's told how the download stands after the browser is gone.
++  if (CefRefPtr<CefDownloadHandler> handler = GetDownloadHandler(browser)) {
++    item_handler_map_.insert(
++        std::make_pair(item, std::make_pair(browser, handler)));
++  }
++
+   // Register as an observer so that we can cancel associated DownloadItems when
+   // the browser is destroyed.
+   if (!browser->HasObserver(this)) {

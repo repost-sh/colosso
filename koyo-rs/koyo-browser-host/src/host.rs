@@ -27,7 +27,7 @@ pub(crate) use panes::{
     browser_closed, browser_created, cursor_changed, found, fullscreen_changed, loading_changed,
     navigate_later, page_changed, progressed, renderer_gone,
 };
-pub(crate) use panes::{adopt, close_later, never_made};
+pub(crate) use panes::{adopt, never_made};
 use panes::{close, exit_fullscreen, navigate, open, resize, sight, view};
 pub(crate) use panes::leave_fullscreen;
 pub use profiles::{drop_cleared, forget_profile, keeps_profile};
@@ -329,7 +329,7 @@ fn handle(request: AppRequest) {
             navigate(pane, &url);
         }
         AppRequest::Go { pane, to } => go(pane, to),
-        AppRequest::Close { pane } => panes::close_asked(pane),
+        AppRequest::Close { pane } => close(pane),
         AppRequest::Leave { pane } => panes::leave(pane),
         AppRequest::ExitFullscreen { pane } => exit_fullscreen(pane),
         AppRequest::SiteSettings { pane } => site::tell(pane),

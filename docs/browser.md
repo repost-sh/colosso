@@ -1408,19 +1408,18 @@ is done, canceled, or failed, with Chromium's reason said for the person
 (`koyo-browser-host/src/downloads.rs`, `why`). The host keeps each download's
 `CefDownloadItemCallback`, which the app's Cancel uses.
 
-CEF calls a page's download handler only while the page's browser is open, and a download
-whose browser closes is canceled, what had come of it deleted (the smoke test
-`saves::a_page_that_closes_itself_...`, 2026-11-19). Chrome keeps a closed tab's downloads, so
-Koyo does too: a page the app closes while its downloads come in stays open in the host, out of
-sight, muted and on `about:blank`, and closes once the last one ends (`downloads::keep_open`,
-`panes::close_asked`). Only the app's own Close does this, and a page the person closes while
-its downloads come in is let go so, unasked (17). A page that closes itself
-(`window.close()`) can't be kept: Chrome closes its browser before CEF calls the client
-(`OnBeforeClose` comes before the holder's `CanClose`, and no `DoClose`), so its downloads end
-with it, as they do when browsing data is cleared or the app quits; the app is told each failed,
-"The page that started it closed before it finished." (`downloads::pane_closed`), so its list
-holds no download still coming in with a Cancel that does nothing. A page whose project
-moves to another profile while it downloads opens again in the new one once its downloads end.
+A download is the engine's, not its page's, as in Chrome: it goes on when its page closes,
+whether Koyo closed it or it closed itself (`window.close()`), and the app's list hears how it
+stands until it ends. CEF alone doesn't do this, so two patches of Koyo's do
+(`script/cef-patches`): CEF aborted every request of a page that closed, and Chromium takes an
+aborted download for one the person cancelled, deleting what had come of it; with
+`request-outlives-its-page` a request that has its answer, as a download's has, runs to its end
+when its page goes, as Chrome's do. And CEF told nobody of a download once its page was gone;
+with `download-outlives-its-page` the page's download handler is still told. `[proven]`
+`tests/smoke/saves.rs`: a page closed while its download came in, and one that closed itself,
+left it to finish whole, the app told Done; without the patches the download was cancelled and
+its file deleted (2026-11-24). Clearing browsing data, and the app quitting, still end
+downloads, with the engine.
 
 What an agent sees: its page's downloads go to the folder without a save panel, and the
 person's list names the agent. The agent's own tools don't list downloads yet; `browser_list`'s
@@ -1494,9 +1493,7 @@ were. A page that doesn't ask goes as fast as before.
   page asks does nothing more. A page not open closes at once.
 - **Which don't.** Closes that take several pages at once, a tab of two pages, a worktree's
   tabs cleared, a worktree or a project removed, a project put on another profile, the app
-  quitting, and agents' `tab_close` and `pane_close`, let every page go unasked. So does a page
-  with downloads still coming in (16.2): the engine asks a page only as it closes it, and a page
-  closed tells nothing more of its downloads.
+  quitting, and agents' `tab_close` and `pane_close`, let every page go unasked.
 - **Its question shows.** A page closed from where it isn't shown, a pinned tile's Close,
   shows as it asks, where its dialog opens (`BrowserEvent::Activate`).
 - **The protocol** (22). The app asks with `AppRequest::Leave`; the host has CEF try to close

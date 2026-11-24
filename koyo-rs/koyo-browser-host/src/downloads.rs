@@ -2,22 +2,19 @@
 //! by the person's settings and whose page it is, and answers, the host keeping CEF's callback
 //! until then. Then the app hears how each stands, and the host keeps the way to cancel it.
 //!
-//! CEF tells a client of a download only while the page that started it is open. So a page
-//! the app closes while its downloads come in stays open, out of sight, muted and on a blank
-//! page, and goes once the last ends, as Chrome keeps a closed tab's downloads. A page that
-//! closes itself (`window.close()`) can't be kept: Chrome closes its browser before CEF tells of
-//! it, and its downloads end with it, nothing of them kept, which the app is told.
-//! Everything here runs on CEF's UI thread.
+//! A download outlives the page that started it, as Chrome's outlive their tab: the engine
+//! goes on telling this handler how one stands after its page has closed
+//! (`script/cef-patches/download-outlives-its-page.patch`, `request-outlives-its-page.patch`),
+//! so nothing here is tied to the page being open. Everything here runs on CEF's UI thread.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::os::raw::c_int;
 
 use cef::{
     BeforeDownloadCallback, Browser, CefString, DownloadHandler, DownloadItem,
-    DownloadItemCallback, ImplBeforeDownloadCallback, ImplBrowser, ImplBrowserHost,
-    ImplDownloadHandler, ImplDownloadItem, ImplDownloadItemCallback, ImplFrame,
-    WrapDownloadHandler, rc::Rc, wrap_download_handler,
+    DownloadItemCallback, ImplBeforeDownloadCallback, ImplDownloadHandler, ImplDownloadItem,
+    ImplDownloadItemCallback, WrapDownloadHandler, rc::Rc, wrap_download_handler,
 };
 use koyo_browser_ipc::{Download, DownloadAct, DownloadState, HostEvent, PaneId};
 
@@ -32,8 +29,6 @@ thread_local! {
     static ASKED: RefCell<HashMap<Key, (BeforeDownloadCallback, String)>> = RefCell::new(HashMap::new());
     /// Downloads coming in, with the way to cancel each and how it last stood.
     static GOING: RefCell<HashMap<Key, (DownloadItemCallback, Download)>> = RefCell::new(HashMap::new());
-    /// Pages the app closed that stay open for their downloads.
-    static KEPT: RefCell<HashSet<PaneId>> = RefCell::new(HashSet::new());
 }
 
 /// The handler of `pane`'s downloads.
@@ -96,9 +91,6 @@ wrap_download_handler! {
                 }
             });
             host::send(&HostEvent::Download { pane: self.pane, download });
-            if !going {
-                ended(self.pane);
-            }
         }
     }
 }
@@ -119,82 +111,14 @@ pub(crate) fn act(pane: PaneId, download: u32, act: DownloadAct) {
             if let Some(going) = going {
                 going.cancel();
             }
-            ended(pane);
         }
     }
-}
-
-/// Whether `pane`'s page, which the app closed, stays open for downloads still to come in:
-/// out of sight, muted, and on a blank page, until the last ends.
-pub(crate) fn keep_open(pane: PaneId, browser: &Browser) -> bool {
-    if !has_downloads(pane) {
-        return false;
-    }
-    KEPT.with(|kept| kept.borrow_mut().insert(pane));
-    crate::native::sight(pane, false, false);
-    if let Some(host) = browser.host() {
-        host.set_audio_muted(1);
-    }
-    if let Some(frame) = browser.main_frame() {
-        frame.load_url(Some(&CefString::from("about:blank")));
-    }
-    true
-}
-
-/// A download of `pane`'s ended, or went: a page kept open for its downloads closes after the
-/// last.
-fn ended(pane: PaneId) {
-    let last = !has_downloads(pane) && KEPT.with(|kept| kept.borrow_mut().remove(&pane));
-    if last {
-        host::close_later(pane);
-    }
-}
-
-fn has_downloads(pane: PaneId) -> bool {
-    let of_pane = |key: &Key| key.0 == pane;
-    ASKED.with(|asked| asked.borrow().keys().any(of_pane))
-        || GOING.with(|going| going.borrow().keys().any(of_pane))
-}
-
-/// `pane`'s browser is gone, and its downloads still asked about or coming in with it: the
-/// app is told each ended there.
-pub(crate) fn pane_closed(pane: PaneId) {
-    let mut gone = Vec::new();
-    ASKED.with(|asked| {
-        asked.borrow_mut().retain(|&(of, id), (_, url)| {
-            let keep = of != pane;
-            if !keep {
-                gone.push(Download { id, url: std::mem::take(url), path: String::new(), received: 0, total: None, state: DownloadState::Going });
-            }
-            keep
-        });
-    });
-    GOING.with(|going| {
-        going.borrow_mut().retain(|key, (_, download)| {
-            let keep = key.0 != pane;
-            if !keep {
-                gone.push(download.clone());
-            }
-            keep
-        });
-    });
-    KEPT.with(|kept| kept.borrow_mut().remove(&pane));
-    for download in gone {
-        host::send(&HostEvent::Download { pane, download: closed_with_its_page(download) });
-    }
-}
-
-/// How `download` ended, its page closed before it did.
-fn closed_with_its_page(download: Download) -> Download {
-    let reason = "The page that started it closed before it finished.".to_owned();
-    Download { state: DownloadState::Failed { reason }, ..download }
 }
 
 /// The host is shutting down; CEF waits for every callback to go.
 pub(crate) fn clear() {
     ASKED.with(|asked| asked.borrow_mut().clear());
     GOING.with(|going| going.borrow_mut().clear());
-    KEPT.with(|kept| kept.borrow_mut().clear());
 }
 
 fn text(value: &cef::CefStringUserfree) -> String {
@@ -322,17 +246,6 @@ mod tests {
         let sized = coming("/d/a.zip", 2048, 8192).download().unwrap();
         assert_eq!((sized.received, sized.total), (2048, Some(8192)));
         assert_eq!((sized.path.as_str(), sized.id), ("/d/a.zip", 3));
-    }
-
-    #[test]
-    fn a_download_whose_page_closed_ended_there_as_far_as_it_came() {
-        let going = coming("/d/a.zip", 2048, 8192).download().unwrap();
-        let ended = closed_with_its_page(going.clone());
-        assert_eq!((ended.received, ended.total, &ended.path), (2048, Some(8192), &going.path));
-        assert_eq!(
-            ended.state,
-            DownloadState::Failed { reason: "The page that started it closed before it finished.".into() }
-        );
     }
 
     #[test]

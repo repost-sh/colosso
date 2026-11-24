@@ -181,19 +181,6 @@ pub(crate) fn navigate_later(pane: PaneId, url: String) {
     enqueue(Queued::App(AppRequest::Navigate { pane, url }));
 }
 
-/// The app closed `pane`'s page: it goes, unless downloads of its are still to come in, which
-/// CEF tells of only while it's open. It stays then, out of sight, until the last ends
-/// (`downloads::keep_open`).
-pub(super) fn close_asked(pane: PaneId) {
-    if let Some(browser) = browser_of(pane)
-        && crate::downloads::keep_open(pane, &browser)
-    {
-        with_pane(pane, |p| p.going = Going::Closing);
-        return;
-    }
-    close(pane);
-}
-
 /// The person closed `pane`'s page: it's asked first, as Chrome asks it, by being closed as a
 /// page is that may refuse. One that asks to confirm leaving asks the person
 /// (`pane/prompts.rs`) and goes once they leave, staying open when they stay; one that doesn't
@@ -214,11 +201,8 @@ pub(super) fn leave(pane: PaneId) {
     }
 }
 
-/// Closes a page kept open for its downloads, once the current callback has returned.
-pub(crate) fn close_later(pane: PaneId) {
-    enqueue(Queued::App(AppRequest::Close { pane }));
-}
-
+/// The app let `pane`'s page go: it closes unasked, its questions answered for it, and its
+/// downloads go on without it (`downloads.rs`).
 pub(super) fn close(pane: PaneId) {
     let ended = with(|host| {
         let (target, _bridge) = host.panes.get_mut(&pane)?.inspector.take()?;
@@ -271,7 +255,6 @@ pub(crate) fn browser_closed(pane: PaneId) {
     crate::native::closed(pane);
     crate::dialogs::pane_closed(pane);
     crate::menus::pane_closed(pane);
-    crate::downloads::pane_closed(pane);
     crate::passkeys::pane_gone(pane);
     crate::extensions::pane_closed(pane);
     let (done, devtools, calls, unasked) = with(|host| {
