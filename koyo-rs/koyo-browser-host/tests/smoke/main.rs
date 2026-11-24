@@ -21,6 +21,7 @@
 
 mod agents;
 mod extensions;
+mod leaving;
 mod location;
 mod media;
 mod passkeys;
