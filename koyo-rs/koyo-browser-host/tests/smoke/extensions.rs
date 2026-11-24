@@ -7,7 +7,7 @@ use std::path::Path;
 
 use koyo_browser_ipc::{AppRequest, Corner, Extension, ExtensionChange, HostEvent, ScreenRect};
 
-use crate::support::{Session, VIEWPORT, close, launch, serve};
+use crate::support::{Session, VIEWPORT, close, evaluate, launch, open, serve};
 
 /// The profile the page is of.
 const PROFILE: &str = "smoke";
@@ -137,4 +137,19 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
     listed(&mut session, "the extension gone", |ours| ours.is_none());
 
     close(session, &launch);
+}
+
+/// A page says it's no browser under automation, as Chrome's do, while the host drives
+/// extensions over its pipe: `navigator.webdriver`, which sites' bot checks read first, is
+/// false, so a person can pass a challenge such as Cloudflare's.
+#[test]
+#[ignore = "Needs a packaged browser engine built by script/cef; see the module docs"]
+fn a_page_says_it_is_not_driven_by_automation() {
+    let launch = launch("webdriver");
+    let mut session = Session::start(&launch);
+    let address = serve("<title>page</title><body>hi</body>");
+    open(&mut session, &address, "page");
+    let webdriver = evaluate(&mut session, "navigator.webdriver");
+    close(session, &launch);
+    assert_eq!(webdriver, serde_json::Value::Bool(false), "navigator.webdriver");
 }
