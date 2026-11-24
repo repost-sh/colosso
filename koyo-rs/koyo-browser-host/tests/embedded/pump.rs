@@ -6,7 +6,6 @@
 //! about once a second and runs the rest.
 
 use std::ffi::c_void;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
@@ -46,6 +45,18 @@ const MANIFEST: &str = "Resources/koyo-build.txt";
 
 /// How long Chromium's work is put off for.
 const DELAY: Duration = Duration::from_millis(200);
+
+/// How long a task puts off the next, as a chain of Chromium's timers does: less than CEF's time
+/// slice (`MessagePumpExternal`'s 10 ms), so the next falls due within the turn that found
+/// Chromium idle, which still has to ask for the wakeups of what the next queues.
+const LATE_IN_TURN: Duration = Duration::from_millis(2);
+
+/// How many times work is put off from late in a turn.
+const ROUNDS: usize = 8;
+
+/// How long the engine is left between rounds: a few of CEF's time slices, so each round's
+/// first task starts a turn of its own.
+const BETWEEN_ROUNDS: Duration = Duration::from_millis(30);
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
@@ -165,45 +176,77 @@ fn wakes_a_second(window: Duration) -> f64 {
     woken / window.as_secs_f64()
 }
 
-/// When the task put off was posted, from within CEF's work, and when it ran.
-static PUT_OFF: Mutex<(Option<Instant>, Option<Instant>)> = Mutex::new((None, None));
-
-/// The work put off, `PutsOff` posting `Due` for [`DELAY`] from within CEF's work: each says
-/// when it ran.
+/// The work put off, `PutsOff` posting `Due` for [`DELAY`] from within CEF's work, each telling
+/// `times` when it ran, and `PutsOffLateInTheTurn` posting `PutsOff` for [`LATE_IN_TURN`].
 #[expect(
     clippy::transmute_ptr_to_ptr,
     reason = "cef's wrap_* macros transmute references in what they expand to"
 )]
 mod tasks {
-    use super::{DELAY, Instant, PUT_OFF, ThreadId};
+    use std::sync::mpsc::Sender;
+
+    use super::{DELAY, Instant, LATE_IN_TURN, ThreadId};
     use cef::{ImplTask, Task, WrapTask, rc::Rc, wrap_task};
 
+    /// `duration` in milliseconds, as CEF takes a delay.
+    fn millis(duration: std::time::Duration) -> i64 {
+        i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
+    }
+
     wrap_task! {
-        pub struct Due;
+        pub struct Due {
+            times: Sender<Instant>,
+        }
 
         impl Task {
             fn execute(&self) {
-                if let Ok(mut put_off) = PUT_OFF.lock() {
-                    put_off.1 = Some(Instant::now());
-                }
+                let _ = self.times.send(Instant::now());
             }
         }
     }
 
     wrap_task! {
-        pub struct PutsOff;
+        pub struct PutsOff {
+            times: Sender<Instant>,
+        }
 
         impl Task {
             fn execute(&self) {
-                if let Ok(mut put_off) = PUT_OFF.lock() {
-                    put_off.0 = Some(Instant::now());
-                }
-                let mut due = Due::new();
-                let delay = i64::try_from(DELAY.as_millis()).unwrap_or(i64::MAX);
-                cef::post_delayed_task(ThreadId::UI, Some(&mut due), delay);
+                let _ = self.times.send(Instant::now());
+                let mut due = Due::new(self.times.clone());
+                cef::post_delayed_task(ThreadId::UI, Some(&mut due), millis(DELAY));
             }
         }
     }
+
+    wrap_task! {
+        pub struct PutsOffLateInTheTurn {
+            times: Sender<Instant>,
+        }
+
+        impl Task {
+            fn execute(&self) {
+                let mut task = PutsOff::new(self.times.clone());
+                cef::post_delayed_task(ThreadId::UI, Some(&mut task), millis(LATE_IN_TURN));
+            }
+        }
+    }
+}
+
+/// How long after it was put off the work `PutsOff` put off ran, as `times` heard, or `None` if
+/// it hadn't run well after it was due.
+fn put_off_ran_after(times: &Receiver<Instant>) -> Option<Duration> {
+    let deadline = Instant::now() + 3 * DELAY + Duration::from_secs(2);
+    let heard = || times.recv_timeout(deadline.saturating_duration_since(Instant::now())).ok();
+    let posted = heard()?;
+    let ran = heard()?;
+    Some(ran - posted)
+}
+
+/// Whether work put off for [`DELAY`] ran on time: once it was due, and late by no more than it
+/// was put off for.
+fn on_time(after: Duration) -> bool {
+    (DELAY..=2 * DELAY).contains(&after)
 }
 
 /// Work Chromium puts off from within its own, as its timers do, runs once it's due and late by
@@ -212,28 +255,51 @@ mod tasks {
 pub fn put_off(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
     quiet_on_screen(host, incoming)?;
     let asked = Instant::now();
-    let mut task = tasks::PutsOff::new();
+    let (times, heard) = mpsc::channel();
+    let mut task = tasks::PutsOff::new(times);
     cef::post_task(ThreadId::UI, Some(&mut task));
-    let deadline = asked + 3 * DELAY + Duration::from_secs(2);
-    let (posted, ran) = loop {
-        let times = PUT_OFF.lock().map(|times| *times).unwrap_or_default();
-        if let (Some(posted), Some(ran)) = times {
-            break (posted, ran);
-        }
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "work put off for {DELAY:?} hadn't run {:?} after it was asked for",
-                asked.elapsed()
-            ));
-        }
-        idle(Duration::from_millis(5));
+    let Some(after) = put_off_ran_after(&heard) else {
+        return Err(format!(
+            "work put off for {DELAY:?} hadn't run {:?} after it was asked for",
+            asked.elapsed()
+        ));
     };
-    let after = ran - posted;
     eprintln!("work put off for {DELAY:?} ran {after:?} after it was put off");
-    if after < DELAY || after > 2 * DELAY {
+    if !on_time(after) {
         return Err(format!(
             "work put off for {DELAY:?} ran {after:?} after it was put off, not between {DELAY:?} and {:?}",
             2 * DELAY
+        ));
+    }
+    Ok(())
+}
+
+/// Work put off by a task that runs late in a turn, after Chromium found the turn idle and
+/// before CEF's time slice ends, runs once it's due, as work put off in any other turn does. On
+/// an engine gone quiet with a page on screen, nothing else wakes the main thread for it.
+pub fn put_off_late_in_a_turn(
+    host: &mut Connection,
+    incoming: &Receiver<Incoming>,
+) -> Result<(), String> {
+    quiet_on_screen(host, incoming)?;
+    let mut rounds = Vec::new();
+    for _ in 0..ROUNDS {
+        let (times, heard) = mpsc::channel();
+        let mut task = tasks::PutsOffLateInTheTurn::new(times);
+        cef::post_task(ThreadId::UI, Some(&mut task));
+        rounds.push(put_off_ran_after(&heard));
+        idle(BETWEEN_ROUNDS);
+    }
+    let said = (rounds.iter())
+        .map(|after| after.map_or_else(|| "never".to_owned(), |after| format!("{after:?}")))
+        .collect::<Vec<_>>()
+        .join(", ");
+    eprintln!("work put off for {DELAY:?} late in a turn ran after: {said}");
+    let late = rounds.iter().filter(|after| !after.is_some_and(on_time)).count();
+    if late > 0 {
+        return Err(format!(
+            "work put off for {DELAY:?} late in a turn ran off time, or never, in {late} of \
+             {ROUNDS} rounds: {said}"
         ));
     }
     Ok(())
