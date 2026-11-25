@@ -1,20 +1,19 @@
 //! What the window shows, kept while an operation makes or opens something the person isn't
 //! switched to (`select` false, or left out with the person's setting off): the Settings tab
-//! if it's open, the selected checkout, the tab the checkout opened on shows, and what has the
+//! if it's shown, the selected checkout, the tab the checkout opened on shows, and what has the
 //! keyboard. Opening goes through the selected checkout, as the person's menus do, so it's
 //! selected for the opening and put back right after, in the same change: the window never
 //! draws what it passed through.
 
 use gpui_kit::{App, Context, FocusHandle, Window};
 
-use crate::model::SettingsTab;
 use crate::shell::Shell;
 
 /// Where the window was before an opening.
 pub(crate) struct Kept {
-    /// The Settings tab as it was, if it was open: the opening passes through what it was shown
-    /// over, which closes it, and it's put back.
-    settings: Option<SettingsTab>,
+    /// Whether the Settings tab was shown: the opening passes through what it covers, which
+    /// leaves it, and it's shown again.
+    settings: bool,
     /// The selected project and its selected checkout.
     /// The project and branch selected, if a project was shown.
     selected: Option<(usize, usize)>,
@@ -39,7 +38,7 @@ impl Kept {
         let workspace = &shell.workspace;
         let unit = &workspace.projects[project].branches[branch];
         Kept {
-            settings: workspace.settings().cloned(),
+            settings: workspace.settings_shown().is_some(),
             selected: (workspace.active_project())
                 .zip(workspace.project().map(|project| project.active_branch)),
             target: (
@@ -80,8 +79,8 @@ impl Kept {
             shell.workspace.show_pinned(at);
         }
         shell.follow_selection(window, cx);
-        if let Some(settings) = self.settings {
-            shell.workspace.bring_back_settings(settings);
+        if self.settings {
+            shell.workspace.open_settings(None);
         }
         match &self.focused {
             Some(focused) if !focused.is_focused(window) => window.focus(focused, cx),

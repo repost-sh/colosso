@@ -45,9 +45,7 @@ pub use fonts::{
     CHAT_SIZES, Fonts, SetChatTextSize, SetCodeFont, SetInterfaceFont, chat_size_menu,
 };
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
-#[cfg(test)]
-pub use layout::GLASS_OWN;
-pub use layout::{GLASS_CLEAR, GLASS_STOPS};
+pub use layout::{INDENT, INDENT_STOPS};
 pub use loose_pages::{LoosePages, SetLoosePages};
 pub use menus::{checked_items, checked_menu};
 pub use picks::{SetBranchPrefix, SetMostLanguageServers, SetPreviewFiles};
@@ -95,9 +93,9 @@ pub struct Settings {
     /// Where the person put the Changes and Files buttons; where they are is
     /// [`Settings::changes_and_files_shown`].
     pub changes_and_files: ChangesAndFiles,
-    /// How much of the window's glass the sidebar lets through, along its slider
-    /// (`sidebar_opacity`).
-    pub sidebar_glass: f32,
+    /// How far in what's in the sidebar's rows starts from the row they're under, in points
+    /// (`sidebar_step`).
+    pub sidebar_indent: f32,
     pub sidebar_width: f32,
     pub changes_files_width: f32,
     /// The Files panel's width, its tree's.
@@ -254,7 +252,7 @@ impl Default for Settings {
             tabs: Tabs::default(),
             address_bar: AddressBar::default(),
             changes_and_files: ChangesAndFiles::default(),
-            sidebar_glass: GLASS_CLEAR,
+            sidebar_indent: INDENT,
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,

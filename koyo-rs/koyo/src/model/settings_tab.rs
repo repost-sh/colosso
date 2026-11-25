@@ -1,10 +1,9 @@
 //! The Settings tab (`docs/sidebar.md` 11.9): Koyo's settings in a tab of their own among
-//! the loose pages, one at most. Open, it's shown over whatever tab was, the selected checkout's,
-//! a pinned or a loose page, and that one shows again once it closes. It's open only while it's
-//! shown: showing anything else closes it. It keeps the pages it showed for Back and Forward, as
-//! a page keeps its history. It's no checkout's and no space's, it's never pinned, moved or kept
-//! with the window, and closed it isn't among the tabs ⌘⇧T brings back, since it would close
-//! again as soon as anything else showed.
+//! the loose pages, one at most. Opened or picked, it's shown over whatever tab was, the selected
+//! checkout's, a pinned or a loose page, and that one shows again once it closes. Anything else
+//! shown leaves it open behind, where its tab picks it again. It keeps the pages it showed for
+//! Back and Forward, as a page keeps its history. It's no checkout's and no space's, it's never
+//! pinned, moved or kept with the window, and closed it isn't among the tabs ⌘⇧T brings back.
 
 use gpui_kit::assets::IconName;
 
@@ -78,59 +77,76 @@ impl SettingsTab {
 /// The Settings tab while it's open, and the page the next one opens on.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Settings {
-    tab: Option<SettingsTab>,
+    open: Option<Open>,
     /// The page the last Settings tab showed as it closed.
     last: SettingsPage,
 }
 
+/// The Settings tab, open.
+#[derive(Clone, Debug)]
+struct Open {
+    tab: SettingsTab,
+    /// Whether it's shown, over the tab it covers, rather than open behind it.
+    shown: bool,
+}
+
 impl Settings {
-    /// Closes the Settings tab, if it's open: the next opens on the page it showed. Whether it
-    /// was open.
-    pub(super) fn close(&mut self) -> bool {
-        let Some(tab) = self.tab.take() else {
-            return false;
-        };
-        self.last = tab.page;
-        true
+    /// Leaves the Settings tab, if it's shown, for what it covers: it stays open behind.
+    pub(super) fn leave(&mut self) {
+        if let Some(open) = &mut self.open {
+            open.shown = false;
+        }
     }
 }
 
 impl Workspace {
-    /// The Settings tab, while it's open and so shown.
+    /// The Settings tab, while it's open, shown or not.
     pub fn settings(&self) -> Option<&SettingsTab> {
-        self.apart.settings.tab.as_ref()
+        self.apart.settings.open.as_ref().map(|open| &open.tab)
     }
 
-    /// The Settings tab, to show another page in it.
-    pub fn settings_mut(&mut self) -> Option<&mut SettingsTab> {
-        self.apart.settings.tab.as_mut()
+    /// The Settings tab, while it's the tab shown.
+    pub fn settings_shown(&self) -> Option<&SettingsTab> {
+        (self.apart.settings.open.as_ref())
+            .filter(|open| open.shown)
+            .map(|open| &open.tab)
     }
 
-    /// Opens the Settings tab on `page`, over whatever tab is shown, or shows `page` in it if
-    /// it's open already. With no page asked for, it stays on the page it shows, or a new one
-    /// opens on the page the last one showed. Whether it opened or shows another page.
+    /// The Settings tab while it's the tab shown, to show another page in it.
+    pub fn settings_shown_mut(&mut self) -> Option<&mut SettingsTab> {
+        (self.apart.settings.open.as_mut())
+            .filter(|open| open.shown)
+            .map(|open| &mut open.tab)
+    }
+
+    /// Shows the Settings tab over whatever tab is shown, opened if it isn't open, on `page`. With
+    /// no page asked for, it's on the page it showed, or a new one on the page the last one
+    /// showed. Whether it wasn't shown on that page already.
     pub fn open_settings(&mut self, page: Option<SettingsPage>) -> bool {
         let settings = &mut self.apart.settings;
-        match (&mut settings.tab, page) {
-            (Some(tab), Some(page)) => tab.go(page),
-            (Some(_), None) => false,
-            (None, page) => {
-                settings.tab = Some(SettingsTab::on(page.unwrap_or(settings.last)));
-                true
-            }
-        }
+        let Some(open) = &mut settings.open else {
+            let tab = SettingsTab::on(page.unwrap_or(settings.last));
+            settings.open = Some(Open { tab, shown: true });
+            return true;
+        };
+        let came = !std::mem::replace(&mut open.shown, true);
+        page.is_some_and(|page| open.tab.go(page)) || came
     }
 
-    /// Closes the Settings tab: the tab it was shown over shows again. Whether it was open.
+    /// Leaves the Settings tab, if it's shown, for the tab it covers: it stays open behind.
+    pub fn leave_settings(&mut self) {
+        self.apart.settings.leave();
+    }
+
+    /// Closes the Settings tab: the tab it covered, if it was shown, shows again, and the next
+    /// Settings tab opens on the page this one showed. Whether it was open.
     pub fn close_settings(&mut self) -> bool {
-        self.apart.settings.close()
-    }
-
-    /// Puts back `tab`, the Settings tab as it was before an opening out of sight passed through
-    /// what it was shown over, which closed it: shown over what's shown, its pages to go back to
-    /// with it.
-    pub fn bring_back_settings(&mut self, tab: SettingsTab) {
-        self.apart.settings.tab = Some(tab);
+        let settings = &mut self.apart.settings;
+        let Some(open) = settings.open.take() else {
+            return false;
+        };
+        settings.last = open.tab.page;
+        true
     }
 }
 

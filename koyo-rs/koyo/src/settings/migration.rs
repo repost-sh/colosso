@@ -16,7 +16,7 @@ const EACH: &str = "*";
 /// where a list is on the way, in each of its entries, and in each value of a map at [`EACH`].
 /// A key that changes what it means goes here under its old name; one that only changes its
 /// name goes in [`RENAMED`].
-const RETIRED: [(&[&str], &str); 17] = [
+const RETIRED: [(&[&str], &str); 18] = [
     (&[], "files_width"),
     (&[], "files_panel_width"),
     (&[], "changes_width"),
@@ -28,6 +28,7 @@ const RETIRED: [(&[&str], &str); 17] = [
     (&[], "card_glass"),
     (&[], "glass_blur"),
     (&[], "sidebar_blur"),
+    (&[], "sidebar_glass"),
     (&["chat_backdrop", "surfaces"], "sidebar"),
     (&["spaces"], "light_theme"),
     (&["spaces"], "dark_theme"),

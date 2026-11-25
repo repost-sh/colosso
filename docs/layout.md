@@ -14,7 +14,7 @@ Settings → Appearance → Layout:
 | Address bar | In the page / In the sidebar | In the sidebar | `address_bar` |
 | Changes and Files | Worktree / Top rail | Top rail | `changes_and_files` |
 | Unpinned pages | Per space / Shared | Shared | `loose_pages` |
-| Sidebar glass | Slider, Clear to Solid | Clear (left end) | `sidebar_glass` |
+| Sidebar indentation | Slider, None to More | 16 points (middle) | `sidebar_indent` |
 
 ```json
 {

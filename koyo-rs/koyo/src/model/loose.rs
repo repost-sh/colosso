@@ -90,7 +90,7 @@ impl Apart {
         if let Some(key) = key {
             self.shown.insert(self.space, key);
             self.pins.leave();
-            self.settings.close();
+            self.settings.leave();
         }
         key.is_some()
     }
@@ -134,7 +134,7 @@ impl Apart {
     /// selected checkout's tab is.
     pub(super) fn leave(&mut self) {
         self.pins.leave();
-        self.settings.close();
+        self.settings.leave();
         self.shown.remove(&self.space);
     }
 

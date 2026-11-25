@@ -6,7 +6,7 @@
 //! them. Right-clicked, a row is copied into the selected worktree. With none, there's no list:
 //! a dashed strip, "Drop to keep it here", takes one that's in hand. Each space's own, they're
 //! part of the space, and slide with it as it changes; shared, they stay where they are with the
-//! pinned pages. The Settings tab, while it's open, is the row after them, the pill, as it's
+//! pinned pages. The Settings tab, while it's open, is the row after them, the pill while it's
 //! shown (11.9); and the last row, New Tab, opens the launcher for a page among them.
 
 use gpui_kit::assets::IconName;
@@ -38,22 +38,21 @@ pub(crate) fn list(
     cx: &mut Context<Shell>,
 ) -> Option<Div> {
     let pages = pages(shell, (shown, taking), look, cx);
-    let settings = shell.workspace.settings().map(|_| settings(look, cx));
+    let settings = shell.workspace.settings().map(|_| {
+        settings(shell.workspace.settings_shown().is_some(), look, cx)
+    });
     if pages.is_none() && settings.is_none() {
         return None;
     }
     Some(div().flex().flex_col().gap(px(GAP)).children(pages).children(settings))
 }
 
-/// The row after them, the + and "New Tab", filled as a row under the pointer is and brighter
-/// under it: clicked, it opens the launcher for a page among them, whatever tab is shown
-/// (`docs/layout.md`).
+/// The row after them, the + and "New Tab", lit under the pointer as theirs are: clicked, it opens
+/// the launcher for a page among them, whatever tab is shown (`docs/layout.md`).
 pub(super) fn new_tab(look: Look) -> Stateful<Div> {
     let p = look.p;
-    sidebar_row("sidebar-new-page")
+    look.lit(sidebar_row("sidebar-new-page"), false)
         .debug_selector(|| "sidebar-new-page".to_owned())
-        .bg(look.row_hover)
-        .hover(move |style| style.bg(look.tile_hover))
         .text_color(p.muted)
         .child(tab_icon(icon(IconName::Plus, TAB_ICON).into_any_element(), p))
         .child(ellipsized("New Tab"))
@@ -84,21 +83,24 @@ fn pages(
     Some(list.into_any_element())
 }
 
-/// The Settings tab's row: the pill, as it's the tab shown, its gear where a page's icon goes,
-/// and its × at its end.
-fn settings(look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
+/// The Settings tab's row: the pill when it's the tab shown (`active`), its gear where a page's
+/// icon goes, and its × at its end on hover, and always while it's shown.
+fn settings(active: bool, look: Look, cx: &mut Context<Shell>) -> Stateful<Div> {
     let p = look.p;
     let close = row_sized(sized_close_button("sidebar-settings-tab-close", ROW_GLYPH, p));
-    let close =
-        settings_close(close, cx).debug_selector(|| "sidebar-settings-tab-close".to_owned());
+    let close = settings_close(close, cx)
+        .debug_selector(|| "sidebar-settings-tab-close".to_owned())
+        .when(!active, |close| shown_on_hover(close, "sidebar-settings-tab"));
     let title = (div().id("sidebar-settings-tab-title").flex())
         .child(ellipsized(SettingsTab::TITLE));
     let row = sidebar_row("sidebar-settings-tab")
-        .debug_selector(|| "sidebar-settings-tab".to_owned())
-        .bg(look.pill)
+        .group("sidebar-settings-tab")
+        .debug_selector(|| "sidebar-settings-tab".to_owned());
+    let row = look
+        .lit(row, active)
         .pr(px(ROW_END))
         .child(tab_icon(icon(SettingsTab::ICON, TAB_ICON).into_any_element(), p))
-        .child(title_with_end(title, close, true, "sidebar-settings-tab"));
+        .child(title_with_end(title, close, active, "sidebar-settings-tab"));
     settings_row(row, cx)
 }
 

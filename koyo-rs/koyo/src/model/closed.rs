@@ -1,6 +1,6 @@
 //! Tabs closed lately, to bring back with ⌘⇧T, the newest first: each where it was, on its
-//! checkout at its place or among its space's loose pages at theirs, its panes split as they
-//! were, each holding what it showed (`Content::let_go`).
+//! checkout at its place, among its space's loose pages at theirs, or the pinned page it stays, its
+//! panes split as they were, each holding what it showed (`Content::let_go`).
 
 use std::path::PathBuf;
 
@@ -18,13 +18,15 @@ pub enum ClosedFrom {
     Checkout(PathBuf),
     /// The loose pages of the space known by `space`, its page of `project`'s profile.
     Loose { space: u64, project: PathBuf },
+    /// The pinned pages: its tab stays there with no page, known by the page's pane.
+    Pinned,
 }
 
 /// A tab as it was when it closed. Its panes' views are let go, so nothing of them runs on.
 #[derive(Clone, Debug)]
 pub struct ClosedTab {
     pub from: ClosedFrom,
-    /// Where it was among the checkout's tabs, or the space's loose pages.
+    /// Where it was among the checkout's tabs, the space's loose pages, or the pinned ones.
     pub at: usize,
     pub tab: Tab,
 }
@@ -43,8 +45,9 @@ impl Workspace {
     }
 
     /// Takes the tab closed last of those `which` takes, with where it goes back: a checkout's
-    /// tab to its checkout, as `Spot::Checkout` at its place among the tabs there now, and a
-    /// loose page to its space's. Tabs of checkouts gone since are let go; those `which` leaves
+    /// tab to its checkout, as `Spot::Checkout` at its place among the tabs there now, a
+    /// loose page to its space's, and a pinned page's to its tile. Tabs of checkouts gone since are
+    /// let go, and pinned pages' unpinned or opened again since; those `which` leaves
     /// stay, to come back later.
     pub fn take_closed(&mut self, which: impl Fn(&ClosedFrom) -> bool) -> Option<(ClosedTab, Spot)> {
         while let Some(newest) = self.closed.iter().rposition(|closed| which(&closed.from)) {
@@ -55,12 +58,27 @@ impl Workspace {
                     Spot::Checkout(project, branch, closed.at.min(tabs))
                 }),
                 ClosedFrom::Loose { space, .. } => Some(Spot::Loose(*space)),
+                ClosedFrom::Pinned => (self.pinned_of(closed.tab.first().id))
+                    .filter(|pinned| pinned.tab.first().view().is_none())
+                    .map(|_| Spot::Pinned),
             };
             if let Some(back) = back {
                 return Some((closed, back));
             }
         }
         None
+    }
+
+    /// Puts `tab` back as the pinned page its page's pane knows, and shows it, unless it's no
+    /// longer pinned.
+    pub fn restore_pinned(&mut self, tab: Tab) {
+        let Some(at) = self.pinned_at(tab.first().id) else {
+            return;
+        };
+        if let Some(closed) = self.pinned_tab_mut(at) {
+            *closed = tab;
+        }
+        self.show_pinned(at);
     }
 
     /// Puts `tab` back at `at`, as `(project, branch, tab)`, and shows it.

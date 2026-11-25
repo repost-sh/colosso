@@ -1,17 +1,13 @@
-//! The sidebar's frame, on the window's glass: its width, its own surface, the grab strip that
+//! The sidebar's frame, on the window's glass: its width, the grab strip that
 //! resizes it (`elements::resize_handle`), and its slide in and out. Settings' own pages are the
 //! Settings tab's content, on an island, not in this frame (`settings_view/page_list.rs`).
-//!
-//! The surface is what's on the glass short of the margin before the islands. It's in the card's
-//! colour as opaque as Settings → Appearance → Sidebar glass says: clear by default, the sidebar on
-//! the glass the top rail is on, one with it.
+//! It has no fill of its own: it's on the glass the top rail is on, one with it.
 
 use gpui_kit::{
-    AnyElement, App, Context, Empty, Hsla, InteractiveElement as _, IntoElement, ParentElement,
+    AnyElement, App, Context, Empty, IntoElement, ParentElement,
     Render, RenderOnce, Styled as _, Window, div, px,
 };
 
-use crate::settings;
 use crate::shell::resize_handle;
 use crate::theme;
 
@@ -31,12 +27,6 @@ impl SidebarFrame {
     }
 }
 
-/// The colour of the sidebar's own surface: the card's, as opaque as Sidebar glass says.
-fn fill(cx: &App) -> Hsla {
-    let card = theme::palette(cx).card;
-    card.alpha(settings::get(cx).sidebar_opacity(card.a))
-}
-
 impl ParentElement for SidebarFrame {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
         self.children.extend(elements);
@@ -44,16 +34,7 @@ impl ParentElement for SidebarFrame {
 }
 
 impl RenderOnce for SidebarFrame {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let margin = theme::GUTTER;
-        let surface = div()
-            .debug_selector(|| "sidebar-surface".to_owned())
-            .absolute()
-            .top_0()
-            .bottom_0()
-            .left_0()
-            .right(px(margin))
-            .bg(fill(cx));
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
         div()
             .relative()
             .w(px(self.width))
@@ -62,8 +43,7 @@ impl RenderOnce for SidebarFrame {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .pr(px(margin))
-            .child(surface)
+            .pr(px(theme::GUTTER))
             .children(self.children)
             .child(resize_handle("sidebar-resize", SidebarResize).right_0())
     }
@@ -102,38 +82,14 @@ pub fn slide_out(sidebar: impl IntoElement, width: f32, reveal: f32) -> impl Int
 mod tests {
     use gpui_kit::{Corners, Edges, TestAppContext, VisualTestContext, point, px};
 
-    use crate::settings::{self, GLASS_CLEAR, GLASS_OWN, Tabs};
+    use crate::settings::{self, Tabs};
     use crate::shell::sidebar::tests::painted;
-    use crate::test_support::{draw, shell_on, shell_on_chat};
+    use crate::test_support::{draw, shell_on_chat};
     use crate::theme;
 
-    /// The sidebar has a surface of its own on the glass, short of the margin before the islands,
-    /// in the card's colour as opaque as Sidebar glass says: clear by default, the card's own at
-    /// the middle, solid at the right.
-    #[gpui_kit::test]
-    fn the_sidebar_is_as_see_through_as_its_glass_says(cx: &mut TestAppContext) {
-        let (window, _, _) = shell_on("sidebar-glass", cx);
-        let set = |glass, cx: &mut TestAppContext| {
-            cx.update(|cx| settings::update(cx, |settings| settings.sidebar_glass = glass));
-            draw(window, cx);
-            (cx.read(super::fill), cx.read(|cx| theme::palette(cx).card))
-        };
-        let (fill, card) = set(GLASS_CLEAR, cx);
-        let visual = &mut VisualTestContext::from_window(window, cx);
-        let surface = visual.debug_bounds("sidebar-surface").unwrap();
-        let edge = visual.debug_bounds("sidebar-resize").unwrap();
-        assert_eq!(surface.right(), edge.right() - px(theme::GUTTER));
-        assert_eq!(fill, card.alpha(0.), "clear by default");
-        assert!(card.a > 0.5, "the content's card is far from clear");
-        for (glass, opacity) in [(GLASS_OWN, card.a), (1., 1.)] {
-            let (fill, card) = set(glass, cx);
-            assert_eq!(fill, card.alpha(fill.a), "at {glass}");
-            assert!((fill.a - opacity).abs() < 1e-6, "at {glass}: {fill:?}");
-        }
-    }
     /// The sidebar is on the very glass the rail is on, the top rail or the sidebar's own top row,
     /// with nothing of its own between, down to the margin before the islands, wherever the tabs
-    /// are; its glass set solid fills it alone.
+    /// are.
     #[gpui_kit::test]
     fn the_sidebar_is_one_with_the_rail_and_the_margin_before_the_islands(cx: &mut TestAppContext) {
         let (window, _) = shell_on_chat("sidebar-one-with-the-rail", cx);
@@ -146,7 +102,7 @@ mod tests {
                 Tabs::Sidebar => "sidebar-top",
             };
             let rail = visual.debug_bounds(rail).unwrap().center();
-            let surface = visual.debug_bounds("sidebar-surface").unwrap();
+            let surface = visual.debug_bounds("sidebar").unwrap();
             let card = visual.debug_bounds("shell-card").unwrap();
             let glass = painted(rail, window, cx);
             assert_eq!(painted(surface.center(), window, cx), glass, "{tabs:?}");
@@ -156,13 +112,6 @@ mod tests {
                 assert_eq!(painted(at, window, cx), glass, "{tabs:?}, no hairline at {x:?}");
                 x += px(0.5);
             }
-            cx.update(|cx| settings::update(cx, |settings| settings.sidebar_glass = 1.));
-            draw(window, cx);
-            assert_eq!(painted(rail, window, cx), glass, "{tabs:?}, the rail as it was");
-            let solid = cx.read(super::fill);
-            let filled = painted(surface.center(), window, cx);
-            assert_eq!(filled.last().map(|(fill, _)| *fill), Some(solid.into()), "{tabs:?}");
-            cx.update(|cx| settings::update(cx, |settings| settings.sidebar_glass = GLASS_CLEAR));
         }
     }
 
@@ -178,7 +127,7 @@ mod tests {
             draw(window, cx);
             let visual = &mut VisualTestContext::from_window(window, cx);
             let at = visual.debug_bounds("shell-card").unwrap();
-            let sidebar = visual.debug_bounds("sidebar-surface").unwrap();
+            let sidebar = visual.debug_bounds("sidebar").unwrap();
             assert_eq!(at.left(), sidebar.right() + px(theme::GUTTER), "{tabs:?}");
             let island = visual.update(|window, _| {
                 let at = at.scale(window.scale_factor());

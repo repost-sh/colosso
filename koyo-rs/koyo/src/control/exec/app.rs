@@ -50,7 +50,7 @@ pub(crate) fn status(cx: &mut App) -> AppStatusOutput {
             window_open: true,
             focused: window.is_window_active(),
             on_screen: window.is_visible(),
-            route: route(shell.workspace.settings()),
+            route: route(shell.workspace.settings_shown()),
             sidebar_open: shell.sidebar_open(),
             right_panel: right_panel(shell),
             bottom_panel_open: shell.bottom_panel_open(),
@@ -154,7 +154,7 @@ pub(crate) fn settings_open(
     status_value(cx)
 }
 
-/// Closes the Settings tab: the tab it was shown over shows again.
+/// Closes the Settings tab: the tab it was shown over, if it was, shows again.
 pub(crate) fn settings_close(cx: &mut App) -> Result<Value, ControlError> {
     update_shell(cx, |shell, _, cx| shell.close_settings(cx))?;
     status_value(cx)
@@ -167,7 +167,7 @@ fn right_panel(shell: &Shell) -> Option<RightPanel> {
     })
 }
 
-/// What `app_status` says the window shows: the Settings tab's page while it's open, as
+/// What `app_status` says the window shows: the Settings tab's page while it's shown, as
 /// `settings:<page>`, and `workspace` otherwise.
 fn route(settings: Option<&SettingsTab>) -> String {
     match settings.map(SettingsTab::page) {

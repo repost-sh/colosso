@@ -21,7 +21,7 @@ use super::{Shell, icon};
 use crate::browser;
 use crate::browser::profiles::By;
 use crate::history;
-use crate::model::{Pane, Unloaded};
+use crate::model::{ClosedFrom, ClosedTab, Pane, Pinned, Unloaded};
 use crate::settings;
 use crate::theme::Palette;
 
@@ -187,15 +187,21 @@ impl Shell {
 
     /// Closes the pinned page known by `key`, as ⌘W and its menu's Close do: its page and its
     /// `DevTools` go, and it stays pinned, to open again at the address it's pinned at once its
-    /// tile is picked. Shown, what the space shows under it shows in its place.
+    /// tile is picked, or with ⌘⇧T at the address it showed. Shown, what the space shows under it shows
+    /// in its place.
     pub(crate) fn close_pinned(&mut self, key: u64, cx: &mut Context<Self>) {
         self.let_apart_devtools_go(key, cx);
         let Some(at) = self.workspace.pinned_at(key) else {
             return;
         };
-        let home = self.workspace.pinned()[at].home.clone();
+        let open = self.pinned_is_open(key);
+        let Pinned { tab, home, .. } = self.workspace.pinned()[at].clone();
         let (title, closed) = self.rested(at, home, cx);
         self.workspace.close_pinned_page(at, title, closed);
+        if open {
+            let from = ClosedFrom::Pinned;
+            self.workspace.remember_closed(ClosedTab { from, at, tab }, cx);
+        }
         cx.notify();
     }
 

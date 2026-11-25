@@ -90,7 +90,7 @@ impl Shell {
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
-                if this.workspace.settings().is_some() {
+                if this.workspace.settings_shown().is_some() {
                     this.close_settings(cx);
                 } else if !this.close_apart_shown(window, cx)
                     && let Some(at) = this.workspace.shown_tab()

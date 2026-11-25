@@ -80,10 +80,11 @@ impl Shell {
     }
 
     /// Shows `view` in the selected checkout's panel, opening it if it's closed, and gives it
-    /// the keyboard; the Settings tab, which the panel isn't drawn beside, closes.
+    /// the keyboard; the Settings tab, which the panel isn't drawn beside, is left open behind.
     pub(crate) fn show(&mut self, view: View, cx: &mut Context<Self>) {
         self.set_open(true, Some(view), cx);
-        self.close_settings(cx);
+        self.workspace.leave_settings();
+        cx.notify();
     }
 
     /// Closes the selected checkout's panel if it shows `view`, and shows `view` otherwise.

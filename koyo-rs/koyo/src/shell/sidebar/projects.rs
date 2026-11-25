@@ -23,13 +23,13 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
-use super::rows::{at_end, branch_tabs};
+use super::rows::{ROW_END, at_end, branch_tabs, end_place};
 use super::{Look, noted, shown_on_hover, tab_rows};
 use crate::model::{BranchUnit, Front, Project};
 use crate::pane::ROW_GLYPH;
 use crate::projects::{NewWorktreeIn, project_menu, worktree_menu};
 use crate::shell::{
-    List, Reorder, Shell, add_project_row, ellipsized, icon, icon_button, indented, key_of,
+    List, Reorder, Shell, add_project_row, ellipsized, icon, icon_button, inset, key_of,
     on_move, project_error, row_shape, sidebar_menu, with_menu,
 };
 use crate::{settings, theme};
@@ -220,9 +220,9 @@ fn project_row(
                 .child(icon(folder_icon, 14.).text_color(p.muted)),
         )
         .child(ellipsized(project.name.clone()).flex_1())
+        .pr(px(ROW_END))
         .child(
-            div()
-                .relative()
+            end_place()
                 .child(shown_on_hover(div(), "sidebar-project").child(new_worktree))
                 .children(mark),
         );
@@ -242,20 +242,22 @@ fn branch_rows(
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> AnyElement {
-    let row = branch_row(shell, at, branch, owner, shared, window, cx);
     let folder: &Path = owner.0;
     let tabs = (shared.tabs).then(|| {
         let drawn = (shared.shown, shared.look);
         branch_tabs(shell, (at, folder), branch.0, drawn, window, cx)
     });
-    match tabs.flatten() {
+    let tabs = tabs.flatten();
+    let row = branch_row(shell, at, (branch, tabs.is_some()), owner, shared, window, cx);
+    match tabs {
         Some(tabs) => (div().flex().flex_col().child(row).child(tabs)).into_any_element(),
         None => row.into_any_element(),
     }
 }
 
 /// A branch's row, one step in from its project's, the `branch_index`th of its project's and known
-/// by `key` as it moves, `selected` or not, its title leaving off the prefix the person's own
+/// by `key` as it moves, `selected` or not, lit as selected unless its tabs are `listed` under it,
+/// where the one shown is, its title leaving off the prefix the person's own
 /// branches carry in its project, whose folder is `project`. Clicked with the tabs on the top rail
 /// it's selected; with them in the sidebar its tabs collapse or come back, kept for the next
 /// launch, and nothing's selected: a tab picked selects its branch (`docs/layout.md`, Sidebar).
@@ -265,7 +267,7 @@ fn branch_rows(
 fn branch_row(
     shell: &Shell,
     (project_index, branch_index, key): (usize, usize, u64),
-    (branch, selected): (&BranchUnit, bool),
+    ((branch, selected), listed): ((&BranchUnit, bool), bool),
     (project, prefix): (&Rc<Path>, Option<&str>),
     shared: Shared,
     window: &mut Window,
@@ -288,7 +290,7 @@ fn branch_row(
     let (menu, folders) = (Rc::clone(&path), (Rc::clone(project), path));
     let weak = cx.weak_entity();
     let id = ("sidebar-branch", project_index * 100 + branch_index);
-    let row = with_menu(indented(look.lit(row_shape(id), selected)), move |_, cx| {
+    let row = with_menu(look.lit(row_shape(id), selected && !listed).pl(inset(1, cx)).pr(px(ROW_END)), move |_, cx| {
         let terminals = weak.read_with(cx, |shell, _| shell.has_terminals(&menu));
         worktree_menu(&menu, is_main, terminals.unwrap_or(false))
     })
@@ -320,5 +322,5 @@ fn branch_row(
     })
     .child(div().flex_1())
     .children(panel)
-    .children(mark)
+    .children(mark.map(|mark| end_place().child(mark)))
 }

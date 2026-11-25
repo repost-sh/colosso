@@ -9,7 +9,7 @@ use koyo_agent::protocol::requests::RequestKind;
 use super::{drawn, hear, sidebar_shell, tell, unseen_chat};
 use crate::chat::Activity;
 use crate::model::Edge;
-use crate::test_support::draw;
+use crate::test_support::{click, draw, hover};
 
 #[gpui_kit::test]
 fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext) {
@@ -144,4 +144,29 @@ fn a_splits_pane_shows_its_x_while_the_pointers_on_it(cx: &mut TestAppContext) {
         close.left() > row.center().x && close.right() <= row.right() - px(6.),
         "its × shows at its end, in the row: {close:?} in {row:?}"
     );
+}
+
+/// What a tab's row, its branch's and its project's, folded, say at their ends of how they're
+/// doing is in one column, a spinner and a dot alike.
+#[gpui_kit::test]
+fn what_the_rows_say_at_their_ends_is_in_one_column(cx: &mut TestAppContext) {
+    let (window, shell, roots) = sidebar_shell(&["sidebar-end-column"], cx);
+    unseen_chat(&shell, cx);
+    draw(window, cx);
+    let key = cx.read(|cx| shell.read(cx).workspace.branch().unwrap().tabs[0].first().id);
+    let centre = |selector: String, cx: &mut TestAppContext| {
+        hover(window, point(px(1000.), px(500.)), cx);
+        let at = drawn(window, selector.clone(), cx);
+        let at = at.unwrap_or_else(|| panic!("{selector} is drawn"));
+        at.center().x
+    };
+    for (state, unread, name) in [(Status::Working, false, "working"), (Status::Idle, true, "waiting")] {
+        hear(&shell, ("0001", &roots[0]), (state, None, unread), cx);
+        draw(window, cx);
+        let tab = centre(format!("sidebar-tab-{name}-{key}"), cx);
+        assert_eq!(centre("sidebar-branch-mark-0-0".into(), cx), tab, "{name}: the branch's");
+        click(window, "sidebar-project-0", cx);
+        assert_eq!(centre("sidebar-project-mark-0".into(), cx), tab, "{name}: the project's");
+        click(window, "sidebar-project-0", cx);
+    }
 }

@@ -308,33 +308,38 @@ fn a_chat_text_size_picked_before_sizes_came_down_a_notch_keeps_its_place_on_the
 }
 
 #[test]
-fn the_cards_glass_and_the_windows_blur_picked_before_are_dropped_for_the_sidebars_default() {
+fn the_glass_and_the_windows_blur_picked_before_are_dropped() {
     let path = scratch("settings-sidebar-glass").join(FILE);
-    let old = serde_json::json!({ "tabs": "Sidebar", "card_glass": 1., "glass_blur": 0.75 });
+    let old = serde_json::json!({
+        "tabs": "Sidebar",
+        "card_glass": 1.,
+        "glass_blur": 0.75,
+        "sidebar_glass": 0.25,
+    });
     std::fs::write(&path, old.to_string()).unwrap();
     let settings = read(&path).unwrap();
     let json = serde_json::to_value(&settings).unwrap();
-    let defaults = serde_json::to_value(Settings::default()).unwrap();
     assert_eq!(settings.tabs, Tabs::Sidebar);
-    assert_eq!(json["sidebar_glass"], defaults["sidebar_glass"]);
-    assert!(json.get("card_glass").is_none() && json.get("glass_blur").is_none());
+    for gone in ["card_glass", "glass_blur", "sidebar_glass"] {
+        assert!(json.get(gone).is_none(), "{gone}");
+    }
 }
 
 #[test]
 fn the_sidebars_blur_and_its_wallpaper_picked_before_are_dropped_and_the_rest_stays() {
     let mut old = serde_json::json!({
-        "sidebar_glass": 0.25,
+        "sidebar_indent": 24.,
         "sidebar_blur": 1.,
         "chat_backdrop": { "surfaces": { "chat": false, "sidebar": true } },
     });
     let path = scratch("settings-sidebar-blur").join(FILE);
     std::fs::write(&path, old.to_string()).unwrap();
     let settings = read(&path).unwrap();
-    assert_eq!(settings.sidebar_glass.to_bits(), 0.25_f32.to_bits());
+    assert_eq!(settings.sidebar_indent.to_bits(), 24_f32.to_bits());
     assert!(!settings.chat_backdrop.surfaces.chat);
     migrate(&mut old);
     let kept = serde_json::json!({
-        "sidebar_glass": 0.25,
+        "sidebar_indent": 24.,
         "chat_backdrop": { "surfaces": { "chat": false } },
     });
     assert_eq!(old, kept);

@@ -1,7 +1,7 @@
 //! Appearance: light, dark or the system's, and the gradient glass of each; the layout: where the
 //! tabs, the address bar and the Changes and Files buttons go, whether the unpinned pages are each
-//! space's or shared, and how much of the window's glass the sidebar lets through
-//! (`docs/layout.md`, Settings); the wallpaper behind chats; and the fonts.
+//! space's or shared, and how far in the sidebar's rows step (`docs/layout.md`,
+//! Settings); the wallpaper behind chats; and the fonts.
 
 use gpui_kit::App;
 use gpui_kit::component::ActiveTheme as _;
@@ -11,7 +11,7 @@ use super::native_slider::NativeSlider;
 use super::{chat_backdrop, fonts};
 use crate::gradient::{self, GradientTheme};
 use crate::picker;
-use crate::settings::{self, GLASS_STOPS, Settings};
+use crate::settings::{self, INDENT_STOPS, Settings};
 use crate::theme;
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
@@ -57,7 +57,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 }
 
 /// The layout, in `docs/layout.md`'s order: where the tabs, the address bar and the Changes and
-/// Files buttons go, the unpinned pages, the sidebar's glass.
+/// Files buttons go, the unpinned pages, the sidebar's indentation.
 fn layout(cx: &App) -> SettingsSection {
     let current = settings::get(cx);
     let loose = current.loose_pages;
@@ -75,7 +75,7 @@ fn layout(cx: &App) -> SettingsSection {
                     settings::get(cx).loose_pages.menu()
                 })),
         )
-        .row(sidebar_glass_row())
+        .row(sidebar_indent_row())
 }
 
 /// The rows for where the tabs, the address bar and the Changes and Files buttons go, each
@@ -115,22 +115,22 @@ fn placement_rows(current: &Settings) -> [SettingRow; 3] {
     ]
 }
 
-/// The row for how much of the window's glass shows through the sidebar.
-fn sidebar_glass_row() -> SettingRow {
-    let glass = NativeSlider::new(
-        "sidebar-glass",
-        &GLASS_STOPS,
-        |settings| settings.sidebar_glass,
-        |settings, stop| settings.sidebar_glass = stop,
+/// The row for how far in the sidebar's rows step.
+fn sidebar_indent_row() -> SettingRow {
+    let indent = NativeSlider::new(
+        "sidebar-indent",
+        &INDENT_STOPS,
+        |settings| settings.sidebar_indent,
+        |settings, stop| settings.sidebar_indent = stop,
     );
     slider(
         (
-            "Sidebar glass",
-            "How much of the window's glass shows through the sidebar: the left end is clear, \
-             the middle the card's own, the right end solid.",
+            "Sidebar indentation",
+            "How far in a branch sits under its project in the sidebar, and a tab under its \
+             branch: the left end is none.",
         ),
-        glass,
-        ("Clear", "Solid"),
+        indent,
+        ("None", "More"),
     )
 }
 
@@ -139,10 +139,9 @@ mod tests {
     use gpui_kit::TestAppContext;
 
     use super::{layout, sections};
-    use crate::settings::{self, GLASS_STOPS, Tabs};
+    use crate::settings::{self, Tabs};
     use crate::settings_view::general;
     use crate::test_support::init_settings;
-    use crate::theme;
 
     /// The Layout section's rows come in `docs/layout.md`'s order, wherever the tabs are.
     #[gpui_kit::test]
@@ -160,42 +159,35 @@ mod tests {
                 "Address bar",
                 "Changes and Files",
                 "Unpinned pages",
-                "Sidebar glass",
+                "Sidebar indentation",
             ];
             assert_eq!(titles, order, "{tabs:?}");
         }
     }
 
     /// Appearance has one Layout section, the layout's settings in it, and General none of
-    /// them; and the sidebar's glass leaves the card alone, the theme's own wherever it's set.
+    /// them.
     #[gpui_kit::test]
-    fn the_layout_and_its_sidebars_rows_show_together_and_leave_the_card_as_the_theme_has_it(
-        cx: &mut TestAppContext,
-    ) {
+    fn the_layouts_rows_show_together_in_appearance_alone(cx: &mut TestAppContext) {
         cx.update(crate::test_support::init);
-        let own = cx.read(|cx| theme::palette(cx).card);
-        for at in GLASS_STOPS {
-            cx.update(|cx| settings::update(cx, |settings| settings.sidebar_glass = at));
-            cx.read(|cx| {
-                assert_eq!(theme::palette(cx).card, own, "at {at}");
-                let rows = [
-                    "layout",
-                    "tabs",
-                    "address bar",
-                    "changes and files",
-                    "unpinned pages",
-                    "sidebar glass",
-                ];
-                let together = sections(cx)
-                    .iter()
-                    .filter(|section| rows.iter().all(|row| section.matches(row)))
-                    .count();
-                assert_eq!(together, 1, "at {at}");
-                let on_general = general::sections(cx)
-                    .iter()
-                    .any(|section| section.matches("layout") || section.matches("unpinned"));
-                assert!(!on_general, "at {at}");
-            });
-        }
+        cx.read(|cx| {
+            let rows = [
+                "layout",
+                "tabs",
+                "address bar",
+                "changes and files",
+                "unpinned pages",
+                "sidebar indentation",
+            ];
+            let together = sections(cx)
+                .iter()
+                .filter(|section| rows.iter().all(|row| section.matches(row)))
+                .count();
+            assert_eq!(together, 1);
+            let on_general = general::sections(cx)
+                .iter()
+                .any(|section| section.matches("layout") || section.matches("unpinned"));
+            assert!(!on_general);
+        });
     }
 }

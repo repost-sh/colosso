@@ -14,7 +14,7 @@ use crate::model::Edge;
 use crate::projects::MoveProjectToNewSpace;
 use crate::settings;
 use crate::shell::{
-    ClosePinned, CloseTab, PinnedMenu, RemovePinned, RepinAtCurrent, Shell, Unpin,
+    ClosePinned, CloseTab, PinnedMenu, RemovePinned, ReopenClosedTab, RepinAtCurrent, Shell, Unpin,
 };
 use crate::test_support::{carry, click, draw, let_go, open_page, pin, pinned};
 
@@ -279,6 +279,46 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
     assert!(!shown(&shell, cx).1);
     let alive = page_of(window, &shell, key, cx).map(|(view, _)| view);
     assert_eq!(alive, Some(view), "left, its page is still open");
+}
+
+#[gpui_kit::test]
+fn cmd_shift_t_opens_a_closed_pinned_page_again_at_the_address_it_showed(cx: &mut TestAppContext) {
+    let (window, shell, _) = sidebar_shell(&["sidebar-pin-reopen"], cx);
+    shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("A chat"));
+        cx.notify();
+    });
+    let pages = ["https://a.example/", "https://b.example/"];
+    let keys = pin(window, &shell, &pages, cx);
+    let open = |key: u64, cx: &TestAppContext| {
+        cx.read(|cx| (shell.read(cx).workspace.pane(key)).is_some_and(|page| page.view().is_some()))
+    };
+    let view = cx.read(|cx| shell.read(cx).workspace.pane(keys[1])?.view().cloned());
+    cx.update_window(window, |_, _, cx| {
+        (view.expect("the page shown")).update(cx, |view, cx| {
+            view.navigate("https://b.example/later".into(), cx);
+        });
+    })
+    .unwrap();
+    act(window, CloseTab, cx);
+    assert_eq!((shown(&shell, cx), open(keys[1], cx)), ((None, false), false));
+    act(window, ReopenClosedTab, cx);
+    assert_eq!(shown(&shell, cx), (Some("https://b.example/later".into()), true));
+    assert!(open(keys[1], cx));
+    assert_eq!(pinned(&shell, cx), [pages[0], "https://b.example/later"], "in its own tile");
+    let home = cx.read(|cx| shell.read(cx).workspace.pinned()[1].home.clone());
+    assert_eq!(home, pages[1], "pinned where it was");
+
+    act(window, CloseTab, cx);
+    click(window, "sidebar-pinned-1", cx);
+    assert_eq!(shown(&shell, cx), (Some(pages[1].into()), true), "picked, at where it's pinned");
+    act(window, ReopenClosedTab, cx);
+    assert_eq!(shown(&shell, cx), (Some(pages[1].into()), true), "open since: nothing to bring back");
+
+    act(window, CloseTab, cx);
+    act(window, RemovePinned(keys[1]), cx);
+    act(window, ReopenClosedTab, cx);
+    assert_eq!(pinned(&shell, cx), [pages[0]], "a page no longer pinned stays gone");
 }
 
 #[gpui_kit::test]

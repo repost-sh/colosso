@@ -9,11 +9,11 @@ the code is. Keep it in step with `koyo-rs/koyo/src/shell/sidebar/`, `shell/top_
 what was decided while building, and is the owner's to change, **[ours]**.
 
 The settings are **Tabs**, **Address bar**, **Changes and Files**, **Unpinned pages** and
-**Sidebar glass**, in Settings → Appearance → Layout (`settings/layout.rs`), each but the last also
+**Sidebar indentation**, in Settings → Appearance → Layout (`settings/layout.rs`), each but the last also
 in the right-click menu of the piece it changes. Their choices and defaults are in
 `docs/layout.md`. The icon rail down the window's left is gone, a gutter in its place:
 **Settings…** is in the app's Koyo menu, and ⌘, opens it, as a tab among the unpinned pages that
-closes once anything else shows (11.9).
+stays open until it's closed (11.9).
 
 The visual check draws the sidebar and the rail, then does what a person does in them (a
 space's mark and a tab's row saying a chat works and waits, a tab dragged to another row and
@@ -296,8 +296,8 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
 
 - `settings.json` keeps the spaces (`spaces`: name, projects in the sidebar's order, the project
   selected) and the space shown (`space`); a theme or an `icon` a space has from an earlier build
-  is dropped, and so is a `sidebar_blur`. It keeps the layout's settings: `tabs`, `address_bar`,
-  `changes_and_files`, `loose_pages` and `sidebar_glass`, and `pinned_zone_dismissed`. Koyo writes
+  is dropped, and so are a `sidebar_blur` and a `sidebar_glass`. It keeps the layout's settings: `tabs`, `address_bar`,
+  `changes_and_files`, `loose_pages` and `sidebar_indent`, and `pinned_zone_dismissed`. Koyo writes
   every setting on save, defaults included, so a new default reaches only a file without that
   key.
 - `project_looks` keeps, for each project, how its branches show in the sidebar (section 5):
@@ -356,14 +356,16 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
   - The Changes or Files panel, the glass before it the handle that resizes it.
   - The places a symbol led to, and the bottom panel, under the panes.
   - The Settings tab, and what's said where there's no tab.
-- **The sidebar is one with the rail.** **[asked]** By default the sidebar lies on the window's
+- **The sidebar is one with the rail.** **[asked]** The sidebar lies on the window's
   glass with nothing of its own on it, as the top rail does, blurred by the window's own blur as
   the rest of the window is: no fill, no wallpaper (`docs/chat-backdrop.md` 2), and no hairline
   before the islands, whose corners are all rounded, those beside the sidebar among them.
-- **Sidebar glass** is how see-through the sidebar is: from clear, the default, through the
-  card's own at the middle to solid; the cards stay the theme's own colour. Its surface is what's
-  on the glass short of the margin before the islands, unfilled by default (`fill` and
-  `SidebarFrame` in `shell/sidebar/frame.rs`).
+- **Sidebar indentation** is how far in a branch's row starts from its project's, and a tab's from
+  its branch's: 0, 8, 16, 24 or 32 points, 16 by default (`Settings::sidebar_step`, `inset`). The
+  rows stay as wide as the sidebar. **[asked, 2026-11-25; ours: the stops]**
+- **The branch selected** is lit, but while its tabs are listed under its row, where the tab shown
+  is: collapsed, with no tab, or with the tabs on the rail, its row is. **[asked, 2026-11-25; ours:
+  that it's lit while they aren't listed]**
 - A page is drawn in the window's own frame, so the island's rounded corners clip it as they clip
   the rest of what's on it.
 
@@ -497,8 +499,8 @@ address bar, over the projects (`docs/layout.md`). **[asked]**
     show for a tab moved along its own list. **[ours; the words `docs/layout.md`'s]**
   - **The +.** The **+** after the unpinned pages, always there, opens the launcher for an unpinned
     page whatever tab is shown (`docs/new-tab.md`, `launcher::Opens`). On the rail it's an icon; in
-    the sidebar it's a row like theirs, the plus and **New Tab**, filled at rest and brighter under
-    the pointer (`unpinned::new_tab`). **[asked]** ⌘T opens the same wherever the person is in no branch, a space with no
+    the sidebar it's a row like theirs, the plus and **New Tab**, lit only under the pointer
+    (`unpinned::new_tab`). **[asked]** ⌘T opens the same wherever the person is in no branch, a space with no
     project or a pinned or an unpinned page shown: Tab goes to no other kind there.
     **[`docs/layout.md`]**
 - A row is dragged among the others, as a tab along its list, but joins none: each stays a page.
@@ -579,7 +581,9 @@ menu is the Arc browser's.
   that it goes back to the pinned address rather than the one it last showed]** A page that
   asks to confirm leaving asks first, shown if it wasn't, and the tile's page closes only once the
   person leaves; Cancel keeps it open (`docs/browser.md` 17). **[asked, 2026-11-24: as Chrome]** A
-  pinned page closed or removed isn't among the tabs ⌘⇧T brings back. **[ours]**
+  pinned page closed is among the tabs ⌘⇧T brings back: it opens in its own tile at the address it showed, and
+  stays pinned where it was. **[asked, 2026-11-25]** One removed or unpinned since isn't, nor one
+  opened again. **[ours]**
 - Right-clicking a tile or a button opens its menu: **[asked]**
   - **Edit Pinned Page ›**: **Replace Pinned URL with Current** pins it at the address its page
     shows, greyed out while that's the one it's pinned at; **Edit…** is a dialog with the address
@@ -684,7 +688,7 @@ menu is the Arc browser's.
 | `koyo/src/launcher/here.rs`, `launcher/mod.rs` (`Opens`) | The launcher where the person is in no branch, or asked for by the unpinned pages' +: an unpinned page only |
 | `koyo/src/shell/sidebar/tests/`, `shell/top_rail/tests.rs`, `shell/tile_grid/tests.rs`, `shell/kept/tests/`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `settings/tests.rs`, `control/tests/` | The tests |
 | `koyo/src/shell/sidebar/visual/pins.rs`, `shell/sidebar/visual/rail.rs` | The pictures (`sidebar-pinned-*.png`, `sidebar-unpinned-*.png`, `rail-*.png`) |
-| `koyo/src/model/settings_tab.rs`, `navigation.rs`, `shell/settings_tab.rs`, `settings_view/page_list.rs` | The Settings tab (11.9): on the workspace, opened once, shown over the tab shown, closed by anything else shown, its pages and Back and Forward; on the shell, its close and its content, with its tests in `settings_tab/tests.rs` |
+| `koyo/src/model/settings_tab.rs`, `navigation.rs`, `shell/settings_tab.rs`, `settings_view/page_list.rs` | The Settings tab (11.9): on the workspace, opened once, shown over the tab shown, left open behind anything else shown, its pages and Back and Forward; on the shell, its close and its content, with its tests in `settings_tab/tests.rs` |
 | `koyo/src/shell/top_rail/unpinned.rs` (`settings_tab`), `shell/sidebar/unpinned.rs` (`settings`) | The Settings tab's tab on the rail and its row in the sidebar |
 
 ### 11.9 The Settings tab
@@ -704,10 +708,11 @@ something from the icon pack we already have in the app".
   pages are listed inside the tab, at its left, under their search field, and the page picked is
   beside them. They're the tab's content, on the card, not the sidebar's glass. There's
   no arrow back. **[asked]**
-- It's open only while it's shown: anything else shown closes it, another tab, a pinned or an
-  unpinned page, a branch, a project or a space, a tab or a file opened, the Changes or Files
-  panel. So do its ×, a middle click on it, ⌘W, Escape and app control's `settings_close`; the
-  tab it was over shows again. **[asked]**
+- Anything else shown leaves it open behind: another tab, a pinned or an unpinned page, a branch, a
+  project or a space, a tab or a file opened, the Changes or Files panel. Its tab picks it again, on
+  the page it showed, in every space. **[asked, 2026-11-25: it doesn't close as another tab shows]**
+  It closes by its ×, a middle click on it and app control's `settings_close`, and by ⌘W and Escape
+  while it's shown; the tab it was over shows again. **[asked]**
 - It keeps the pages it showed: Back and Forward (⌘[ and ⌘] outside a page, the mouse's side
   buttons) walk them as a page's walk its history, and stop at its first and last page; while
   it's closed they have nothing to walk. The keyboard's `GoBack` and `GoForward` for Settings
@@ -715,5 +720,4 @@ something from the icon pack we already have in the app".
   showed, with nothing behind it. **[asked: the rail's Settings arrows go; ours: the rest]**
 - It's no branch's or space's, and only shows: it isn't dragged, pinned, copied or moved to a
   branch, isn't among the tabs ⌃⇥ switches between, isn't kept for the next launch, and closed
-  it isn't among the tabs ⌘⇧T brings back, which would bring back a tab that closes again as
-  soon as anything else shows. **[ours]**
+  it isn't among the tabs ⌘⇧T brings back, nor a stop of ⌥↑ and ⌥↓. **[ours]**

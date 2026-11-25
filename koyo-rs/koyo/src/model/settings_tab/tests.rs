@@ -1,13 +1,13 @@
 //! The Settings tab on the workspace: one at most, shown over whatever tab was until it closes,
-//! closed by showing anything else, and Back and Forward through the pages it showed.
+//! open behind anything else shown, and Back and Forward through the pages it showed.
 
 use crate::model::tests::{loose, shown, with_pages};
 use crate::model::{Front, SettingsTab, Workspace};
 use crate::navigation::SettingsPage;
 
-/// The page the Settings tab shows, while it's open.
+/// The page the Settings tab shows, while it's the tab shown.
 fn page(workspace: &Workspace) -> Option<SettingsPage> {
-    workspace.settings().map(SettingsTab::page)
+    workspace.settings_shown().map(SettingsTab::page)
 }
 
 #[test]
@@ -28,7 +28,7 @@ fn settings_opens_once_over_the_tab_shown_which_shows_again_as_it_closes() {
 }
 
 #[test]
-fn showing_any_other_tab_closes_settings() {
+fn any_other_tab_shown_leaves_settings_open_behind() {
     let mut workspace = with_pages(&["a", "b"]);
     workspace.show_pages_of(1);
     workspace.open_settings(None);
@@ -49,10 +49,16 @@ fn showing_any_other_tab_closes_settings() {
     workspace.open_settings(None);
     workspace.show_project(0);
     assert_eq!(page(&workspace), None, "a project");
+    assert!(workspace.settings().is_some(), "open behind them all");
+    assert!(workspace.open_settings(None), "picked, it's shown again");
+    assert_eq!(page(&workspace), Some(SettingsPage::General));
+    workspace.leave_settings();
+    assert!(workspace.close_settings(), "closed from behind");
+    assert!(workspace.settings().is_none());
 }
 
 #[test]
-fn a_pinned_page_shown_closes_settings_and_one_under_it_is_still_kept() {
+fn a_pinned_page_shown_leaves_settings_open_behind_and_one_under_it_is_still_kept() {
     let mut workspace = with_pages(&["a", "b"]);
     let home = shown(&workspace);
     let pinned = workspace.pin_tab((0, 0, 2), home, usize::MAX).expect("pinned");
@@ -81,7 +87,7 @@ fn the_loose_page_pinned_under_settings_is_pinned_shown_and_shows_once_settings_
 fn back_and_forward_retrace_the_pages_the_tab_showed() {
     let mut workspace = with_pages(&[]);
     workspace.open_settings(Some(SettingsPage::General));
-    let tab = workspace.settings_mut().expect("open");
+    let tab = workspace.settings_shown_mut().expect("open");
     assert!(!tab.back(), "no page behind the first");
     assert!(tab.go(SettingsPage::Appearance));
     assert!(tab.go(SettingsPage::About));
@@ -100,7 +106,7 @@ fn back_and_forward_retrace_the_pages_the_tab_showed() {
 fn going_to_a_page_forgets_the_forward_pages_and_the_page_shown_records_nothing() {
     let mut workspace = with_pages(&[]);
     workspace.open_settings(Some(SettingsPage::About));
-    let tab = workspace.settings_mut().expect("open");
+    let tab = workspace.settings_shown_mut().expect("open");
     assert!(!tab.go(SettingsPage::About));
     assert!(!tab.back(), "the page shown recorded nothing");
     assert!(tab.go(SettingsPage::Chat));
@@ -116,6 +122,6 @@ fn settings_opens_again_on_the_page_it_showed_last() {
     workspace.close_settings();
     workspace.open_settings(None);
     assert_eq!(page(&workspace), Some(SettingsPage::KeyboardShortcuts));
-    let tab = workspace.settings_mut().expect("open");
+    let tab = workspace.settings_shown_mut().expect("open");
     assert!(!tab.back(), "a new tab, with no pages behind it");
 }

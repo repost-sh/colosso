@@ -149,7 +149,7 @@ impl Shell {
         let index = target.and_then(|path| self.workspace.project_index(path));
         self.workspace.select_project(index);
         self.follow_space_pages(cx);
-        self.workspace.close_settings();
+        self.workspace.leave_settings();
         cx.notify();
     }
 

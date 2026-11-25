@@ -72,7 +72,7 @@ pub use switcher::visual::run as check_switcher;
 use elements::drag_area;
 use sidebar::{SidebarFrame, slide_out};
 pub use elements::{
-    NEW_PAGE, action_button, add_project_row, ellipsized, glass, icon, icon_button, indented, inset,
+    NEW_PAGE, action_button, add_project_row, ellipsized, glass, icon, icon_button, inset,
     new_page_button, new_tab_button, project_error, resize_handle, row, row_button, row_shape,
     section_label, selectable, solid, tab_close_button,
 };
@@ -182,7 +182,7 @@ impl Shell {
                 this.keep_window(cx);
                 this.tell_sidebar_top(cx);
                 let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
-                let settings = this.workspace.settings().map(SettingsTab::page);
+                let settings = this.workspace.settings_shown().map(SettingsTab::page);
                 let showing = (settings, this.sidebar_open, pane);
                 crate::popup::showing(window.window_handle(), &showing, cx);
             }),
@@ -353,7 +353,7 @@ impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         #[cfg(test)]
         crate::budget::shell_rendered();
-        let settings = self.workspace.settings().is_some();
+        let settings = self.workspace.settings_shown().is_some();
         let root = crate::key_repeat::track(div(), window, cx)
             .key_context(Self::root_keys(settings))
             .track_focus(&self.focus)

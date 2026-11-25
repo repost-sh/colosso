@@ -103,7 +103,7 @@ impl Shell {
     /// ⌘S saves the file shown or, as set, every file with unsaved edits in the window; on
     /// the Settings tab, with no file in sight, nothing.
     fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.workspace.settings().is_some() {
+        if self.workspace.settings_shown().is_some() {
             return;
         }
         let editors = match settings::get(cx).save_scope {

@@ -135,7 +135,7 @@ impl Workspace {
         let key = self.apart.pins.tabs.get(at).map(Pinned::key);
         if key.is_some() {
             self.apart.pins.shown = key;
-            self.apart.settings.close();
+            self.apart.settings.leave();
         }
         key.is_some()
     }

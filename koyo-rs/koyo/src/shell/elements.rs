@@ -15,6 +15,7 @@ use super::Shell;
 use crate::launcher::{NewTab, NewUnpinnedPage};
 use crate::pane::{row_sized, sized_close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
+use crate::settings;
 use crate::theme::{self, Palette};
 
 /// The + that opens the launcher (`docs/new-tab.md`), for a tab on the selected branch unit.
@@ -122,11 +123,6 @@ pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div
 /// branch's, a tab's and an unpinned page's at its depth (`inset`).
 const ROW_INSET: f32 = 8.;
 
-/// How far what's in a row starts in from where it starts in the row it's under: a branch's from
-/// its project's. The row's own room before what's in it, never a margin, so the row, and its
-/// background lit under the pointer or selected, stays as wide as the sidebar (`docs/layout.md`).
-pub const INDENT: f32 = 16.;
-
 /// A row's shape, without what the pointer does to it: a row high, rounded, what's in it in a
 /// line.
 pub fn row_shape(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -142,16 +138,13 @@ pub fn row_shape(id: impl Into<ElementId>) -> Stateful<Div> {
         .text_sm()
 }
 
-/// `row` with what's in it one [`INDENT`] in from the row it's under.
-pub fn indented(row: Stateful<Div>) -> Stateful<Div> {
-    row.pl(inset(1))
-}
-
-/// How far in from a sidebar row's edge what's in it starts, `depth` [`INDENT`]s in: a project's
-/// none, a branch's one, and a branch's tab's two, under the branch's row while the tabs are in
-/// the sidebar (`docs/layout.md`). The row's own room, as `indented`'s is.
-pub fn inset(depth: u8) -> Pixels {
-    px(ROW_INSET + INDENT * f32::from(depth))
+/// How far in from a sidebar row's edge what's in it starts, `depth` steps in, each as far as
+/// Sidebar indentation says (`Settings::sidebar_step`): a project's none, a branch's one, and a
+/// branch's tab's two, under the branch's row while the tabs are in the sidebar
+/// (`docs/layout.md`). The row's own room before what's in it, never a margin, so the row, and its
+/// background lit under the pointer or selected, stays as wide as the sidebar.
+pub fn inset(depth: u8, cx: &App) -> Pixels {
+    px(ROW_INSET + settings::get(cx).sidebar_step() * f32::from(depth))
 }
 
 /// `row` under the pointer, as a selectable row is: `lit` when `selected`, tinted `hover` under

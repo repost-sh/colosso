@@ -16,7 +16,7 @@ use super::pinned::takes_pins;
 use super::{Look, noted, shown_on_hover};
 use crate::chat::Activity;
 use crate::model::{BranchUnit, Tab};
-use crate::pane::{ROW_GLYPH, row_sized};
+use crate::pane::{ROW_BUTTON, ROW_GLYPH, row_sized};
 use crate::settings;
 use crate::shell::{
     MOTION, Shell, ellipsized, inset, row_shape, tab_area, tab_close_button, tab_list, tab_row,
@@ -30,7 +30,8 @@ const ROW: f32 = 36.;
 pub(super) const GAP: f32 = 2.;
 /// The tabs' icons.
 pub(super) const TAB_ICON: f32 = 16.;
-/// How far in from a row's end what's there sits: a tab's ×.
+/// How far in from a row's end what's there sits, in a place as wide as a row's button: a tab's ×
+/// or what it says, a branch's, a project's New worktree button (`end_place`).
 pub(super) const ROW_END: f32 = 6.;
 
 /// A row in the sidebar, as the Arc browser's are: a tab's, an unpinned page's. A row's shape
@@ -112,7 +113,7 @@ fn tab_row_of(
     let (activity, said) = shell.tab_status(tab, !active, cx);
     let row = sidebar_row(("sidebar-tab", branch_index * 100 + tab_index))
         .group("sidebar-tab")
-        .pl(inset(2));
+        .pl(inset(2, cx));
     let row = Shell::tab_press(look.lit(row, active).pr(px(ROW_END)), at, cx)
         .when(matches!(tab, Tab::Split(_)), |row| {
             row.children(sign(activity, ("sidebar-tab", first), look, cx))
@@ -133,7 +134,7 @@ fn tab_row_of(
         let icon = tab_icon(face.icon(TAB_ICON), p).debug_selector(move || {
             format!("tab-icon-{project_index}-{branch_index}-{tab_index}")
         });
-        let end = div().relative().children(mark).child(close);
+        let end = end_place().children(mark).child(close);
         let said = said.map(|said| {
             ellipsized(said)
                 .debug_selector(move || format!("sidebar-tab-said-{first}"))
@@ -172,6 +173,18 @@ fn sign(
     };
     let sign = activity.sign(|| format!("{of}-{key}"), look.p, cx)?;
     Some(sign.debug_selector(move || format!("{of}-{name}-{key}")))
+}
+
+/// The place at a row's end, as wide as a row's button, where what's in it is centred: so what
+/// the rows say there, and their buttons, are in one column.
+pub(super) fn end_place() -> Div {
+    div()
+        .relative()
+        .size(px(ROW_BUTTON))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
 }
 
 /// `sign` at the end of a row of `group`, in the place of what shows there under the pointer, a

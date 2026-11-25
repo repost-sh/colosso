@@ -1,5 +1,5 @@
 //! What the window shows where a tab goes, from the top down (`docs/sidebar.md` 11, 11.9):
-//! the Settings tab while it's open; else the pinned page shown, whichever project is; else the
+//! the Settings tab while it's shown; else the pinned page shown, whichever project is; else the
 //! loose page the space shows; else the selected checkout's tab. What's under the one in front
 //! stays where it is, and shows once what's over it goes: `pinned_shown`, `loose_shown` and
 //! `shown_checkout_tab` say where the person is under the Settings tab as over it, and what's
@@ -44,7 +44,7 @@ impl Workspace {
     /// What the window shows where a tab goes: none while no project is shown and neither a
     /// pinned nor a loose page is.
     pub fn front(&self) -> Option<Front<'_>> {
-        if let Some(settings) = self.settings() {
+        if let Some(settings) = self.settings_shown() {
             return Some(Front::Settings(settings));
         }
         if let Some(at) = self.pinned_shown() {

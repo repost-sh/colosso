@@ -4,7 +4,7 @@
 //! picked, its page shows; dragged, it moves among them, or onto the pill, where it's pinned;
 //! closed, by its × or a middle click, it's gone. A page's tab off the checkout's list let go on
 //! one lands there; with none, a dashed spot shows where they'd be while one is in hand, and takes
-//! it (`docs/layout.md`). The Settings tab, while it's open, comes after them, lit, as it's shown
+//! it (`docs/layout.md`). The Settings tab, while it's open, comes after them, lit while it's shown
 //! (11.9).
 
 use gpui_kit::base::ElementExt as _;
@@ -76,17 +76,18 @@ fn spot(shell: &Shell, p: Palette, cx: &mut Context<Shell>) -> Stateful<Div> {
     loose_spot(spot, (p.text, p.hover), cx)
 }
 
-/// The Settings tab, after the loose pages, while it's open: lit, as it's the tab shown, its gear
-/// where a page's icon goes.
+/// The Settings tab, after the loose pages, while it's open: lit while it's the tab shown, its
+/// gear where a page's icon goes.
 pub(super) fn settings_tab(
     shell: &Shell,
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Option<Stateful<Div>> {
     shell.workspace.settings()?;
+    let shown = shell.workspace.settings_shown().is_some();
     let close = settings_close(close_button("rail-settings-tab-close", p), cx)
         .debug_selector(|| "rail-settings-tab-close".to_owned());
-    let tab = rail_tab("rail-settings-tab", true, p)
+    let tab = rail_tab("rail-settings-tab", shown, p)
         .debug_selector(|| "rail-settings-tab".to_owned());
     let face = (icon(SettingsTab::ICON, 13.).into_any_element(), ellipsized(SettingsTab::TITLE));
     Some(settings_row(single_page(tab, face, None, close), cx))

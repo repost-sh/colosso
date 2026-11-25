@@ -1,5 +1,5 @@
-//! ⌘⇧T: the tab closed last comes back where it was, a worktree's on its checkout and a loose
-//! page among its space's, each pane making what it showed again (`Shell::make_shown`): its
+//! ⌘⇧T: the tab closed last comes back where it was, a worktree's on its checkout a loose
+//! page among its space's and a pinned page in its tile, each pane making what it showed again (`Shell::make_shown`): its
 //! pages at the addresses they showed, its files as they are on disk, the diffs' pane on the
 //! checkout's diffs. And the file panes the window or ⌘⇧T brought back, which open their files
 //! once their tab is shown.
@@ -14,8 +14,8 @@ use crate::model::{ClosedFrom, ClosedTab, Content, Editor, EditorFile, Loose, Pa
 
 impl Shell {
     /// Opens the tab closed last again where it was, and shows it: a worktree's tab on its
-    /// checkout at its place, a loose page among its space's at its place, its space shown.
-    /// Where it went back, unless no tab was closed.
+    /// checkout at its place, a loose page among its space's at its place, its space shown, and a
+    /// pinned page in its tile. Where it went back, unless no tab was closed.
     pub(crate) fn reopen_closed_tab(
         &mut self,
         window: &mut Window,
@@ -25,8 +25,8 @@ impl Shell {
     }
 
     /// Opens the worktree's tab closed last again, as `reopen_closed_tab` does, as `(project,
-    /// branch, tab)`: what app control's `tab_reopen` brings back. A loose page closed since is
-    /// the person's, and stays closed for them to bring back.
+    /// branch, tab)`: what app control's `tab_reopen` brings back. A loose or a pinned page closed
+    /// since is the person's, and stays closed for them to bring back.
     pub(crate) fn reopen_closed_checkout_tab(
         &mut self,
         window: &mut Window,
@@ -51,7 +51,12 @@ impl Shell {
                 self.workspace.restore_tab((project, branch, place), tab);
                 Spot::Checkout(project, branch, place)
             }
-            (ClosedFrom::Checkout(_), Spot::Pinned | Spot::Loose(_)) => return None,
+            (ClosedFrom::Checkout(_), Spot::Pinned | Spot::Loose(_))
+            | (ClosedFrom::Pinned, Spot::Loose(_)) => return None,
+            (ClosedFrom::Pinned, Spot::Pinned) => {
+                self.workspace.restore_pinned(tab);
+                Spot::Pinned
+            }
             (ClosedFrom::Loose { project, .. }, back @ (Spot::Pinned | Spot::Loose(_))) => {
                 if let Spot::Loose(space) = back
                     && !self.workspace.lists_loose_of(space)

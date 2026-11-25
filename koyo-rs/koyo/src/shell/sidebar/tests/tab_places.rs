@@ -20,7 +20,6 @@ use crate::settings::{
     self, ChangesAndFiles, LoosePages, SetChangesAndFiles, SetLoosePages, SetTabs, Tabs,
 };
 use crate::shell::Shell;
-use crate::shell::elements::INDENT;
 use crate::test_support::{
     act, center_of, click, draw, drawn, git, hover, open_page, pin, shell_on, shell_on_chat,
 };
@@ -142,10 +141,10 @@ fn the_tabs_go_into_the_sidebar_together_and_take_the_rail_away(cx: &mut TestApp
     assert_eq!(in_sidebar(cx), [false; 4], "the sidebar left with its rows alone");
 }
 
-/// New Tab's row is an unpinned page's, the next down, as wide and as tall and as rounded, filled
-/// as a row under the pointer is, and brighter under it; with no page it's there alone, as wide.
+/// New Tab's row is an unpinned page's, the next down, as wide and as tall: nothing behind it at
+/// rest, and lit under the pointer as theirs are; with no page it's there alone, as wide.
 #[gpui_kit::test]
-fn new_tab_is_a_filled_row_as_wide_as_the_unpinned_pages(cx: &mut TestAppContext) {
+fn new_tab_is_a_row_as_the_unpinned_pages_are_lit_only_under_the_pointer(cx: &mut TestAppContext) {
     let (window, shell) = with_pages("sidebar-new-tab-row", cx);
     cx.update(|cx| cx.set_reduce_motion(true));
     act(window, SetTabs(Tabs::Sidebar), cx);
@@ -161,9 +160,11 @@ fn new_tab_is_a_filled_row_as_wide_as_the_unpinned_pages(cx: &mut TestAppContext
         let there = super::painted(new_tab.center(), window, cx);
         there.last().map(|(fill, _)| *fill)
     };
-    assert_eq!(fill(cx), Some(look.row_hover.into()), "filled at rest");
+    assert_ne!(fill(cx), Some(look.row_hover.into()), "nothing behind it at rest");
     hover(window, new_tab.center(), cx);
-    assert_eq!(fill(cx), Some(look.tile_hover.into()), "brighter under the pointer");
+    assert_eq!(fill(cx), Some(look.row_hover.into()), "lit under the pointer");
+    hover(window, point(px(1000.), px(500.)), cx);
+    assert_ne!(fill(cx), Some(look.row_hover.into()), "nothing once the pointer is off it");
 
     let key = cx.read(|cx| shell.read(cx).workspace.loose()[0].key());
     cx.update_window(window, |_, window, cx| {
@@ -190,8 +191,8 @@ fn a_branchs_tabs_are_a_step_in_from_its_row_and_as_wide(cx: &mut TestAppContext
     }
     let icons = ["sidebar-project-icon-0", "sidebar-branch-icon-0-0", "tab-icon-0-0-0"];
     let [folder, glyph, page] = icons.map(|icon| bounds(window, icon, cx));
-    assert_eq!(glyph.left() - folder.left(), px(INDENT), "{glyph:?} in from {folder:?}");
-    assert_eq!(page.left() - glyph.left(), px(INDENT), "{page:?} in from {glyph:?}");
+    assert_eq!(glyph.left() - folder.left(), px(settings::INDENT), "{glyph:?} in from {folder:?}");
+    assert_eq!(page.left() - glyph.left(), px(settings::INDENT), "{page:?} in from {glyph:?}");
 }
 
 /// With the tabs in the sidebar a branch's row collapses its tabs and brings them back, kept for
@@ -229,6 +230,51 @@ fn a_branchs_row_collapses_its_tabs_in_the_sidebar_and_selects_it_on_the_rail(
     click(window, "sidebar-branch-0-1", cx);
     assert_eq!(selected(cx), Some(1), "selected");
     assert!(collapsed(&feat, cx), "its tabs left as they were");
+}
+
+/// With the tabs in the sidebar the selected branch's row has nothing behind it while its tabs are
+/// listed under it, the one shown lit there; collapsed, or with the tabs on the rail, it's lit.
+#[gpui_kit::test]
+fn the_selected_branchs_row_is_lit_only_while_its_tabs_arent_listed(cx: &mut TestAppContext) {
+    let (window, shell, _) = with_feat("sidebar-branch-lit", cx);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("m1"));
+        cx.notify();
+    });
+    let pill = cx.read(super::super::Look::of).pill;
+    let lit = |selector: &'static str, cx: &mut TestAppContext| {
+        hover(window, point(px(1000.), px(500.)), cx);
+        let at = bounds(window, selector, cx).center();
+        super::painted(at, window, cx).last().map(|(fill, _)| *fill) == Some(pill.into())
+    };
+    act(window, SetTabs(Tabs::TopRail), cx);
+    assert!(lit("sidebar-branch-0-0", cx), "on the rail");
+    act(window, SetTabs(Tabs::Sidebar), cx);
+    assert!(!lit("sidebar-branch-0-0", cx), "its tabs listed");
+    assert!(lit("tab-0-0-0", cx), "the tab shown is");
+    click(window, "sidebar-branch-0-0", cx);
+    assert!(drawn(window, "tab-0-0-0", cx).is_none());
+    assert!(lit("sidebar-branch-0-0", cx), "collapsed");
+}
+
+/// The sidebar's rows step in as far as Sidebar indentation says, and stay as wide.
+#[gpui_kit::test]
+fn the_rows_step_in_as_far_as_set_and_stay_as_wide(cx: &mut TestAppContext) {
+    let (window, _) = shell_on_chat("sidebar-indent-set", cx);
+    act(window, SetTabs(Tabs::Sidebar), cx);
+    for step in settings::INDENT_STOPS {
+        cx.update(|cx| settings::update(cx, |settings| settings.sidebar_indent = step));
+        draw(window, cx);
+        let icons = ["sidebar-project-icon-0", "sidebar-branch-icon-0-0", "tab-icon-0-0-0"];
+        let [folder, glyph, page] = icons.map(|icon| bounds(window, icon, cx));
+        assert_eq!(glyph.left() - folder.left(), px(step), "{step}");
+        assert_eq!(page.left() - glyph.left(), px(step), "{step}");
+        let rows = ["sidebar-project-0", "sidebar-branch-0-0", "tab-0-0-0"];
+        let [project, branch, tab] = rows.map(|row| bounds(window, row, cx));
+        assert_eq!(branch.size.width, project.size.width, "{step}");
+        assert_eq!(tab.size.width, project.size.width, "{step}");
+    }
 }
 
 /// What the panes show: "loose" for an unpinned page, else the title of the branch's tab.

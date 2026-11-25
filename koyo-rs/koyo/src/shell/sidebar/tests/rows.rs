@@ -13,7 +13,6 @@ use crate::projects::read_worktrees;
 use crate::right_panel::View;
 use crate::settings;
 use crate::shell::Shell;
-use crate::shell::elements::INDENT;
 use crate::test_support::{
     center_of, click, draw, drawn, git, hold, hover, let_go, move_held, repo, shell_on, shell_with,
 };
@@ -182,5 +181,5 @@ fn a_branchs_row_is_one_step_in_from_its_projects_and_as_wide(cx: &mut TestAppCo
     assert_eq!((branch.left(), branch.size.width), (project.left(), project.size.width));
     let folder = bounds("sidebar-project-icon-0", cx);
     let glyph = bounds("sidebar-branch-icon-0-0", cx);
-    assert_eq!(glyph.left() - folder.left(), px(INDENT), "{glyph:?} in from {folder:?}");
+    assert_eq!(glyph.left() - folder.left(), px(settings::INDENT), "{glyph:?} in from {folder:?}");
 }

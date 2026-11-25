@@ -1,7 +1,8 @@
 //! The Settings tab (`docs/sidebar.md` 11.9): ⌘, opens it among the loose tabs, or picks
 //! it again; the workspace sidebar stays beside it wherever the tabs are, its own pages listed
 //! inside it at its left, with no arrow back; its pages switch inside it, Back and Forward
-//! walking them; and going to another tab or a worktree closes it, as its × does.
+//! walking them; it stays open behind another tab, a branch or a space shown, until its × or, while
+//! it shows, ⌘W or Escape closes it.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{AnyWindowHandle, Bounds, Entity, Pixels, TestAppContext, px};
@@ -10,7 +11,8 @@ use crate::model::{PaneKind, SettingsTab};
 use crate::navigation::SettingsPage;
 use crate::settings::{self, Tabs};
 use crate::shell::Shell;
-use crate::test_support::{click, draw, drawn, open_page, press, shell_on};
+use crate::shell::spaces::NewSpace;
+use crate::test_support::{act, click, draw, drawn, open_page, press, shell_on};
 use crate::theme::TITLE_BAR_HEIGHT;
 
 /// The shell with the tabs where `tabs` puts them, on a checkout whose one tab is a chat, motion
@@ -130,25 +132,72 @@ fn settings_has_no_arrow_back(cx: &mut TestAppContext) {
     }
 }
 
+/// Whether Settings' own pages are drawn: whether its tab is the one shown.
+fn shows_settings(window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
+    drawn(window, "settings-page-link-0", cx).is_some()
+}
+
 #[gpui_kit::test]
-fn going_to_another_tab_or_a_worktree_closes_settings(cx: &mut TestAppContext) {
-    let (window, _shell) = chat_shell("settings-tab-leave-rail", Tabs::TopRail, cx);
-    open_settings(window, cx);
-    assert!(settings_tab(window, Tabs::TopRail, cx).is_some());
-    click(window, "tab-0-0-0", cx);
-    assert!(settings_tab(window, Tabs::TopRail, cx).is_none(), "the chat's tab picked");
-    assert!(drawn(window, "settings-page-link-0", cx).is_none());
+fn settings_stays_open_as_another_tab_shows_and_its_tab_picks_it_again(cx: &mut TestAppContext) {
+    for (name, tabs) in [("settings-tab-stays-rail", Tabs::TopRail), ("settings-tab-stays-sidebar", Tabs::Sidebar)] {
+        let (window, shell) = chat_shell(name, tabs, cx);
+        open_settings(window, cx);
+        click(window, APPEARANCE, cx);
+        click(window, "tab-0-0-0", cx);
+        assert!(settings_tab(window, tabs, cx).is_some(), "{tabs:?}: open behind the chat");
+        assert!(!shows_settings(window, cx), "{tabs:?}: the chat shows");
+        let kind = |cx: &TestAppContext| {
+            cx.read(|cx| shell.read(cx).workspace.tab_shown().map(|tab| tab.first().kind()))
+        };
+        assert_eq!(kind(cx), Some(PaneKind::Chat), "{tabs:?}");
 
+        click(window, tab_of(tabs).0, cx);
+        assert!(shows_settings(window, cx), "{tabs:?}: picked, it shows");
+        assert!(!on_general(window, cx), "{tabs:?}: on the page it showed");
+        press(window, "cmd-[", cx);
+        assert!(on_general(window, cx), "{tabs:?}: with the pages behind it");
+    }
+}
+
+#[gpui_kit::test]
+fn settings_stays_open_behind_a_branch_picked_and_a_space_shown(cx: &mut TestAppContext) {
+    let (window, _shell) = chat_shell("settings-tab-stays-behind", Tabs::TopRail, cx);
     open_settings(window, cx);
-    assert!(settings_tab(window, Tabs::TopRail, cx).is_some());
     click(window, "sidebar-branch-0-0", cx);
-    assert!(settings_tab(window, Tabs::TopRail, cx).is_none(), "the worktree picked");
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some(), "behind the branch's tab");
+    assert!(!shows_settings(window, cx));
 
-    let (window, _shell) = chat_shell("settings-tab-leave-sidebar", Tabs::Sidebar, cx);
     open_settings(window, cx);
-    assert!(settings_tab(window, Tabs::Sidebar, cx).is_some());
+    assert!(shows_settings(window, cx), "opening it again picks it");
+    act(window, NewSpace, cx);
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some(), "in the next space too");
+    assert!(!shows_settings(window, cx));
+}
+
+#[gpui_kit::test]
+fn cmd_w_and_escape_close_settings_only_while_it_shows_and_its_x_from_behind(cx: &mut TestAppContext) {
+    let (window, shell) = chat_shell("settings-tab-keys", Tabs::TopRail, cx);
+    let tabs = |cx: &TestAppContext| cx.read(|cx| shell.read(cx).workspace.branch().map(|unit| unit.tabs.len()));
+    open_settings(window, cx);
+    press(window, "escape", cx);
+    draw(window, cx);
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_none(), "Escape on it");
+
+    open_settings(window, cx);
     click(window, "tab-0-0-0", cx);
-    assert!(settings_tab(window, Tabs::Sidebar, cx).is_none(), "the chat's row picked");
+    press(window, "escape", cx);
+    draw(window, cx);
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some(), "Escape on the chat leaves it");
+    click(window, tab_of(Tabs::TopRail).1, cx);
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_none(), "its \u{d7} from behind");
+    assert_eq!(tabs(cx), Some(1), "the chat stays");
+
+    open_settings(window, cx);
+    click(window, "tab-0-0-0", cx);
+    press(window, "cmd-w", cx);
+    draw(window, cx);
+    assert_eq!(tabs(cx), Some(0), "\u{2318}W closes the chat shown");
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some(), "and not Settings behind it");
 }
 
 #[gpui_kit::test]
