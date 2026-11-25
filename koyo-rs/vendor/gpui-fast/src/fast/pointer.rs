@@ -26,6 +26,6 @@ pub(crate) fn hit_test(window: &Window, frame: &Frame) -> HitTest {
     if window.fast_pointer_outside {
         HitTest::default()
     } else {
-        frame.hit_test(window.mouse_position)
+        frame.hit_test(window, window.mouse_position)
     }
 }

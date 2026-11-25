@@ -174,7 +174,7 @@ pub(crate) fn before_dispatch(window: &mut Window, cx: &mut App, event: &Platfor
     let moved_onto = match event {
         PlatformInput::MouseMove(event) => window
             .rendered_frame
-            .hit_test(event.position)
+            .hit_test(window, event.position)
             .ids
             .first()
             .copied(),

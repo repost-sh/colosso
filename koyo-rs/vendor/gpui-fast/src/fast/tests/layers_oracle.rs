@@ -814,7 +814,7 @@ fn draw(
         let hits = points
             .iter()
             .map(|&position| {
-                let hit = frame.hit_test(position);
+                let hit = frame.hit_test(window, position);
                 let hitboxes: Vec<String> = hit
                     .ids
                     .iter()

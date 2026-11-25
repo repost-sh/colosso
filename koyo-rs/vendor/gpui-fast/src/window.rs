@@ -879,7 +879,7 @@ impl Hitbox {
     /// Checks whether this hitbox would be hovered at `position`, regardless of the current input
     /// modality or mouse position.
     pub fn is_hovered_at(&self, position: Point<Pixels>, window: &Window) -> bool {
-        let hit_test = window.rendered_frame.hit_test(position);
+        let hit_test = window.rendered_frame.hit_test(window, position);
         hit_test
             .ids
             .iter()
@@ -1197,8 +1197,8 @@ impl Frame {
             .into_inner()
     }
 
-    pub(crate) fn hit_test(&self, position: Point<Pixels>) -> HitTest {
-        if let Some(hit_test) = crate::fast::composition::hit_test(self, position) {
+    pub(crate) fn hit_test(&self, window: &Window, position: Point<Pixels>) -> HitTest {
+        if let Some(hit_test) = crate::fast::composition::hit_test(window, self, position) {
             return hit_test;
         }
         let mut set_hover_hitbox_count = false;

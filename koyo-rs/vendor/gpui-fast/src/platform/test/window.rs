@@ -581,6 +581,19 @@ impl PlatformWindow for TestWindow {
         self.0.lock().appearance_change_callback = Some(callback);
     }
 
+    /// Koyo: a test's window composes surfaces, stacked by GPUI's own tree alone: there is no
+    /// compositor to hand their order to, and what it draws is the whole scene.
+    fn enable_window_composition(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn set_composition_order(
+        &self,
+        _surfaces: &[crate::PlatformCompositionSurface],
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
     fn draw(&self, scene: &Scene) {
         let scale_factor = self.scale_factor();
         let mut state = self.0.lock();

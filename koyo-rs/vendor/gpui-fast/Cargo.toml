@@ -96,6 +96,11 @@ x11 = ["scap?/x11"]
 name = "gpui"
 path = "src/gpui.rs"
 
+[[test]]
+name = "native_surfaces"
+path = "tests/native_surfaces.rs"
+required-features = ["test-support"]
+
 [dependencies.accesskit]
 version = "0.24.0"
 features = ["enumn"]

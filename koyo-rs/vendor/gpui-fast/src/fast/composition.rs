@@ -575,7 +575,8 @@ pub(crate) struct SurfaceStarts(Vec<(CompositionSurfaceId, usize)>);
 /// and scroll-layer replay; no second layout or input tree is built.
 #[derive(Default)]
 pub(crate) struct SurfaceInput {
-    order: Vec<(CompositionSurfaceId, Option<Bounds<Pixels>>)>,
+    /// The frame's surfaces, from the lowest up.
+    order: Vec<CompositionSurfaceId>,
     scope: Option<CompositionSurfaceId>,
     base: Option<CompositionSurfaceId>,
     owners: FxHashMap<HitboxId, CompositionSurfaceId>,
@@ -633,13 +634,7 @@ pub(crate) fn finish_input(window: &mut Window) {
     input
         .hitboxes
         .retain(|surface, _| state.tree.kind(*surface).is_ok());
-    for surface in state.input_order.iter().copied() {
-        let native = state.platform_surfaces.get(&surface).map(|native| {
-            input_bounds(&state, surface, native.bounds().to_pixels(scale), scale)
-                .unwrap_or_default()
-        });
-        input.order.push((surface, native));
-    }
+    input.order.extend_from_slice(&state.input_order);
     for hitbox in &window.next_frame.hitboxes {
         let surface = input
             .owners
@@ -673,7 +668,15 @@ pub(crate) fn finish_input(window: &mut Window) {
 
 /// Native content blocks GPUI hover and click targets behind it, while keeping
 /// the existing GPUI scroll blockers and capture dispatch unchanged.
+///
+/// Koyo: the frame says how its surfaces are stacked and which hitboxes are on
+/// each; where a native surface is, and whether it's there at all, is asked of
+/// the composition itself, as [`native_target`] does. Upstream noted it in the
+/// frame. A surface is removed or hidden between frames and no frame follows
+/// for that, so one gone since the frame went on covering what was drawn in
+/// its place.
 pub(crate) fn hit_test(
+    window: &Window,
     frame: &crate::window::Frame,
     point: Point<Pixels>,
 ) -> Option<crate::window::HitTest> {
@@ -681,16 +684,18 @@ pub(crate) fn hit_test(
     if input.order.is_empty() {
         return None;
     }
+    let state = window.fast_composition.0.borrow();
+    let scale = window.scale_factor();
     let mut result = crate::window::HitTest::default();
     let mut hover = None;
-    'surfaces: for (surface, native) in input.order.iter().rev() {
-        if let Some(bounds) = native {
-            if bounds.contains(&point) {
+    'surfaces: for surface in input.order.iter().rev().copied() {
+        if let Some(native) = state.platform_surfaces.get(&surface) {
+            if native_covers(&state, surface, native, point, scale) {
                 break;
             }
             continue;
         }
-        let Some(hitboxes) = input.hitboxes.get(surface) else {
+        let Some(hitboxes) = input.hitboxes.get(&surface) else {
             continue;
         };
         for hitbox in hitboxes.iter().rev() {
@@ -1490,6 +1495,18 @@ fn input_bounds(
     (!bounds.is_empty()).then_some(bounds)
 }
 
+/// Whether `native`, the native content of `surface`, is there at `point`.
+fn native_covers(
+    state: &WindowCompositionState,
+    surface: CompositionSurfaceId,
+    native: &ManagedPlatformSurface,
+    point: Point<Pixels>,
+    scale: f32,
+) -> bool {
+    input_bounds(state, surface, native.bounds().to_pixels(scale), scale)
+        .is_some_and(|bounds| bounds.contains(&point))
+}
+
 fn visible_surface(state: &WindowCompositionState, surface: CompositionSurfaceId) -> bool {
     let mut current = Some(surface);
     while let Some(id) = current {
@@ -1520,14 +1537,7 @@ fn native_target(window: &Window, scroll: bool) -> Option<CompositionSurfaceId> 
             continue;
         }
         if let Some(native) = state.platform_surfaces.get(&surface) {
-            if input_bounds(
-                &state,
-                surface,
-                native.bounds().to_pixels(window.scale_factor()),
-                window.scale_factor(),
-            )
-            .is_some_and(|bounds| bounds.contains(&point))
-            {
+            if native_covers(&state, surface, native, point, window.scale_factor()) {
                 return Some(surface);
             }
         } else if let Some(regions) = window
