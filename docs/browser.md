@@ -1487,35 +1487,46 @@ Chrome's toolbar button, which no page shows (`koyo-browser-host/tests/embedded/
 ## 17. A page the person closes [decided]
 
 Closing a page asks it first, as Chrome does (2026-11-24, the owner: Chrome asks for YouTube
-Music while it plays). A page that asks to confirm leaving (`beforeunload`) asks the person
-"Leave site?": **Leave** closes the page and only then its tab, **Cancel** keeps both as they
-were. A page that doesn't ask goes as fast as before.
+Music while it plays; 2026-11-25: closes of several pages too). A page that asks to confirm
+leaving (`beforeunload`) asks the person "Leave site?": **Leave** lets what they close go,
+**Cancel** keeps it as it was. A page that doesn't ask goes as fast as before.
 
-- **Which closes ask.** The person's closes that take one open page: ⌘W on a pinned, a loose
-  or a worktree's page, its tab's × or a middle click on it, a pinned page's Close and Remove
-  Pinned Tab, a split pane's ×, and a tab whose one page sits beside terminals or files, once
-  those are agreed to (`shell/closing.rs`, `ask_then`). Each keeps its tab or pane until the
-  page has gone, then does what it does today: a pinned page stays pinned and closed, a loose
-  one and a worktree's tab are kept for ⌘⇧T (`shell/leaving.rs`). A second close while the
-  page asks does nothing more. A page not open closes at once.
-- **Which don't.** Closes that take several pages at once, a tab of two pages, a worktree's
-  tabs cleared, a worktree or a project removed, a project put on another profile, the app
-  quitting, and agents' `tab_close` and `pane_close`, let every page go unasked.
-- **Its question shows.** A page closed from where it isn't shown, a pinned tile's Close,
-  shows as it asks, where its dialog opens (`BrowserEvent::Activate`).
-- **The protocol** (22). The app asks with `AppRequest::Leave`; the host has CEF try to close
+- **Which closes ask.** The person's: ⌘W on a pinned, a loose or a worktree's page, its tab's ×
+  or a middle click on it, a pinned page's Close and Remove Pinned Tab, a split pane's ×, a tab
+  of several pages, Clear Tabs, a project, a worktree or a space with its projects taken out,
+  the window closing, and ⌘Q; after what terminals run and unsaved files are agreed to
+  (`shell/closing.rs`, `ask_then`; `shell/actions.rs`, `ask_all_then`). A worktree's deletion
+  asks before its own dialog opens.
+- **Several pages** are asked one after the other, as Chrome asks a window's tabs, and nothing
+  closes until every one may be left: staying on one keeps them all (`shell/leaving.rs`,
+  `ask_pages_then`). What closes then goes as it does when nothing asks: a pinned page stays
+  pinned and closed, a loose one and a worktree's tab are kept for ⌘⇧T. A close of a page whose
+  question is up, for a close, ⌘Q again, or for a link they followed, shows the question and
+  does nothing more; one of a page asked that hasn't said takes the place of the first. A page not open, or gone meanwhile, isn't asked.
+- **The person answers.** A page they're closing that an agent drives asks the person, and the
+  agent's `browser_dialog` doesn't answer for them (`browser/agent/asking.rs`).
+- **Which don't.** Agents' `tab_close` and `pane_close`; a project put on another profile and
+  clearing browsing data, whose pages open again; and quitting from the Dock or by logging out,
+  which can't be held up to ask.
+- **Its question shows.** A page asked where it isn't shown, a pinned tile's Close, shows as it
+  asks, its window in front, where its dialog opens (`BrowserEvent::AsksToLeave`).
+- **The protocol** (23). The app asks with `AppRequest::Leave`; the host has CEF try to close
   the browser (`TryCloseBrowser`), which runs the page's `beforeunload` and, when it asks,
   `OnBeforeUnloadDialog`, which the host puts to the person (`HostEvent::Dialog`,
-  `Dialog::BeforeUnload`). Left, the page closes and the host says so as of one that closed
-  itself (`HostEvent::TabClosed`, `HostEvent::Closed`), and the view, which holds what the
-  person's close does (`BrowserView::leave`), does it; stayed, the host says nothing and the
-  view lets it go, as it does when the question is withdrawn or lost with the engine.
-  `AppRequest::Close` lets a page go unasked: the host answers its question yes itself, one
-  already put to the person too, which the app hears withdrawn (`HostEvent::DialogClosed`), so
-  a page asking never holds up a close, nor the host quitting
-  (`koyo-browser-host/src/host/panes.rs`, `dialogs.rs`, `pane/prompts.rs`).
+  `Dialog::BeforeUnload`). Once the page may be left CEF asks the host whether to close it
+  (`DoClose`), which says no, and tells the app (`HostEvent::LeaveAnswered`, `may`). The person staying,
+  the question withdrawn, or the page asking for another reason already, which the host knows
+  first, answers that they may not: each ask is answered once. The window waits for each page's answer in
+  turn (`shell/leaving.rs`), which the view holds (`BrowserView::leave`); the engine gone with a
+  question up is the person staying.
+  `AppRequest::Close` closes a page unasked, as CEF documents `CloseBrowser(true)`; a question
+  already put to the person is withdrawn (`HostEvent::DialogClosed`). CEF alone calls `DoClose`
+  for Alloy style only and asks a page it's forced to close, which
+  `script/cef-patches/page-asked-before-close.patch` changes.
 - **Checked** on the engine (`koyo-browser-host/tests/smoke/leaving.rs`): a page that asks
-  asks and goes once left, stays when stayed and closes on Close after, goes on Close with its
-  question up; one that doesn't ask goes at once. In the app with a test host
-  (`koyo/src/shell/leaving/tests.rs`): each kind of tab waits for its page, stays when the
-  person stays or the question is withdrawn, and goes as it does today once the page went.
+  asks, may be left once left and is open still, asks again, and stays when stayed; asked again
+  with its question up it waits for the answer, its question of a link's too; one that
+  doesn't ask may be left at once; one the app closes isn't asked, with its question up or not.
+  In the app with a test host (`koyo/src/shell/leaving/tests.rs`): each kind of tab waits for its
+  page and stays when the person stays or the question is withdrawn; a tab of two pages, Clear
+  Tabs, a project removed and the window ask each page, and staying on one keeps all.

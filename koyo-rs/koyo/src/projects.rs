@@ -9,12 +9,14 @@ use std::sync::{LazyLock, Mutex};
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
-    Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement, MouseButton,
-    MouseDownEvent, PathPromptOptions, SharedString, Task, Window, actions,
+    Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement,
+    MouseButton, MouseDownEvent, PathPromptOptions, SharedString, Task, WeakEntity, Window,
+    actions,
 };
 use koyo_git::{Repo, Worktree};
 
-use crate::model::PaneKind;
+use crate::browser::BrowserView;
+use crate::model::{PaneKind, Spot};
 use crate::settings;
 use crate::shell::Shell;
 use crate::{delete_worktree, modal, new_worktree};
@@ -145,7 +147,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
             cx.listener(|this, DeleteWorktree(path): &DeleteWorktree, window, cx| {
                 if let Some(project) = this.workspace.project_of(path) {
                     let project = project.path.clone();
-                    delete_worktree::open(cx.weak_entity(), project, path.clone(), window, cx);
+                    this.ask_to_delete_worktree(project, path.clone(), window, cx);
                 }
             }),
         )
@@ -156,7 +158,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
         )
         .on_action(
             cx.listener(|this, RemoveProject(path): &RemoveProject, _, cx| {
-                this.remove_project(path, cx);
+                this.ask_to_remove_project(path.clone(), cx);
             }),
         )
         .on_action(
@@ -420,6 +422,47 @@ impl Shell {
         if self.workspace.select_worktree(project, path) {
             self.new_tab(PaneKind::Chat, cx);
         }
+    }
+
+    /// Takes the project out of the sidebar, as the person asks, once they may leave its pages.
+    fn ask_to_remove_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let pages = self.pages_of_projects(std::slice::from_ref(&path));
+        self.ask_pages_then(pages, move |shell, cx| shell.remove_project(&path, cx), cx);
+    }
+
+    /// Asks the person about deleting the worktree at `path` of `project`, once they may leave its
+    /// pages, which go with it.
+    fn ask_to_delete_worktree(
+        &mut self,
+        project: PathBuf,
+        path: PathBuf,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let unit = self.workspace.unit_at(&path);
+        let here = |spot| matches!(spot, Spot::Checkout(project, branch, _) if unit == Some((project, branch)));
+        let pages = self.pages_of(here);
+        let over = window.window_handle();
+        let ask = move |_: &mut Self, cx: &mut Context<Self>| {
+            delete_worktree::open(cx.weak_entity(), project, path, over, cx);
+        };
+        self.ask_pages_then(pages, ask, cx);
+    }
+
+    /// The pages of the space at `index`: its projects', and its loose ones.
+    pub(crate) fn pages_of_space(&self, index: usize, cx: &App) -> Vec<WeakEntity<BrowserView>> {
+        let Some(space) = settings::get(cx).spaces.get(index) else {
+            return Vec::new();
+        };
+        let mut pages = self.pages_of_projects(&space.projects);
+        pages.extend(self.pages_of(|spot| spot == Spot::Loose(space.id)));
+        pages
+    }
+
+    /// The pages of `projects`' checkouts.
+    pub(crate) fn pages_of_projects(&self, projects: &[PathBuf]) -> Vec<WeakEntity<BrowserView>> {
+        let at: Vec<usize> = projects.iter().filter_map(|path| self.workspace.project_index(path)).collect();
+        self.pages_of(|spot| matches!(spot, Spot::Checkout(project, ..) if at.contains(&project)))
     }
 
     /// Takes the project out of the sidebar. Its files and worktrees stay as they are.

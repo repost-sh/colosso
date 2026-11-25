@@ -227,6 +227,11 @@ impl Settings {
             .unwrap_or_default()
     }
 
+    /// Where the space known by `id` is.
+    pub fn space_known_by(&self, id: u64) -> Option<usize> {
+        self.spaces.iter().position(|space| space.id == id)
+    }
+
     /// Deletes the space at `index`, its projects going as `leftovers` says, unless it's the last
     /// one; gives back the projects to take out of Koyo. The space shown stays shown, or the one
     /// before it once it's gone.

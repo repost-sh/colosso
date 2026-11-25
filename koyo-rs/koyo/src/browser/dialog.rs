@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use gpui_kit::{App, AppContext as _, Context, PathPromptOptions, Window};
 use koyo_browser_ipc::{Answer, AppRequest, Dialog, FileMode, Permission};
 
-use super::view::BrowserView;
+use super::view::{BrowserEvent, BrowserView};
 use crate::modal;
 use window::PageDialog;
 
@@ -68,7 +68,9 @@ impl BrowserView {
             }
             return;
         }
-        self.leave_asked(&question, cx);
+        if matches!(question, Dialog::BeforeUnload { closing: true, .. }) {
+            cx.emit(BrowserEvent::AsksToLeave);
+        }
         self.dialogs.push_back(Question {
             id,
             origin,
@@ -80,7 +82,7 @@ impl BrowserView {
     /// The host withdrew a question: the page navigated away, or the engine answered it
     /// itself.
     pub(super) fn dialog_closed(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.settled(id, &Answer::Dismiss);
+        self.settled(id);
         self.chooser_withdrawn(id);
         self.put_away(id, cx);
         cx.notify();
@@ -141,20 +143,16 @@ impl BrowserView {
             self.asked = None;
             self.asked_in = Put::Dialog;
         }
-        if self.settled(id, &answer) {
+        if self.settled(id) {
             self.send_answer(id, answer, cx);
         }
         cx.notify();
     }
 
-    /// Question `id` is over, answered with `answer`: whether it was waiting.
-    fn settled(&mut self, id: u64, answer: &Answer) -> bool {
+    /// Question `id` is over: whether it was waiting.
+    fn settled(&mut self, id: u64) -> bool {
         let at = self.dialogs.iter().position(|question| question.id == id);
-        let Some(question) = at.and_then(|at| self.dialogs.remove(at)) else {
-            return false;
-        };
-        self.leave_answered(&question.asked, answer);
-        true
+        at.and_then(|at| self.dialogs.remove(at)).is_some()
     }
 
     pub(super) fn send_answer(&self, dialog: u64, answer: Answer, cx: &mut Context<Self>) {
@@ -299,7 +297,7 @@ fn words(question: &Dialog, origin: &str) -> Words {
             };
             says(message, Some("Cancel"), carries)
         }
-        Dialog::BeforeUnload { reload } => Words {
+        Dialog::BeforeUnload { reload, .. } => Words {
             heading: if *reload {
                 "Reload site?"
             } else {

@@ -149,6 +149,7 @@ impl Shell {
                 self.tab_adopted(view, *pane, url.clone(), *active, window, cx);
             }
             BrowserEvent::Activate => self.tab_asked_for(view, cx),
+            BrowserEvent::AsksToLeave => self.page_asks_to_leave(view, window, cx),
             BrowserEvent::ClosedItself => self.page_closed_itself(view, cx),
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
@@ -237,8 +238,7 @@ impl Shell {
         }
     }
 
-    /// `view`'s tab is wanted in front: an extension asked, or its page asks the person
-    /// closing it to confirm leaving.
+    /// `view`'s tab is wanted in front.
     pub(super) fn tab_asked_for(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         if let Some(pane) = self.pane_showing(view) {
             self.show_tab_holding(pane, cx);

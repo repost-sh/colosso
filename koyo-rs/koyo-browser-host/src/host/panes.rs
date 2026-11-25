@@ -1,7 +1,7 @@
 //! Panes from open to closed: their profiles, their browsers made and gone, and what each
 //! page reports meanwhile.
 use super::inspect::{cdp_failed, frontend_loaded, to_page};
-use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
+use super::{Leaving, Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
     Browser, CefString, ImplBrowser, ImplBrowserHost, ImplFrame, ImplPreferenceManager,
     ImplRequestContextHandler, ImplValue, RequestContext, RequestContextHandler,
@@ -181,16 +181,25 @@ pub(crate) fn navigate_later(pane: PaneId, url: String) {
     enqueue(Queued::App(AppRequest::Navigate { pane, url }));
 }
 
-/// The person closed `pane`'s page: it's asked first, as Chrome asks it, by being closed as a
-/// page is that may refuse. One that asks to confirm leaving asks the person
-/// (`pane/prompts.rs`) and goes once they leave, staying open when they stay; one that doesn't
-/// goes at once. One whose browser is still to come goes as when the app closes it.
+/// Asks `pane`'s page whether the person may leave it, as Chrome asks it: by trying to close it,
+/// which it may refuse. One that asks to confirm leaving asks the person (`pane/prompts.rs`).
+/// Once it may be left CEF says so, and it's left open for the app to close (`answer_leave`). One
+/// with no browser, to come or gone, has nothing to ask; one that asks the person already, for
+/// this or for another reason, isn't asked again, nor is one the app closes, which goes.
 pub(super) fn leave(pane: PaneId) {
     let Some(host) = host_of(pane) else {
-        close(pane);
+        send(&HostEvent::LeaveAnswered { pane, may: true });
         return;
     };
-    host.try_close_browser();
+    let leaving = with_pane(pane, |p| p.leaving).unwrap_or(Leaving::No);
+    match (leaving, crate::dialogs::asks_to_leave(pane)) {
+        (Leaving::Closed, _) | (Leaving::Asked, true) => {}
+        (Leaving::No, true) => send(&HostEvent::LeaveAnswered { pane, may: false }),
+        (Leaving::No | Leaving::Asked, false) => {
+            with_pane(pane, |p| p.leaving = Leaving::Asked);
+            host.try_close_browser();
+        }
+    }
 }
 
 /// The app let `pane`'s page go: it closes unasked, its questions answered for it, and its
@@ -210,9 +219,9 @@ pub(super) fn close(pane: PaneId) {
         to_page(target, &[end]);
     }
     if let Some(host) = host_of(pane) {
-        with_pane(pane, |p| p.closing = true);
-        crate::dialogs::let_go(pane);
+        with_pane(pane, |p| p.leaving = Leaving::Closed);
         host.close_browser(1);
+        crate::dialogs::let_go(pane);
     } else {
         with(|host| host.panes.remove(&pane));
     }
@@ -252,7 +261,7 @@ pub(crate) fn browser_closed(pane: PaneId) {
     let (devtools, calls, unasked) = with(|host| {
         let mut closed = host.panes.remove(&pane);
         let unasked = !host.shutting_down
-            && closed.as_ref().is_some_and(|c| !c.closing && c.inspector.is_none());
+            && closed.as_ref().is_some_and(|c| c.leaving != Leaving::Closed && c.inspector.is_none());
         let mut calls: Vec<u64> = (closed.as_mut())
             .map(|c| std::mem::take(&mut c.calls).into_values().collect())
             .unwrap_or_default();

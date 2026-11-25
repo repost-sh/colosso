@@ -21,7 +21,7 @@ pub(crate) mod tests;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 
-pub use closing::{Then, ask, ask_before_closing};
+pub use closing::ask;
 pub use editor::{FileEditor, MOST_COLOURED};
 pub use file_pane::{FilePane, name as file_name};
 pub use icons::file as file_icon;

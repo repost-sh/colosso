@@ -102,7 +102,8 @@ impl BrowserView {
             };
         };
         let kind = kind(&question.asked).ok_or(Unanswered::NothingAsked)?;
-        if !kind.holds_up() {
+        let closing = matches!(question.asked, Dialog::BeforeUnload { closing: true, .. });
+        if !kind.holds_up() || closing {
             return Err(Unanswered::PersonAnswers(kind));
         }
         let answer = match (action, &question.asked) {

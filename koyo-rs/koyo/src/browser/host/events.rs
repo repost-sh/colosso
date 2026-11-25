@@ -78,7 +78,18 @@ impl Browsers {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::Activate));
             }
             HostEvent::TabClosed { pane } => {
-                self.update_view(pane, cx, BrowserView::tab_closed);
+                self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::ClosedItself));
+            }
+            _ => {}
+        }
+    }
+
+    /// What the host says of a page that closes, or that the person closes.
+    fn leaving_event(&mut self, event: &HostEvent, cx: &mut Context<Self>) {
+        match event {
+            HostEvent::Closed { pane } => self.page_closed(*pane, cx),
+            HostEvent::LeaveAnswered { pane, may } => {
+                self.update_view(*pane, cx, |view, _| view.leave_answered(*may));
             }
             _ => {}
         }
@@ -145,7 +156,9 @@ impl Browsers {
             | HostEvent::Found { .. }
             | HostEvent::Gone { .. }
             | HostEvent::Typed { .. }) => self.page_event(event, cx),
-            HostEvent::Closed { pane } => self.page_closed(pane, cx),
+            event @ (HostEvent::Closed { .. } | HostEvent::LeaveAnswered { .. }) => {
+                self.leaving_event(&event, cx);
+            }
             event @ (HostEvent::Extensions { .. }
             | HostEvent::ExtensionAction { .. }
             | HostEvent::TabOpened { .. }

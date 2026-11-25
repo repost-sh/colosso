@@ -122,14 +122,15 @@ impl Shell {
     /// Shows the space known by `space`, unless it's the one shown or is gone.
     pub(super) fn show_space_known_by(&mut self, space: u64, cx: &mut Context<Self>) {
         let settings = settings::get(cx);
-        let index = settings.spaces.iter().position(|kept| kept.id == space);
+        let index = settings.space_known_by(space);
         if let Some(index) = index.filter(|index| *index != settings.space) {
             self.show_space(index, cx);
         }
     }
 
     /// Closes the pinned or the loose page known by `key` with `close`, as the person asks by
-    /// its ×, its menu or ⌘W, once its page went (`leaving.rs`): closed with the keyboard in it,
+    /// its ×, its menu or ⌘W, once the person may leave it
+    /// (`leaving.rs`): closed with the keyboard in it,
     /// what shows in its place has the keyboard, as a closed tab's does (`close_tab_at`).
     pub(crate) fn close_apart(
         &mut self,

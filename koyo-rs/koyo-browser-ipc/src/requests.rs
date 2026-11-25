@@ -63,10 +63,11 @@ pub enum AppRequest {
         /// The pane.
         pane: PaneId,
     },
-    /// The person closes the page, which is asked first, as Chrome asks it: one that asks to
-    /// confirm leaving asks the person ([`crate::HostEvent::Dialog`] with
-    /// [`crate::Dialog::BeforeUnload`]). The host says [`crate::HostEvent::TabClosed`] and
-    /// [`crate::HostEvent::Closed`] once the page went, and nothing when the person stays; a [`Self::Close`] meanwhile lets it go.
+    /// Asks the page whether the person may leave it, as Chrome asks a tab it closes: one that
+    /// asks to confirm leaving asks the person ([`crate::HostEvent::Dialog`] with
+    /// [`crate::Dialog::BeforeUnload`]). The host answers once, however often it's asked
+    /// meanwhile ([`crate::HostEvent::LeaveAnswered`]). The page stays open either way, until a
+    /// [`Self::Close`].
     Leave {
         /// The pane.
         pane: PaneId,

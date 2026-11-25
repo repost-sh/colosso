@@ -104,7 +104,10 @@ pub use tone::Tone;
 /// screen, so a page a pane stops drawing leaves every window at once rather than once told.
 /// 22: a page the person closes is asked first ([`AppRequest::Leave`]), and one the app closes
 /// goes unasked ([`AppRequest::Close`]).
-pub const PROTOCOL: u32 = 22;
+/// 23: a page the person leaves is asked and stays open ([`HostEvent::LeaveAnswered`]), for the
+/// app to close once every page the person closes may be left; and
+/// a download goes by the host's number alone ([`AppRequest::Download`], [`HostEvent::Download`]).
+pub const PROTOCOL: u32 = 23;
 
 /// Surfaces in a ring sent over a mach service ([`mach`]): one shown, one being drawn, one
 /// spare. The device and desktop hosts send their pictures so.

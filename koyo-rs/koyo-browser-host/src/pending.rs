@@ -31,9 +31,9 @@ impl<T> Pending<T> {
         }
     }
 
-    /// Whether a value is kept for `pane`.
-    pub(crate) fn has(&self, pane: PaneId) -> bool {
-        self.waiting.values().any(|(p, _)| *p == pane)
+    /// Whether a value is kept that is `which`.
+    pub(crate) fn any(&self, which: impl Fn(PaneId, &T) -> bool) -> bool {
+        self.waiting.values().any(|(pane, value)| which(*pane, value))
     }
 
     /// Takes every value `which` picks, with its number.

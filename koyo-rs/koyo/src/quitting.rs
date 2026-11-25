@@ -20,7 +20,6 @@ use koyo_term::TermClient;
 use koyo_term_control::{Handle, RequestBody, ResponseBody};
 use serde::{Deserialize, Serialize};
 
-use crate::files::{self, Then};
 use crate::modal::{self, Button, FOOTER, HEADING_LINE, LINE, PADDING, SMALL_LINE, Tone};
 use crate::model::PaneKind;
 use crate::navigation::OpenSettings;
@@ -106,22 +105,14 @@ fn next(choice: OnQuit, running: usize) -> Next {
     }
 }
 
-/// Asks about unsaved edits, then goes on to what runs.
+/// Asks about unsaved edits, and the pages whether the person may leave them, then goes on to
+/// what runs.
 fn quit(cx: &mut App) {
     let Some((window, shell)) = crate::control::main_shell(cx) else {
         return deal_with_what_runs(cx);
     };
-    let unsaved = shell.read(cx).unsaved(cx);
-    if unsaved.is_empty() {
-        return deal_with_what_runs(cx);
-    }
     (window.update(cx, |_, window, cx| {
-        files::ask(
-            unsaved,
-            Then::Close(Box::new(deal_with_what_runs)),
-            window,
-            cx,
-        );
+        shell.update(cx, |shell, cx| shell.ask_all_then(deal_with_what_runs, window, cx));
     }))
     .ok();
 }

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
+use futures::channel::oneshot;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
@@ -26,6 +27,7 @@ use crate::keyboard::{Cause, Intent, Part, Surface};
 mod about;
 mod extensions;
 pub(super) mod lifecycle;
+pub use lifecycle::Leave;
 mod navigation;
 mod profile;
 pub(super) mod sight;
@@ -57,9 +59,11 @@ pub enum BrowserEvent {
         url: String,
         active: bool,
     },
-    /// This page's tab is wanted in front: an extension asked (`chrome.tabs.update`), or the
-    /// page asks the person closing it to confirm leaving, which they see there.
+    /// This page's tab is wanted in front: an extension asked (`chrome.tabs.update`).
     Activate,
+    /// The page asks the person closing it to confirm leaving (`lifecycle.rs`), which they see
+    /// in its tab.
+    AsksToLeave,
     /// The page closed without the app asking: an extension closed its tab
     /// (`chrome.tabs.remove`), or a page a script opened closed itself. Its tab goes.
     ClosedItself,
@@ -123,9 +127,8 @@ pub struct BrowserView {
     pub(super) viewport: Option<Viewport>,
     /// The host epoch the page was opened in.
     opened: Option<u64>,
-    /// What the person's close of the page does once it went, while it's asked to leave
-    /// (`lifecycle.rs`).
-    leaving: Option<lifecycle::Closing>,
+    /// Who asked the page whether the person may leave it, while it hasn't said (`lifecycle.rs`).
+    leaving: Option<oneshot::Sender<bool>>,
     /// The page that opened this one in a tab or a window of its own, which the person goes
     /// back to when this one closes itself in front of them, as a sign-in's popup does.
     opener: Option<WeakEntity<BrowserView>>,

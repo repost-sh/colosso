@@ -121,6 +121,9 @@ pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
         {
             host::keep_media(pane, origin, *bits);
         }
+        if matches!((&waiting, &answer), (Waiting::BeforeUnload(_), Answer::Dismiss)) {
+            host::answer_leave(pane, false);
+        }
         resolve(waiting, answer);
     }
 }
@@ -133,9 +136,17 @@ pub(crate) fn let_go(pane: PaneId) {
     }
 }
 
+/// Whether `pane`'s page asks the person whether to leave it.
+pub(crate) fn asks_to_leave(pane: PaneId) -> bool {
+    with(|dialogs| dialogs.any(|p, waiting| p == pane && matches!(waiting, Waiting::BeforeUnload(_))))
+}
+
 /// The page navigated or reloaded: its script dialogs are void.
 pub(crate) fn reset(pane: PaneId) {
-    drop(withdraw(pane, |waiting| matches!(waiting, Waiting::Script(_) | Waiting::BeforeUnload(_))));
+    let withdrawn = withdraw(pane, |waiting| matches!(waiting, Waiting::Script(_) | Waiting::BeforeUnload(_)));
+    if withdrawn.iter().any(|waiting| matches!(waiting, Waiting::BeforeUnload(_))) {
+        host::answer_leave(pane, false);
+    }
 }
 
 /// The engine took a permission prompt back.

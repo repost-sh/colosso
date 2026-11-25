@@ -39,10 +39,10 @@ pub fn open(
     shell: WeakEntity<Shell>,
     project: PathBuf,
     path: PathBuf,
-    window: &mut Window,
+    over: AnyWindowHandle,
     cx: &mut App,
 ) {
-    ask(shell, project, path, None, window.window_handle(), cx);
+    ask(shell, project, path, None, over, cx);
 }
 
 /// Inspects the worktree and opens the dialog over `parent`, saying `notice` if set.

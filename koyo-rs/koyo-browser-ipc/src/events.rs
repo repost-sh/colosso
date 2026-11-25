@@ -227,9 +227,16 @@ pub enum HostEvent {
         /// The pane.
         pane: PaneId,
     },
-    /// The pane's browser is gone: the app closed it, the person left it
-    /// ([`crate::AppRequest::Leave`]), its page closed (`DevTools` go with their page), or the
-    /// host is shutting down. Its surfaces are released.
+    /// The answer to [`crate::AppRequest::Leave`]; the page is still open.
+    LeaveAnswered {
+        /// The pane.
+        pane: PaneId,
+        /// The person may leave the page. They may not when they stay, or when the page asks
+        /// them for another reason, such as a link they followed, and so isn't asked.
+        may: bool,
+    },
+    /// The pane's browser is gone: the app closed it, its page closed (`DevTools` go with their
+    /// page), or the host is shutting down. Its surfaces are released.
     Closed {
         /// The pane.
         pane: PaneId,
@@ -378,8 +385,7 @@ pub enum HostEvent {
         /// Whether it was asked for in front: not for a ⌘- or a middle click.
         active: bool,
     },
-    /// The pane's page closed without the app letting it go ([`crate::AppRequest::Close`]): the
-    /// person left it ([`crate::AppRequest::Leave`]), an extension closed its tab
+    /// The pane's page closed without the app asking: an extension closed its tab
     /// (`chrome.tabs.remove`), or a page a script opened closed itself. The pane's tab goes;
     /// [`HostEvent::Closed`] follows.
     TabClosed {

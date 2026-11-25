@@ -155,26 +155,38 @@ impl Shell {
 }
 
 impl Shell {
-    /// Has `window`'s red button ask about unsaved edits. No key closes the window: ⌘W closes
-    /// what's shown in it, and the dock icon opens it again once closed.
+    /// Has `window`'s red button ask about what closing it would lose. No key closes the window:
+    /// ⌘W closes what's shown in it, and the dock icon opens it again once closed.
     pub(super) fn guard_closing(window: &Window, cx: &mut Context<Self>) {
         let shell = cx.entity().downgrade();
         window.on_window_should_close(cx, move |window, cx| {
-            (shell.update(cx, |shell, cx| shell.may_close(window, cx))).unwrap_or(true)
+            (shell.update(cx, |shell, cx| shell.ask_to_close(window, cx))).is_err()
         });
     }
 
-    /// Whether the window may close now: with unsaved edits in it, it asks about them
-    /// instead, and the answer closes it; asked already, it waits for the answer.
-    fn may_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    /// Closes the window once the unsaved edits in it are saved or let go and the person may leave
+    /// its pages; asked already, it waits for the answers.
+    pub(super) fn ask_to_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if files::asking(cx) {
-            return false;
+            return;
         }
-        let unsaved = self.unsaved(cx);
-        if unsaved.is_empty() {
-            return true;
-        }
-        files::ask_before_closing(unsaved, window, cx);
-        false
+        let closing = window.window_handle();
+        let close = move |cx: &mut App| {
+            (closing.update(cx, |_, window, _| window.remove_window())).ok();
+        };
+        self.ask_all_then(close, window, cx);
+    }
+
+    /// Does `then` once the unsaved edits of every file are saved or let go, and the person may
+    /// leave every page.
+    pub(crate) fn ask_all_then(
+        &mut self,
+        then: impl FnOnce(&mut App) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (unsaved, pages) = (self.unsaved(cx), self.pages_of(|_| true));
+        let then = move |_: &mut Self, cx: &mut Context<Self>| cx.defer(then);
+        self.ask_about_files_and_pages_then(unsaved, pages, then, window, cx);
     }
 }

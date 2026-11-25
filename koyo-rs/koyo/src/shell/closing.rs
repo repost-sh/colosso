@@ -4,11 +4,11 @@
 
 use std::path::Path;
 
-use gpui_kit::{App, Context, Entity, Window};
+use gpui_kit::{App, Context, Entity, WeakEntity, Window};
 
-use super::Shell;
+use super::{Shell, leaving};
 use crate::browser::{BrowserView, Dock};
-use crate::files::{self, FileEditor, Then};
+use crate::files::{self, FileEditor};
 use crate::model::{ClosedFrom, ClosedTab, Pane, Spot, Tab};
 
 /// What closing panes asks about first.
@@ -17,9 +17,8 @@ pub(super) struct ToAsk {
     editors: Vec<Entity<FileEditor>>,
     /// Their terminals, which end.
     terminals: Vec<u64>,
-    /// Their one page, as Chrome asks a tab's page (`leaving.rs`): none when they hold none, or
-    /// more than one, which go unasked as a worktree's tabs cleared do.
-    page: Option<Entity<BrowserView>>,
+    /// Their pages, as Chrome asks a window's (`leaving.rs`).
+    pages: Vec<WeakEntity<BrowserView>>,
     /// The keyboard is in one of them: what shows in their place has it then.
     typing: bool,
 }
@@ -27,16 +26,12 @@ pub(super) struct ToAsk {
 impl ToAsk {
     /// What closing `panes` asks about, pane `typing` having the keyboard.
     pub(super) fn of(panes: &[&Pane], typing: Option<u64>, cx: &App) -> Self {
-        let mut views = (panes.iter())
-            .filter_map(|pane| pane.view())
-            .filter(|view| !view.read(cx).is_inspector());
-        let page = views.next().filter(|_| views.next().is_none());
         Self {
             editors: (panes.iter())
                 .filter_map(|pane| pane.file()?.read(cx).unsaved().cloned())
                 .collect(),
             terminals: panes.iter().filter_map(|pane| pane.terminal()).collect(),
-            page: page.cloned(),
+            pages: leaving::pages(panes.iter().copied()),
             typing: typing.is_some_and(|typing| panes.iter().any(|pane| pane.id == typing)),
         }
     }
@@ -77,7 +72,7 @@ impl Shell {
     }
 
     /// Closes the tab at `at`, as `(project, branch, tab)`, asking first when its files have
-    /// unsaved edits, its terminals run something or its one page asks to confirm leaving. Its
+    /// unsaved edits, its terminals run something or its pages ask to confirm leaving. Its
     /// terminals end.
     pub fn close_tab_at(
         &mut self,
@@ -99,12 +94,12 @@ impl Shell {
     }
 
     /// Ends the terminals of what's closing and does `close`, asking first about what's running
-    /// in them, then about what's unsaved in its editors, then its page whether it may leave:
-    /// once it's agreed, saved or let go, and the page went. With the keyboard in it, what shows
-    /// in its place has the keyboard.
+    /// in them, then about what's unsaved in its editors, then its pages whether the person may
+    /// leave them: once it's agreed, saved or let go, and they may. With the keyboard in it, what
+    /// shows in its place has the keyboard.
     pub(super) fn ask_then(
         &mut self,
-        ToAsk { editors, terminals, page, typing }: ToAsk,
+        ToAsk { editors, terminals, pages, typing }: ToAsk,
         close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -118,32 +113,27 @@ impl Shell {
                     shell.keys_to_shown_tab(cx);
                 }
             };
-            let ask_page = move |shell: &mut Self, cx: &mut Context<Self>| {
-                shell.ask_page_then(page, close, cx);
-            };
-            shell.ask_about_files_then(editors, ask_page, window, cx);
+            shell.ask_about_files_and_pages_then(editors, pages, close, window, cx);
         };
         self.ask_to_end_terminals(&asked, then, window, cx);
     }
 
     /// Closes every tab of the checkout at `worktree` (`docs/arc-sidebar.md` 5), its chats
-    /// asked to stop and its terminals ended, asking first about unsaved edits.
+    /// asked to stop and its terminals ended, asking first about unsaved edits, and its pages
+    /// whether the person may leave them.
     pub fn clear_worktree(&mut self, worktree: &Path, window: &mut Window, cx: &mut Context<Self>) {
         let Some((project, branch)) = self.workspace.unit_at(worktree) else {
             return;
         };
         let unit = &self.workspace.projects[project].branches[branch];
-        let editors = (unit.tabs.iter()).flat_map(|tab| tab.unsaved(cx)).collect();
-        let terminals: Vec<u64> = (unit.tabs.iter())
-            .flat_map(Tab::panes)
-            .filter_map(Pane::terminal)
-            .collect();
+        let panes: Vec<&Pane> = unit.tabs.iter().flat_map(Tab::panes).collect();
+        let ToAsk { editors, terminals, pages, .. } = ToAsk::of(&panes, None, cx);
         let worktree = worktree.to_owned();
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             shell.end_terminals(&terminals, cx);
             shell.close_tabs_of(&worktree, cx);
         };
-        self.ask_about_files_then(editors, close, window, cx);
+        self.ask_about_files_and_pages_then(editors, pages, close, window, cx);
     }
 
     /// Closes every tab of the checkout at `worktree` now, last first, asking its chats to stop.
@@ -158,6 +148,22 @@ impl Shell {
             }
             self.close_tab_now((project, branch, at), cx);
         }
+    }
+
+    /// Does `close` once the unsaved edits in `editors` are saved or let go, and the person may
+    /// leave `pages`, each asked about first.
+    pub(super) fn ask_about_files_and_pages_then(
+        &mut self,
+        editors: Vec<Entity<FileEditor>>,
+        pages: Vec<WeakEntity<BrowserView>>,
+        close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let ask_pages = move |shell: &mut Self, cx: &mut Context<Self>| {
+            shell.ask_pages_then(pages, close, cx);
+        };
+        self.ask_about_files_then(editors, ask_pages, window, cx);
     }
 
     /// Does `close` now when `editors` have no unsaved edits, and otherwise asks about them
@@ -176,7 +182,7 @@ impl Shell {
         let then = move |cx: &mut App| {
             (shell.update(cx, close)).ok();
         };
-        files::ask(editors, Then::Close(Box::new(then)), window, cx);
+        files::ask(editors, then, window, cx);
     }
 
     /// Closes the tab at `at`, as `(project, branch, tab)`, whatever its files have, and

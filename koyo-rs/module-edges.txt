@@ -236,7 +236,6 @@ projects new_worktree
 projects settings
 projects shell
 quitting control
-quitting files
 quitting main
 quitting modal
 quitting model

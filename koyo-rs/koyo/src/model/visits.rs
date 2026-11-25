@@ -150,7 +150,7 @@ impl Workspace {
 
     /// Every tab there is, with where it is: the pinned, each space's loose ones, and every
     /// checkout's.
-    pub(super) fn everywhere(&self) -> impl Iterator<Item = Visited<'_>> {
+    pub(crate) fn everywhere(&self) -> impl Iterator<Item = Visited<'_>> {
         let pinned = self.pinned().iter().map(|pinned| Visited {
             tab: &pinned.tab,
             spot: Spot::Pinned,

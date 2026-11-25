@@ -79,6 +79,8 @@ pub enum Dialog {
     BeforeUnload {
         /// Whether the page is being reloaded rather than left.
         reload: bool,
+        /// The person closes it ([`crate::AppRequest::Leave`]).
+        closing: bool,
     },
     /// A server or proxy asks for a user name and password.
     Auth {

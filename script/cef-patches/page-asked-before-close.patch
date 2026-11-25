@@ -1,0 +1,181 @@
+--- a/cef/libcef/browser/chrome/chrome_browser_host_impl.cc
++++ b/cef/libcef/browser/chrome/chrome_browser_host_impl.cc
+@@ -4,6 +4,8 @@
+ 
+ #include "cef/libcef/browser/chrome/chrome_browser_host_impl.h"
+ 
++#include <utility>
++
+ #include "base/logging.h"
+ #include "base/notimplemented.h"
+ #include "cef/libcef/browser/browser_platform_delegate.h"
+@@ -184,9 +186,12 @@
+     return;
+   }
+ 
++  // Koyo: What the page still says of being left is no matter to the client.
++  is_trying_to_close_ = false;
++
+   // Always do this asynchronously because TabStripModel is not re-entrant.
+-  CEF_POST_TASK(CEF_UIT,
+-                base::BindOnce(&ChromeBrowserHostImpl::DoCloseBrowser, this));
++  CEF_POST_TASK(
++      CEF_UIT, base::BindOnce(&ChromeBrowserHostImpl::ForceCloseBrowser, this));
+ }
+ 
+ bool ChromeBrowserHostImpl::TryCloseBrowser() {
+@@ -195,6 +200,8 @@
+     return false;
+   }
+ 
++  is_trying_to_close_ = true;
++
+   if (auto* web_contents = GetWebContents()) {
+     // This check works as follows:
+     // 1. Returns false if the main frame is ready to close
+@@ -213,8 +220,24 @@
+     }
+   }
+ 
++  if (IsCloseHandledByClient(/*proceed=*/true)) {
++    return false;
++  }
+   CloseBrowser(/*force_close=*/true);
+   return true;
++}
++
++bool ChromeBrowserHostImpl::IsCloseHandledByClient(bool proceed) {
++  CEF_REQUIRE_UIT();
++  if (!std::exchange(is_trying_to_close_, false) || !proceed) {
++    return false;
++  }
++  if (auto client = GetClient()) {
++    if (auto handler = client->GetLifeSpanHandler()) {
++      return handler->DoClose(this);
++    }
++  }
++  return false;
+ }
+ 
+ CefWindowHandle ChromeBrowserHostImpl::GetWindowHandle() {
+@@ -600,6 +623,15 @@
+   }
+ }
+ 
++void ChromeBrowserHostImpl::ForceCloseBrowser() {
++  CEF_REQUIRE_UIT();
++  // Koyo: As CloseBrowser() documents, the page isn't asked whether it may be
++  // left. Runs its unload handlers, then calls CloseContents on the delegate.
++  if (auto* web_contents = GetWebContents()) {
++    web_contents->ClosePage();
++  }
++}
++
+ int ChromeBrowserHostImpl::GetCurrentTabIndex() const {
+   CEF_REQUIRE_UIT();
+   if (browser_) {
+--- a/cef/libcef/browser/chrome/chrome_browser_host_impl.h
++++ b/cef/libcef/browser/chrome/chrome_browser_host_impl.h
+@@ -69,6 +69,10 @@
+   // CefBrowserHostBase methods called from CefFrameHostImpl:
+   void OnSetFocus(cef_focus_source_t source) override;
+ 
++  // Koyo: The page was asked whether it may be left, and whether it may. Returns
++  // true if the client tried to close it and closes it itself.
++  bool IsCloseHandledByClient(bool proceed);
++
+   // CefBrowserHostBase methods:
+   bool IsWindowless() const override { return false; }
+   bool IsAlloyStyle() const override { return false; }
+@@ -161,6 +165,7 @@
+   void DestroyBrowser() override;
+ 
+   void DoCloseBrowser();
++  void ForceCloseBrowser();
+ 
+   // Returns the current tab index for the associated WebContents, or
+   // TabStripModel::kNoTab if not found.
+@@ -170,6 +175,10 @@
+   CefWindowHandle host_window_handle_ = kNullWindowHandle;
+   bool is_destroying_browser_ = false;
+ 
++  // Koyo: The client tried to close this browser (TryCloseBrowser), and the page
++  // is still to say whether it may be left.
++  bool is_trying_to_close_ = false;
++
+   base::WeakPtrFactory<ChromeBrowserHostImpl> weak_ptr_factory_{this};
+ };
+ 
+--- a/cef/libcef/browser/chrome/chrome_browser_web_contents_delegate.cc
++++ b/cef/libcef/browser/chrome/chrome_browser_web_contents_delegate.cc
+@@ -93,6 +93,21 @@
+ 
+ ChromeBrowserWebContentsDelegate::~ChromeBrowserWebContentsDelegate() = default;
+ 
++void ChromeBrowserWebContentsDelegate::BeforeUnloadFired(
++    content::WebContents* web_contents,
++    bool proceed,
++    bool* proceed_to_fire_unload) {
++  BrowserWebContentsDelegate::BeforeUnloadFired(web_contents, proceed,
++                                                proceed_to_fire_unload);
++
++  // Koyo: a client that tried to close the page may close it itself.
++  auto browser = ChromeBrowserHostImpl::GetBrowserForContents(web_contents);
++  if (browser && browser->IsCloseHandledByClient(proceed)) {
++    *proceed_to_fire_unload = false;
++    web_contents->SetClosedByUserGesture(false);
++  }
++}
++
+ content::KeyboardEventProcessingResult
+ ChromeBrowserWebContentsDelegate::PreHandleKeyboardEvent(
+     content::WebContents* source,
+--- a/cef/libcef/browser/chrome/chrome_browser_web_contents_delegate.h
++++ b/cef/libcef/browser/chrome/chrome_browser_web_contents_delegate.h
+@@ -33,6 +33,9 @@
+   ~ChromeBrowserWebContentsDelegate() override;
+ 
+   // content::WebContentsDelegate methods:
++  void BeforeUnloadFired(content::WebContents* web_contents,
++                         bool proceed,
++                         bool* proceed_to_fire_unload) override;
+   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
+       content::WebContents* source,
+       const input::NativeWebKeyboardEvent& event) override;
+--- a/cef/include/cef_life_span_handler.h
++++ b/cef/include/cef_life_span_handler.h
+@@ -169,6 +169,11 @@
+   virtual void OnAfterCreated(CefRefPtr<CefBrowser> browser) {}
+ 
+   ///
++  /// Called when a Chrome style browser that CefBrowserHost::TryCloseBrowser() or
++  /// CloseBrowser(false) was called for may be closed, meaning that its page was
++  /// asked whether it may be left, if it asks to confirm that, and may. Return
++  /// true to leave it open, to close later with CloseBrowser(true) or not at all.
++  ///
+   /// Called when an Alloy style browser is ready to be closed, meaning that the
+   /// close has already been initiated and that JavaScript unload handlers have
+   /// already executed or should be ignored. This may result directly from a
+--- a/cef/include/cef_browser.h
++++ b/cef/include/cef_browser.h
+@@ -339,8 +339,8 @@
+   ///
+   /// Request that the browser close. Closing a browser is a multi-stage process
+   /// that may complete either synchronously or asynchronously, and involves
+-  /// callbacks such as CefLifeSpanHandler::DoClose (Alloy style only),
+-  /// CefLifeSpanHandler::OnBeforeClose, and a top-level window close handler
++  /// callbacks such as CefLifeSpanHandler::DoClose (Chrome style: unless
++  /// |force_close| is true), CefLifeSpanHandler::OnBeforeClose, and a top-level window close handler
+   /// such as CefWindowDelegate::CanClose (or platform-specific equivalent). In
+   /// some cases a close request may be delayed or canceled by the user. Using
+   /// TryCloseBrowser() instead of CloseBrowser() is recommended for most use
+@@ -353,8 +353,7 @@
+   /// will proceed immediately (possibly asynchronously). If browser close is
+   /// delayed and not canceled the default behavior is to call the top-level
+   /// window close handler once the browser is ready to be closed. This default
+-  /// behavior can be changed for Alloy style browsers by implementing
+-  /// CefLifeSpanHandler::DoClose(). IsReadyToBeClosed() can be used to detect
++  /// behavior can be changed by implementing CefLifeSpanHandler::DoClose(). IsReadyToBeClosed() can be used to detect
+   /// mandatory browser close events when customizing close behavior on the
+   /// browser process UI thread.
+   ///

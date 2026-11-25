@@ -81,9 +81,8 @@ struct Pane {
     inspector: Option<(PaneId, crate::devtools::Bridge)>,
     /// Requests that need the browser, made before it was created.
     waiting: Vec<AppRequest>,
-    /// The app let the page go ([`AppRequest::Close`]): nobody is left to answer for it. One
-    /// that closes without goes of itself.
-    closing: bool,
+    /// What the app wants of the page's going.
+    leaving: Leaving,
     /// The host's own commands in the page's session, until answered.
     own: std::collections::HashSet<i64>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
@@ -104,6 +103,17 @@ struct Pane {
     progress: Option<u8>,
 }
 
+/// What the app wants of a page's going.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Leaving {
+    /// Nothing: one that closes goes of itself.
+    No,
+    /// Whether the person may leave it ([`AppRequest::Leave`]), which it hasn't said.
+    Asked,
+    /// It closes ([`AppRequest::Close`]).
+    Closed,
+}
+
 impl Pane {
     fn new(url: &str) -> Self {
         let page = PageState {
@@ -121,7 +131,7 @@ impl Pane {
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
-            closing: false,
+            leaving: Leaving::No,
             own: std::collections::HashSet::new(),
             observer: None,
             calls: HashMap::new(),
@@ -147,9 +157,19 @@ pub(crate) fn send(event: &HostEvent) {
     outgoing::send(outgoing::Outgoing::Event(event.clone()));
 }
 
-/// Whether the app closed the pane: a page it let go has nobody left to answer its questions.
-pub(crate) fn closing(pane: PaneId) -> bool {
-    with_pane(pane, |p| p.closing).unwrap_or(false)
+/// Whether `pane`'s page is asked whether the person may leave it, and hasn't said.
+pub(crate) fn asked(pane: PaneId) -> bool {
+    with_pane(pane, |p| p.leaving == Leaving::Asked).unwrap_or(false)
+}
+
+/// Answers `pane`'s [`AppRequest::Leave`], as `may` says: whether there was one to answer.
+pub(crate) fn answer_leave(pane: PaneId, may: bool) -> bool {
+    let asked = asked(pane);
+    if asked {
+        with_pane(pane, |p| p.leaving = Leaving::No);
+        send(&HostEvent::LeaveAnswered { pane, may });
+    }
+    asked
 }
 
 /// Whether a shutdown was asked for.

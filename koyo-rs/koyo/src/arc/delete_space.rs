@@ -74,31 +74,44 @@ pub(super) struct DeleteSpace {
 
 impl DeleteSpace {
     pub(super) fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let leftovers = if self.remove {
-            Leftovers::Remove
-        } else {
-            Leftovers::MoveTo(self.target)
-        };
-        let index = self.index;
         let id = |at: usize| settings::get(cx).spaces.get(at).map(|space| space.id);
-        let gone = id(index);
-        let takes = match leftovers {
-            Leftovers::MoveTo(to) => id(to),
-            Leftovers::Remove => None,
+        let index = self.index;
+        let Some(gone) = id(index) else {
+            return;
         };
-        let mut removed = Vec::new();
-        settings::update(cx, |settings| {
-            removed = settings.delete_space(index, leftovers);
-        });
+        let takes = if self.remove {
+            None
+        } else if let Some(takes) = id(self.target) {
+            Some(takes)
+        } else {
+            return;
+        };
         let shell = self.shell.clone();
         modal::dismiss(window, cx);
-        let deleted = shell.update(cx, |shell, cx| {
-            if let Some(gone) = gone {
+        let asked = shell.update(cx, |shell, cx| {
+            let pages = match takes {
+                None => shell.pages_of_space(index, cx),
+                Some(_) => Vec::new(),
+            };
+            let delete = move |shell: &mut Shell, cx: &mut Context<Shell>| {
+                let at = |id: u64| settings::get(cx).space_known_by(id);
+                let leftovers = match takes {
+                    Some(to) => at(to).map(Leftovers::MoveTo),
+                    None => Some(Leftovers::Remove),
+                };
+                let (Some(index), Some(leftovers)) = (at(gone), leftovers) else {
+                    return;
+                };
+                let mut removed = Vec::new();
+                settings::update(cx, |settings| {
+                    removed = settings.delete_space(index, leftovers);
+                });
                 shell.hand_on_loose(gone, takes, cx);
-            }
-            shell.remove_projects(&removed, cx);
+                shell.remove_projects(&removed, cx);
+            };
+            shell.ask_pages_then(pages, delete, cx);
         });
-        deleted.ok();
+        asked.ok();
     }
 
     /// The dropdown of the spaces the projects may move to.

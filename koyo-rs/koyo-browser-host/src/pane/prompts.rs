@@ -179,9 +179,6 @@ wrap_jsdialog_handler! {
             1
         }
 
-        /// A page the app closed leaves at once, as the app let it go and nobody is left to
-        /// answer for it; any other asks the person whether to leave, one they're closing
-        /// included (`AppRequest::Leave`).
         fn on_before_unload_dialog(
             &self,
             browser: Option<&mut Browser>,
@@ -189,14 +186,10 @@ wrap_jsdialog_handler! {
             is_reload: c_int,
             callback: Option<&mut JsdialogCallback>,
         ) -> c_int {
-            use cef::{ImplBrowser, ImplFrame, ImplJsdialogCallback};
+            use cef::{ImplBrowser, ImplFrame};
             let Some(callback) = callback else {
                 return 0;
             };
-            if host::closing(self.pane) {
-                callback.cont(1, None);
-                return 1;
-            }
             let origin = browser
                 .and_then(|b| b.main_frame())
                 .map(|f| CefString::from(&f.url()).to_string())
@@ -206,6 +199,7 @@ wrap_jsdialog_handler! {
                 &origin,
                 Dialog::BeforeUnload {
                     reload: is_reload != 0,
+                    closing: host::asked(self.pane),
                 },
                 Waiting::BeforeUnload(callback.clone()),
             );

@@ -3,7 +3,7 @@
 
 use futures::future::join_all;
 use gpui_kit::{
-    AnyWindowHandle, App, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+    App, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
     Styled as _, Window, div,
 };
 
@@ -15,20 +15,14 @@ use crate::theme;
 const WIDTH: f32 = 400.;
 const GAP: f32 = 8.;
 
-/// Asks over `window` what to do with the unsaved edits in `editors` before the window
-/// closes: it closes unless it's kept.
-pub fn ask_before_closing(editors: Vec<Entity<FileEditor>>, window: &mut Window, cx: &mut App) {
-    ask(
-        editors,
-        Then::CloseWindow(window.window_handle()),
-        window,
-        cx,
-    );
-}
-
 /// Asks over `window` what to do with the unsaved edits in `editors` before `then` happens:
 /// it does unless they're kept.
-pub fn ask(editors: Vec<Entity<FileEditor>>, then: Then, window: &mut Window, cx: &mut App) {
+pub fn ask(
+    editors: Vec<Entity<FileEditor>>,
+    then: impl FnOnce(&mut App) + 'static,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let title: SharedString = match editors.as_slice() {
         [editor] => format!("Save the changes to {}?", file_name(editor, cx)),
         _ => format!("Save the changes to {} files?", editors.len()),
@@ -38,7 +32,7 @@ pub fn ask(editors: Vec<Entity<FileEditor>>, then: Then, window: &mut Window, cx
     let height = 2. * modal::PADDING + heading + GAP + SMALL_LINE + 2. * GAP + modal::FOOTER;
     let dialog = SaveDialog {
         editors,
-        then: Some(then),
+        then: Some(Box::new(then)),
         title,
         saving: false,
         error: None,
@@ -54,21 +48,13 @@ fn file_name(editor: &Entity<FileEditor>, cx: &App) -> String {
     )
 }
 
-/// What closes a tab or a pane, once.
-pub type Closing = Box<dyn FnOnce(&mut App)>;
-
-/// What closes once the edits are saved or let go.
-pub enum Then {
-    /// A tab or a pane, closed by what's given.
-    Close(Closing),
-    /// The window the question's asked over.
-    CloseWindow(AnyWindowHandle),
-}
+/// What closes, once the edits are saved or let go.
+type Closing = Box<dyn FnOnce(&mut App)>;
 
 pub(super) struct SaveDialog {
     editors: Vec<Entity<FileEditor>>,
     /// Taken when the dialog closes, so it happens once.
-    then: Option<Then>,
+    then: Option<Closing>,
     title: SharedString,
     saving: bool,
     error: Option<SharedString>,
@@ -104,12 +90,8 @@ impl SaveDialog {
 
     /// Closes what was closing, with whatever edits its files still have, and the dialog.
     pub(super) fn close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match self.then.take() {
-            Some(Then::Close(close)) => close(cx),
-            Some(Then::CloseWindow(behind)) => {
-                (behind.update(cx, |_, window, _| window.remove_window())).ok();
-            }
-            None => {}
+        if let Some(close) = self.then.take() {
+            close(cx);
         }
         modal::dismiss(window, cx);
     }

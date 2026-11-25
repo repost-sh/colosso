@@ -203,7 +203,7 @@ pub(crate) fn load_started(pane: PaneId, browser: &Browser, frame: &Frame) {
 /// isn't the browser's any more goes too; by the time the new document starts, only its
 /// frames are.
 pub(crate) fn frames_changed(pane: PaneId, browser: &Browser, gone: Option<&Frame>) {
-    if !REQUESTS.with(|requests| requests.borrow().has(pane)) {
+    if !REQUESTS.with(|requests| requests.borrow().any(|p, _| p == pane)) {
         return;
     }
     let gone = gone.map(|frame| text(&frame.identifier()));

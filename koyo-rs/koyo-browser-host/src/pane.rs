@@ -350,6 +350,11 @@ wrap_life_span_handler! {
             }
         }
 
+        /// The page may be left: whether it was asked, to stay open till the app closes it.
+        fn do_close(&self, _browser: Option<&mut Browser>) -> c_int {
+            c_int::from(host::answer_leave(self.pane, true))
+        }
+
         fn on_before_close(&self, _browser: Option<&mut Browser>) {
             host::browser_closed(self.pane);
         }
