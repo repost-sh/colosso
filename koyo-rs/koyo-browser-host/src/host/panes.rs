@@ -1,7 +1,7 @@
 //! Panes from open to closed: their profiles, their browsers made and gone, and what each
 //! page reports meanwhile.
 use super::inspect::{cdp_failed, frontend_loaded, to_page};
-use super::{Going, Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
+use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
     Browser, CefString, ImplBrowser, ImplBrowserHost, ImplFrame, ImplPreferenceManager,
     ImplRequestContextHandler, ImplValue, RequestContext, RequestContextHandler,
@@ -190,15 +190,7 @@ pub(super) fn leave(pane: PaneId) {
         close(pane);
         return;
     };
-    let leaving = with_pane(pane, |p| {
-        if p.going == Going::Open {
-            p.going = Going::Leaving;
-        }
-        p.going == Going::Leaving
-    });
-    if leaving == Some(true) {
-        host.try_close_browser();
-    }
+    host.try_close_browser();
 }
 
 /// The app let `pane`'s page go: it closes unasked, its questions answered for it, and its
@@ -218,7 +210,7 @@ pub(super) fn close(pane: PaneId) {
         to_page(target, &[end]);
     }
     if let Some(host) = host_of(pane) {
-        with_pane(pane, |p| p.going = Going::Closing);
+        with_pane(pane, |p| p.closing = true);
         crate::dialogs::let_go(pane);
         host.close_browser(1);
     } else {
@@ -257,10 +249,10 @@ pub(crate) fn browser_closed(pane: PaneId) {
     crate::menus::pane_closed(pane);
     crate::passkeys::pane_gone(pane);
     crate::extensions::pane_closed(pane);
-    let (done, devtools, calls, unasked) = with(|host| {
+    let (devtools, calls, unasked) = with(|host| {
         let mut closed = host.panes.remove(&pane);
         let unasked = !host.shutting_down
-            && closed.as_ref().is_some_and(|c| c.going == Going::Open && c.inspector.is_none());
+            && closed.as_ref().is_some_and(|c| !c.closing && c.inspector.is_none());
         let mut calls: Vec<u64> = (closed.as_mut())
             .map(|c| std::mem::take(&mut c.calls).into_values().collect())
             .unwrap_or_default();
@@ -281,9 +273,9 @@ pub(crate) fn browser_closed(pane: PaneId) {
         {
             page.inspected = None;
         }
-        (host.shutting_down && host.panes.is_empty(), devtools, calls, unasked)
+        (devtools, calls, unasked)
     })
-    .unwrap_or((false, None, Vec::new(), false));
+    .unwrap_or((None, Vec::new(), false));
     for call in calls {
         cdp_failed(pane, call, "The page is closed.");
     }
@@ -294,9 +286,7 @@ pub(crate) fn browser_closed(pane: PaneId) {
     if let Some(devtools) = devtools {
         close(devtools);
     }
-    if done {
-        super::quit_when_closed();
-    }
+    super::quit_when_closed();
 }
 
 /// The page started or stopped loading. Once the first page has loaded,

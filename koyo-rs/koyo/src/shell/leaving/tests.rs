@@ -3,21 +3,21 @@
 //! goes then as it goes today: a pinned page stays pinned, a loose one is kept for ⌘⇧T, a
 //! worktree's tab is gone.
 
-use gpui_kit::{Action, AnyWindowHandle, AppContext as _, Entity, TestAppContext, VisualTestContext};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use koyo_browser_ipc::{AppRequest, Dialog, HostEvent, PaneId};
 
 use crate::browser::{BrowserView, FakeHost};
+use crate::files::tests::support::press;
 use crate::model::{Pane, Spot, Tab};
 use crate::settings::Layout;
 use crate::shell::{ClosePinned, CloseTab, Shell};
-use crate::test_support::{pin, pinned};
-use crate::test_support::{draw, open_page_view, shell_on};
+use crate::test_support::{act, draw, open_page_view, pin, pinned, shell_on};
 use crate::modal;
 
-/// Does `action` in `window`, as the person does, and draws what it changed.
-fn act(window: AnyWindowHandle, action: impl Action, cx: &mut TestAppContext) {
-    (cx.update_window(window, |_, window, cx| window.dispatch_action(Box::new(action), cx)))
-        .unwrap();
+/// `pane`'s page goes, as the host says it does, and the window draws what that changes.
+fn goes(host: &FakeHost, pane: PaneId, window: AnyWindowHandle, cx: &mut TestAppContext) {
+    host.says(HostEvent::TabClosed { pane }, cx);
+    host.says(HostEvent::Closed { pane }, cx);
     draw(window, cx);
 }
 
@@ -56,11 +56,7 @@ fn asks_to_leave(host: &FakeHost, (pane, dialog): (PaneId, u64), window: AnyWind
 /// stays.
 fn in_dialog(key: &str, cx: &mut TestAppContext) {
     let window = cx.update(|cx| modal::window(cx)).expect("the page's question is on screen");
-    let mut dialog = VisualTestContext::from_window(window, cx);
-    dialog.update(|window, cx| window.draw(cx).clear(cx));
-    dialog.run_until_parked();
-    dialog.simulate_keystrokes(key);
-    dialog.run_until_parked();
+    press(window, key, cx);
 }
 
 #[gpui_kit::test]
@@ -95,8 +91,7 @@ fn a_pinned_page_the_person_closes_asks_first_and_stays_pinned_once_it_went(cx: 
     assert_eq!(asked_of(&host, pane, cx), [left]);
     assert_eq!(page_in(&shell, key, cx), Some(view), "the page goes, then its tab");
 
-    host.says(HostEvent::Closed { pane }, cx);
-    draw(window, cx);
+    goes(&host, pane, window, cx);
     assert_eq!(pinned(&shell, cx), ["https://a.example/"], "still pinned");
     assert_eq!(page_in(&shell, key, cx), None, "its page closed");
 }
@@ -122,8 +117,7 @@ fn a_pinned_page_closed_from_its_menu_out_of_sight_shows_as_it_asks(cx: &mut Tes
     asks_to_leave(&host, (pane, 1), window, cx);
     assert_eq!(shown(cx), Some(keys[0]), "the page asking shows, its question with it");
     in_dialog("enter", cx);
-    host.says(HostEvent::Closed { pane }, cx);
-    draw(window, cx);
+    goes(&host, pane, window, cx);
     assert_eq!(page_in(&shell, keys[0], cx), None, "its page closed, and it stays pinned");
     assert_eq!(pinned(&shell, cx).len(), 2);
 }
@@ -164,8 +158,7 @@ fn a_loose_page_the_person_closes_is_kept_to_open_again_once_it_went(cx: &mut Te
     asks_to_leave(&host, (pane, 2), window, cx);
     in_dialog("enter", cx);
     assert_eq!(loose(cx), 1);
-    host.says(HostEvent::Closed { pane }, cx);
-    draw(window, cx);
+    goes(&host, pane, window, cx);
     assert_eq!(loose(cx), 0, "it went, its tab with it");
     assert!(matches!(reopened(cx), Some(Spot::Loose(_))), "kept for ⌘⇧T");
 }
@@ -190,9 +183,23 @@ fn a_worktrees_page_tab_the_person_closes_goes_once_its_page_went(cx: &mut TestA
 
     act(window, CloseTab, cx);
     assert_eq!(asked_of(&host, pane, cx), [AppRequest::Leave { pane }]);
+    goes(&host, pane, window, cx);
+    assert_eq!(tabs(cx), Some(0), "a page that doesn't ask goes as it closes");
+}
+
+#[gpui_kit::test]
+fn a_page_whose_question_is_withdrawn_is_not_being_closed_any_more(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("leave-withdrawn", Layout::Orca, cx);
+    let host = FakeHost::serve("leave-withdrawn-host", cx);
+    let view = open_page_view(window, &shell, "https://a.example/", cx);
+    let pane = host_pane(&view, cx);
+    act(window, CloseTab, cx);
+    asks_to_leave(&host, (pane, 1), window, cx);
+    host.says(HostEvent::DialogClosed { pane, dialog: 1 }, cx);
     host.says(HostEvent::Closed { pane }, cx);
     draw(window, cx);
-    assert_eq!(tabs(cx), Some(0), "a page that doesn't ask goes as it closes");
+    let tabs = cx.read(|cx| shell.read(cx).workspace.branch().map(|unit| unit.tabs.len()));
+    assert_eq!(tabs, Some(1), "the person never said they'd leave");
 }
 
 /// A tab of the selected checkout with a page at `a` beside a page at `b`, shown and drawn: its
@@ -230,8 +237,7 @@ fn a_page_split_beside_another_asks_as_its_pane_closes_and_a_tab_of_two_goes_una
     draw(window, cx);
     assert_eq!(asked_of(&host, pane_b, cx), [AppRequest::Leave { pane: pane_b }]);
     assert_eq!(panes(cx), 2, "its pane stays until it went");
-    host.says(HostEvent::Closed { pane: pane_b }, cx);
-    draw(window, cx);
+    goes(&host, pane_b, window, cx);
     assert_eq!(panes(cx), 1, "it went, its pane with it");
 
     drop(two_pages(window, &shell, ("https://c.example/", "https://d.example/"), cx));

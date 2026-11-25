@@ -28,8 +28,8 @@ pub use visual::run as check;
 /// Which download.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Key {
-    /// A page's: the page that started it, and the engine's number for it.
-    Engine { pane: PaneId, id: u32 },
+    /// A page's: the host's number for it.
+    Engine(u32),
     /// A page saved as a PDF, numbered by the app.
     Pdf(u64),
 }
@@ -145,11 +145,11 @@ impl Downloads {
             .collect()
     }
 
-    /// `pane`'s page asks where its download `id` goes, `name` the name it gave it, the page
+    /// A page asks where its download `id` goes, `name` the name it gave it, the page
     /// being `at` someone's. It goes to the Downloads folder, under a name free there, or
     /// where the person picks, when they're at the page and Settings asks for it.
-    pub(super) fn asked(&mut self, pane: PaneId, id: u32, name: &str, at: At, cx: &mut Context<Self>) {
-        let key = Key::Engine { pane, id };
+    pub(super) fn asked(&mut self, id: u32, name: &str, at: At, cx: &mut Context<Self>) {
+        let key = Key::Engine(id);
         let name = file_name(name);
         let ask = at == At::Person && crate::settings::get(cx).downloads_ask;
         let by = match at {
@@ -201,7 +201,7 @@ impl Downloads {
 
     /// `key` goes to `path`, or, with none, is canceled: unless it was canceled meanwhile.
     fn place(&mut self, key: Key, path: Option<PathBuf>, cx: &mut Context<Self>) {
-        let Key::Engine { pane, id } = key else {
+        let Key::Engine(id) = key else {
             return;
         };
         let Some(entry) = self.entry(key).filter(|entry| entry.stage == Stage::Placing) else {
@@ -217,18 +217,17 @@ impl Downloads {
             entry.stage = Stage::Canceled;
             DownloadAct::Cancel
         };
-        send(AppRequest::Download { pane, download: id, act }, cx);
+        send(AppRequest::Download { download: id, act }, cx);
         cx.notify();
     }
 
-    /// How `pane`'s download stands, as the host says.
-    pub(super) fn updated(&mut self, pane: PaneId, download: ipc::Download, cx: &mut Context<Self>) {
-        let key = Key::Engine { pane, id: download.id };
-        let Some(entry) = self.entry(key) else {
+    /// How a download stands, as the host says: one canceled stays so, however late the host
+    /// heard.
+    pub(super) fn updated(&mut self, download: ipc::Download, cx: &mut Context<Self>) {
+        let Some(entry) = self.entry(Key::Engine(download.id)) else {
             return;
         };
         if entry.stage == Stage::Canceled && download.state == DownloadState::Going {
-            send(AppRequest::Download { pane, download: download.id, act: DownloadAct::Cancel }, cx);
             return;
         }
         if !download.path.is_empty() {
@@ -249,14 +248,14 @@ impl Downloads {
 
     /// Cancels `key`, unless it has ended: a PDF can't be.
     pub(super) fn cancel(&mut self, key: Key, cx: &mut Context<Self>) {
-        let Key::Engine { pane, id } = key else {
+        let Key::Engine(id) = key else {
             return;
         };
         let Some(entry) = self.entry(key).filter(|entry| !entry.stage.ended()) else {
             return;
         };
         entry.stage = Stage::Canceled;
-        send(AppRequest::Download { pane, download: id, act: DownloadAct::Cancel }, cx);
+        send(AppRequest::Download { download: id, act: DownloadAct::Cancel }, cx);
         cx.notify();
     }
 

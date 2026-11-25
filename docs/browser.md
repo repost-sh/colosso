@@ -1413,17 +1413,24 @@ whether Koyo closed it or it closed itself (`window.close()`), and the app's lis
 stands until it ends. CEF alone doesn't do this, so two patches of Koyo's do
 (`script/cef-patches`): CEF aborted every request of a page that closed, and Chromium takes an
 aborted download for one the person cancelled, deleting what had come of it; with
-`request-outlives-its-page` a request that has its answer, as a download's has, runs to its end
-when its page goes, as Chrome's do. And CEF told nobody of a download once its page was gone;
-with `download-outlives-its-page` the page's download handler is still told. `[proven]`
-`tests/smoke/saves.rs`: a page closed while its download came in, and one that closed itself,
-left it to finish whole, the app told Done; without the patches the download was cancelled and
-its file deleted (2026-11-24). Clearing browsing data, and the app quitting, still end
-downloads, with the engine.
+`request-outlives-its-page` only a request the client was offered, which Koyo's never is, ends
+with its page, and every other ends when Chromium ends it. And CEF told nobody of a download
+once its page was gone, and cancelled one that began only then; with
+`download-outlives-its-page` who asked travels with a download, from the page asking for it to
+the file: the download handler the page's browser had, which is asked where it goes and told
+how it stands (its browser none once that's gone), and the profile, kept loaded till the
+download ends, as Chrome keeps it. So a page that closes or goes elsewhere before the server
+answers, and clearing browsing data, leave a download to finish too. The app quitting cancels
+what's still coming in. `[proven]` `tests/smoke/saves.rs` (2026-11-25), each saved whole, the
+app told Done: a page closed while its download came in, one that closed itself, one closed or
+its profile's data cleared before the server answered, one closed at once after a download of
+what it made (`blob:`), and data cleared meanwhile. One the server dropped halfway, which
+Chromium resumes, asked once where it goes; the host shutting down left nothing of one still
+coming in.
 
 What an agent sees: its page's downloads go to the folder without a save panel, and the
 person's list names the agent. The agent's own tools don't list downloads yet; `browser_list`'s
-`PageInfo` is where they'd go, read from `Downloads::listed` by `Key::Engine { pane, .. }`.
+`PageInfo` is where they'd go, read from `Downloads::listed` once its entries keep their page.
 
 ### 16.3 The list [decided]
 
@@ -1499,14 +1506,16 @@ were. A page that doesn't ask goes as fast as before.
 - **The protocol** (22). The app asks with `AppRequest::Leave`; the host has CEF try to close
   the browser (`TryCloseBrowser`), which runs the page's `beforeunload` and, when it asks,
   `OnBeforeUnloadDialog`, which the host puts to the person (`HostEvent::Dialog`,
-  `Dialog::BeforeUnload`). Left, the page closes and the host says `HostEvent::Closed`; stayed,
-  it says nothing and the page is open again: one that closes itself later still closes its tab
-  (`HostEvent::TabClosed`). `AppRequest::Close` lets a page go unasked: the host answers its
-  question yes itself, one already put to the person too, which the app hears withdrawn
-  (`HostEvent::DialogClosed`), so a page asking never holds up a close, nor the host quitting
+  `Dialog::BeforeUnload`). Left, the page closes and the host says so as of one that closed
+  itself (`HostEvent::TabClosed`, `HostEvent::Closed`), and the view, which holds what the
+  person's close does (`BrowserView::leave`), does it; stayed, the host says nothing and the
+  view lets it go, as it does when the question is withdrawn or lost with the engine.
+  `AppRequest::Close` lets a page go unasked: the host answers its question yes itself, one
+  already put to the person too, which the app hears withdrawn (`HostEvent::DialogClosed`), so
+  a page asking never holds up a close, nor the host quitting
   (`koyo-browser-host/src/host/panes.rs`, `dialogs.rs`, `pane/prompts.rs`).
 - **Checked** on the engine (`koyo-browser-host/tests/smoke/leaving.rs`): a page that asks
   asks and goes once left, stays when stayed and closes on Close after, goes on Close with its
   question up; one that doesn't ask goes at once. In the app with a test host
   (`koyo/src/shell/leaving/tests.rs`): each kind of tab waits for its page, stays when the
-  person stays, and goes as it does today once the page went.
+  person stays or the question is withdrawn, and goes as it does today once the page went.

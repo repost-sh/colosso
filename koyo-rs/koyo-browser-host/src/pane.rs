@@ -25,13 +25,14 @@ mod prompts;
 /// The client a pane's browser is created with; `devtools` for a `DevTools`
 /// pane, whose links open in new tabs of the app rather than in it.
 pub(crate) fn client(pane: PaneId, devtools: bool) -> Client {
-    PaneClient::new(pane, devtools)
+    PaneClient::new(pane, devtools, crate::downloads::handler(pane))
 }
 
 wrap_client! {
     struct PaneClient {
         pane: PaneId,
         devtools: bool,
+        downloads: cef::DownloadHandler,
     }
 
     impl Client {
@@ -66,7 +67,7 @@ wrap_client! {
             Some(PaneFrames::new(self.pane))
         }
         fn download_handler(&self) -> Option<cef::DownloadHandler> {
-            Some(crate::downloads::handler(self.pane))
+            Some(self.downloads.clone())
         }
         fn keyboard_handler(&self) -> Option<cef::KeyboardHandler> {
             Some(keys::keys(self.pane))

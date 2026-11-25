@@ -14,10 +14,11 @@ use gpui_kit::{
 };
 
 use super::Shell;
+use super::closing::ToAsk;
 use super::reorder::{Drop, List, Reorder, TabHand};
 use super::splits::{Dragged, DraggedPane};
 use super::tab_face::Face;
-use crate::model::{ClosedFrom, ClosedTab, Loose};
+use crate::model::{ClosedFrom, ClosedTab, Loose, Tab};
 use crate::settings::{self, LoosePages};
 use crate::theme::Palette;
 
@@ -134,19 +135,13 @@ impl Shell {
         &mut self,
         key: u64,
         close: fn(&mut Self, u64, &mut Context<Self>),
-        window: &Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let shown = self.workspace.apart_shown_key() == Some(key);
-        let typing = shown && self.pane_with_keyboard(window, cx).is_some();
-        let page = self.workspace.pane(key).and_then(|page| page.view().cloned());
-        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
-            close(shell, key, cx);
-            if typing {
-                shell.keys_to_shown_tab(cx);
-            }
-        };
-        self.ask_page_then(page, close, cx);
+        let panes = self.workspace.tab_holding(key).map(Tab::panes).unwrap_or_default();
+        let ask = ToAsk::of(&panes, self.pane_with_keyboard(window, cx), cx);
+        let close = move |shell: &mut Self, cx: &mut Context<Self>| close(shell, key, cx);
+        self.ask_then(ask, close, window, cx);
     }
 
     /// The `DevTools` of the pinned or the loose page known by `key` close, their pane with
@@ -160,7 +155,7 @@ impl Shell {
 
     /// Closes the pinned or the loose page shown, as ⌘W does: a pinned one stays pinned, a loose
     /// one is gone. Whether one was shown.
-    pub(crate) fn close_apart_shown(&mut self, window: &Window, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn close_apart_shown(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let shown = self.workspace.apart_shown_key();
         if let Some(key) = shown {
             self.close_apart(key, Self::close_pane_now, window, cx);

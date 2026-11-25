@@ -2,43 +2,69 @@
 //! by the person's settings and whose page it is, and answers, the host keeping CEF's callback
 //! until then. Then the app hears how each stands, and the host keeps the way to cancel it.
 //!
-//! A download outlives the page that started it, as Chrome's outlive their tab: the engine
-//! goes on telling this handler how one stands after its page has closed
-//! (`script/cef-patches/download-outlives-its-page.patch`, `request-outlives-its-page.patch`),
-//! so nothing here is tied to the page being open. Everything here runs on CEF's UI thread.
+//! A download outlives the page that asked for it, as Chrome's outlive their tab: the engine
+//! asks this handler where it goes, and goes on telling it how it stands, after its page has
+//! closed (`script/cef-patches/download-outlives-its-page.patch`,
+//! `request-outlives-its-page.patch`), so nothing here is tied to the page being open.
+//! Everything here runs on CEF's UI thread.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::raw::c_int;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use cef::{
     BeforeDownloadCallback, Browser, CefString, DownloadHandler, DownloadItem,
-    DownloadItemCallback, ImplBeforeDownloadCallback, ImplDownloadHandler, ImplDownloadItem,
-    ImplDownloadItemCallback, WrapDownloadHandler, rc::Rc, wrap_download_handler,
+    DownloadItemCallback, ImplBeforeDownloadCallback, ImplDownloadHandler,
+    ImplDownloadItem, ImplDownloadItemCallback, WrapDownloadHandler, rc::Rc, wrap_download_handler,
 };
 use koyo_browser_ipc::{Download, DownloadAct, DownloadState, HostEvent, PaneId};
 
 use crate::host;
 
-/// A download: the page that started it, and the engine's number for it.
-type Key = (PaneId, u32);
+/// A download as the engine knows it: its handler's number, and its own in the profile of the
+/// handler's browser, which another profile's download has too.
+type Item = (u64, u32);
 
-thread_local! {
-    /// Downloads asked about and not answered yet, with where each comes from: a callback
-    /// dropped unanswered cancels its download.
-    static ASKED: RefCell<HashMap<Key, (BeforeDownloadCallback, String)>> = RefCell::new(HashMap::new());
-    /// Downloads coming in, with the way to cancel each and how it last stood.
-    static GOING: RefCell<HashMap<Key, (DownloadItemCallback, Download)>> = RefCell::new(HashMap::new());
+/// A download that hasn't ended.
+struct Coming {
+    item: Item,
+    stage: Stage,
 }
 
-/// The handler of `pane`'s downloads.
+/// Where a download that hasn't ended is.
+enum Stage {
+    /// The app is asked where it goes: the answer, which cancels it when it's dropped ungiven.
+    Asked(BeforeDownloadCallback),
+    /// It goes to the file at `path`, with the way to cancel it once the engine has said how it
+    /// stands.
+    Going {
+        path: String,
+        cancel: Option<DownloadItemCallback>,
+    },
+    /// It's to end.
+    Canceled,
+}
+
+thread_local! {
+    /// The downloads that haven't ended, by the number the app knows each by.
+    static COMING: RefCell<HashMap<u32, Coming>> = RefCell::new(HashMap::new());
+}
+
+fn with<R>(f: impl FnOnce(&mut HashMap<u32, Coming>) -> R) -> R {
+    COMING.with(|coming| f(&mut coming.borrow_mut()))
+}
+
+/// The handler of the downloads a browser of `pane`'s asks for: one for each browser.
 pub(crate) fn handler(pane: PaneId) -> DownloadHandler {
-    PaneDownloads::new(pane)
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    PaneDownloads::new(pane, NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 wrap_download_handler! {
     struct PaneDownloads {
         pane: PaneId,
+        number: u64,
     }
 
     impl DownloadHandler {
@@ -58,16 +84,26 @@ wrap_download_handler! {
             suggested_name: Option<&CefString>,
             callback: Option<&mut BeforeDownloadCallback>,
         ) -> c_int {
+            static NEXT: AtomicU32 = AtomicU32::new(1);
             let (Some(item), Some(callback)) = (download_item, callback) else {
                 return 0;
             };
-            let (download, url) = (item.id(), text(&item.url()));
-            ASKED.with(|asked| asked.borrow_mut().insert((self.pane, download), (callback.clone(), url.clone())));
+            if host::shutting_down() {
+                return 1;
+            }
+            let key = (self.number, item.id());
+            if let Some(download) = number_of(key) {
+                asked_again(download, callback);
+                return 1;
+            }
+            let download = NEXT.fetch_add(1, Ordering::Relaxed);
+            let asked = Coming { item: key, stage: Stage::Asked(callback.clone()) };
+            with(|coming| coming.insert(download, asked));
             host::send(&HostEvent::DownloadAsked {
                 pane: self.pane,
                 download,
                 name: suggested_name.map(ToString::to_string).unwrap_or_default(),
-                url,
+                url: text(&item.url()),
             });
             1
         }
@@ -78,47 +114,111 @@ wrap_download_handler! {
             download_item: Option<&mut DownloadItem>,
             callback: Option<&mut DownloadItemCallback>,
         ) {
-            let Some(download) = download_item.and_then(|item| Seen::of(item).download()) else {
+            let Some(item) = download_item else {
                 return;
             };
-            let key = (self.pane, download.id);
-            let going = download.state == DownloadState::Going;
-            GOING.with(|going_on| {
-                let mut going_on = going_on.borrow_mut();
-                match callback.filter(|_| going) {
-                    Some(callback) => going_on.insert(key, (callback.clone(), download.clone())),
-                    None => going_on.remove(&key),
+            let Some(id) = number_of((self.number, item.id())) else {
+                return;
+            };
+            let Some(download) = Seen::of(id, item).download() else {
+                return;
+            };
+            if download.state != DownloadState::Going {
+                drop(with(|coming| coming.remove(&id)));
+                host::send(&HostEvent::Download { download });
+                host::quit_when_closed();
+                return;
+            }
+            let Some(callback) = callback else {
+                return;
+            };
+            let canceled = with(|coming| match coming.get_mut(&id).map(|one| &mut one.stage) {
+                Some(Stage::Going { cancel, .. }) => {
+                    *cancel = Some(callback.clone());
+                    false
                 }
+                Some(Stage::Canceled) => true,
+                Some(Stage::Asked(_)) | None => false,
             });
-            host::send(&HostEvent::Download { pane: self.pane, download });
+            if canceled {
+                callback.cancel();
+            } else {
+                host::send(&HostEvent::Download { download });
+            }
         }
     }
 }
 
-/// What the app has done with `pane`'s download `download`: given it a place, or canceled it.
-pub(crate) fn act(pane: PaneId, download: u32, act: DownloadAct) {
-    let key = (pane, download);
-    let asked = ASKED.with(|asked| asked.borrow_mut().remove(&key));
+/// The number the app knows the download `item` by, while it hasn't ended.
+fn number_of(item: Item) -> Option<u32> {
+    with(|coming| coming.iter().find(|(_, one)| one.item == item).map(|(number, _)| *number))
+}
+
+/// The engine asks again where `download` goes, as it does for each attempt of one the server
+/// dropped and it resumes: where the app said. One canceled meanwhile ends, unanswered.
+fn asked_again(download: u32, callback: &BeforeDownloadCallback) {
+    let path = with(|coming| match &coming.get(&download)?.stage {
+        Stage::Going { path, .. } => Some(path.clone()),
+        Stage::Asked(_) | Stage::Canceled => None,
+    });
+    if let Some(path) = path {
+        callback.cont(Some(&CefString::from(path.as_str())), 0);
+    }
+}
+
+/// What the app has done with the download `download`: given it a place, or canceled it.
+pub(crate) fn act(download: u32, act: DownloadAct) {
     match act {
-        DownloadAct::SaveTo { path } => {
-            if let Some((asked, _)) = asked {
-                asked.cont(Some(&CefString::from(path.as_str())), 0);
+        DownloadAct::SaveTo { path } => save_to(download, path),
+        DownloadAct::Cancel => cancel(download),
+    }
+}
+
+/// The download `download`, asked about, goes to `path`.
+fn save_to(download: u32, path: String) {
+    let to = CefString::from(path.as_str());
+    let asked = with(|coming| {
+        let stage = &mut coming.get_mut(&download)?.stage;
+        match std::mem::replace(stage, Stage::Going { path, cancel: None }) {
+            Stage::Asked(asked) => Some(asked),
+            was @ (Stage::Going { .. } | Stage::Canceled) => {
+                *stage = was;
+                None
             }
         }
-        DownloadAct::Cancel => {
-            drop(asked);
-            let going = GOING.with(|going| going.borrow().get(&key).map(|(going, _)| going.clone()));
-            if let Some(going) = going {
-                going.cancel();
-            }
-        }
+    });
+    if let Some(asked) = asked {
+        asked.cont(Some(&to), 0);
+    }
+}
+
+/// The download `download` ends: at once, or once the engine says how it stands.
+fn cancel(download: u32) {
+    let was = with(|coming| {
+        let stage = &mut coming.get_mut(&download)?.stage;
+        Some(std::mem::replace(stage, Stage::Canceled))
+    });
+    if let Some(Stage::Going { cancel: Some(cancel), .. }) = was {
+        cancel.cancel();
+    }
+}
+
+/// Whether no download is still to end.
+pub(crate) fn all_ended() -> bool {
+    with(|coming| coming.is_empty())
+}
+
+/// The host is shutting down: what's still coming in ends with it, as Chrome's do when it
+/// quits, and the host waits for it to (`host::all_closed`).
+pub(crate) fn cancel_all() {
+    for download in with(|coming| coming.keys().copied().collect::<Vec<_>>()) {
+        cancel(download);
     }
 }
 
 /// The host is shutting down; CEF waits for every callback to go.
 pub(crate) fn clear() {
-    ASKED.with(|asked| asked.borrow_mut().clear());
-    GOING.with(|going| going.borrow_mut().clear());
+    drop(with(std::mem::take));
 }
 
 fn text(value: &cef::CefStringUserfree) -> String {
@@ -140,9 +240,9 @@ struct Seen {
 }
 
 impl Seen {
-    fn of(item: &DownloadItem) -> Self {
+    fn of(id: u32, item: &DownloadItem) -> Self {
         Seen {
-            id: item.id(),
+            id,
             url: text(&item.url()),
             path: text(&item.full_path()),
             received: item.received_bytes(),

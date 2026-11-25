@@ -71,7 +71,7 @@ impl DownloadsPanel {
         let key = entry.key;
         let path = entry.path.clone();
         let done = entry.stage == Stage::Done;
-        let engine = matches!(key, Key::Engine { .. });
+        let engine = matches!(key, Key::Engine(_));
         let there = done || (entry.stage == Stage::Going && engine);
         let bar = (entry.stage == Stage::Going).then(|| {
             let share = share(&[entry]).unwrap_or(0.);

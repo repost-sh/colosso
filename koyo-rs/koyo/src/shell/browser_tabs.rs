@@ -150,8 +150,6 @@ impl Shell {
             }
             BrowserEvent::Activate => self.tab_asked_for(view, cx),
             BrowserEvent::ClosedItself => self.page_closed_itself(view, cx),
-            BrowserEvent::Left => self.page_left(view, cx),
-            BrowserEvent::Stayed => self.page_stayed(view),
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
             BrowserEvent::Closed if view.read(cx).is_inspector() => {

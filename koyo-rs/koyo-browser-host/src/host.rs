@@ -81,8 +81,9 @@ struct Pane {
     inspector: Option<(PaneId, crate::devtools::Bridge)>,
     /// Requests that need the browser, made before it was created.
     waiting: Vec<AppRequest>,
-    /// How far the page is on its way out.
-    going: Going,
+    /// The app let the page go ([`AppRequest::Close`]): nobody is left to answer for it. One
+    /// that closes without goes of itself.
+    closing: bool,
     /// The host's own commands in the page's session, until answered.
     own: std::collections::HashSet<i64>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
@@ -103,19 +104,6 @@ struct Pane {
     progress: Option<u8>,
 }
 
-/// How far a pane's page is on its way out.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Going {
-    /// It stays: one that closes now closes unasked, by an extension (`chrome.tabs.remove`) or
-    /// by its own page.
-    Open,
-    /// The person closes it ([`AppRequest::Leave`]): it asks them first if it asks to confirm
-    /// leaving, and is open again once they stay.
-    Leaving,
-    /// The app let it go ([`AppRequest::Close`]): it goes, and nobody is left to answer for it.
-    Closing,
-}
-
 impl Pane {
     fn new(url: &str) -> Self {
         let page = PageState {
@@ -133,7 +121,7 @@ impl Pane {
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
-            going: Going::Open,
+            closing: false,
             own: std::collections::HashSet::new(),
             observer: None,
             calls: HashMap::new(),
@@ -161,22 +149,17 @@ pub(crate) fn send(event: &HostEvent) {
 
 /// Whether the app closed the pane: a page it let go has nobody left to answer its questions.
 pub(crate) fn closing(pane: PaneId) -> bool {
-    with_pane(pane, |p| p.going == Going::Closing).unwrap_or(false)
+    with_pane(pane, |p| p.closing).unwrap_or(false)
 }
 
-/// The person stayed on `pane`'s page as it asked them to confirm leaving: one they were
-/// closing is open again.
-pub(crate) fn stayed(pane: PaneId) {
-    with_pane(pane, |p| {
-        if p.going == Going::Leaving {
-            p.going = Going::Open;
-        }
-    });
+/// Whether a shutdown was asked for.
+pub(crate) fn shutting_down() -> bool {
+    with(|host| host.shutting_down) == Some(true)
 }
 
-/// Whether a shutdown was asked for and every pane has closed since.
+/// Whether a shutdown was asked for, and every pane has closed and every download ended since.
 pub(crate) fn all_closed() -> bool {
-    with(|host| host.shutting_down && host.panes.is_empty()) == Some(true)
+    with(|host| host.shutting_down && host.panes.is_empty()) == Some(true) && crate::downloads::all_ended()
 }
 
 /// What the engine works for: waited on while it isn't up, a request of the app's waits for
@@ -402,7 +385,7 @@ fn handle(request: AppRequest) {
                 crate::printing::print(pane, &host, print);
             }
         }
-        AppRequest::Download { pane, download, act } => crate::downloads::act(pane, download, act),
+        AppRequest::Download { download, act } => crate::downloads::act(download, act),
         AppRequest::ClearData => panes::clear_data(),
         AppRequest::Shutdown => shutdown(),
     }
@@ -415,6 +398,7 @@ fn shutdown() {
     })
     .unwrap_or_default();
     crate::extensions::stopping();
+    crate::downloads::cancel_all();
     crate::native::close_strays();
     for pane in open {
         close(pane);
@@ -422,8 +406,8 @@ fn shutdown() {
     quit_when_closed();
 }
 
-/// Ends the host's loop once a shutdown was asked for and every pane has closed since, and
-/// every window Chrome made on its own.
+/// Ends the host's loop once a shutdown was asked for, and every pane has closed since, every
+/// window Chrome made on its own, and every download ended.
 pub(crate) fn quit_when_closed() {
     if all_closed() && crate::native::strays() == 0 {
         quit();

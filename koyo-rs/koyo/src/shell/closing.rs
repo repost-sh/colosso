@@ -11,26 +11,46 @@ use crate::browser::{BrowserView, Dock};
 use crate::files::{self, FileEditor, Then};
 use crate::model::{ClosedFrom, ClosedTab, Pane, Spot, Tab};
 
+/// What closing panes asks about first.
+pub(super) struct ToAsk {
+    /// The editors of their files with unsaved edits.
+    editors: Vec<Entity<FileEditor>>,
+    /// Their terminals, which end.
+    terminals: Vec<u64>,
+    /// Their one page, as Chrome asks a tab's page (`leaving.rs`): none when they hold none, or
+    /// more than one, which go unasked as a worktree's tabs cleared do.
+    page: Option<Entity<BrowserView>>,
+    /// The keyboard is in one of them: what shows in their place has it then.
+    typing: bool,
+}
+
+impl ToAsk {
+    /// What closing `panes` asks about, pane `typing` having the keyboard.
+    pub(super) fn of(panes: &[&Pane], typing: Option<u64>, cx: &App) -> Self {
+        let mut views = (panes.iter())
+            .filter_map(|pane| pane.view())
+            .filter(|view| !view.read(cx).is_inspector());
+        let page = views.next().filter(|_| views.next().is_none());
+        Self {
+            editors: (panes.iter())
+                .filter_map(|pane| pane.file()?.read(cx).unsaved().cloned())
+                .collect(),
+            terminals: panes.iter().filter_map(|pane| pane.terminal()).collect(),
+            page: page.cloned(),
+            typing: typing.is_some_and(|typing| panes.iter().any(|pane| pane.id == typing)),
+        }
+    }
+}
+
 impl Shell {
     /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
     /// file has unsaved edits, its terminal runs something or its page asks to confirm leaving.
     /// Its terminal ends.
     pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let pane = self.workspace.pane(id);
-        let editors = (pane.and_then(|pane| pane.file()))
-            .and_then(|file| file.read(cx).unsaved().cloned())
-            .into_iter()
-            .collect();
-        let terminals = pane.and_then(Pane::terminal).into_iter().collect();
-        let to_ask = Self::page_among(pane.as_slice(), cx);
-        let typing = self.pane_with_keyboard(window, cx) == Some(id);
-        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
-            shell.close_pane_now(id, cx);
-            if typing {
-                shell.keys_to_shown_tab(cx);
-            }
-        };
-        self.ask_then((editors, terminals, to_ask), close, window, cx);
+        let typing = self.pane_with_keyboard(window, cx);
+        let ask = ToAsk::of(self.workspace.pane(id).as_slice(), typing, cx);
+        let close = move |shell: &mut Self, cx: &mut Context<Self>| shell.close_pane_now(id, cx);
+        self.ask_then(ask, close, window, cx);
     }
 
     /// Closes pane `id`, wherever it is, whatever its file has: out of its split, or with its
@@ -68,31 +88,23 @@ impl Shell {
         let Some(tab) = self.workspace.tab(at) else {
             return;
         };
-        let editors = tab.unsaved(cx);
-        let terminals = (tab.panes().into_iter())
-            .filter_map(Pane::terminal)
-            .collect();
-        let page = Self::page_among(&tab.panes(), cx);
-        let shown = self.workspace.shown_checkout_tab() == Some(at);
-        let typing = shown && self.pane_with_keyboard(window, cx).is_some();
+        let ask = ToAsk::of(&tab.panes(), self.pane_with_keyboard(window, cx), cx);
         let id = tab.first().id;
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             if let Some((at, _)) = shell.workspace.find_pane(|pane| pane.id == id) {
                 shell.close_tab_now(at, cx);
-                if typing {
-                    shell.keys_to_shown_tab(cx);
-                }
             }
         };
-        self.ask_then((editors, terminals, page), close, window, cx);
+        self.ask_then(ask, close, window, cx);
     }
 
-    /// Ends `terminals` and does `close`, asking first about what's running in them, then
-    /// about what's unsaved in `editors`, then `page` whether it may leave (`leaving.rs`): once
-    /// it's agreed, saved or let go, and the page went.
-    fn ask_then(
+    /// Ends the terminals of what's closing and does `close`, asking first about what's running
+    /// in them, then about what's unsaved in its editors, then its page whether it may leave:
+    /// once it's agreed, saved or let go, and the page went. With the keyboard in it, what shows
+    /// in its place has the keyboard.
+    pub(super) fn ask_then(
         &mut self,
-        (editors, terminals, page): (Vec<Entity<FileEditor>>, Vec<u64>, Option<Entity<BrowserView>>),
+        ToAsk { editors, terminals, page, typing }: ToAsk,
         close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -102,6 +114,9 @@ impl Shell {
             let close = move |shell: &mut Self, cx: &mut Context<Self>| {
                 shell.end_terminals(&terminals, cx);
                 close(shell, cx);
+                if typing {
+                    shell.keys_to_shown_tab(cx);
+                }
             };
             let ask_page = move |shell: &mut Self, cx: &mut Context<Self>| {
                 shell.ask_page_then(page, close, cx);

@@ -65,8 +65,8 @@ pub enum AppRequest {
     },
     /// The person closes the page, which is asked first, as Chrome asks it: one that asks to
     /// confirm leaving asks the person ([`crate::HostEvent::Dialog`] with
-    /// [`crate::Dialog::BeforeUnload`]). The host says [`crate::HostEvent::Closed`] once the
-    /// page went, and nothing when the person stays; a [`Self::Close`] meanwhile lets it go.
+    /// [`crate::Dialog::BeforeUnload`]). The host says [`crate::HostEvent::TabClosed`] and
+    /// [`crate::HostEvent::Closed`] once the page went, and nothing when the person stays; a [`Self::Close`] meanwhile lets it go.
     Leave {
         /// The pane.
         pane: PaneId,
@@ -235,12 +235,9 @@ pub enum AppRequest {
         /// What printing it makes.
         print: crate::Print,
     },
-    /// Where a download of the page's goes ([`crate::HostEvent::DownloadAsked`]), or that it's
-    /// canceled.
+    /// Where a download goes ([`crate::HostEvent::DownloadAsked`]), or that it's canceled.
     Download {
-        /// The page that started it.
-        pane: PaneId,
-        /// The engine's number for it.
+        /// The host's number for it.
         download: u32,
         /// What's done with it.
         act: crate::DownloadAct,
@@ -280,9 +277,11 @@ impl AppRequest {
             | Self::ExtensionAct { pane, .. }
             | Self::Active { pane }
             | Self::Print { pane, .. }
-            | Self::Download { pane, .. }
             | Self::Cdp { pane, .. } => Some(*pane),
-            Self::ChangeExtension { .. } | Self::ClearData | Self::Shutdown => None,
+            Self::ChangeExtension { .. }
+            | Self::Download { .. }
+            | Self::ClearData
+            | Self::Shutdown => None,
         }
     }
 }

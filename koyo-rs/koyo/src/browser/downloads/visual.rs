@@ -49,7 +49,7 @@ pub fn run() -> ExitCode {
 /// A download in the list, `received` of `total` bytes, as `stage` stands.
 fn entry(id: u32, name: &str, (received, total): (u64, Option<u64>), stage: Stage, by: Option<&str>) -> Entry {
     Entry {
-        key: Key::Engine { pane: 1, id },
+        key: Key::Engine(id),
         name: name.to_owned(),
         path: Some(PathBuf::from("/Users/me/Downloads").join(name)),
         received,

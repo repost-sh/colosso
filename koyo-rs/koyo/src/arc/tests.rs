@@ -4,7 +4,7 @@
 use std::path::Path;
 
 use gpui_kit::{
-    Action, AnyWindowHandle, AppContext as _, Entity, Modifiers, TestAppContext, VisualTestContext,
+    AnyWindowHandle, AppContext as _, Entity, Modifiers, TestAppContext, VisualTestContext,
 };
 
 use super::actions::{ClearWorktree, MoveProjectToNewSpace, NewSpace};
@@ -21,7 +21,7 @@ use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
 use crate::test_support::{
-    center_of, click_pane, draw, drawn, hold, let_go, let_go_on, move_held, open_page, repo,
+    act, center_of, click_pane, draw, drawn, hold, let_go, let_go_on, move_held, open_page, repo,
     select, shell_on, shell_with, take_up,
 };
 
@@ -56,15 +56,6 @@ fn arc_shell(
     select(&shell, &roots[0], cx);
     draw(window, cx);
     (window, shell, roots)
-}
-
-fn act(window: AnyWindowHandle, action: impl Action, cx: &mut TestAppContext) {
-    (cx.update_window(window, |_, window, cx| {
-        window.dispatch_action(Box::new(action), cx);
-    }))
-    .unwrap();
-    cx.run_until_parked();
-    draw(window, cx);
 }
 
 /// The selected project's folder, and the space shown.

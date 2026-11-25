@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, Pixels, Point,
+    Action, AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, Pixels, Point,
     Render, Size, TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions,
     WindowVisibility, point, px, size,
 };
@@ -114,6 +114,13 @@ pub fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
     cx.run_until_parked();
     (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
     cx.run_until_parked();
+}
+
+/// Does `action` in `window`, as the person does, and draws what it changed.
+#[cfg(test)]
+pub fn act(window: AnyWindowHandle, action: impl Action, cx: &mut TestAppContext) {
+    cx.dispatch_action(window, action);
+    draw(window, cx);
 }
 
 /// Brings `window` in front, the app's active window, or puts it behind another app's, as a

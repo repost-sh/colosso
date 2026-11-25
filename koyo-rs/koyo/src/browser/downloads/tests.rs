@@ -26,7 +26,7 @@ fn started(name: &str, cx: &mut TestAppContext) -> (FakeHost, PathBuf) {
 
 fn asked(id: u32, at: At, cx: &mut TestAppContext) {
     let downloads = cx.update(Downloads::global);
-    downloads.update(cx, |downloads, cx| downloads.asked(PAGE, id, "report.pdf", at, cx));
+    downloads.update(cx, |downloads, cx| downloads.asked(id, "report.pdf", at, cx));
     cx.run_until_parked();
 }
 
@@ -34,7 +34,7 @@ fn asked(id: u32, at: At, cx: &mut TestAppContext) {
 fn acts(host: &FakeHost, cx: &mut TestAppContext) -> Vec<(u32, DownloadAct)> {
     (host.asked(cx).into_iter())
         .filter_map(|request| match request {
-            AppRequest::Download { pane: PAGE, download, act } => Some((download, act)),
+            AppRequest::Download { download, act } => Some((download, act)),
             _ => None,
         })
         .collect()
@@ -54,7 +54,6 @@ fn stages(cx: &mut TestAppContext) -> Vec<(String, Stage)> {
 
 fn going(id: u32, path: &Path, received: u64, state: DownloadState) -> HostEvent {
     HostEvent::Download {
-        pane: PAGE,
         download: ipc::Download {
             id,
             url: "https://example.com/report".into(),
@@ -117,12 +116,12 @@ fn a_canceled_download_stays_canceled_though_the_host_heard_late(cx: &mut TestAp
     let placed = acts(&host, cx);
     assert_eq!(placed.len(), 1, "{placed:?}");
     let downloads = cx.update(Downloads::global);
-    let key = Key::Engine { pane: PAGE, id: 1 };
+    let key = Key::Engine(1);
     downloads.update(cx, |downloads, cx| downloads.cancel(key, cx));
     cx.run_until_parked();
     assert_eq!(acts(&host, cx), [(1, DownloadAct::Cancel)]);
     host.says(going(1, &folder.join("report (1).pdf"), 64, DownloadState::Going), cx);
-    assert_eq!(acts(&host, cx), [(1, DownloadAct::Cancel)], "it's canceled again");
+    assert_eq!(acts(&host, cx), [], "the host was told");
     assert_eq!(stages(cx), [("report (1).pdf".into(), Stage::Canceled)]);
 }
 

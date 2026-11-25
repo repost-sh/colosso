@@ -362,7 +362,6 @@ fn downloads_and_printing_have_stable_wire_names() {
                 "url": "https://example.com/report" })
     );
     let going = HostEvent::Download {
-        pane: 4,
         download: Download {
             id: 9,
             url: "https://example.com/report".into(),
@@ -375,7 +374,7 @@ fn downloads_and_printing_have_stable_wire_names() {
     let wire = serde_json::to_value(&going).unwrap();
     assert_eq!(
         wire,
-        json!({ "type": "download", "pane": 4, "download": {
+        json!({ "type": "download", "download": {
             "id": 9, "url": "https://example.com/report", "path": "/Users/me/Downloads/report.pdf",
             "received": 512, "total": null,
             "state": { "kind": "failed", "reason": "The network went away." } } })
@@ -388,16 +387,15 @@ fn downloads_and_printing_have_stable_wire_names() {
     );
 
     let save = AppRequest::Download {
-        pane: 4,
         download: 9,
         act: DownloadAct::SaveTo { path: "/Users/me/Downloads/report (1).pdf".into() },
     };
     assert_eq!(
         serde_json::to_value(&save).unwrap(),
-        json!({ "type": "download", "pane": 4, "download": 9,
+        json!({ "type": "download", "download": 9,
                 "act": { "type": "saveTo", "path": "/Users/me/Downloads/report (1).pdf" } })
     );
-    assert_eq!(save.pane(), Some(4));
+    assert_eq!(save.pane(), None);
     let print = AppRequest::Print { pane: 4, print: Print::Pdf { path: "/tmp/a.pdf".into() } };
     assert_eq!(
         serde_json::to_value(&print).unwrap(),

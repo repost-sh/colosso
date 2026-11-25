@@ -9,6 +9,9 @@ use koyo_browser_ipc::{Answer, AppRequest, Dialog, Viewport};
 use super::{BrowserEvent, BrowserView, Kind};
 use crate::browser::host::HostStatus;
 
+/// What the person's close of a page does, once.
+pub(super) type Closing = Box<dyn FnOnce(&mut App)>;
+
 impl BrowserView {
     pub(in crate::browser) fn status(&self, cx: &App) -> HostStatus {
         self.browsers.read(cx).status()
@@ -146,19 +149,17 @@ impl BrowserView {
     pub(in crate::browser) fn host_changed(&mut self, cx: &mut Context<Self>) {
         let epoch = self.browsers.read(cx).epoch();
         if self.opened.is_some_and(|opened| opened != epoch) {
-            self.opened = None;
-            self.dialogs.clear();
+            for question in std::mem::take(&mut self.dialogs) {
+                self.leave_answered(&question.asked, &Answer::Dismiss);
+            }
             self.chooser = None;
-            self.forget_passkey();
             self.menu_request = None;
             self.open_menu = None;
-            if self.is_fullscreen() {
-                self.fullscreen_changed(false, cx);
-            }
-            if self.leaving {
+            if self.leaving.is_some() {
                 self.closed(cx);
                 return;
             }
+            self.no_longer_open(cx);
         }
         if !self.page.url.is_empty() {
             self.target.clone_from(&self.page.url);
@@ -202,7 +203,7 @@ impl BrowserView {
     /// fresh folder or the other profile. `DevTools` just close, as when their page goes, and so
     /// does a page the person was closing.
     pub(in crate::browser) fn reopen(&mut self, cx: &mut Context<Self>) {
-        if self.is_inspector() || self.leaving {
+        if self.is_inspector() || self.leaving.is_some() {
             self.closed(cx);
             return;
         }
@@ -214,50 +215,62 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// The host closed this browser: a page the person closed left, as they asked.
+    /// The host closed this browser: the person's close of a page they left happens now.
     pub(in crate::browser) fn closed(&mut self, cx: &mut Context<Self>) {
+        self.no_longer_open(cx);
+        if let Some(close) = self.leaving.take() {
+            cx.defer(close);
+        }
+        cx.emit(BrowserEvent::Closed);
+        cx.notify();
+    }
+
+    /// The page is no longer open in the host.
+    fn no_longer_open(&mut self, cx: &mut Context<Self>) {
         self.opened = None;
         self.forget_passkey();
         if self.is_fullscreen() {
             self.fullscreen_changed(false, cx);
         }
-        let left = std::mem::take(&mut self.leaving);
-        cx.emit(if left { BrowserEvent::Left } else { BrowserEvent::Closed });
-        cx.notify();
     }
 
-    /// Asks the page to leave, as the person closed it, the way Chrome asks a tab it closes
-    /// (`docs/browser.md` 17): whether it was asked. It says it left ([`BrowserEvent::Left`])
-    /// once it's gone, or that the person stayed ([`BrowserEvent::Stayed`]) when it asked them
-    /// to confirm leaving and they didn't. A page not open has nothing to ask.
-    pub fn leave(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.is_open(cx) {
-            return false;
+    /// The page closed without the app letting it go: its tab goes, as it's closed already for
+    /// one the person left ([`Self::leave`]).
+    pub(in crate::browser) fn tab_closed(&mut self, cx: &mut Context<Self>) {
+        if self.leaving.is_none() {
+            cx.emit(BrowserEvent::ClosedItself);
         }
-        self.leaving = true;
+    }
+
+    /// Asks the page to leave, as the person closes it, the way Chrome asks a tab it closes
+    /// (`docs/browser.md` 17), and does `close` once it went: never when it asks them to confirm
+    /// leaving and they stay, and at once for one not open. One asked already is asked again, which the engine takes as the
+    /// same ask while the first is still out, and the close it waits for stays the first.
+    pub fn leave(&mut self, close: Closing, cx: &mut Context<Self>) {
+        if !self.is_open(cx) {
+            cx.defer(close);
+            return;
+        }
+        self.leaving.get_or_insert(close);
+        for question in &self.dialogs {
+            self.leave_asked(&question.asked, cx);
+        }
         self.send(AppRequest::Leave { pane: self.pane }, cx);
-        true
     }
 
     /// The page asks `question`: asking the person closing it whether to leave, it wants its tab
     /// in front, where they see the question.
     pub(in crate::browser) fn leave_asked(&self, question: &Dialog, cx: &mut Context<Self>) {
-        if self.leaving && matches!(question, Dialog::BeforeUnload { .. }) {
+        if self.leaving.is_some() && matches!(question, Dialog::BeforeUnload { .. }) {
             cx.emit(BrowserEvent::Activate);
         }
     }
 
-    /// The person gave `answer` to the page's `question`: asked whether to leave the page they
-    /// were closing, and not leaving, they stay on it.
-    pub(in crate::browser) fn leave_answered(
-        &mut self,
-        question: &Dialog,
-        answer: &Answer,
-        cx: &mut Context<Self>,
-    ) {
-        let leave = matches!(question, Dialog::BeforeUnload { .. });
-        if leave && !matches!(answer, Answer::Accept) && std::mem::take(&mut self.leaving) {
-            cx.emit(BrowserEvent::Stayed);
+    /// The page's `question` was answered with `answer`, or withdrawn, which says no: asked
+    /// whether to leave the page they were closing, and not leaving, the person stays on it.
+    pub(in crate::browser) fn leave_answered(&mut self, question: &Dialog, answer: &Answer) {
+        if matches!(question, Dialog::BeforeUnload { .. }) && !matches!(answer, Answer::Accept) {
+            self.leaving = None;
         }
     }
 }

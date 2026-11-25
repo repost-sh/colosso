@@ -139,8 +139,6 @@ pub struct Shell {
     pub locations: Option<Entity<Locations>>,
     /// What the walks that let go of what's gone went by when they last ran (`gone`).
     let_go_at: gone::Keys,
-    /// The pages the person closed that are still to go (`leaving`).
-    leaving: leaving::Leaving,
     _subscriptions: [Subscription; 14],
 }
 
@@ -236,7 +234,6 @@ impl Shell {
             pinned_hand: Rc::default(),
             locations: None,
             let_go_at: gone::Keys::default(),
-            leaving: leaving::Leaving::default(),
             _subscriptions,
         };
         shell.restore_pages(cx);

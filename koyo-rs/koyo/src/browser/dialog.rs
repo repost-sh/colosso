@@ -80,7 +80,7 @@ impl BrowserView {
     /// The host withdrew a question: the page navigated away, or the engine answered it
     /// itself.
     pub(super) fn dialog_closed(&mut self, id: u64, cx: &mut Context<Self>) {
-        self.dialogs.retain(|question| question.id != id);
+        self.settled(id, &Answer::Dismiss);
         self.chooser_withdrawn(id);
         self.put_away(id, cx);
         cx.notify();
@@ -141,13 +141,20 @@ impl BrowserView {
             self.asked = None;
             self.asked_in = Put::Dialog;
         }
-        if let Some(at) = self.dialogs.iter().position(|question| question.id == id)
-            && let Some(question) = self.dialogs.remove(at)
-        {
-            self.leave_answered(&question.asked, &answer, cx);
+        if self.settled(id, &answer) {
             self.send_answer(id, answer, cx);
         }
         cx.notify();
+    }
+
+    /// Question `id` is over, answered with `answer`: whether it was waiting.
+    fn settled(&mut self, id: u64, answer: &Answer) -> bool {
+        let at = self.dialogs.iter().position(|question| question.id == id);
+        let Some(question) = at.and_then(|at| self.dialogs.remove(at)) else {
+            return false;
+        };
+        self.leave_answered(&question.asked, answer);
+        true
     }
 
     pub(super) fn send_answer(&self, dialog: u64, answer: Answer, cx: &mut Context<Self>) {

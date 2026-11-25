@@ -378,7 +378,8 @@ pub enum HostEvent {
         /// Whether it was asked for in front: not for a ⌘- or a middle click.
         active: bool,
     },
-    /// The pane's page closed without the app asking: an extension closed its tab
+    /// The pane's page closed without the app letting it go ([`crate::AppRequest::Close`]): the
+    /// person left it ([`crate::AppRequest::Leave`]), an extension closed its tab
     /// (`chrome.tabs.remove`), or a page a script opened closed itself. The pane's tab goes;
     /// [`HostEvent::Closed`] follows.
     TabClosed {
@@ -396,7 +397,7 @@ pub enum HostEvent {
     DownloadAsked {
         /// The page that started it.
         pane: PaneId,
-        /// The engine's number for it, as [`crate::Download::id`].
+        /// The host's number for it, as [`crate::Download::id`].
         download: u32,
         /// The file name the server or the page gave it, made safe for a file system.
         name: String,
@@ -404,11 +405,8 @@ pub enum HostEvent {
         url: String,
     },
     /// How a download stands, each time that changes once it has a place: bytes coming, or how
-    /// it ended. A page closed while its downloads come in stays open in the engine, out of
-    /// sight, until the last ends, as Chrome keeps a closed tab's downloads.
+    /// it ended. It goes on after its page has closed, as Chrome's do.
     Download {
-        /// The page that started it.
-        pane: PaneId,
         /// How it stands.
         download: crate::Download,
     },

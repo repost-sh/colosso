@@ -107,8 +107,7 @@ pub(crate) fn ask(pane: PaneId, origin: &str, question: Dialog, waiting: Waiting
     });
 }
 
-/// The person answered: an answer that doesn't fit the question says no. Staying on a page
-/// they were closing keeps it open (`host::stayed`).
+/// The person answered: an answer that doesn't fit the question says no.
 pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
     if let Some(waiting) = with(|dialogs| dialogs.remove(pane, dialog)) {
         let answer = if fits(waiting.asked(), &answer) {
@@ -117,12 +116,10 @@ pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
             log::warn!("pane {pane}'s question {dialog} was answered as another kind; said no");
             Answer::Dismiss
         };
-        match &waiting {
-            Waiting::Media { bits, origin, .. } if !matches!(answer, Answer::Dismiss) => {
-                host::keep_media(pane, origin, *bits);
-            }
-            Waiting::BeforeUnload(_) if matches!(answer, Answer::Dismiss) => host::stayed(pane),
-            _ => {}
+        if let Waiting::Media { bits, origin, .. } = &waiting
+            && !matches!(answer, Answer::Dismiss)
+        {
+            host::keep_media(pane, origin, *bits);
         }
         resolve(waiting, answer);
     }
@@ -131,24 +128,22 @@ pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
 /// The app let `pane`'s page go: whether to leave it, asked still, is answered yes, as nobody
 /// is left to answer it, and the app hears the question is withdrawn.
 pub(crate) fn let_go(pane: PaneId) {
-    let leaving = |p: PaneId, waiting: &Waiting| p == pane && matches!(waiting, Waiting::BeforeUnload(_));
-    for (dialog, waiting) in with(|dialogs| dialogs.take(leaving)) {
-        host::send(&HostEvent::DialogClosed { pane, dialog });
+    for waiting in withdraw(pane, |waiting| matches!(waiting, Waiting::BeforeUnload(_))) {
         resolve(waiting, Answer::Accept);
     }
 }
 
 /// The page navigated or reloaded: its script dialogs are void.
 pub(crate) fn reset(pane: PaneId) {
-    withdraw(pane, |waiting| matches!(waiting, Waiting::Script(_) | Waiting::BeforeUnload(_)));
+    drop(withdraw(pane, |waiting| matches!(waiting, Waiting::Script(_) | Waiting::BeforeUnload(_))));
 }
 
 /// The engine took a permission prompt back.
 pub(crate) fn prompt_dismissed(pane: PaneId, prompt: u64) {
-    withdraw(
+    drop(withdraw(
         pane,
         |waiting| matches!(waiting, Waiting::Prompt { id, .. } if *id == prompt),
-    );
+    ));
 }
 
 /// The pane closed: everything it was asked is declined.
@@ -165,11 +160,14 @@ pub(crate) fn clear() {
     }
 }
 
-fn withdraw(pane: PaneId, which: impl Fn(&Waiting) -> bool) {
+/// Takes back `pane`'s questions that are `which`, which the app hears.
+fn withdraw(pane: PaneId, which: impl Fn(&Waiting) -> bool) -> Vec<Waiting> {
     let withdrawn = with(|dialogs| dialogs.take(|p, waiting| p == pane && which(waiting)));
-    for (dialog, _) in withdrawn {
+    let taken = withdrawn.into_iter().map(|(dialog, waiting)| {
         host::send(&HostEvent::DialogClosed { pane, dialog });
-    }
+        waiting
+    });
+    taken.collect()
 }
 
 fn decline(waiting: Waiting) {
@@ -179,8 +177,7 @@ fn decline(waiting: Waiting) {
 fn resolve(waiting: Waiting, answer: Answer) {
     let accepted = !matches!(answer, Answer::Dismiss);
     match waiting {
-        Waiting::BeforeUnload(callback) => callback.cont(i32::from(accepted), None),
-        Waiting::Script(callback) => {
+        Waiting::Script(callback) | Waiting::BeforeUnload(callback) => {
             let text = match &answer {
                 Answer::Text { text } => Some(text.as_str().into()),
                 _ => None,

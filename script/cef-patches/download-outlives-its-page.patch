@@ -1,68 +1,808 @@
+--- a/cef/include/cef_download_handler.h
++++ b/cef/include/cef_download_handler.h
+@@ -114,9 +114,10 @@
+   /// execute the callback passed to OnDownloadUpdated(). If this method returns
+   /// true and |callback| is destroyed without being executed, the download will
+   /// be canceled. Do not keep a reference to |download_item| outside of this
+-  /// method.
++  /// method. |browser| will be NULL if the browser that the download was asked
++  /// for from is destroyed, or went to another page.
+   ///
+-  /*--cef()--*/
++  /*--cef(optional_param=browser)--*/
+   virtual bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
+                                 CefRefPtr<CefDownloadItem> download_item,
+                                 const CefString& suggested_name,
+@@ -129,9 +130,10 @@
+   /// This may be called multiple times before and after OnBeforeDownload().
+   /// Execute |callback| either asynchronously or in this method to cancel the
+   /// download if desired. Do not keep a reference to |download_item| outside of
+-  /// this method.
++  /// this method. |browser| will be NULL once the browser is destroyed, or if it
++  /// was NULL in OnBeforeDownload().
+   ///
+-  /*--cef()--*/
++  /*--cef(optional_param=browser)--*/
+   virtual void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
+                                  CefRefPtr<CefDownloadItem> download_item,
+                                  CefRefPtr<CefDownloadItemCallback> callback) {}
+--- a/cef/libcef/browser/download_manager_delegate_impl.cc
++++ b/cef/libcef/browser/download_manager_delegate_impl.cc
+@@ -5,23 +5,28 @@
+ #include "cef/libcef/browser/download_manager_delegate_impl.h"
+ 
+ #include <tuple>
++#include <utility>
+ 
+ #include "base/files/file_util.h"
+ #include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
+ #include "base/logging.h"
+ #include "base/path_service.h"
+ #include "base/strings/string_util.h"
+ #include "base/strings/utf_string_conversions.h"
+ #include "cef/include/cef_download_handler.h"
++#include "cef/libcef/browser/browser_context.h"
+ #include "cef/libcef/browser/browser_host_base.h"
+ #include "cef/libcef/browser/context.h"
+ #include "cef/libcef/browser/download_item_impl.h"
++#include "cef/libcef/browser/request_context_impl.h"
+ #include "cef/libcef/browser/thread_util.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/common/pref_names.h"
+ #include "components/prefs/pref_service.h"
+ #include "content/public/browser/browser_context.h"
+ #include "content/public/browser/download_item_utils.h"
++#include "content/public/browser/render_frame_host.h"
+ #include "content/public/browser/web_contents.h"
+ #include "net/base/filename_util.h"
+ #include "net/http/http_response_headers.h"
+@@ -43,6 +48,70 @@
+   return nullptr;
+ }
+ 
++// Koyo: The browser that asked for a download, for after it's destroyed, as
++// Chrome's downloads outlive their tab: the handler it had, which is told of the
++// download, and what keeps the profile loaded until the download has ended, as
++// Chrome does (ProfileKeepAliveOrigin::kDownloadInProgress).
++class CefDownloadRequester : public download::DownloadRequester,
++                             public CefContext::Observer {
++ public:
++  CefDownloadRequester(CefRefPtr<CefBrowserHostBase> browser,
++                       content::BrowserContext* browser_context)
++      : handler_(GetDownloadHandler(browser)),
++        alloy_style_(browser->IsAlloyStyle()) {
++    CefContext::Get()->AddObserver(this);
++    Keep(browser_context);
++  }
++
++  static CefDownloadRequester* Get(DownloadItem* item) {
++    return static_cast<CefDownloadRequester*>(DownloadRequester::Get(*item));
++  }
++
++  CefRefPtr<CefDownloadHandler> handler() const { return handler_; }
++  bool alloy_style() const { return alloy_style_; }
++
++  // |item|, which was asked for, is updated.
++  void OnUpdated(DownloadItem* item) {
++    if (item->GetState() == DownloadItem::IN_PROGRESS) {
++      Keep(content::DownloadItemUtils::GetBrowserContext(item));
++    } else if (request_context_) {
++      // This may be the last reference to what keeps the profile, and |item|
++      // with it, so the current call stack unwinds first.
++      CEF_POST_TASK(CEF_UIT, base::DoNothingWithBoundArgs(
++                                 std::exchange(request_context_, nullptr)));
++    }
++  }
++
++  // CefContext::Observer methods.
++  void OnContextDestroyed() override {
++    CefContext::Get()->RemoveObserver(this);
++    context_destroyed_ = true;
++    request_context_ = nullptr;
++  }
++
++ private:
++  ~CefDownloadRequester() override {
++    if (!context_destroyed_) {
++      CefContext::Get()->RemoveObserver(this);
++    }
++  }
++
++  void Keep(content::BrowserContext* browser_context) {
++    if (request_context_ || context_destroyed_) {
++      return;
++    }
++    if (auto* context = CefBrowserContext::FromBrowserContext(browser_context)) {
++      request_context_ =
++          CefRequestContextImpl::GetOrCreateForBrowserContext(context, nullptr);
++    }
++  }
++
++  const CefRefPtr<CefDownloadHandler> handler_;
++  const bool alloy_style_;
++  CefRefPtr<CefRequestContextImpl> request_context_;
++  bool context_destroyed_ = false;
++};
++
+ void RunDownloadTargetCallback(download::DownloadTargetCallback callback,
+                                const base::FilePath& path) {
+   download::DownloadTargetInfo target_info;
+@@ -328,10 +397,9 @@
+ 
+ void CefDownloadManagerDelegateImpl::OnDownloadUpdated(DownloadItem* download) {
+   CefRefPtr<CefBrowserHostBase> browser = GetBrowser(download);
+-  CefRefPtr<CefDownloadHandler> handler;
+-  if (browser.get()) {
+-    handler = GetDownloadHandler(browser);
+-  }
++  // The download is observed as it's associated, which gives it a requester.
++  CefDownloadRequester* requester = CefDownloadRequester::Get(download);
++  CefRefPtr<CefDownloadHandler> handler = requester->handler();
+ 
+   if (handler.get()) {
+     CefRefPtr<CefDownloadItemImpl> download_item(
+@@ -343,6 +411,8 @@
+ 
+     std::ignore = download_item->Detach(nullptr);
+   }
++
++  requester->OnUpdated(download);
+ }
+ 
+ void CefDownloadManagerDelegateImpl::OnDownloadDestroyed(DownloadItem* item) {
+@@ -378,8 +448,7 @@
+                                                        DownloadItem* item) {
+   // This callback may arrive after DetermineDownloadTarget, so we allow
+   // association from either method.
+-  CefRefPtr<CefBrowserHostBase> browser = GetOrAssociateBrowser(item);
+-  if (!browser) {
++  if (!Associate(item)) {
+     // If the download is rejected (e.g. ALT+click on an invalid protocol link)
+     // then an "interrupted" download will be started via DownloadManagerImpl::
+     // StartDownloadWithId (originating from CreateInterruptedDownload) with no
+@@ -405,13 +474,14 @@
+     download::DownloadTargetCallback* callback) {
+   // This callback may arrive before OnDownloadCreated, so we allow association
+   // from either method.
+-  CefRefPtr<CefBrowserHostBase> browser = GetOrAssociateBrowser(item);
+-  if (!browser) {
++  if (!Associate(item)) {
+     return false;
+   }
++  CefRefPtr<CefBrowserHostBase> browser = GetBrowser(item);
++  CefDownloadRequester* requester = CefDownloadRequester::Get(item);
+ 
+   bool handled = false;
+-  CefRefPtr<CefDownloadHandler> handler = GetDownloadHandler(browser);
++  CefRefPtr<CefDownloadHandler> handler = requester->handler();
+   if (handler) {
+     // Determine the charset used to decode a non-ASCII filename from the
+     // Content-Disposition header when it lacks an RFC 5987 charset. Prefer the
+@@ -461,11 +531,23 @@
+ 
+   // Cancel unhandled downloads with Alloy style. Chrome style uses the default
+   // Chrome download handling.
+-  if (browser->IsAlloyStyle()) {
++  if (requester->alloy_style()) {
+     RunDownloadTargetCallback(std::move(*callback), base::FilePath());
+     return true;
+   }
+   return false;
++}
++
++scoped_refptr<download::DownloadRequester>
++CefDownloadManagerDelegateImpl::GetDownloadRequester(
++    content::RenderFrameHost* frame) {
++  CefRefPtr<CefBrowserHostBase> browser =
++      CefBrowserHostBase::GetBrowserForHost(frame);
++  if (!browser) {
++    return nullptr;
++  }
++  return base::MakeRefCounted<CefDownloadRequester>(
++      browser, frame->GetBrowserContext());
+ }
+ 
+ void CefDownloadManagerDelegateImpl::OnBrowserDestroyed(
+@@ -473,19 +555,16 @@
+   for (auto& [item, item_browser] : item_browser_map_) {
+     if (item_browser == browser) {
+       // Don't call back into browsers that have been destroyed. We're not
+-      // canceling the download so it will continue silently until it completes
+-      // or until the associated browser context is destroyed.
++      // canceling the download so it will continue until it completes or until
++      // the associated browser context is destroyed.
+       item_browser = nullptr;
+     }
+   }
+ }
+ 
+-CefRefPtr<CefBrowserHostBase>
+-CefDownloadManagerDelegateImpl::GetOrAssociateBrowser(
+-    download::DownloadItem* item) {
+-  ItemBrowserMap::const_iterator it = item_browser_map_.find(item);
+-  if (it != item_browser_map_.end()) {
+-    return it->second.get();
++bool CefDownloadManagerDelegateImpl::Associate(download::DownloadItem* item) {
++  if (item_browser_map_.contains(item)) {
++    return true;
+   }
+ 
+   CefRefPtr<CefBrowserHostBase> browser;
+@@ -495,8 +574,14 @@
+     browser = CefBrowserHostBase::GetBrowserForContents(contents);
+     LOG_IF(WARNING, !browser) << "No CefBrowser for download item";
+   }
+-  if (!browser) {
+-    return nullptr;
++  if (!CefDownloadRequester::Get(item)) {
++    // A page being saved is asked for by no one else than its browser.
++    if (!browser) {
++      return false;
++    }
++    base::MakeRefCounted<CefDownloadRequester>(
++        browser, content::DownloadItemUtils::GetBrowserContext(item))
++        ->AttachTo(*item);
+   }
+ 
+   item->AddObserver(this);
+@@ -505,11 +590,11 @@
+ 
+   // Register as an observer so that we can cancel associated DownloadItems when
+   // the browser is destroyed.
+-  if (!browser->HasObserver(this)) {
++  if (browser && !browser->HasObserver(this)) {
+     browser->AddObserver(this);
+   }
+ 
+-  return browser;
++  return true;
+ }
+ 
+ CefRefPtr<CefBrowserHostBase> CefDownloadManagerDelegateImpl::GetBrowser(
 --- a/cef/libcef/browser/download_manager_delegate_impl.h
 +++ b/cef/libcef/browser/download_manager_delegate_impl.h
-@@ -10,6 +10,7 @@
+@@ -48,11 +48,14 @@
+       download::DownloadItem* item,
+       download::DownloadTargetCallback* callback) override;
  
- #include "base/memory/raw_ptr.h"
- #include "base/memory/weak_ptr.h"
-+#include "cef/include/cef_download_handler.h"
- #include "cef/libcef/browser/browser_host_base.h"
- #include "cef/libcef/browser/download_manager_delegate.h"
- #include "components/download/public/common/download_item.h"
-@@ -66,6 +67,16 @@
++  scoped_refptr<download::DownloadRequester> GetDownloadRequester(
++      content::RenderFrameHost* frame) override;
++
+   // CefBrowserHostBase::Observer methods.
+   void OnBrowserDestroyed(CefBrowserHostBase* browser) override;
+ 
+-  CefRefPtr<CefBrowserHostBase> GetOrAssociateBrowser(
+-      download::DownloadItem* item);
++  // Koyo: Returns false if no one known asked for |item|.
++  bool Associate(download::DownloadItem* item);
+   CefRefPtr<CefBrowserHostBase> GetBrowser(download::DownloadItem* item);
+ 
+   void ResetManager();
+@@ -63,6 +66,7 @@
+   // Map of DownloadItem to originating CefBrowserHostBase. Maintaining this
+   // map is necessary because DownloadItem::GetWebContents() may return NULL if
+   // the browser navigates while the download is in progress.
++  // Koyo: nullptr for a download that outlives its browser.
    using ItemBrowserMap =
        std::map<raw_ptr<download::DownloadItem>, raw_ptr<CefBrowserHostBase>>;
    ItemBrowserMap item_browser_map_;
-+
-+  // Koyo: the browser each download started in and its download handler, kept
-+  // from when it started. Once the browser is destroyed, the handler is still
-+  // told how the download stands until it ends, as Chrome keeps a closed tab's
-+  // downloads and goes on showing them.
-+  using ItemHandlerMap =
-+      std::map<raw_ptr<download::DownloadItem>,
-+               std::pair<CefRefPtr<CefBrowserHostBase>,
-+                         CefRefPtr<CefDownloadHandler>>>;
-+  ItemHandlerMap item_handler_map_;
- };
+--- a/cef/libcef_dll/cpptoc/download_handler_cpptoc.cc
++++ b/cef/libcef_dll/cpptoc/download_handler_cpptoc.cc
+@@ -67,11 +67,6 @@
+   if (!self) {
+     return 0;
+   }
+-  // Verify param: browser; type: refptr_diff
+-  DCHECK(browser);
+-  if (!browser) {
+-    return 0;
+-  }
+   // Verify param: download_item; type: refptr_diff
+   DCHECK(download_item);
+   if (!download_item) {
+@@ -87,6 +82,7 @@
+   if (!callback) {
+     return 0;
+   }
++  // Unverified params: browser
  
- #endif  // CEF_LIBCEF_BROWSER_DOWNLOAD_MANAGER_DELEGATE_IMPL_H_
---- a/cef/libcef/browser/download_manager_delegate_impl.cc
-+++ b/cef/libcef/browser/download_manager_delegate_impl.cc
-@@ -331,6 +331,16 @@
-   CefRefPtr<CefDownloadHandler> handler;
-   if (browser.get()) {
-     handler = GetDownloadHandler(browser);
-+  }
-+  if (!handler.get()) {
-+    // Koyo: the download outlived its browser, or its browser is going and has
-+    // no client left. The handler it started with is told, with the browser
-+    // it started in, which says it's no longer valid.
-+    if (auto kept = item_handler_map_.find(download);
-+        kept != item_handler_map_.end()) {
-+      browser = kept->second.first;
-+      handler = kept->second.second;
-+    }
+   // Execute
+   bool _retval = CefDownloadHandlerCppToC::Get(self)->OnBeforeDownload(
+@@ -108,11 +104,6 @@
+   if (!self) {
+     return;
+   }
+-  // Verify param: browser; type: refptr_diff
+-  DCHECK(browser);
+-  if (!browser) {
+-    return;
+-  }
+   // Verify param: download_item; type: refptr_diff
+   DCHECK(download_item);
+   if (!download_item) {
+@@ -123,6 +114,7 @@
+   if (!callback) {
+     return;
+   }
++  // Unverified params: browser
+ 
+   // Execute
+   CefDownloadHandlerCppToC::Get(self)->OnDownloadUpdated(
+--- a/cef/libcef_dll/ctocpp/download_handler_ctocpp.cc
++++ b/cef/libcef_dll/ctocpp/download_handler_ctocpp.cc
+@@ -69,11 +69,6 @@
+ 
+   // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+ 
+-  // Verify param: browser; type: refptr_diff
+-  DCHECK(browser.get());
+-  if (!browser.get()) {
+-    return false;
+-  }
+   // Verify param: download_item; type: refptr_diff
+   DCHECK(download_item.get());
+   if (!download_item.get()) {
+@@ -89,6 +84,7 @@
+   if (!callback.get()) {
+     return false;
+   }
++  // Unverified params: browser
+ 
+   // Execute
+   int _retval = _struct->on_before_download(_struct,
+@@ -111,11 +107,6 @@
+ 
+   // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+ 
+-  // Verify param: browser; type: refptr_diff
+-  DCHECK(browser.get());
+-  if (!browser.get()) {
+-    return;
+-  }
+   // Verify param: download_item; type: refptr_diff
+   DCHECK(download_item.get());
+   if (!download_item.get()) {
+@@ -126,6 +117,7 @@
+   if (!callback.get()) {
+     return;
+   }
++  // Unverified params: browser
+ 
+   // Execute
+   _struct->on_download_updated(_struct,
+--- a/chrome/browser/download/chrome_download_manager_delegate.cc
++++ b/chrome/browser/download/chrome_download_manager_delegate.cc
+@@ -2610,7 +2610,15 @@
    }
  
-   if (handler.get()) {
-@@ -347,6 +357,7 @@
+   std::move(check_download_allowed_cb).Run(allow);
++}
++
++#if BUILDFLAG(ENABLE_CEF)
++scoped_refptr<download::DownloadRequester>
++ChromeDownloadManagerDelegate::GetDownloadRequester(
++    content::RenderFrameHost* frame) {
++  return cef_delegate_ ? cef_delegate_->GetDownloadRequester(frame) : nullptr;
+ }
++#endif
  
- void CefDownloadManagerDelegateImpl::OnDownloadDestroyed(DownloadItem* item) {
-   item->RemoveObserver(this);
-+  item_handler_map_.erase(item);
+ #if !BUILDFLAG(IS_ANDROID)
+ void ChromeDownloadManagerDelegate::AttachExtraInfo(
+--- a/chrome/browser/download/chrome_download_manager_delegate.h
++++ b/chrome/browser/download/chrome_download_manager_delegate.h
+@@ -189,6 +189,10 @@
+ #else
+   void AttachExtraInfo(download::DownloadItem* item) override;
+ #endif  // BUILDFLAG(IS_ANDROID)
++#if BUILDFLAG(ENABLE_CEF)
++  scoped_refptr<download::DownloadRequester> GetDownloadRequester(
++      content::RenderFrameHost* frame) override;
++#endif
+   bool SupportsHistoryLoading() override;
  
-   CefBrowserHostBase* browser = nullptr;
+   // Opens a download using the platform handler. DownloadItem::OpenDownload,
+--- a/components/download/internal/common/in_progress_download_manager.cc
++++ b/components/download/internal/common/in_progress_download_manager.cc
+@@ -139,7 +139,8 @@
+     const URLSecurityPolicy& url_security_policy,
+     mojo::PendingRemote<device::mojom::WakeLockProvider> wake_lock_provider,
+     const scoped_refptr<base::SingleThreadTaskRunner>& main_task_runner,
+-    bool is_transient) {
++    bool is_transient,
++    scoped_refptr<DownloadRequester> requester) {
+   DCHECK(GetIOTaskRunner()->BelongsToCurrentThread());
  
-@@ -503,6 +514,13 @@
+   ResourceDownloader::InterceptNavigationResponse(
+@@ -151,7 +152,7 @@
+       network::SharedURLLoaderFactory::Create(
+           std::move(pending_url_loader_factory)),
+       url_security_policy, std::move(wake_lock_provider), main_task_runner,
+-      is_transient);
++      is_transient, std::move(requester));
+ }
  
-   item_browser_map_.insert(std::make_pair(item, browser.get()));
+ #if BUILDFLAG(IS_ANDROID)
+@@ -349,7 +350,8 @@
+     network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
+     std::unique_ptr<network::PendingSharedURLLoaderFactory>
+         pending_url_loader_factory,
+-    bool is_transient) {
++    bool is_transient,
++    scoped_refptr<DownloadRequester> requester) {
+   mojo::PendingRemote<device::mojom::WakeLockProvider> wake_lock_provider;
+   if (wake_lock_provider_binder_) {
+     wake_lock_provider_binder_.Run(
+@@ -367,7 +369,8 @@
+           std::move(url_loader_client_endpoints),
+           std::move(pending_url_loader_factory), url_security_policy_,
+           std::move(wake_lock_provider),
+-          base::SingleThreadTaskRunner::GetCurrentDefault(), is_transient));
++          base::SingleThreadTaskRunner::GetCurrentDefault(), is_transient,
++          std::move(requester)));
+ }
  
-+  // Koyo: keep the handler the download starts with, while its browser is
-+  // alive, so it's told how the download stands after the browser is gone.
-+  if (CefRefPtr<CefDownloadHandler> handler = GetDownloadHandler(browser)) {
-+    item_handler_map_.insert(
-+        std::make_pair(item, std::make_pair(browser, handler)));
+ void InProgressDownloadManager::Initialize(
+--- a/components/download/internal/common/resource_downloader.cc
++++ b/components/download/internal/common/resource_downloader.cc
+@@ -107,12 +107,14 @@
+     const URLSecurityPolicy& url_security_policy,
+     mojo::PendingRemote<device::mojom::WakeLockProvider> wake_lock_provider,
+     const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+-    bool is_transient) {
++    bool is_transient,
++    scoped_refptr<DownloadRequester> requester) {
+   auto downloader = std::make_unique<ResourceDownloader>(
+       delegate, std::move(resource_request), render_process_id, render_frame_id,
+       serialized_embedder_download_data, tab_url, tab_referrer_url, true,
+       task_runner, std::move(url_loader_factory), url_security_policy,
+       std::move(wake_lock_provider));
++  downloader->requester_ = std::move(requester);
+   ResourceDownloader* raw_downloader = downloader.get();
+   task_runner->PostTask(
+       FROM_HERE,
+@@ -167,6 +169,7 @@
+     bool is_parallel_request,
+     bool is_background_mode) {
+   callback_ = std::move(download_url_parameters->callback());
++  requester_ = download_url_parameters->requester();
+   upload_callback_ = download_url_parameters->upload_callback();
+   guid_ = download_url_parameters->guid();
+   is_content_initiated_ = download_url_parameters->content_initiated();
+@@ -252,6 +255,7 @@
+   download_create_info->tab_referrer_url = tab_referrer_url_;
+   download_create_info->render_process_id = render_process_id_;
+   download_create_info->render_frame_id = render_frame_id_;
++  download_create_info->requester = requester_;
+   download_create_info->has_user_gesture = resource_request_->has_user_gesture;
+   download_create_info->is_content_initiated = is_content_initiated_;
+   download_create_info->transition_type =
+--- a/components/download/internal/common/resource_downloader.h
++++ b/components/download/internal/common/resource_downloader.h
+@@ -62,7 +62,8 @@
+       const URLSecurityPolicy& url_security_policy,
+       mojo::PendingRemote<device::mojom::WakeLockProvider> wake_lock_provider,
+       const scoped_refptr<base::SingleThreadTaskRunner>& task_runner,
+-      bool is_transient);
++      bool is_transient,
++      scoped_refptr<DownloadRequester> requester);
+ 
+   ResourceDownloader(
+       base::WeakPtr<UrlDownloadHandler::Delegate> delegate,
+@@ -139,6 +140,9 @@
+   // Callback to run after download starts.
+   download::DownloadUrlParameters::OnStartedCallback callback_;
+ 
++  // Koyo: Who asked for the download.
++  scoped_refptr<DownloadRequester> requester_;
++
+   // Callback to run with upload updates.
+   DownloadUrlParameters::UploadProgressCallback upload_callback_;
+ 
+--- a/components/download/public/common/BUILD.gn
++++ b/components/download/public/common/BUILD.gn
+@@ -45,6 +45,8 @@
+     "download_job.h",
+     "download_job_factory.h",
+     "download_path_reservation_tracker.h",
++    "download_requester.cc",
++    "download_requester.h",
+     "download_response_handler.h",
+     "download_save_info.cc",
+     "download_save_info.h",
+--- a/components/download/public/common/download_create_info.h
++++ b/components/download/public/common/download_create_info.h
+@@ -16,6 +16,7 @@
+ #include "components/download/public/common/download_export.h"
+ #include "components/download/public/common/download_interrupt_reasons.h"
+ #include "components/download/public/common/download_item.h"
++#include "components/download/public/common/download_requester.h"
+ #include "components/download/public/common/download_save_info.h"
+ #include "components/download/public/common/download_source.h"
+ #include "components/download/public/common/download_url_parameters.h"
+@@ -129,6 +130,9 @@
+   // The render frame id that initiates this download.
+   int render_frame_id;
+ 
++  // Koyo: Who asked for this download.
++  scoped_refptr<DownloadRequester> requester;
++
+   // ---------------------------------------------------------------------------
+   // The remaining fields are Entity-body properties. These are only set if
+   // |result| is DOWNLOAD_INTERRUPT_REASON_NONE.
+--- a/components/download/public/common/download_url_parameters.h
++++ b/components/download/public/common/download_url_parameters.h
+@@ -14,9 +14,11 @@
+ #include <vector>
+ 
+ #include "base/functional/callback.h"
++#include "base/memory/scoped_refptr.h"
+ #include "base/types/optional_ref.h"
+ #include "base/types/pass_key.h"
+ #include "components/download/public/common/download_interrupt_reasons.h"
++#include "components/download/public/common/download_requester.h"
+ #include "components/download/public/common/download_save_info.h"
+ #include "components/download/public/common/download_source.h"
+ #include "net/base/isolation_info.h"
+@@ -176,6 +178,11 @@
+     callback_ = std::move(callback);
+   }
+ 
++  // Koyo: Who asked for the download.
++  void set_requester(scoped_refptr<DownloadRequester> requester) {
++    requester_ = std::move(requester);
 +  }
 +
-   // Register as an observer so that we can cancel associated DownloadItems when
-   // the browser is destroyed.
-   if (!browser->HasObserver(this)) {
+   // If not empty, specifies the full target path for the download. This value
+   // overrides the filename suggested by a Content-Disposition headers. It
+   // should only be set for programmatic downloads where the caller can verify
+@@ -318,6 +325,9 @@
+   }
+ 
+   OnStartedCallback& callback() { return callback_; }
++  const scoped_refptr<DownloadRequester>& requester() const {
++    return requester_;
++  }
+   bool content_initiated() const { return content_initiated_; }
+   const std::string& last_modified() const { return last_modified_; }
+   const std::string& etag() const { return etag_; }
+@@ -408,6 +418,7 @@
+       const net::NetworkTrafficAnnotationTag& traffic_annotation);
+ 
+   OnStartedCallback callback_;
++  scoped_refptr<DownloadRequester> requester_;
+   bool content_initiated_;
+   RequestHeadersType request_headers_;
+   std::string last_modified_;
+--- a/components/download/public/common/in_progress_download_manager.h
++++ b/components/download/public/common/in_progress_download_manager.h
+@@ -132,7 +132,8 @@
+       network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
+       std::unique_ptr<network::PendingSharedURLLoaderFactory>
+           pending_url_loader_factory,
+-      bool is_transient);
++      bool is_transient,
++      scoped_refptr<DownloadRequester> requester);
+ 
+   void StartDownload(std::unique_ptr<DownloadCreateInfo> info,
+                      std::unique_ptr<InputStream> stream,
+--- a/content/browser/devtools/protocol/devtools_download_manager_delegate.cc
++++ b/content/browser/devtools/protocol/devtools_download_manager_delegate.cc
+@@ -199,6 +199,13 @@
+   return download_manager_->GetDownloadByGuid(guid);
+ }
+ 
++scoped_refptr<download::DownloadRequester>
++DevToolsDownloadManagerDelegate::GetDownloadRequester(RenderFrameHost* frame) {
++  return original_download_delegate_
++             ? original_download_delegate_->GetDownloadRequester(frame)
++             : nullptr;
++}
++
+ bool DevToolsDownloadManagerDelegate::SupportsHistoryLoading() {
+   return original_download_delegate_ &&
+          original_download_delegate_->SupportsHistoryLoading();
+--- a/content/browser/devtools/protocol/devtools_download_manager_delegate.h
++++ b/content/browser/devtools/protocol/devtools_download_manager_delegate.h
+@@ -82,6 +82,8 @@
+       content::DownloadOpenDelayedCallback callback) override;
+   void GetNextId(content::DownloadIdCallback callback) override;
+   download::DownloadItem* GetDownloadByGuid(const std::string& guid) override;
++  scoped_refptr<download::DownloadRequester> GetDownloadRequester(
++      RenderFrameHost* frame) override;
+   bool SupportsHistoryLoading() override;
+ 
+  private:
+--- a/content/browser/download/download_manager_impl.cc
++++ b/content/browser/download/download_manager_impl.cc
+@@ -523,6 +523,9 @@
+   DownloadItemUtils::AttachInfo(
+       download, GetBrowserContext(),
+       WebContentsImpl::FromRenderFrameHostID(global_id), global_id);
++  if (info.requester) {
++    info.requester->AttachTo(*download);
++  }
+   if (delegate_) {
+     delegate_->AttachExtraInfo(download);
+ #if BUILDFLAG(IS_ANDROID)
+@@ -1213,6 +1216,11 @@
+ 
+   WebContents::Getter web_contents_getter =
+       base::BindRepeating(WebContents::FromFrameTreeNodeId, frame_tree_node_id);
++
++  scoped_refptr<download::DownloadRequester> requester;
++  if (auto* ftn = FrameTreeNode::GloballyFindByID(frame_tree_node_id)) {
++    requester = delegate_->GetDownloadRequester(ftn->current_frame_host());
++  }
+ 
+   base::OnceCallback<void(bool /* download allowed */)>
+       on_download_checks_done = base::BindOnce(
+@@ -1220,7 +1228,7 @@
+           weak_factory_.GetWeakPtr(), frame_tree_node_id,
+           std::move(resource_request), std::move(url_chain), cert_status,
+           std::move(response_head), std::move(response_body),
+-          std::move(url_loader_client_endpoints));
++          std::move(url_loader_client_endpoints), std::move(requester));
+ 
+   delegate_->CheckDownloadAllowed(
+       std::move(web_contents_getter), url, method, std::move(request_initiator),
+@@ -1593,6 +1601,7 @@
+     network::mojom::URLResponseHeadPtr response_head,
+     mojo::ScopedDataPipeConsumerHandle response_body,
+     network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
++    scoped_refptr<download::DownloadRequester> requester,
+     bool is_download_allowed) {
+   if (!is_download_allowed) {
+     DropDownload();
+@@ -1647,7 +1656,7 @@
+       std::move(response_head), std::move(response_body),
+       std::move(url_loader_client_endpoints),
+       CreatePendingSharedURLLoaderFactory(storage_partition, render_frame_host),
+-      is_transient);
++      is_transient, std::move(requester));
+ }
+ 
+ void DownloadManagerImpl::BeginResourceDownloadOnChecksComplete(
+@@ -1888,6 +1897,9 @@
+ 
+   auto* rfh = RenderFrameHost::FromID(params->render_process_host_id(),
+                                       params->render_frame_host_routing_id());
++  if (rfh && delegate_ && is_new_download) {
++    params->set_requester(delegate_->GetDownloadRequester(rfh));
++  }
+ 
+   StoragePartitionConfig storage_partition_config;
+   if (rfh && serialized_embedder_download_data.empty()) {
+--- a/content/browser/download/download_manager_impl.h
++++ b/content/browser/download/download_manager_impl.h
+@@ -298,6 +298,7 @@
+       network::mojom::URLResponseHeadPtr response_head,
+       mojo::ScopedDataPipeConsumerHandle response_body,
+       network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
++      scoped_refptr<download::DownloadRequester> requester,
+       bool is_download_allowed);
+   void BeginResourceDownloadOnChecksComplete(
+       std::unique_ptr<download::DownloadUrlParameters> params,
+--- a/content/public/browser/download_manager_delegate.cc
++++ b/content/public/browser/download_manager_delegate.cc
+@@ -159,6 +159,11 @@
+ }
+ #endif  // BUILDFLAG(IS_ANDROID)
+ 
++scoped_refptr<download::DownloadRequester>
++DownloadManagerDelegate::GetDownloadRequester(RenderFrameHost* frame) {
++  return nullptr;
++}
++
+ bool DownloadManagerDelegate::SupportsHistoryLoading() {
+   return false;
+ }
+--- a/content/public/browser/download_manager_delegate.h
++++ b/content/public/browser/download_manager_delegate.h
+@@ -14,6 +14,7 @@
+ #include "build/build_config.h"
+ #include "components/download/public/common/download_danger_type.h"
+ #include "components/download/public/common/download_item.h"
++#include "components/download/public/common/download_requester.h"
+ #include "components/download/public/common/download_target_info.h"
+ #include "components/download/public/common/download_url_parameters.h"
+ #include "components/download/public/common/quarantine_connection.h"
+@@ -27,6 +28,7 @@
+ namespace content {
+ 
+ class BrowserContext;
++class RenderFrameHost;
+ class WebContents;
+ 
+ // Called by SavePackage when it creates a download::DownloadItem.
+@@ -241,6 +243,10 @@
+       download::DownloadItem* download_item,
+       base::flat_map<base::FilePath, base::FilePath> save_package_files,
+       SavePackageAllowedCallback callback);
++
++  // Koyo: Who |frame| is, as it asks for a download: kept with the download.
++  virtual scoped_refptr<download::DownloadRequester> GetDownloadRequester(
++      RenderFrameHost* frame);
+ 
+   // Attaches any extra per-DownloadItem info.
+   virtual void AttachExtraInfo(download::DownloadItem* item) {}
+--- /dev/null
++++ b/components/download/public/common/download_requester.cc
+@@ -0,0 +1,33 @@
++// Koyo: Who asked for a download.
++
++#include "components/download/public/common/download_requester.h"
++
++#include <memory>
++
++#include "base/task/sequenced_task_runner.h"
++
++namespace download {
++
++namespace {
++
++const char kKey[] = "DownloadRequester";
++
++}  // namespace
++
++DownloadRequester::DownloadRequester()
++    : base::RefCountedDeleteOnSequence<DownloadRequester>(
++          base::SequencedTaskRunner::GetCurrentDefault()) {}
++
++DownloadRequester::~DownloadRequester() = default;
++
++// static
++DownloadRequester* DownloadRequester::Get(const base::SupportsUserData& item) {
++  return base::UserDataAdapter<DownloadRequester>::Get(&item, &kKey);
++}
++
++void DownloadRequester::AttachTo(base::SupportsUserData& item) {
++  item.SetUserData(
++      &kKey, std::make_unique<base::UserDataAdapter<DownloadRequester>>(this));
++}
++
++}  // namespace download
+--- /dev/null
++++ b/components/download/public/common/download_requester.h
+@@ -0,0 +1,41 @@
++// Koyo: Who asked for a download.
++
++#ifndef COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_REQUESTER_H_
++#define COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_REQUESTER_H_
++
++#include "base/memory/ref_counted_delete_on_sequence.h"
++#include "base/supports_user_data.h"
++#include "components/download/public/common/download_export.h"
++
++namespace base {
++template <class T>
++class DeleteHelper;
++}
++
++namespace download {
++
++// Who asked for a download, as the embedder knows them: made on the UI thread
++// as the download is asked for, carried to the DownloadItem it becomes, and
++// deleted on the UI thread with the item, or with the request if it becomes
++// none. The page that asked may be gone by then.
++class COMPONENTS_DOWNLOAD_EXPORT DownloadRequester
++    : public base::RefCountedDeleteOnSequence<DownloadRequester> {
++ public:
++  DownloadRequester();
++
++  DownloadRequester(const DownloadRequester&) = delete;
++  DownloadRequester& operator=(const DownloadRequester&) = delete;
++
++  // The requester attached to |item|, or nullptr.
++  static DownloadRequester* Get(const base::SupportsUserData& item);
++  void AttachTo(base::SupportsUserData& item);
++
++ protected:
++  friend class base::RefCountedDeleteOnSequence<DownloadRequester>;
++  friend class base::DeleteHelper<DownloadRequester>;
++  virtual ~DownloadRequester();
++};
++
++}  // namespace download
++
++#endif  // COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_REQUESTER_H_

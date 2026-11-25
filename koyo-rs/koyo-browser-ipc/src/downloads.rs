@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Download {
-    /// The engine's number for it, unique among the downloads of its page's profile: with the
-    /// pane, which download it is.
+    /// The host's number for it, which no other download has.
     pub id: u32,
     /// Where it comes from.
     pub url: String,

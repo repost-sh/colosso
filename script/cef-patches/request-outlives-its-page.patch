@@ -1,29 +1,25 @@
 --- a/cef/libcef/browser/net_service/resource_request_handler_wrapper.cc
 +++ b/cef/libcef/browser/net_service/resource_request_handler_wrapper.cc
-@@ -110,6 +110,7 @@
-       request_ = request;
-       request_was_redirected_ = request_was_redirected;
-       was_custom_handled_ = false;
-+      responded_ = false;
-       cancel_callback_ = std::move(cancel_callback);
-     }
- 
-@@ -122,6 +123,9 @@
-     bool request_was_redirected_ = false;
-     bool was_custom_handled_ = false;
-     bool accept_language_added_ = false;
-+    // Koyo: the request took its final response and went on with it, so it
-+    // waits on none of the browser's handlers any more (OnDestroyed).
-+    bool responded_ = false;
-     CancelRequestCallback cancel_callback_;
+@@ -157,7 +157,8 @@
    };
  
-@@ -203,24 +207,24 @@
+   // Observer to receive notification of CEF context or associated browser
+-  // destruction. Only one of the *Destroyed() methods will be called.
++  // destruction.
++  // Koyo: The context's follows the browser's.
+   class DestructionObserver : public CefBrowserHostBase::Observer,
+                               public CefContext::Observer {
+    public:
+@@ -201,26 +202,24 @@
+     void OnBrowserDestroyed(CefBrowserHostBase* browser) override {
+       CEF_REQUIRE_UIT();
        browser->RemoveObserver(this);
-       registered_ = false;
+-      registered_ = false;
        browser_info_ = nullptr;
 -      NotifyOnDestroyed();
-+      NotifyOnDestroyed(/*browser_gone=*/true);
++      // Koyo: The requests that go on without the browser end with the context.
++      CefContext::Get()->AddObserver(this);
++      Notify(&InterceptedRequestHandlerWrapper::OnBrowserDestroyed);
      }
  
      void OnContextDestroyed() override {
@@ -31,99 +27,145 @@
        CefContext::Get()->RemoveObserver(this);
        registered_ = false;
 -      NotifyOnDestroyed();
-+      NotifyOnDestroyed(/*browser_gone=*/false);
++      Notify(&InterceptedRequestHandlerWrapper::OnDestroyed);
      }
  
     private:
 -    void NotifyOnDestroyed() {
-+    void NotifyOnDestroyed(bool browser_gone) {
++    void Notify(void (InterceptedRequestHandlerWrapper::*method)()) {
        if (wrapper_.MaybeValid()) {
          // This will be a no-op if the WeakPtr is invalid.
-         CEF_POST_TASK(
-             CEF_IOT,
-             base::BindOnce(&InterceptedRequestHandlerWrapper::OnDestroyed,
+-        CEF_POST_TASK(
+-            CEF_IOT,
+-            base::BindOnce(&InterceptedRequestHandlerWrapper::OnDestroyed,
 -                           wrapper_));
-+                           wrapper_, browser_gone));
++        CEF_POST_TASK(CEF_IOT, base::BindOnce(method, wrapper_));
        }
      }
  
-@@ -426,11 +430,11 @@
+@@ -307,7 +306,11 @@
+       return frame_;
+     }
+ 
+-    void ResetFrame() { frame_.reset(); }
++    // Clear objects that reference the browser.
++    void ResetBrowser() {
++      browser_ = nullptr;
++      frame_ = nullptr;
++    }
+ 
+     static void DeleteDestructionObserverOnUIThread(
+         std::unique_ptr<DestructionObserver> observer) {}
+@@ -424,12 +427,11 @@
+     // Check that the CEF context or associated browser was not destroyed
+     // between the calls to Initialize and SetInitialized, in which case
      // we won't get an OnDestroyed callback from DestructionObserver.
-     if (init_state_->browser_) {
-       if (!init_state_->browser_->browser_info()->browser()) {
+-    if (init_state_->browser_) {
+-      if (!init_state_->browser_->browser_info()->browser()) {
 -        OnDestroyed();
-+        OnDestroyed(/*browser_gone=*/true);
-         return;
-       }
-     } else if (!CONTEXT_STATE_VALID()) {
--      OnDestroyed();
-+      OnDestroyed(/*browser_gone=*/false);
+-        return;
+-      }
+-    } else if (!CONTEXT_STATE_VALID()) {
++    if (init_state_->browser_ &&
++        !init_state_->browser_->browser_info()->browser()) {
++      init_state_->ResetBrowser();
++    }
++    if (!init_state_->browser_ && !CONTEXT_STATE_VALID()) {
+       OnDestroyed();
        return;
      }
- 
-@@ -532,7 +536,7 @@
-       return;
-     }
- 
--    OnDestroyed();
-+    OnDestroyed(/*browser_gone=*/false);
+@@ -1175,6 +1177,8 @@
    }
  
-   void OnBeforeRequest(int32_t request_id,
-@@ -898,6 +902,27 @@
-     if (!state) {
-       // The request may have been canceled during destruction.
-       return;
+  private:
++  using RequestMap = std::map<int32_t, std::unique_ptr<RequestState>>;
++
+   void CallHandlerOnComplete(RequestState* state,
+                              const network::URLLoaderCompletionStatus& status) {
+     if (!state->handler_ || !state->pending_request_) {
+@@ -1281,11 +1285,36 @@
+     DCHECK(it != request_map_.end());
+     if (it != request_map_.end()) {
+       request_map_.erase(it);
++    }
++  }
++
++  // Koyo: The associated browser is destroyed. A request that a client had a
++  // say in ends with it. Every other goes on, as Chromium's own do: what ends a
++  // request with its page is its page's end of it going, and a download's end
++  // is the browser process's.
++  void OnBrowserDestroyed() {
++    CEF_REQUIRE_IOT();
++
++    if (shutting_down_) {
++      return;
+     }
++
++    RequestMap request_map;
++    for (auto it = request_map_.begin(); it != request_map_.end();) {
++      // Only a request offered to a client has a CefRequest.
++      auto current = it++;
++      if (current->second->pending_request_) {
++        request_map.insert(request_map_.extract(current));
++      }
 +    }
 +
-+    if (!redirect_info.has_value()) {
-+      // Koyo: once the final response is let through, the request waits on
-+      // none of the browser's handlers any more.
-+      callback = base::BindOnce(
-+          [](base::WeakPtr<InterceptedRequestHandlerWrapper> self,
-+             int32_t request_id, OnRequestResponseResultCallback callback,
-+             ResponseMode response_mode,
-+             scoped_refptr<net::HttpResponseHeaders> override_headers,
-+             const GURL& redirect_url) {
-+            if (self && response_mode == ResponseMode::CONTINUE &&
-+                redirect_url.is_empty()) {
-+              if (RequestState* state = self->GetState(request_id)) {
-+                state->responded_ = true;
-+              }
-+            }
-+            std::move(callback).Run(response_mode, std::move(override_headers),
-+                                    redirect_url);
-+          },
-+          weak_ptr_factory_.GetWeakPtr(), request_id, std::move(callback));
-     }
- 
-     if (state->cookie_filter_) {
-@@ -1286,7 +1311,12 @@
++    NotifyAborted(request_map);
++    init_state_->ResetBrowser();
++    Cancel(std::move(request_map));
+   }
  
    // Stop accepting new requests and cancel pending/in-flight requests when the
-   // CEF context or associated browser is destroyed.
--  void OnDestroyed() {
-+  // Koyo: when only the browser is destroyed, a request that took its final
-+  // response and went on with it, as a download does, runs to its end without
-+  // the browser's handlers instead of being canceled, as in Chrome, where a
-+  // download's lifetime is separate from its tab's (a request canceled with
-+  // ERR_ABORTED ends its download as canceled by the user, the file deleted).
-+  void OnDestroyed(bool browser_gone) {
+-  // CEF context or associated browser is destroyed.
++  // CEF context is destroyed.
+   void OnDestroyed() {
      CEF_REQUIRE_IOT();
      DCHECK(init_state_);
- 
-@@ -1310,6 +1340,14 @@
+@@ -1310,24 +1339,28 @@
      RequestMap request_map;
      request_map.swap(request_map_);
  
-+    // Koyo: let go of the requests that outlive the browser. Their remaining
-+    // calls find no state and pass straight through.
-+    if (browser_gone) {
-+      std::erase_if(request_map, [](const auto& entry) {
-+        return entry.second->responded_;
-+      });
+-    // Notify handlers for in-progress requests.
+-    for (const auto& [key, value] : request_map) {
+-      CallHandlerOnComplete(
+-          value.get(), network::URLLoaderCompletionStatus(net::ERR_ABORTED));
+-    }
++    NotifyAborted(request_map);
++    init_state_->ResetBrowser();
+ 
+-    if (init_state_->browser_) {
+-      // Clear objects that reference the browser.
+-      init_state_->browser_ = nullptr;
+-      init_state_->ResetFrame();
+-    }
+-
+     // Execute cancel callbacks and delete pending and in-progress requests.
+     // This may result in the request being torn down sooner, or it may be
+     // ignored if the request is already in the process of being torn down. When
+     // the last callback is executed it may result in |this| being deleted.
+     pending_requests.clear();
++    Cancel(std::move(request_map));
++  }
+ 
++  // Notify handlers for in-progress requests.
++  void NotifyAborted(const RequestMap& request_map) {
++    for (const auto& [key, value] : request_map) {
++      CallHandlerOnComplete(
++          value.get(), network::URLLoaderCompletionStatus(net::ERR_ABORTED));
 +    }
++  }
 +
-     // Notify handlers for in-progress requests.
-     for (const auto& [key, value] : request_map) {
-       CallHandlerOnComplete(
++  // Execute cancel callbacks and delete in-progress requests. |this| may be
++  // deleted as a result.
++  static void Cancel(RequestMap request_map) {
+     for (auto& [key, value] : request_map) {
+       auto state = std::move(value);
+       if (state->cancel_callback_) {
+@@ -1366,7 +1399,6 @@
+ 
+   bool shutting_down_ = false;
+ 
+-  using RequestMap = std::map<int32_t, std::unique_ptr<RequestState>>;
+   RequestMap request_map_;
+ 
+   using PendingRequests = std::vector<std::unique_ptr<PendingRequest>>;

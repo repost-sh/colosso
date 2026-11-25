@@ -78,7 +78,7 @@ impl Browsers {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::Activate));
             }
             HostEvent::TabClosed { pane } => {
-                self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::ClosedItself));
+                self.update_view(pane, cx, BrowserView::tab_closed);
             }
             _ => {}
         }
@@ -262,10 +262,10 @@ impl Browsers {
             HostEvent::DownloadAsked { pane, download, name, .. } => {
                 let view = self.view(pane);
                 let at = downloads::at(view.as_ref().map(|view| view.read(cx)));
-                list.update(cx, |list, cx| list.asked(pane, download, &name, at, cx));
+                list.update(cx, |list, cx| list.asked(download, &name, at, cx));
             }
-            HostEvent::Download { pane, download } => {
-                list.update(cx, |list, cx| list.updated(pane, download, cx));
+            HostEvent::Download { download } => {
+                list.update(cx, |list, cx| list.updated(download, cx));
             }
             HostEvent::PdfSaved { path, saved, .. } => {
                 list.update(cx, |list, cx| list.pdf_saved(&path, saved, cx));
