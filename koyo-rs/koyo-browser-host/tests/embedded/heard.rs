@@ -6,9 +6,9 @@ use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::client::{Connection, Incoming};
-use koyo_browser_ipc::{AppRequest, CdpCaller, HostEvent};
 
-use crate::inside::{open, wait};
+use crate::asking::{evaluate, kept};
+use crate::inside::open;
 use crate::pump::idle;
 
 /// The page plays two seconds of a quiet tone over and over, in an `<audio>` of its own, as
@@ -54,16 +54,16 @@ pub fn each_change_once(host: &mut Connection, incoming: &Receiver<Incoming>) ->
     log::set_logger(&Kept).map_err(|error| format!("a logger: {error}"))?;
     log::set_max_level(log::LevelFilter::Info);
     open(host, incoming)?;
-    let played = evaluate(host, incoming, 1, PLAY)?;
+    let played = evaluate(host, incoming, PLAY)?;
     if played != true {
         return Err(format!("the page didn't play: {played}"));
     }
     said("pane 1 (data:) plays sound")?;
-    visible(host, false)?;
+    kept(host, false)?;
     said("pane 1 (data:) hidden to the engine")?;
-    evaluate(host, incoming, 2, PAUSE)?;
+    evaluate(host, incoming, PAUSE)?;
     said("pane 1 (data:) stopped playing: pause")?;
-    visible(host, true)?;
+    kept(host, true)?;
     said("pane 1 (data:) shown to the engine")?;
     idle(Duration::from_secs(1));
     let lines = LINES.lock().map_err(|error| error.to_string())?.clone();
@@ -72,11 +72,6 @@ pub fn each_change_once(host: &mut Connection, incoming: &Receiver<Incoming>) ->
     }
     eprintln!("the log said: {lines:#?}");
     Ok(())
-}
-
-fn visible(host: &mut Connection, visible: bool) -> Result<(), String> {
-    host.send(&AppRequest::Sight { pane: 1, kept: visible, seen: true })
-        .map_err(|error| format!("visible: {error}"))
 }
 
 /// Waits for the log to have said `line`.
@@ -92,35 +87,4 @@ fn said(line: &str) -> Result<(), String> {
         }
         idle(Duration::from_millis(50));
     }
-}
-
-/// What `expression` comes to in the page, a promise awaited, run as if the person acted.
-fn evaluate(
-    host: &mut Connection,
-    incoming: &Receiver<Incoming>,
-    call: u64,
-    expression: &str,
-) -> Result<serde_json::Value, String> {
-    let params = serde_json::json!({
-        "expression": expression,
-        "returnByValue": true,
-        "awaitPromise": true,
-        "userGesture": true,
-    });
-    let request = AppRequest::Cdp { pane: 1, call, caller: CdpCaller::Agent, session: None, method: "Runtime.evaluate".into(), params };
-    host.send(&request).map_err(|error| format!("evaluate: {error}"))?;
-    let (result, error) = wait(incoming, expression, |event| match event {
-        HostEvent::CdpReply { call: answered, result, error, .. } if *answered == call => {
-            Some((result.clone(), error.clone()))
-        }
-        _ => None,
-    })?;
-    if let Some(error) = error {
-        return Err(format!("{expression}: {error}"));
-    }
-    let result = result.unwrap_or_default();
-    if !result["exceptionDetails"].is_null() {
-        return Err(format!("{expression}: {result}"));
-    }
-    Ok(result["result"]["value"].clone())
 }

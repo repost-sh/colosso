@@ -3,11 +3,9 @@
 //! window the page is drawn in, back to the holder as the page leaves it, out again as it comes
 //! back, and taken down wherever it is once Chromium takes it from the holder.
 
-use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
+use std::sync::mpsc::Receiver;
 
-use koyo_browser_host::{embedded, native};
-use koyo_browser_ipc::AppRequest;
+use koyo_browser_host::native;
 use koyo_browser_ipc::client::{Connection, Incoming};
 use objc2::rc::Retained;
 use objc2::runtime::Bool;
@@ -15,7 +13,9 @@ use objc2::{MainThreadMarker, msg_send};
 use objc2_app_kit::{NSApplication, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+use crate::asking::kept;
 use crate::inside::open;
+use crate::window::on_main;
 
 /// Far off every screen, where the test's windows are shown.
 const AWAY: NSPoint = NSPoint::new(-20000., -20000.);
@@ -24,19 +24,12 @@ const AWAY: NSPoint = NSPoint::new(-20000., -20000.);
 /// then taking the bubble from the holder takes it from the app's window.
 pub fn leave_and_return(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
     open(host, incoming)?;
-    host.send(&AppRequest::Sight { pane: 1, kept: true, seen: true })
-    .map_err(|error| format!("visible: {error}"))?;
-    let (done, said) = mpsc::channel();
-    embedded::on_main(move || {
-        let _ = done.send(on_main());
-    });
-    said.recv_timeout(Duration::from_secs(10))
-        .map_err(|error| format!("the main thread didn't move the page: {error}"))?
+    kept(host, true)?;
+    on_main(move_out_and_back)
 }
 
 /// The cycle, on the main thread.
-fn on_main() -> Result<(), String> {
-    let main = MainThreadMarker::new().ok_or("not on the main thread")?;
+fn move_out_and_back(main: MainThreadMarker) -> Result<(), String> {
     let holder = holder(main).ok_or("no holder holds the page")?;
     let window = made(main, NSSize::new(400., 300.));
     window.orderBack(None);

@@ -427,6 +427,10 @@ fn a_pages_zoom_is_its_sites_and_another_site_loading_isnt_zoomed_as_the_last(
     host.says(HostEvent::Page { pane, state: state("https://b.example/", false, 100) }, cx);
     assert_eq!(zooms(host.asked(cx)), Vec::<u32>::new(), "nothing zooms the other site");
     view.read_with(cx, |view, _| assert_eq!(view.zoom, 100, "it shows the other site's zoom"));
+    view.update(cx, |view, cx| view.set_zoom(200, cx));
+    view.update(cx, |view, cx| view.zoom_by(-1, cx));
+    assert_eq!(zooms(host.asked(cx)), [200, 175], "zoomed, then a step out");
+    view.read_with(cx, |view, _| assert_eq!(view.zoom, 175));
 }
 
 /// A page brought back and sent elsewhere before it opened, as an agent may one whose tab

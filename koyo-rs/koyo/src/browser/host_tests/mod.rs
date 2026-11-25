@@ -31,7 +31,6 @@ use super::view::BrowserView;
 
 mod agents;
 mod dialogs;
-mod glass;
 mod input;
 mod keeping;
 mod loading;
@@ -246,10 +245,8 @@ fn a_pane_opens_its_page_and_follows_navigation(cx: &mut TestAppContext) {
     });
 
     view.update(cx, |view, cx| view.navigate(blue.into(), cx));
-    wait_for_title(cx, &view, "Blue page");
-    view.read_with(cx, |view, _| {
-        assert!(view.page.can_go_back, "the red page is behind");
-        assert_eq!(view.title(), "Blue page");
+    wait_for(cx, &view, "the blue page, the red one behind it", |view| {
+        view.page.can_go_back && view.title() == "Blue page"
     });
 
     view.update(cx, |view, cx| view.go(Go::Back, cx));

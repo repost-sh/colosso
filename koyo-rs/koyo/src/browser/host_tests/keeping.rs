@@ -1,13 +1,14 @@
-//! What a page keeps: its sight for the engine as its tab is left and picked again, the
-//! engine's attention while an agent uses it out of sight, and its site data until cleared.
+//! What a page keeps: the engine's attention while an agent uses it out of sight, and its site
+//! data until cleared. (What a page has while a pane draws it, its sight as its tab is left and
+//! picked again among it, takes the app's window, which no test here has: the host's
+//! `tests/embedded`.)
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use futures::FutureExt as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
-    TestAppContext, VisualTestContext, Window, div,
+    AppContext as _, EmptyView, Entity, TestAppContext, VisualTestContext,
 };
 use koyo_browser_ipc::Go;
 use serde_json::{Value, json};
@@ -19,90 +20,25 @@ use super::super::view::BrowserView;
 use super::super::view::sight::AWAKE_AFTER;
 use super::{finish, open, pause, prepare, run, serve, tester, wait_for_title, wait_until};
 
-/// A window showing its page or not, as a tab does once another is picked.
-struct Tab {
-    page: Entity<BrowserView>,
-    shown: bool,
-}
-
-impl Render for Tab {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .children(self.shown.then(|| self.page.clone()))
-    }
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
-fn a_page_out_of_sight_is_hidden_and_visible_again_once_back(cx: &mut TestAppContext) {
-    let url = "data:text/html,<title>loaded</title><body style='margin:0;background:%230f0'>\
-        <script>document.addEventListener('visibilitychange',\
-        ()=>document.title=document.visibilityState)</script>";
-    let scratch = prepare("sight", cx);
-    let (tab, cx) = cx.add_window_view(|window, cx| {
-        let page =
-            cx.new(|cx| BrowserView::new(url.into(), Path::new("/work/browser-test"), window, cx));
-        Tab { page, shown: true }
-    });
-    let view = tab.read_with(cx, |tab, _| tab.page.clone());
-    wait_for_title(cx, &view, "loaded");
-
-    show(&tab, false, cx);
-    wait_for_title(cx, &view, "hidden");
-
-    show(&tab, true, cx);
-    wait_for_title(cx, &view, "visible");
-    finish(cx, scratch);
-}
-
-/// A window whose tab doesn't show `url`'s page, on an engine already running, as an agent's
-/// page opened out of sight finds it.
+/// [`DRIVEN`], which an agent opened out of sight on an engine already running, loaded.
 fn unseen<'a>(
     test: &str,
-    url: &str,
     cx: &'a mut TestAppContext,
-) -> (
-    Entity<Tab>,
-    Entity<BrowserView>,
-    &'a mut VisualTestContext,
-    PathBuf,
-) {
+) -> (Entity<BrowserView>, &'a mut VisualTestContext, PathBuf) {
     let scratch = prepare(test, cx);
-    let url = url.to_owned();
-    let (tab, cx) = cx.add_window_view(|window, cx| {
-        let page = cx.new(|cx| BrowserView::new(url, Path::new("/work/browser-test"), window, cx));
-        Tab { page, shown: false }
-    });
+    let (_, cx) = cx.add_window_view(|_, _| EmptyView);
     let browsers = cx.update(|_, cx| Browsers::global(cx));
     browsers.update(cx, |browsers, cx| browsers.start_if_idle("a test", cx));
     let running = |cx: &mut VisualTestContext| {
         browsers.read_with(cx, |browsers, _| browsers.status()) == HostStatus::Running
     };
     assert!(wait_until(cx, running), "the engine never started");
-    let view = tab.read_with(cx, |tab, _| tab.page.clone());
-    (tab, view, cx, scratch)
-}
-
-/// [`DRIVEN`] shown, then its tab left, as a tab is once another is picked.
-fn left<'a>(
-    test: &str,
-    cx: &'a mut TestAppContext,
-) -> (Entity<BrowserView>, &'a mut VisualTestContext, PathBuf) {
-    let (tab, view, cx, scratch) = unseen(test, DRIVEN, cx);
-    show(&tab, true, cx);
-    wait_for_title(cx, &view, "ready");
-    show(&tab, false, cx);
-    wait_for_title(cx, &view, "hidden");
-    (view, cx, scratch)
-}
-
-/// Shows the tab, or puts it out of sight.
-fn show(tab: &Entity<Tab>, shown: bool, cx: &mut VisualTestContext) {
-    tab.update(cx, |tab, cx| {
-        tab.shown = shown;
-        cx.notify();
+    let view = cx.update(|window, cx| {
+        cx.new(|cx| BrowserView::new(DRIVEN.into(), Path::new("/work/browser-test"), window, cx))
     });
+    view.update(cx, BrowserView::open_out_of_sight);
+    wait_for_title(cx, &view, "ready");
+    (view, cx, scratch)
 }
 
 /// Runs a protocol command on the page as an agent does, acting when `acts`: its answer.
@@ -195,25 +131,8 @@ const DRIVEN: &str = "data:text/html,<title>ready</title><body style='margin:0'>
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn a_page_opened_out_of_sight_is_visible_once_shown(cx: &mut TestAppContext) {
-    let url = "data:text/html,<body style='margin:0;background:%230f0'><script>\
-        const say=()=>document.title=document.visibilityState;say();\
-        document.addEventListener('visibilitychange',say)</script>";
-    let (tab, view, cx, scratch) = unseen("unseen-paints", url, cx);
-    view.update(cx, BrowserView::open_out_of_sight);
-    cx.executor().advance_clock(AWAKE_AFTER);
-    wait_for_title(cx, &view, "hidden");
-    show(&tab, true, cx);
-    wait_for_title(cx, &view, "visible");
-    finish(cx, scratch);
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
 fn an_agent_drives_a_page_opened_out_of_sight_as_if_shown(cx: &mut TestAppContext) {
-    let (_tab, view, cx, scratch) = unseen("unseen-driven", DRIVEN, cx);
-    view.update(cx, BrowserView::open_out_of_sight);
-    wait_for_title(cx, &view, "ready");
+    let (view, cx, scratch) = unseen("unseen-driven", cx);
     assert!(frames_run(cx, &view), "animation frames run");
     assert_click_lands(cx, &view);
 
@@ -231,19 +150,10 @@ fn an_agent_drives_a_page_opened_out_of_sight_as_if_shown(cx: &mut TestAppContex
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn an_agent_drives_a_page_whose_tab_was_left(cx: &mut TestAppContext) {
-    let (view, cx, scratch) = left("left-driven", cx);
-    assert!(screenshot(cx, &view), "a screenshot answers");
-    wait_for_title(cx, &view, "visible");
-    assert!(frames_run(cx, &view), "animation frames run");
-    assert_click_lands(cx, &view);
-    finish(cx, scratch);
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
 fn a_command_the_page_never_answers_is_answered_within_its_limit(cx: &mut TestAppContext) {
-    let (view, cx, scratch) = left("command-limit", cx);
+    let (view, cx, scratch) = unseen("command-limit", cx);
+    cx.executor().advance_clock(AWAKE_AFTER);
+    wait_for_title(cx, &view, "hidden");
     let limit = Duration::from_secs(5);
     let browsers = cx.update(|_, cx| Browsers::global(cx));
     let pane = view.read_with(cx, |view, _| view.pane);

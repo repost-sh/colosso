@@ -13,11 +13,9 @@ config="$PWD/koyo-rs/target/test-config"
 KOYO_CONFIG_DIR="$config" script/cargo test --workspace
 # The tests that run the real engine wait for a packaged one (--ignored). Its host never comes
 # forward, so they run while the person works; four at a time, as each starts a host of its own.
-# Two are left out: the location test waits for a person to answer macOS, and the zoom test's
-# page, out of sight, is sometimes zoomed but not laid out afresh while other hosts run
-# (devicePixelRatio doubled, innerWidth not halved; 1 run in 8 with four of it at once).
+# The location test is left out: it waits for a person to answer macOS.
 KOYO_CONFIG_DIR="$config" script/cargo test -p koyo-browser-host --test smoke --test embedded \
   -- --ignored --test-threads=4 --skip location::
 KOYO_CONFIG_DIR="$config" script/cargo test -p koyo --bin koyo browser::host_tests \
-  -- --ignored --test-threads=4 --skip looking::find_counts_the_matches_and_zooming
+  -- --ignored --test-threads=4
 script/bun test

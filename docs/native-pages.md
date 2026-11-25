@@ -684,12 +684,15 @@ never comes forward (section 3.3), so they run while the person works.
 run from an app it lays out round itself with the engine inside (section 3.1), CEF's work
 pumped from the run loop `NSApp` runs, and a page loads and draws there, an idle page on screen
 leaves the main thread asleep (about one wakeup a second on CEF's own build), and work Chromium
-puts off runs once it's due.
+puts off runs once it's due. Its pages are drawn in a real window of the app's
+(`tests/embedded/window.rs`), so what a page has only while a pane draws it is proven there: its
+sight as its tab is left and come back to, its tone, its size once zoomed.
+`koyo/src/browser/host_tests` has no such window (GPUI's test one, the engine a process of its
+own), so its pages are out of sight unless an agent uses them.
 `script/check`
-packages the engine and runs both, and `koyo/src/browser/host_tests`, all but the location
-and zoom tests (`script/check` says why). `[proven]` 2026-11-19: ten smoke tests, the
-embedded one and nineteen host tests in about 16 s, three runs in a row, with the app in front
-the same before, during and after each.
+packages the engine and runs all three, all but the location test (`script/check` says why).
+`[proven]` 2026-11-19: they ran three times in a row with the app in front the same before,
+during and after each.
 
 ## 10. Where it lives
 

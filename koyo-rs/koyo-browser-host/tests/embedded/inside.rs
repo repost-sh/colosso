@@ -18,6 +18,8 @@ use objc2_app_kit::{
 };
 use objc2_foundation::NSPoint;
 
+use crate::asking::evaluate;
+
 define_class!(
     /// The test app's `NSApp`, of a class of its own as Koyo's is of GPUI's, which the engine
     /// gives what Chromium asks of it (`embedded/nsapp.rs`). It never comes forward.
@@ -51,7 +53,7 @@ const PATIENCE: Duration = Duration::from_secs(30);
 type Step = fn(&mut Connection, &Receiver<Incoming>) -> Result<(), String>;
 
 /// The tests, by name, each with what it has the page do.
-pub const TESTS: [(&str, Step); 8] = [
+pub const TESTS: [(&str, Step); 12] = [
     (
         "a_page_loads_and_draws_in_the_engine_started_in_this_process",
         load_and_draw,
@@ -73,8 +75,24 @@ pub const TESTS: [(&str, Step); 8] = [
         crate::bubbles::leave_and_return,
     ),
     (
-        "a_page_leaving_the_app_window_turns_hidden_once",
+        "a_page_leaving_the_app_window_turns_hidden_once_and_put_back_visible_once",
         crate::sight::left,
+    ),
+    (
+        "a_page_opened_out_of_sight_is_visible_once_shown",
+        crate::sight::first_shown,
+    ),
+    (
+        "an_agent_drives_a_page_whose_tab_was_left",
+        crate::sight::driven,
+    ),
+    (
+        "a_page_a_pane_draws_says_its_tone",
+        crate::looking::tone,
+    ),
+    (
+        "zooming_lays_the_page_a_pane_draws_out_afresh",
+        crate::looking::zoom,
     ),
     (
         "a_download_ending_opens_no_window_of_chromes",
@@ -177,6 +195,17 @@ pub fn open(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), 
 
 /// Opens the page as `pane` and waits for it to load.
 pub fn open_as(host: &mut Connection, incoming: &Receiver<Incoming>, pane: PaneId) -> Result<(), String> {
+    open_at(host, incoming, pane, PAGE, "embedded")
+}
+
+/// Opens the page at `url`, of the title `title`, as `pane` and waits for it to load.
+pub fn open_at(
+    host: &mut Connection,
+    incoming: &Receiver<Incoming>,
+    pane: PaneId,
+    url: &str,
+    title: &str,
+) -> Result<(), String> {
     let asked = Instant::now();
     let viewport = Viewport {
         width: 400,
@@ -185,14 +214,14 @@ pub fn open_as(host: &mut Connection, incoming: &Receiver<Incoming>, pane: PaneI
     };
     let open = AppRequest::Open {
         pane,
-        url: PAGE.into(),
+        url: url.into(),
         viewport,
         profile: "embedded".into(),
     };
     host.send(&open).map_err(|error| format!("open: {error}"))?;
     wait(incoming, "the page to load", |event| {
         let loaded = matches!(event, HostEvent::Page { pane: loading, state }
-            if *loading == pane && state.title == "embedded" && !state.loading);
+            if *loading == pane && state.title == title && !state.loading);
         loaded.then_some(())
     })?;
     eprintln!(
@@ -205,35 +234,8 @@ pub fn open_as(host: &mut Connection, incoming: &Receiver<Incoming>, pane: PaneI
 /// Opens the page, and has it count its frames.
 fn load_and_draw(host: &mut Connection, incoming: &Receiver<Incoming>) -> Result<(), String> {
     open(host, incoming)?;
-    let count = AppRequest::Cdp {
-        pane: 1,
-        call: 1,
-        caller: koyo_browser_ipc::CdpCaller::Agent,
-        session: None,
-        method: "Runtime.evaluate".into(),
-        params: serde_json::json!({ "expression": FRAMES, "returnByValue": true, "awaitPromise": true }),
-    };
-    host.send(&count)
-        .map_err(|error| format!("evaluate: {error}"))?;
-    let (result, error) = wait(
-        incoming,
-        "the page to count its frames",
-        |event| match event {
-            HostEvent::CdpReply {
-                call: 1,
-                result,
-                error,
-                ..
-            } => Some((result.clone(), error.clone())),
-            _ => None,
-        },
-    )?;
-    if let Some(error) = error {
-        return Err(format!("the page couldn't count its frames: {error}"));
-    }
-    let drawn = (result.as_ref())
-        .and_then(|result| result["result"]["value"].as_u64())
-        .ok_or_else(|| format!("no count of frames in {result:?}"))?;
+    let drawn = evaluate(host, incoming, FRAMES)?;
+    let drawn = drawn.as_u64().ok_or_else(|| format!("no count of frames: {drawn}"))?;
     if drawn <= 15 {
         return Err(format!("the page drew {drawn} frames in half a second"));
     }

@@ -66,3 +66,49 @@ impl BrowserView {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use gpui_kit::{AppContext as _, Bounds, TestAppContext, point, px, size};
+    use koyo_browser_ipc::{HostEvent, Tone};
+
+    use super::glass_dark;
+    use crate::browser::BrowserView;
+    use crate::browser::host::fake::FakeHost;
+    use crate::test_support::{draw, in_window};
+
+    /// Glass over a page takes the other tone than the page's, as the page says how light it
+    /// is: dark over a white page, light over a black one; none while it hasn't said, or for
+    /// glass over none of it.
+    #[gpui_kit::test]
+    fn glass_over_a_page_is_dark_over_a_light_one_and_light_over_a_dark_one(cx: &mut TestAppContext) {
+        cx.update(crate::test_support::init);
+        let host = FakeHost::serve("glass-tone", cx);
+        let (window, view) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
+            cx.new(|cx| BrowserView::new("https://a.example/".into(), Path::new("/work/app"), window, cx))
+        });
+        draw(window, cx);
+        let pane = view.read_with(cx, |view, _| view.pane);
+        let dark = |cx: &mut TestAppContext| {
+            let launcher = view.read_with(cx, |view, _| {
+                glass_dark([view], view.page_bounds().expect("the page is drawn"), None)
+            });
+            (launcher, view.update(cx, |view, _| view.read_bar_dark()))
+        };
+        let says = |lightness: f32, canvas: [u8; 3], cx: &mut TestAppContext| {
+            let lightness = vec![lightness; Tone::ACROSS * Tone::DOWN];
+            host.says(HostEvent::Tone { pane, tone: Tone { lightness, canvas } }, cx);
+        };
+        assert_eq!(dark(cx), (None, None), "the page hasn't said how light it is");
+        says(1., [255; 3], cx);
+        assert_eq!(dark(cx), (Some(true), Some(true)), "a launcher and the bar over a white page");
+        says(0., [0; 3], cx);
+        assert_eq!(dark(cx), (Some(false), Some(false)), "a launcher and the bar over a black page");
+
+        let beyond = Bounds::new(point(px(-200.), px(-200.)), size(px(100.), px(100.)));
+        let read = view.read_with(cx, |view, _| glass_dark([view], beyond, None));
+        assert_eq!(read, None, "glass over none of the page");
+    }
+}

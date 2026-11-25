@@ -6,8 +6,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, TestAppContext,
-    VisualTestContext, px, size,
+    AnyWindowHandle, AppContext as _, Context, Entity, IntoElement, Modifiers, MouseButton,
+    ParentElement as _, Render, Styled as _, TestAppContext, VisualTestContext, Window, div, px,
+    size,
 };
 use koyo_browser_ipc::{AppRequest, HostEvent, PaneId};
 use serde_json::json;
@@ -172,6 +173,86 @@ fn a_tab_left_by_a_press_and_release_at_once_tells_the_host_nothing_of_either_pa
     let asked = host.asked(cx);
     assert_eq!(told(&asked, left), [], "the host knows the page left isn't drawn: {asked:?}");
     assert_eq!(told(&asked, first), [], "nor that the page come to is: {asked:?}");
+}
+
+/// An agent's command on a page whose tab the person left has the host keep it on screen before
+/// the command is run, and let it rest a few seconds after its answer: the window is seen
+/// throughout, so what wakes the page is that it's kept.
+#[gpui_kit::test]
+fn an_agents_command_on_a_tab_left_keeps_its_page_before_it_runs(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("sight-left-driven", Layout::Orca, cx);
+    let host = FakeHost::serve("sight-left-driven-host", cx);
+    let left = open_page_view(window, &shell, "https://a.example/", cx);
+    open_page_view(window, &shell, "https://b.example/", cx);
+    let pane = left.read_with(cx, |view, _| view.pane);
+    assert!(!left.read_with(cx, |view, _| view.drawn()), "its tab was left");
+    host.asked(cx);
+
+    let params = json!({ "format": "png" });
+    let answer = cx.update(|cx| agent::cdp(&left, None, None, "Page.captureScreenshot", params, LIMIT, cx));
+    let _answer = answer.expect("the page takes commands");
+    let asked = host.asked(cx);
+    let kept = AppRequest::Sight { pane, kept: true, seen: true };
+    let kept = asked.iter().position(|asked| *asked == kept);
+    let run = (asked.iter()).position(|asked| matches!(asked, AppRequest::Cdp { pane: of, .. } if *of == pane));
+    assert!(kept.is_some() && kept < run, "kept, then the command: {asked:?}");
+
+    let reply = HostEvent::CdpReply {
+        pane,
+        call: command(&asked, pane),
+        result: Some(json!({ "data": "" })),
+        error: None,
+    };
+    host.says(reply, cx);
+    cx.executor().advance_clock(AWAKE_AFTER + Duration::from_secs(1));
+    assert_eq!(told(&host.asked(cx), pane), [(false, true)], "rests a few seconds after the answer");
+}
+
+/// A window whose page is in a tab it shows or not.
+struct Tab {
+    page: Entity<BrowserView>,
+    shown: bool,
+}
+
+impl Render for Tab {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().children(self.shown.then(|| self.page.clone()))
+    }
+}
+
+/// A page an agent opens in a tab that isn't shown is kept on screen as it opens and rests once
+/// the agent leaves it be; its tab shown, the host, which knows itself that a pane draws it, is
+/// told nothing of it, and isn't asked to open it again.
+#[gpui_kit::test]
+fn a_page_opened_out_of_sight_rests_and_its_tab_shown_tells_the_host_nothing(cx: &mut TestAppContext) {
+    cx.update(crate::test_support::init);
+    let host = FakeHost::serve("sight-unseen", cx);
+    let (window, tab) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
+        let page = cx.new(|cx| BrowserView::new("https://a.example/".into(), Path::new("/work/app"), window, cx));
+        cx.new(|_| Tab { page, shown: false })
+    });
+    draw(window, cx);
+    let view = tab.read_with(cx, |tab, _| tab.page.clone());
+    let pane = view.read_with(cx, |view, _| view.pane);
+    let opens = |asked: &[AppRequest]| {
+        (asked.iter()).filter(|asked| matches!(asked, AppRequest::Open { pane: of, .. } if *of == pane)).count()
+    };
+    assert_eq!(opens(&host.asked(cx)), 0, "a page opens once it's drawn or an agent opens it");
+
+    view.update(cx, BrowserView::open_out_of_sight);
+    let asked = host.asked(cx);
+    assert_eq!((opens(&asked), told(&asked, pane)), (1, vec![(true, true)]), "kept as it opens: {asked:?}");
+    cx.executor().advance_clock(AWAKE_AFTER + Duration::from_secs(1));
+    assert_eq!(told(&host.asked(cx), pane), [(false, true)], "left be, it rests");
+
+    tab.update(cx, |tab, cx| {
+        tab.shown = true;
+        cx.notify();
+    });
+    draw(window, cx);
+    assert!(view.read_with(cx, |view, _| view.drawn()), "its tab is shown");
+    let asked = host.asked(cx);
+    assert_eq!((opens(&asked), told(&asked, pane)), (0, vec![]), "shown: {asked:?}");
 }
 
 /// A page drawn while its window counted as unseen tells the host, at the next paint, once the

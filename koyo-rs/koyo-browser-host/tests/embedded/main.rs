@@ -2,9 +2,10 @@
 //! the main thread's run loop by the pump while `NSApp` runs it, and a page opened in a holder
 //! of its own, then stopped by `embedded::finish`. Each test has its page do one thing
 //! (`inside.rs`): load and draw, sit idle on screen, have Chromium put work off, leave the
-//! app's window and come back with a bubble of Chromium's up, be shown again after a while
-//! hidden, download a file with no bubble of Chromium's opening, or play and stop with a line
-//! in the log for each.
+//! app's window and come back with a bubble of Chromium's up, be hidden as it leaves that window
+//! and visible as it comes to it, be driven by an agent once its tab was left, say its tone, be
+//! zoomed, download a file with no bubble of Chromium's opening, or play and stop with a line in
+//! the log for each.
 //!
 //! CEF starts once in a process, and on the main thread, so this is a test binary of its own
 //! that owns its main thread (`harness = false`), each test run in a process of its own. Its helpers stay up only for a
@@ -25,12 +26,15 @@
     reason = "a test binary of its own says what it ran as libtest does"
 )]
 
+mod asking;
 mod bubbles;
 mod downloads;
 mod heard;
 mod inside;
+mod looking;
 mod pump;
 mod sight;
+mod window;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
