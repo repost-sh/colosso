@@ -102,7 +102,7 @@ pub struct Chats {
     client: Option<Arc<AgentClient>>,
     summaries: HashMap<ThreadId, ThreadSummary>,
     /// What each checkout's row says of its chats, as the summaries have it.
-    checkout_marks: HashMap<PathBuf, status::ChatMark>,
+    checkout_marks: HashMap<PathBuf, status::CheckoutMarks>,
     /// The threads open with the host, for as long as anything shows them.
     threads: HashMap<ThreadId, WeakEntity<ChatThread>>,
     /// What each checkout a tab shows can choose from.

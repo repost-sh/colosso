@@ -257,7 +257,7 @@ fn branch_rows(
 
 /// A branch's row, one step in from its project's, the `branch_index`th of its project's and known
 /// by `key` as it moves, `selected` or not, lit as selected unless its tabs are `listed` under it,
-/// where the one shown is, its title leaving off the prefix the person's own
+/// where the one shown is, and saying how it's doing but for what they say, its title leaving off the prefix the person's own
 /// branches carry in its project, whose folder is `project`. Clicked with the tabs on the top rail
 /// it's selected; with them in the sidebar its tabs collapse or come back, kept for the next
 /// launch, and nothing's selected: a tab picked selects its branch (`docs/layout.md`, Sidebar).
@@ -280,7 +280,7 @@ fn branch_row(
     let at = (project_index, branch_index);
     let root = branch.worktree.path.as_path();
     let panel = shell.row_panel_buttons((at, root), (ROW_GLYPH, look.pill), hovered, cx);
-    let (activity, waiting) = shell.checkout_status(root, cx);
+    let (activity, waiting) = shell.checkout_status(root, listed, cx);
     let place = || format!("sidebar-branch-{}", root.display());
     let mark = (activity.sign(place, p, cx)).map(|mark| {
         let name = move || format!("sidebar-branch-mark-{project_index}-{branch_index}");

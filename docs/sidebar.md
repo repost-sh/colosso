@@ -184,7 +184,11 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
 - The row is a project's row's structure one step in: the branch's glyph, its name cut short
   with an ellipsis, muted unless it's selected, the selected branch's the pill; at its end the
   count of terminals waiting on the person, and how its checkout's doing (the spinner while a
-  chat works, the dot once something waits).
+  chat works, the dot once something waits). What's going on is said once, on the last row in
+  sight: a tab's on its own row while it's listed, on its branch's once that's collapsed, and on
+  its project's once that's folded; with the tabs on the rail, on the branch's. **[asked,
+  2026-11-25]** With its tabs listed the branch's row says only what they can't, a chat at work in
+  no tab. **[ours]**
 - **Under the pointer** **Changes** and **Files** fade in at its end (150 ms, as the sidebar's
   other hovers do) when **Changes and Files** is set to the worktree. A tab's ×, or a split's
   pane's, is a 24 pt square, its glyph 18 pt.

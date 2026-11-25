@@ -147,19 +147,31 @@ impl<'a> Shown<'a> {
     }
 }
 
+/// What a checkout's chats have to show, the most urgent of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct CheckoutMarks {
+    /// Of them all.
+    any: ChatMark,
+    /// Of those in no tab, which no tab's row shows.
+    tabless: Option<ChatMark>,
+}
+
 /// The most urgent of each checkout's chats: those with tabs, and any other still at it, as one a
 /// person closed has nothing new to say until it's opened.
 fn checkout_marks<'a>(
     summaries: impl Iterator<Item = &'a ThreadSummary>,
-) -> HashMap<PathBuf, ChatMark> {
+) -> HashMap<PathBuf, CheckoutMarks> {
     let mut marks = HashMap::new();
     for summary in summaries {
         let Some(mark) = ChatMark::of(summary) else {
             continue;
         };
         if summary.tab_open || matches!(mark, ChatMark::Working | ChatMark::NeedsYou) {
-            let held = marks.entry(PathBuf::from(&summary.cwd)).or_insert(mark);
-            *held = mark.max(*held);
+            let tabless = (!summary.tab_open).then_some(mark);
+            let held = (marks.entry(PathBuf::from(&summary.cwd)))
+                .or_insert(CheckoutMarks { any: mark, tabless });
+            held.any = mark.max(held.any);
+            held.tabless = tabless.max(held.tabless);
         }
     }
     marks
@@ -225,20 +237,25 @@ impl Shell {
         (activity, said.map(SharedString::from))
     }
 
-    /// How the checkout at `worktree` is doing, as its row sums it up, and how many of its
-    /// terminals wait for the person, as its row counts them.
-    pub fn checkout_status(&self, worktree: &Path, cx: &App) -> (Activity, usize) {
+    /// How the checkout at `worktree` is doing, as its row says, and how many of its terminals
+    /// wait for the person, as its row counts them. With its tabs `listed` under it, what they
+    /// show is theirs to say, and the row says what they don't: a chat in no tab.
+    pub fn checkout_status(&self, worktree: &Path, listed: bool, cx: &App) -> (Activity, usize) {
+        let marks = self.chat_tabs.chats.read(cx).checkout_marks.get(worktree);
+        if listed {
+            let tabless = marks.and_then(|marks| marks.tabless);
+            return (tabless.map_or(Activity::Quiet, ChatMark::activity), 0);
+        }
         let waiting = self.terminals_needing_input(worktree);
         if waiting > 0 {
             return (Activity::Attention, waiting);
         }
-        let mark = self.chat_tabs.chats.read(cx).checkout_marks.get(worktree);
-        (mark.copied().map_or(Activity::Quiet, ChatMark::activity), waiting)
+        (marks.map_or(Activity::Quiet, |marks| marks.any.activity()), waiting)
     }
 
-    /// How the checkout at `worktree` is doing, as its row sums it up.
+    /// How the checkout at `worktree` is doing, all of it.
     pub fn checkout_activity(&self, worktree: &Path, cx: &App) -> Activity {
-        self.checkout_status(worktree, cx).0
+        self.checkout_status(worktree, false, cx).0
     }
 
     /// How `project` is doing, the most urgent of its checkouts: what its row says, and, with
@@ -358,8 +375,12 @@ mod tests {
 
         let marks = checkout_marks([&working, &failed, &closed, &closed_at_it].into_iter());
 
-        assert_eq!(marks.get(Path::new("/work")), Some(&ChatMark::Failed));
-        assert_eq!(marks.get(Path::new("/busy")), Some(&ChatMark::Working));
-        assert_eq!(marks.get(Path::new("/other")), None);
+        let of = |checkout: &str| {
+            let marks = marks.get(Path::new(checkout));
+            marks.map(|marks| (marks.any, marks.tabless))
+        };
+        assert_eq!(of("/work"), Some((ChatMark::Failed, None)));
+        assert_eq!(of("/busy"), Some((ChatMark::Working, Some(ChatMark::Working))));
+        assert_eq!(of("/other"), None);
     }
 }

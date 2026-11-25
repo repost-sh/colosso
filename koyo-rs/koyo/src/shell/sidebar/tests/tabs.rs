@@ -146,27 +146,53 @@ fn a_splits_pane_shows_its_x_while_the_pointers_on_it(cx: &mut TestAppContext) {
     );
 }
 
-/// What a tab's row, its branch's and its project's, folded, say at their ends of how they're
-/// doing is in one column, a spinner and a dot alike.
+/// What's going on in a tab is said once, on the last row in sight over it: the tab's while it's
+/// listed, its branch's once that's collapsed, its project's once that's folded; each in the one
+/// column, a spinner and a dot alike.
 #[gpui_kit::test]
-fn what_the_rows_say_at_their_ends_is_in_one_column(cx: &mut TestAppContext) {
+fn activity_is_said_once_on_the_last_row_in_sight_in_one_column(cx: &mut TestAppContext) {
     let (window, shell, roots) = sidebar_shell(&["sidebar-end-column"], cx);
+    cx.update(|cx| cx.set_reduce_motion(true));
     unseen_chat(&shell, cx);
     draw(window, cx);
     let key = cx.read(|cx| shell.read(cx).workspace.branch().unwrap().tabs[0].first().id);
-    let centre = |selector: String, cx: &mut TestAppContext| {
-        hover(window, point(px(1000.), px(500.)), cx);
-        let at = drawn(window, selector.clone(), cx);
-        let at = at.unwrap_or_else(|| panic!("{selector} is drawn"));
-        at.center().x
-    };
+    let (branch, project) = ("sidebar-branch-mark-0-0", "sidebar-project-mark-0");
     for (state, unread, name) in [(Status::Working, false, "working"), (Status::Idle, true, "waiting")] {
+        let tab = format!("sidebar-tab-{name}-{key}");
+        let said = |cx: &mut TestAppContext| {
+            hover(window, point(px(1000.), px(500.)), cx);
+            [tab.as_str(), branch, project].map(|mark| {
+                drawn(window, mark.to_owned(), cx).map(|at| at.center().x)
+            })
+        };
         hear(&shell, ("0001", &roots[0]), (state, None, unread), cx);
         draw(window, cx);
-        let tab = centre(format!("sidebar-tab-{name}-{key}"), cx);
-        assert_eq!(centre("sidebar-branch-mark-0-0".into(), cx), tab, "{name}: the branch's");
+        let [on_tab, none, nor] = said(cx);
+        assert!(on_tab.is_some(), "{name}: the tab says it");
+        assert_eq!((none, nor), (None, None), "{name}: alone, its tab listed");
+
+        click(window, "sidebar-branch-0-0", cx);
+        assert_eq!(said(cx), [None, on_tab, None], "{name}: collapsed, the branch says it there");
         click(window, "sidebar-project-0", cx);
-        assert_eq!(centre("sidebar-project-mark-0".into(), cx), tab, "{name}: the project's");
+        assert_eq!(said(cx), [None, None, on_tab], "{name}: folded, the project says it there");
         click(window, "sidebar-project-0", cx);
+        click(window, "sidebar-branch-0-0", cx);
     }
+}
+
+/// A chat at work in no tab has no row of its own, so its branch's row says it while its tabs are
+/// listed too.
+#[gpui_kit::test]
+fn a_chat_at_work_in_no_tab_is_said_on_its_branchs_row(cx: &mut TestAppContext) {
+    let (window, shell, roots) = sidebar_shell(&["sidebar-tabless"], cx);
+    unseen_chat(&shell, cx);
+    draw(window, cx);
+    let summary = ThreadSummary {
+        status: Status::Working,
+        tab_open: false,
+        ..crate::chat::tests::summary("0002", &roots[0], "Closed at it", true)
+    };
+    tell(&shell, summary, cx);
+    draw(window, cx);
+    assert!(drawn(window, "sidebar-branch-mark-0-0".to_owned(), cx).is_some());
 }
