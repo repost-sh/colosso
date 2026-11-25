@@ -206,6 +206,11 @@ fn copy_file(
             "{shown} is no regular file: browser_upload gives a page files only, not a pipe or a device."
         )));
     }
+    if about.nlink() > 1 {
+        return Err(ControlError::invalid_input(format!(
+            "{shown} is also a file elsewhere, a hard link: browser_upload gives a page only files of your worktree's own."
+        )));
+    }
     let opened = path_of(&file, may).map_err(|why| not_copied(&shown, &why))?;
     if !opened.starts_with(checkout.root) {
         return Err(outside(&shown, checkout.root));
@@ -213,11 +218,6 @@ fn copy_file(
     if about.dev() != checkout.device {
         return Err(ControlError::invalid_input(format!(
             "{shown} is on another volume, mounted inside your worktree: browser_upload gives a page only files of your worktree's own."
-        )));
-    }
-    if about.nlink() > 1 {
-        return Err(ControlError::invalid_input(format!(
-            "{shown} is also a file elsewhere, a hard link: browser_upload gives a page only files of your worktree's own."
         )));
     }
     if cloned(&file, to, may).map_err(|why| not_copied(&shown, &why))? {
@@ -262,7 +262,8 @@ fn read_into(file: File, to: &Path, shown: &str, budget: &mut Budget, _: Blockin
     Ok(())
 }
 
-/// The path of what `file` opened, as the file system has it now.
+/// The path of what `file` opened, as the file system has it now: one of them, of a file with
+/// several.
 fn path_of(file: &File, _: Blocking<'_>) -> io::Result<PathBuf> {
     let mut path = vec![0_u8; usize::try_from(libc::PATH_MAX).unwrap_or(1024)];
     // SAFETY: `F_GETPATH` writes at most `PATH_MAX` bytes, the path ended by a zero, into the
