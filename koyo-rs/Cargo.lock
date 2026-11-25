@@ -5759,7 +5759,6 @@ dependencies = [
  "futures",
  "ignore",
  "log",
- "notify",
  "nucleo-matcher",
  "objc2-core-foundation",
  "objc2-core-services",

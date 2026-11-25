@@ -44,8 +44,7 @@ terminal core (libghostty-vt).
   feature in `koyo-rs/koyo/Cargo.toml`).
 - macOS first. `koyo-rs/koyo/src/native/` hosts AppKit `NSView`s inside GPUI's window
   composition (`native/surface.rs`: `WindowCompositionSurface`, stacked over the page and
-  under GPUI's overlays). Non-macOS paths exist in `koyo-rs/koyo-project` (notify watcher), so
-  portability is intended but not exercised.
+  under GPUI's overlays).
 - Lint policy (`koyo-rs/Cargo.toml` `[workspace.lints]`): clippy pedantic as warnings;
   `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `unreachable`, `print_stdout`,
   `print_stderr`, `dbg_macro`, `map_err_ignore`, `await_holding_lock`,

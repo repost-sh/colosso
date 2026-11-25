@@ -3,7 +3,6 @@
 //! it arrives, before anything waits on it: writes inside ignored folders nobody reads, and
 //! git's own files that nothing shows, go no further.
 
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use crate::GitDirs;
@@ -24,7 +23,7 @@ impl Places {
     pub(crate) fn new(root: &Path, git: Option<&GitDirs>) -> Places {
         let real = |path: &Path| {
             let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
-            text(&path).into_owned()
+            path.to_string_lossy().into_owned()
         };
         Places {
             root: real(root),
@@ -86,16 +85,6 @@ impl Places {
             None if path.is_empty() || inside(path, &self.root).is_some() => Some(Seen::Everything),
             None => Some(Seen::Git(Git::ALL)),
         }
-    }
-}
-
-/// `path` as text with `/` between its parts, as the platform's reports are compared with.
-pub(crate) fn text(path: &Path) -> Cow<'_, str> {
-    let text = path.to_string_lossy();
-    if cfg!(windows) {
-        Cow::Owned(text.replace('\\', "/"))
-    } else {
-        text
     }
 }
 

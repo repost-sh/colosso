@@ -4,9 +4,9 @@
 //! from then on, checked to be the one the path names once its watch is set). Its folder is
 //! watched only while the file can't be opened, there being none or it being unreadable, for
 //! that to change, so the app's other files there, written as the app runs, don't wake it.
-//! Once what woke it settles, the thread asks when the file last changed, and only when that
-//! moved reads it and hands it to the main thread. Nothing wakes while the file is left alone,
-//! and an edit lands whether Koyo is in front or not. A watch that fails is said and set again
+//! Once woken, the thread asks when the file last changed, and only when that moved, and it has
+//! been still since, reads it and hands it to the main thread. Nothing wakes while the file is
+//! left alone, and an edit lands whether Koyo is in front or not. A watch that fails is said and set again
 //! a while later, longer each time, so it neither spins nor stops for good. `FSEvents` isn't
 //! used: it would wake for every write in the folder's tree, the browser's profiles among them.
 
@@ -24,8 +24,7 @@ use kqueue::{EventData, EventFilter, FilterFlag, Watcher};
 use super::file::{self, Looked};
 use crate::blocking::{self, Blocking};
 
-/// How long the file and its folder must be still after a change before the file is looked
-/// at: a save is several writes.
+/// How long a file that changed must be still before it's looked at: a save is several writes.
 const SETTLE: Duration = Duration::from_millis(100);
 /// How long after a watch failed it's set again, the first time, and at most: it doubles each
 /// time it fails again.
@@ -104,15 +103,16 @@ fn follow(
     loop {
         let unopened = rewatch(&mut watcher, &mut held, path, folder, open, may)?;
         let modified = file::modified(path, may);
-        if modified != *seen {
+        if unopened == Some(io::ErrorKind::NotFound) && modified.is_some() {
+            continue;
+        }
+        if modified == *seen {
+            stirs(&watcher, None)?;
+        } else if !stirs(&watcher, Some(SETTLE))? {
             *seen = modified;
             if !tell(file::look(path, modified, may)) {
                 return Ok(());
             }
-        }
-        let came_meanwhile = unopened == Some(io::ErrorKind::NotFound) && modified.is_some();
-        if !came_meanwhile {
-            settled(&watcher)?;
         }
     }
 }
@@ -165,18 +165,17 @@ fn names(path: &Path, file: &File, _: Blocking<'_>) -> bool {
     }
 }
 
-/// Waits for a change to what's watched, then for it to be still for [`SETTLE`].
-fn settled(watcher: &Watcher) -> io::Result<()> {
-    let mut wait = None;
+/// Whether what's watched changes within `wait`, waited out until it does or the time is up;
+/// for ever without one.
+fn stirs(watcher: &Watcher, wait: Option<Duration>) -> io::Result<bool> {
     while let Some(event) = watcher.poll_forever(wait) {
-        if let EventData::Error(error) = event.data
-            && error.kind() != io::ErrorKind::Interrupted
-        {
-            return Err(error);
+        match event.data {
+            EventData::Error(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            EventData::Error(error) => return Err(error),
+            _ => return Ok(true),
         }
-        wait = Some(SETTLE);
     }
-    Ok(())
+    Ok(false)
 }
 
 #[cfg(test)]

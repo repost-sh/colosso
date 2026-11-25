@@ -16,17 +16,11 @@ log = "0.4"
 nucleo-matcher = "0.3"
 # The pool those threads are, made once per finder; already in the lockfile.
 rayon = "1.12"
-
-# On macOS, FSEvents driven directly, through the bindings `notify` builds on: notify hands
-# reports over one by one, which a burst outruns (see `src/watcher/fsevents.rs`).
-[target.'cfg(target_os = "macos")'.dependencies]
+# FSEvents driven directly, through the bindings `notify` builds on: notify hands reports over
+# one by one, which a burst outruns (see `src/watcher/fsevents.rs`).
 objc2-core-services = { version = "0.3", default-features = false, features = ["std", "FSEvents", "dispatch2"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFArray", "CFString"] }
 dispatch2 = { version = "0.3", default-features = false, features = ["std"] }
-
-# Elsewhere, the platform's watcher through `notify`, the version GPUI already pulls in.
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-notify = "8"
 
 [lints]
 workspace = true

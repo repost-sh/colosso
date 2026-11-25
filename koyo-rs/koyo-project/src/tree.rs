@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::entry::{Entry, Kind, find};
 use crate::ignores::Ignores;
 use crate::paths::{join, name, parent};
+use crate::read::Job;
 
 /// A folder as last listed.
 #[derive(Debug)]
@@ -25,6 +26,17 @@ impl Dir {
             .filter(|entry| !entry.is_folder() && !entry.ignored)
             .count()
     }
+}
+
+/// Where a folder just read stands in the listing of its parent ([`Tree::place`]).
+pub(crate) enum Place {
+    /// Read as its parent lists it.
+    Current,
+    /// Read under rules, or as ignored or not, that its parent no longer lists it by: its
+    /// parent's listing has it read again.
+    Stale,
+    /// Its parent no longer lists it, or not as a folder to read.
+    Gone,
 }
 
 #[derive(Debug, Default)]
@@ -78,6 +90,37 @@ impl Tree {
             self.generation += 1;
         }
         removed
+    }
+
+    /// Whether the folder `folder`, listed at `path` in its parent, is read too: git doesn't
+    /// ignore it, or a consumer asked for it.
+    pub(crate) fn reads(&self, path: &str, folder: &Entry) -> bool {
+        !folder.ignored || self.loaded.contains(path)
+    }
+
+    /// The folder at `path` as its parent lists it, and its parent.
+    pub(crate) fn folder(&self, path: &str) -> Option<(&Dir, &Entry)> {
+        let above = self.dirs.get(parent(path))?;
+        let folder = find(&above.entries, name(path)).filter(|entry| entry.kind == Kind::Dir)?;
+        Some((above, folder))
+    }
+
+    /// What `job`, read by now, is to its parent as it's listed now, which may have been read
+    /// again since: it was read under the parent's rules of then.
+    pub(crate) fn place(&self, job: &Job) -> Place {
+        if job.dir.is_empty() {
+            return Place::Current;
+        }
+        match self.folder(&job.dir) {
+            Some((above, folder)) if self.reads(&job.dir, folder) => {
+                if Arc::ptr_eq(&job.above, &above.rules) && job.ignored == folder.ignored {
+                    Place::Current
+                } else {
+                    Place::Stale
+                }
+            }
+            _ => Place::Gone,
+        }
     }
 
     /// The nearest folder listed above `path`, by its path, and the part of `path` directly

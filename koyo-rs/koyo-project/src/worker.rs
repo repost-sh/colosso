@@ -11,12 +11,12 @@ use crate::Options;
 use crate::entry::{Kind, find};
 use crate::feed::{Counts, Scanned, Update};
 use crate::ignores::Ignores;
-use crate::paths::{Written, join, name, parent};
+use crate::paths::{Written, join, parent};
 use crate::places::Places;
 use crate::read::{Before, Job, Read};
 use crate::scan::scan;
 use crate::shared::{Counters, Pending, Shared};
-use crate::tree::{Dir, Tree};
+use crate::tree::{Dir, Place, Tree};
 use crate::watcher::watch;
 
 /// How long writes are gathered after the first before they're taken up together: the
@@ -158,16 +158,12 @@ impl Worker {
             if tree.dirs.contains_key(dir) {
                 continue;
             }
-            let Some(above) = tree.dirs.get(parent(dir)) else {
-                continue;
-            };
-            let Some(entry) = find(&above.entries, name(dir)).filter(|e| e.kind == Kind::Dir)
-            else {
+            let Some((above, folder)) = tree.folder(dir) else {
                 continue;
             };
             let job = Job {
                 dir: dir.clone(),
-                ignored: entry.ignored,
+                ignored: folder.ignored,
                 above: above.rules.clone(),
                 deep: false,
                 before: None,
@@ -236,15 +232,18 @@ fn before(tree: &Tree, dir: &str) -> Option<Before> {
 
 /// Files a folder as read, and adds to `next` the folders under it to read: new ones, ones
 /// whose rules changed, and all of them for a deep read. Folders gone, or ignored now and
-/// not asked for, are taken out.
+/// not asked for, are taken out; one read under rules changed since is left to be read again.
 fn file(tree: &mut Tree, read: Read, update: &mut Update, next: &mut Vec<Job>) {
     let Read {
         job,
         rules,
         entries,
     } = read;
-    let orphaned = !job.dir.is_empty() && !tree.dirs.contains_key(parent(&job.dir));
-    let Some(entries) = entries.filter(|_| !orphaned) else {
+    let place = tree.place(&job);
+    if matches!(place, Place::Stale) {
+        return;
+    }
+    let Some(entries) = entries.filter(|_| matches!(place, Place::Current)) else {
         for gone in tree.remove(&job.dir) {
             update.listings.insert(gone, None);
         }
@@ -253,7 +252,7 @@ fn file(tree: &mut Tree, read: Read, update: &mut Update, next: &mut Vec<Job>) {
     let mut gone: Vec<Arc<str>> = Vec::new();
     let mut deep = job.deep;
     if let Some(old) = tree.dirs.get(&job.dir) {
-        deep |= old.rules.own(&job.dir) != rules.own(&job.dir);
+        deep |= !Arc::ptr_eq(&old.rules, &rules);
         for folder in old.entries.iter().filter(|entry| entry.kind == Kind::Dir) {
             let kept = find(&entries, &folder.name).is_some_and(|entry| entry.kind == Kind::Dir);
             if !kept {
@@ -264,7 +263,7 @@ fn file(tree: &mut Tree, read: Read, update: &mut Update, next: &mut Vec<Job>) {
     for folder in entries.iter().filter(|entry| entry.kind == Kind::Dir) {
         let path = join(&job.dir, &folder.name);
         let listed = tree.dirs.get(&path).map(|dir| dir.ignored);
-        if folder.ignored && !tree.loaded.contains(&path) {
+        if !tree.reads(&path, folder) {
             if listed.is_some() {
                 gone.push(path);
             }
@@ -297,5 +296,79 @@ fn file(tree: &mut Tree, read: Read, update: &mut Update, next: &mut Vec<Job>) {
     let entries = dir.entries.clone();
     if tree.put(job.dir.clone(), dir) {
         update.listings.insert(job.dir, Some(entries));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+    use crate::entry::Entry;
+
+    fn rules() -> Arc<Ignores> {
+        Ignores::excludes(Path::new("/work/app"), &[])
+    }
+
+    /// `dir` as read under `above`, with its folders, each with whether git ignores it, and
+    /// `rules` of its own.
+    fn read(
+        dir: &str,
+        above: &Arc<Ignores>,
+        rules: &Arc<Ignores>,
+        folders: &[(&str, bool)],
+    ) -> Read {
+        let entry = |(name, ignored): &(&str, bool)| Entry {
+            name: (*name).into(),
+            kind: Kind::Dir,
+            ignored: *ignored,
+        };
+        Read {
+            job: Job {
+                dir: dir.into(),
+                ignored: false,
+                above: above.clone(),
+                deep: false,
+                before: None,
+            },
+            rules: rules.clone(),
+            entries: Some(folders.iter().map(entry).collect()),
+        }
+    }
+
+    /// Files `read` in `tree`: the folders to read next.
+    fn files(tree: &mut Tree, read: Read) -> Vec<Arc<str>> {
+        let mut next = Vec::new();
+        file(tree, read, &mut Update::default(), &mut next);
+        next.into_iter().map(|job| job.dir).collect()
+    }
+
+    #[test]
+    fn a_folder_read_as_its_parent_turns_it_ignored_stays_unlisted() {
+        let (mut tree, base) = (Tree::default(), rules());
+        for ignored in [false, true] {
+            files(&mut tree, read("", &base, &base, &[("out", ignored)]));
+            files(&mut tree, read("out", &base, &base, &[]));
+            assert_eq!(tree.dirs.contains_key("out"), !ignored);
+        }
+    }
+
+    #[test]
+    fn a_folder_read_under_rules_changed_since_is_read_again_instead() {
+        let (mut tree, base, edited) = (Tree::default(), rules(), rules());
+        files(&mut tree, read("", &base, &base, &[("src", false)]));
+        files(&mut tree, read("src", &base, &base, &[]));
+        assert_eq!(
+            files(&mut tree, read("", &base, &edited, &[("src", false)])),
+            ["src".into()]
+        );
+        files(&mut tree, read("src", &edited, &edited, &[("new", true)]));
+        files(&mut tree, read("src", &base, &base, &[("old", false)]));
+        let names: Vec<_> = tree.dirs["src"]
+            .entries
+            .iter()
+            .map(|entry| &*entry.name)
+            .collect();
+        assert_eq!(names, ["new"]);
     }
 }

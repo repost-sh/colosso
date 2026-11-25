@@ -93,7 +93,7 @@ impl Ignores {
     }
 
     /// The text of `dir`'s own `.gitignore`, if these are its rules and it has one.
-    pub(crate) fn own(&self, dir: &str) -> Option<&str> {
+    fn own(&self, dir: &str) -> Option<&str> {
         self.text.as_deref().filter(|_| &*self.dir == dir)
     }
 

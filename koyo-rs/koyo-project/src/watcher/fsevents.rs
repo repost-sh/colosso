@@ -23,8 +23,7 @@ use dispatch2::{
 use objc2_core_foundation::{CFArray, CFRetained, CFString};
 use objc2_core_services as fs;
 
-use super::{Batch, report};
-use crate::places::text;
+use super::{Batch, Report, report};
 
 /// Reports that mean the platform lost track of what changed under the path: the folder
 /// must be read again, or its reports were dropped on the way.
@@ -58,9 +57,6 @@ pub(crate) struct Platform {
 }
 
 impl Platform {
-    /// A stream reports what changed since a moment past, so nothing waits for one to start.
-    pub(crate) const REPLAYS: bool = true;
-
     /// The latest report's id: a stream started from it reports everything after.
     pub(crate) fn now() -> u64 {
         // SAFETY: takes nothing, and only reads the system's latest id.
@@ -80,8 +76,12 @@ impl Platform {
 
     /// Watches `folders` from the moment `since`. A stream's folders are fixed, so a new one
     /// starts before the old one stops: nothing written in between is missed, though some of
-    /// it may be reported twice, which reads a folder again for nothing.
+    /// it may be reported twice, which reads a folder again for nothing. It starts from the
+    /// last report the old one handed over: what that one was still to report it never will
+    /// once it's stopped, and `fseventsd` takes seconds to start a stream on a busy machine,
+    /// so checkouts opened one after another replace it sooner.
     pub(crate) fn cover(&mut self, folders: Vec<PathBuf>, since: u64) -> Result<(), String> {
+        let since = since.min(self.stream.latest());
         self.stream = Stream::start(&folders, since)?;
         self.folders = folders;
         Ok(())
@@ -98,7 +98,7 @@ unsafe impl Send for Stream {}
 impl Stream {
     fn start(folders: &[PathBuf], since: u64) -> Result<Stream, String> {
         let paths: Vec<CFRetained<CFString>> = (folders.iter())
-            .map(|folder| CFString::from_str(&text(folder)))
+            .map(|folder| CFString::from_str(&folder.to_string_lossy()))
             .collect();
         let paths = CFArray::from_retained_objects(&paths);
         let flags = fs::kFSEventStreamCreateFlagFileEvents | fs::kFSEventStreamCreateFlagNoDefer;
@@ -135,6 +135,12 @@ impl Stream {
         }
         Ok(Stream(stream))
     }
+
+    /// The id of the last report it handed over, or of the moment it was started from.
+    fn latest(&self) -> u64 {
+        // SAFETY: the stream was made, and is released only when this is dropped.
+        unsafe { fs::FSEventStreamGetLatestEventId(self.0.cast_const()) }
+    }
 }
 
 impl Drop for Stream {
@@ -158,19 +164,29 @@ unsafe extern "C-unwind" fn callback(
     count: usize,
     paths: NonNull<c_void>,
     flags: NonNull<fs::FSEventStreamEventFlags>,
-    _ids: NonNull<fs::FSEventStreamEventId>,
+    ids: NonNull<fs::FSEventStreamEventId>,
 ) {
     let paths = paths.as_ptr().cast::<*const c_char>();
     let mut batch = Batch::default();
     for at in 0..count {
         // SAFETY: without `UseCFTypes`, FSEvents hands over `count` paths as C strings, and
-        // as many flags, valid for the call.
-        let (path, flags) = unsafe { (CStr::from_ptr(*paths.add(at)), *flags.as_ptr().add(at)) };
+        // as many flags and ids, valid for the call.
+        let (path, flags, id) = unsafe {
+            (
+                CStr::from_ptr(*paths.add(at)),
+                *flags.as_ptr().add(at),
+                *ids.as_ptr().add(at),
+            )
+        };
         let lost = flags & LOST != 0;
         if flags & ABOUT_THE_STREAM != 0 && !lost {
             continue;
         }
-        batch.push(&path.to_string_lossy(), lost);
+        batch.push(Report {
+            path: &path.to_string_lossy(),
+            lost,
+            at: id,
+        });
     }
     report(batch);
 }

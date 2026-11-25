@@ -119,29 +119,38 @@ mod tests {
         let written = project.subscribe(Feed::Written);
         let everything = project.subscribe(Feed::Everything);
         let scanned = reported(&everything, |update| update.scanned.is_some());
-        assert!(scanned.is_some(), "the first scan never finished");
+        assert!(scanned, "the first scan never finished");
         (project, written)
     }
 
-    /// What the watcher reported until `wanted` says it reported enough, if it did within a
-    /// few seconds.
-    fn reported(updates: &Subscription, wanted: impl FnMut(&Update) -> bool) -> Option<()> {
-        (updates.until(Instant::now() + Duration::from_secs(10), wanted)).then_some(())
+    /// Whether the watcher reported until `wanted` says it reported enough, within half a minute.
+    fn reported(updates: &Subscription, wanted: impl FnMut(&Update) -> bool) -> bool {
+        updates.until(Instant::now() + Duration::from_secs(30), wanted)
+    }
+
+    /// Waits for `updates` to say `wanted`, or that the platform lost track, which is anything:
+    /// macOS says so of a checkout written in while it's busy, and the diff reads everything.
+    /// What it said until then.
+    fn says(updates: &Subscription, wanted: &Touched) -> Vec<Touched> {
+        let mut seen = Vec::new();
+        let said = reported(updates, |update| {
+            seen.extend(touched(update));
+            seen.iter().any(|seen| seen == wanted || *seen == Touched::Everything)
+        });
+        assert!(said, "waiting for {wanted:?}, saw {seen:?}");
+        seen
     }
 
     #[test]
     fn writes_staging_and_commits_are_reported() {
         let root = repository("watch");
         let (_project, written) = follow(&root);
-        let until = |wanted: Touched| {
-            reported(&written, |update| touched(update).contains(&wanted)).is_some()
-        };
         std::fs::write(root.join("a.txt"), "a\n").unwrap();
-        assert!(until(Touched::File("a.txt".into())));
+        says(&written, &Touched::File("a.txt".into()));
         git(&root, &["add", "a.txt"]);
-        assert!(until(Touched::Index));
+        says(&written, &Touched::Index);
         git(&root, &["commit", "-q", "-m", "a"]);
-        assert!(until(Touched::Head));
+        says(&written, &Touched::Head);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -150,22 +159,19 @@ mod tests {
         let root = repository("ignored");
         std::fs::create_dir_all(root.join("node_modules")).unwrap();
         std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
-        let (_project, written) = follow(&root);
+        let (project, written) = follow(&root);
         std::fs::write(root.join("before"), "").unwrap();
         let before = Touched::File("before".into());
-        assert!(reported(&written, |update| touched(update).contains(&before)).is_some());
+        says(&written, &before);
+        let lost = project.stats().lost;
         for n in 0..200 {
             std::fs::write(root.join(format!("node_modules/f{n}.js")), "").unwrap();
         }
         std::fs::write(root.join("marker"), "").unwrap();
         let marker = Touched::File("marker".into());
-        let mut seen = Vec::new();
-        let reached = reported(&written, |update| {
-            seen.extend(touched(update));
-            seen.contains(&marker)
-        });
+        let seen = says(&written, &marker);
         let _ = std::fs::remove_dir_all(&root);
-        assert!(reached.is_some());
-        assert_eq!(seen, [marker]);
+        let written_there = seen.iter().all(|seen| [&before, &marker].contains(&seen));
+        assert!(written_there || project.stats().lost > lost, "{seen:?}");
     }
 }

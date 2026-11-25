@@ -3,10 +3,10 @@
 //! however many checkouts are open, one watcher covers them all; checkouts registering at
 //! once are covered by one restart.
 //!
-//! Where the platform can report what changed since a moment past (macOS: every report has
-//! an id, and a stream can start from one), a checkout doesn't wait for the watcher: it's
-//! registered with the moment it was, its first scan starts at once, and the watcher is
-//! started meanwhile from that moment, so what's written while it starts is reported too.
+//! The platform can report what changed since a moment past (every report has an id, and a
+//! stream can start from one), so a checkout doesn't wait for the watcher: it's registered with
+//! the moment it was, its first scan starts at once, and the watcher is started meanwhile from
+//! that moment, so what's written while it starts is reported too.
 //! Measured: `fseventsd` answering a stream's start in 1.7 to 1.9 s on a busy machine, which
 //! every checkout's first listing used to wait for, and each one opened after it as well.
 //!
@@ -14,10 +14,7 @@
 //! the hub's own: the platform drops reports it can't hand over, and sorting them waits on
 //! each checkout's listings, which its worker may be filing.
 
-#[cfg(target_os = "macos")]
 mod fsevents;
-#[cfg(not(target_os = "macos"))]
-mod portable;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -26,10 +23,7 @@ use std::sync::{
     RwLockWriteGuard,
 };
 
-#[cfg(target_os = "macos")]
 use self::fsevents::Platform;
-#[cfg(not(target_os = "macos"))]
-use self::portable::Platform;
 use crate::places::Places;
 use crate::shared::{Counters, Shared};
 
@@ -38,25 +32,39 @@ use crate::shared::{Counters, Shared};
 /// the platform loses track itself.
 const MOST_WAITING: usize = 200_000;
 
-/// Reports as the platform handed them over: paths, each with whether the platform lost
-/// track of what changed under it. A path is `""` when the platform didn't say where.
+/// One thing the platform reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Report<'a> {
+    /// Where: `""` when the platform didn't say.
+    pub(crate) path: &'a str,
+    /// The platform lost track of what changed under the path.
+    pub(crate) lost: bool,
+    /// The moment of it, as [`Platform::now`] tells them.
+    pub(crate) at: u64,
+}
+
+/// Reports as the platform handed them over.
 #[derive(Default)]
 pub(crate) struct Batch {
     /// The paths one after another, so a batch is two allocations however many it holds.
     text: String,
-    /// Where each path ends in `text`, and whether the platform lost track there.
-    reports: Vec<(usize, bool)>,
+    /// Where each path ends in `text`, whether the platform lost track there, and when.
+    reports: Vec<(usize, bool, u64)>,
 }
 
 impl Batch {
-    pub(crate) fn push(&mut self, path: &str, lost: bool) {
-        self.text.push_str(path);
-        self.reports.push((self.text.len(), lost));
+    pub(crate) fn push(&mut self, report: Report) {
+        self.text.push_str(report.path);
+        self.reports.push((self.text.len(), report.lost, report.at));
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&str, bool)> {
-        let starts = std::iter::once(0).chain(self.reports.iter().map(|(end, _)| *end));
-        (starts.zip(&self.reports)).map(|(start, (end, lost))| (&self.text[start..*end], *lost))
+    fn iter(&self) -> impl Iterator<Item = Report<'_>> {
+        let starts = std::iter::once(0).chain(self.reports.iter().map(|(end, ..)| *end));
+        (starts.zip(&self.reports)).map(|(start, &(end, lost, at))| Report {
+            path: &self.text[start..end],
+            lost,
+            at,
+        })
     }
 }
 
@@ -106,9 +114,8 @@ pub(crate) struct Watching {
 }
 
 /// Watches `places` for `shared`: whatever the platform reports about them from now on goes,
-/// sorted, to the writes waiting for its worker. Returns at once where the platform reports
-/// from a moment past, which it's started from, and once it's watching them elsewhere; when
-/// it can't watch, the checkout is told it's unwatched.
+/// sorted, to the writes waiting for its worker. Returns at once, the platform starting from
+/// the moment past it was called; when it can't watch, the checkout is told it's unwatched.
 pub(crate) fn watch(shared: &Arc<Shared>, places: Places) -> Watching {
     let target = Arc::new(Target {
         places,
@@ -116,23 +123,16 @@ pub(crate) fn watch(shared: &Arc<Shared>, places: Places) -> Watching {
         since: Platform::now(),
     });
     write(&HUB.targets).push(target.clone());
-    let cover = {
-        let shared = shared.clone();
-        move || {
+    let unwatched = shared.clone();
+    let started = std::thread::Builder::new()
+        .name("project watch".to_owned())
+        .spawn(move || {
             if let Err(error) = HUB.cover() {
-                shared.set_unwatched(error);
+                unwatched.set_unwatched(error);
             }
-        }
-    };
-    if Platform::REPLAYS {
-        let started = std::thread::Builder::new()
-            .name("project watch".to_owned())
-            .spawn(cover);
-        if let Err(error) = started {
-            shared.set_unwatched(format!("couldn't start watching the checkout: {error}"));
-        }
-    } else {
-        cover();
+        });
+    if let Err(error) = started {
+        shared.set_unwatched(format!("couldn't start watching the checkout: {error}"));
     }
     Watching { target }
 }
@@ -210,7 +210,11 @@ impl Hub {
             let mut batches = waiting.batches;
             if waiting.overflowed {
                 let mut lost = Batch::default();
-                lost.push("", true);
+                lost.push(Report {
+                    path: "",
+                    lost: true,
+                    at: 0,
+                });
                 batches = VecDeque::from([lost]);
             }
             for target in read(&self.targets).iter() {
@@ -221,13 +225,15 @@ impl Hub {
 }
 
 impl Target {
-    /// Sorts what's about this checkout in `batches`, and puts what's worth taking up with
-    /// what's waiting for its worker. Its listings are only looked at for a report about it.
+    /// Sorts what's about this checkout in `batches`, written since it was registered, and puts
+    /// what's worth taking up with what's waiting for its worker; a lost track counts whenever
+    /// it was, as what it lost isn't dated. Its listings are only looked at for a report about it.
     fn take(&self, batches: &VecDeque<Batch>) {
         let (mut heard, mut dropped, mut lost_track, mut seen) = (0, 0, 0, Vec::new());
         let mut tree = None;
-        for (path, lost) in batches.iter().flat_map(Batch::iter) {
-            if !self.places.hears(path, lost) {
+        for Report { path, lost, at } in batches.iter().flat_map(Batch::iter) {
+            let before = !lost && at < self.since;
+            if before || !self.places.hears(path, lost) {
                 continue;
             }
             heard += 1;
@@ -293,8 +299,12 @@ mod tests {
     use crate::ignores::Ignores;
     use crate::tree::Dir;
 
+    fn reported(path: &str, lost: bool, at: u64) -> Report<'_> {
+        Report { path, lost, at }
+    }
+
     #[test]
-    fn a_lost_track_is_counted_lost_only_where_a_consumer_reads() {
+    fn what_was_written_before_is_not_heard_and_a_lost_track_is_lost_where_a_consumer_reads() {
         let shared = Arc::new(Shared::new("/work/app".into(), 10));
         let node_modules = Entry {
             name: "node_modules".into(),
@@ -310,12 +320,13 @@ mod tests {
         let target = Target {
             places: Places::new(Path::new("/work/app"), None),
             shared: shared.clone(),
-            since: 0,
+            since: 5,
         };
         let mut batch = Batch::default();
-        batch.push("/work/app/node_modules/react", true);
-        batch.push("/work/app/src/a.rs", false);
-        batch.push("/work/app", true);
+        batch.push(reported("/work/app/node_modules/react", true, 6));
+        batch.push(reported("/work/app/src/written-before.rs", false, 4));
+        batch.push(reported("/work/app/src/a.rs", false, 7));
+        batch.push(reported("/work/app", true, 0));
         target.take(&VecDeque::from([batch]));
         let stats = shared.stats();
         assert_eq!((stats.events, stats.dropped, stats.lost), (3, 1, 1));
@@ -333,10 +344,11 @@ mod tests {
     #[test]
     fn a_batch_gives_back_its_paths_in_order() {
         let mut batch = Batch::default();
-        batch.push("/a/b", false);
-        batch.push("", true);
-        batch.push("/c", false);
-        let paths: Vec<(&str, bool)> = batch.iter().collect();
-        assert_eq!(paths, [("/a/b", false), ("", true), ("/c", false)]);
+        let reports = [("/a/b", false, 1), ("", true, 2), ("/c", false, 3)]
+            .map(|(path, lost, at)| reported(path, lost, at));
+        for report in reports {
+            batch.push(report);
+        }
+        assert!(batch.iter().eq(reports));
     }
 }

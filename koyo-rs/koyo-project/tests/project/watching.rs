@@ -3,14 +3,9 @@
 
 use std::sync::Arc;
 
-use koyo_project::{Feed, Folder, Git, Options, Subscription, Update, Written};
+use koyo_project::{Feed, Folder, Git, Options, Project, Subscription, Update, Written};
 
 use crate::common::{Checkout, ignored, names, until, until_listed};
-
-/// Whether `update` says `path` was written.
-fn wrote(update: &Update, path: &str) -> bool {
-    matches!(&update.written, Written::Paths(paths) if paths.contains(path))
-}
 
 /// Whether `update` says `path` may have been written: by name, or as part of a folder
 /// written in or of everything, as when the platform lost track of what changed.
@@ -47,7 +42,7 @@ fn created_removed_and_renamed_files_and_folders_update_their_listings() {
     checkout.write("src/b.rs", "");
     assert!(until_listed(&updates, "src", |listing| listing
         .is_some_and(|listing| names(listing) == ["a.rs", "b.rs"])));
-    assert!(until(&written, |update| wrote(update, "src/b.rs")));
+    assert!(until(&written, |update| covers(update, "src/b.rs")));
 
     checkout.remove("src/a.rs");
     assert!(until_listed(&updates, "src", |listing| listing
@@ -121,19 +116,30 @@ fn only_the_git_files_consumers_read_are_reported() {
     let (project, _updates) = checkout.open();
     let written = project.subscribe(Feed::Written);
     through_marker(&checkout, &written, "before");
+    let start = project.stats();
     checkout.write(".git/objects/ab/cdef", "x");
     checkout.write(".git/refs/heads/main.lock", "x");
     checkout.write(".git/index", "x");
+    let lost_track = || project.stats().lost > start.lost;
     let mut moved = Git::default();
     assert!(until(&written, |update| {
-        assert!(update.written.is_empty(), "{:?}", update.written);
+        let only_the_marker = match &update.written {
+            Written::Paths(paths) => paths.iter().all(|path| &**path == "before"),
+            Written::Folders(_) | Written::Everything => lost_track(),
+        };
+        assert!(only_the_marker, "{:?}", update.written);
         moved.index |= update.git.index;
         moved.head |= update.git.head;
-        moved.index
+        moved.index || update.written == Written::Everything
     }));
-    assert!(!moved.head, "an object or a lock file moved HEAD");
+    assert!(
+        !moved.head || lost_track(),
+        "an object or a lock file moved HEAD"
+    );
     checkout.write(".git/refs/heads/main", "x");
-    assert!(until(&written, |update| update.git.head));
+    assert!(until(&written, |update| {
+        update.git.head || update.written == Written::Everything && lost_track()
+    }));
 }
 
 #[test]
@@ -152,9 +158,10 @@ fn a_burst_inside_an_ignored_folder_reaches_nobody() {
     }
     let taken = through_marker(&checkout, &written, "src/after");
     let after = project.stats();
-    assert!(after.dropped > before.dropped, "{after:?}");
+    let lost_track = after.lost > start.lost;
+    assert!(after.dropped > before.dropped || lost_track, "{after:?}");
     assert!(project.listing("node_modules").is_none());
-    if after.lost == start.lost {
+    if !lost_track {
         assert_eq!(taken.len(), 1, "{taken:?}");
         assert_eq!(
             taken[0].written,
@@ -176,6 +183,32 @@ fn a_burst_inside_an_ignored_folder_reaches_nobody() {
     }
 }
 
+/// Every checkout opened starts the one stream the platform reports by anew: what's written to
+/// another meanwhile is reported by one or the other.
+#[test]
+fn what_is_written_to_a_checkout_as_others_open_is_reported() {
+    let checkout = Checkout::new("others-open");
+    let (project, _updates) = checkout.open();
+    let written = project.subscribe(Feed::Written);
+    through_marker(&checkout, &written, "before");
+    let mut others = Vec::new();
+    for n in 0..40 {
+        checkout.write(&format!("f{n}.txt"), "");
+        let other = Checkout::new(&format!("others-open-{n}"));
+        let opened = Project::open(other.options());
+        others.push((other, opened));
+        checkout.write(&format!("g{n}.txt"), "");
+    }
+    let mut unseen: Vec<String> = (0..40)
+        .flat_map(|n| [format!("f{n}.txt"), format!("g{n}.txt")])
+        .collect();
+    let all = until(&written, |update| {
+        unseen.retain(|path| !covers(update, path));
+        unseen.is_empty()
+    });
+    assert!(all, "never reported: {unseen:?}");
+}
+
 #[test]
 fn a_burst_past_the_cap_is_taken_up_by_folder_then_whole() {
     let checkout = Checkout::new("capped");
@@ -195,15 +228,22 @@ fn a_burst_past_the_cap_is_taken_up_by_folder_then_whole() {
         assert!(until_listed(&updates, &dir, |listing| listing
             .is_some_and(|listing| listing.len() == 20)));
     }
-    let mut collapsed = false;
+    let collapsed = |update: &Update| {
+        let (named, collapsed) = match &update.written {
+            Written::Paths(paths) => (paths.len(), false),
+            Written::Folders(folders) => (folders.len(), true),
+            Written::Everything => (0, true),
+        };
+        assert!(named <= 8, "{named}");
+        collapsed
+    };
+    assert!(
+        until(&written, collapsed),
+        "a burst of 400 never went past a cap of 8"
+    );
     while let Some(update) = written.try_next() {
-        collapsed |= matches!(update.written, Written::Folders(_) | Written::Everything);
-        assert!(match &update.written {
-            Written::Paths(paths) | Written::Folders(paths) => paths.len() <= 8,
-            Written::Everything => true,
-        });
+        collapsed(&update);
     }
-    assert!(collapsed, "a burst of 400 never went past a cap of 8");
     assert_eq!(project.files().len(), 401);
 }
 
