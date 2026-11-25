@@ -200,7 +200,10 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
   pressed on the selected branch with that panel shown. Changes says how many lines the selected
   branch's changes add and remove, once they've been read. The button whose panel shows stays,
   lit as the tab shown's pill. Each branch keeps whether its panel's open and on which
-  (`right_panel/side.rs`), so going to another branch finds that one's as it was left. ⌘⇧E, ⌘⌥B
+  (`right_panel/side.rs`), so going to another branch finds that one's as it was left. It's
+  beside the branch's own tabs alone: the Settings tab, and a pinned or an unpinned page, which are
+  no branch's, hide it, and its button isn't lit then. **[asked, 2026-11-25]** Opened while one of
+  them shows, it's beside the branch's tab, which shows in its place. **[ours]** ⌘⇧E, ⌘⌥B
   and the chat's details card act on the selected branch's. Set to the top rail, the two buttons
   sit at the rail's end and act on the selected branch the same way.
 - A right-click on the row opens the branch's menu (`projects::worktree_menu`):
@@ -562,8 +565,8 @@ address bar, over the projects (`docs/layout.md`). **[asked]**
   **[ours]**
 - **On the top rail** (2026-11-23), while a pinned or an unpinned page is shown none of the
   branch's tabs in the rail is lit, the selected branch's row stays lit in the sidebar, and
-  Changes and Files, wherever they are, still open that branch's panel beside the page. Picking a
-  branch's tab, or a branch's row, leaves the page for the branch's tab; the rail's **+** after
+  Changes and Files, wherever they are, open that branch's panel beside its tab, leaving the page
+  for it. Picking a branch's tab, or a branch's row, leaves the page for the branch's tab; the rail's **+** after
   the branch's tabs opens a tab of the branch, as a branch row's **+** does. A page opened
   otherwise while one is shown, or with no branch selected, is an unpinned page of the space.
   **[asked: the rail shows them; ours: the rest]**

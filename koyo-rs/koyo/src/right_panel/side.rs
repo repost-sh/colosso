@@ -1,6 +1,8 @@
 //! What each checkout's panel shows: its changes or its files, open or closed. Each checkout
 //! keeps its own, so going to another worktree finds that one's panel as it was left there. The
 //! panel's actions act on the selected checkout's, and a worktree's buttons on that worktree's.
+//! It's beside the checkout's own tabs alone: the Settings tab and a pinned or a loose page, which
+//! are no checkout's, have none beside them.
 
 use std::path::{Path, PathBuf};
 
@@ -49,8 +51,8 @@ impl Shell {
     /// What the window does with the right panel's actions and drags.
     pub fn handle_right_panel(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &ToggleRightPanel, _, cx| {
-            let open = this.right_panel.selected_side().open;
-            this.set_open(!open, None, cx);
+            let side = this.right_panel.selected_side();
+            this.toggle(side.view, cx);
         }))
         .on_action(cx.listener(|this, _: &ShowFiles, _, cx| this.show(View::Files, cx)))
         .on_action(cx.listener(|this, _: &ToggleChanges, _, cx| this.toggle(View::Changes, cx)))
@@ -80,16 +82,24 @@ impl Shell {
     }
 
     /// Shows `view` in the selected checkout's panel, opening it if it's closed, and gives it
-    /// the keyboard; the Settings tab, which the panel isn't drawn beside, is left open behind.
+    /// the keyboard; the Settings tab and a pinned or a loose page, which the panel isn't drawn
+    /// beside, are left for the checkout's tab.
     pub(crate) fn show(&mut self, view: View, cx: &mut Context<Self>) {
         self.set_open(true, Some(view), cx);
-        self.workspace.leave_settings();
+        self.workspace.leave_apart();
         cx.notify();
     }
 
-    /// Closes the selected checkout's panel if it shows `view`, and shows `view` otherwise.
+    /// Whether the selected checkout's panel has a place in the window: not beside the Settings
+    /// tab, a pinned or a loose page, which are no checkout's.
+    pub(crate) fn has_right_panel(&self) -> bool {
+        self.workspace.settings_shown().is_none() && !self.workspace.apart_shown()
+    }
+
+    /// Closes the selected checkout's panel if it's there showing `view`, and shows `view`
+    /// otherwise.
     fn toggle(&mut self, view: View, cx: &mut Context<Self>) {
-        if self.right_panel.shows(view) {
+        if self.has_right_panel() && self.right_panel.shows(view) {
             self.close_right_panel(cx);
         } else {
             self.show(view, cx);

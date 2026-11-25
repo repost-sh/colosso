@@ -54,9 +54,10 @@ impl Shell {
         all: bool,
         cx: &mut Context<Self>,
     ) -> Vec<(Stateful<Div>, bool)> {
+        let here = self.has_right_panel();
         [View::Changes, View::Files]
             .into_iter()
-            .map(|view| (view, self.right_panel.shows_in(branch.1, view)))
+            .map(|view| (view, here && self.right_panel.shows_in(branch.1, view)))
             .filter(|&(_, lit)| all || lit)
             .map(|(view, lit)| (self.panel_button(branch, (view, lit), (glyph, fill), cx), lit))
             .collect()

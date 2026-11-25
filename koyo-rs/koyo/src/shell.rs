@@ -373,7 +373,8 @@ impl Render for Shell {
             slide_out(sidebar, width, shown.open.0).into_any_element()
         });
         let beside = rails::left_of_chat(self.sidebar_open, width);
-        let right_panel = (self.right_panel).render(!settings, beside, window, cx);
+        let has_panel = self.has_right_panel();
+        let right_panel = (self.right_panel).render(has_panel, beside, window, cx);
         let card = div()
             .debug_selector(|| "shell-card".to_owned())
             .flex_1()

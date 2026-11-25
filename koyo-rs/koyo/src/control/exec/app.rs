@@ -161,7 +161,8 @@ pub(crate) fn settings_close(cx: &mut App) -> Result<Value, ControlError> {
 }
 
 fn right_panel(shell: &Shell) -> Option<RightPanel> {
-    shell.right_panel.shown_view().map(|view| match view {
+    let shown = shell.right_panel.shown_view().filter(|_| shell.has_right_panel());
+    shown.map(|view| match view {
         View::Changes => RightPanel::Changes,
         View::Files => RightPanel::Files,
     })

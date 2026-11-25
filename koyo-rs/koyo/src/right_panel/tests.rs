@@ -8,8 +8,10 @@ use gpui_kit::{
 use super::*;
 use crate::files::tests::shell_showing;
 use crate::settings::{ChangesAndFiles, SetChangesAndFiles, Tabs};
+use crate::shell::ToggleRightPanel;
 use crate::test_support::{
-    GRAB, center_of, cursor_at, drag, draw, drawn, hover, repo, select, shell_on, shell_with,
+    GRAB, act, center_of, click, cursor_at, drag, draw, drawn, hover, open_page, pin, repo, select,
+    shell_on, shell_on_chat, shell_with,
 };
 
 /// The width the Files panel is set to.
@@ -228,4 +230,52 @@ fn the_changes_and_files_buttons_go_where_their_menu_places_them(cx: &mut TestAp
     tabs_in(Tabs::TopRail, cx);
     assert!(on_rail(cx), "back on the rail with the tabs");
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// A branch's panel is beside its own tabs alone: a pinned or an unpinned page shown, no branch's,
+/// hides it, with its button's light, and the branch's tab shown again finds it as it was. Asked
+/// for over such a page, it shows beside its branch's tab.
+#[gpui_kit::test]
+fn a_branchs_panel_hides_while_a_page_of_no_branch_shows(cx: &mut TestAppContext) {
+    let (window, shell) = shell_on_chat("right-panel-apart", cx);
+    let key = pin(window, &shell, &["https://a.example/"], cx)[0];
+    let panel = |cx: &mut TestAppContext| drawn(window, "right-panel-resize", cx).is_some();
+    let on_page = |cx: &TestAppContext| cx.read(|cx| shell.read(cx).workspace.apart_shown());
+    let show_page = |cx: &mut TestAppContext| {
+        shell.update(cx, |shell, cx| {
+            let at = shell.workspace.pinned_at(key).expect("pinned");
+            assert!(shell.workspace.show_pinned(at));
+            cx.notify();
+        });
+        draw(window, cx);
+    };
+    click(window, "tab-0-0-0", cx);
+    act(window, ToggleChanges, cx);
+    assert!(panel(cx), "beside the branch's tab");
+    show_page(cx);
+    assert!(!panel(cx), "a pinned page shows");
+    click(window, "tab-0-0-0", cx);
+    assert!(panel(cx), "back with the branch's tab");
+
+    let toggles: [&dyn Action; 2] = [&ToggleChanges, &ToggleRightPanel];
+    for toggle in toggles {
+        show_page(cx);
+        cx.update_window(window, |_, window, cx| window.dispatch_action(toggle.boxed_clone(), cx))
+            .unwrap();
+        cx.run_until_parked();
+        draw(window, cx);
+        assert!(panel(cx) && !on_page(cx), "{}: asked for, beside its branch's tab", toggle.name());
+    }
+    act(window, ToggleRightPanel, cx);
+    assert!(!panel(cx), "closed while it's there");
+
+    act(window, ToggleChanges, cx);
+    open_page(window, &shell, Some("https://b.example/"), cx);
+    shell.update(cx, |shell, cx| {
+        let at = shell.workspace.shown_tab().expect("the page's tab");
+        assert!(shell.workspace.loosen_tab(at, usize::MAX));
+        cx.notify();
+    });
+    draw(window, cx);
+    assert!(on_page(cx) && !panel(cx), "an unpinned page shows");
 }
