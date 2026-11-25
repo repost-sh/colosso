@@ -62,7 +62,6 @@ export function newThread(
     queueHeld: false,
     tabOpen: true,
     parent: null,
-    backgroundTasks: 0,
     progress: null,
     createdAt: at,
     updatedAt: at,

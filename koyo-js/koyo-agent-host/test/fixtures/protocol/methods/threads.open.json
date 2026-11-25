@@ -10,6 +10,7 @@
   "response": {
     "id": 8,
     "result": {
+      "beside": { "subagents": 2, "tasks": 1 },
       "thread": {
         "id": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
         "cwd": "/Users/ana/code/ledger",
@@ -27,7 +28,6 @@
         "queueHeld": false,
         "tabOpen": true,
         "parent": null,
-        "backgroundTasks": 1,
         "progress": {
           "phases": [
             {

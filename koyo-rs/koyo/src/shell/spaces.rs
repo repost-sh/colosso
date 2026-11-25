@@ -122,18 +122,17 @@ impl Shell {
             .collect()
     }
 
-    /// How the space at `index` is doing, the most urgent of its projects: what its mark at the
+    /// What goes on in the space at `index`, in all its projects: what its mark at the
     /// sidebar's foot says while another space is shown (`docs/sidebar.md` 4), as its
     /// projects would say were it shown.
     pub fn space_activity(&self, index: usize, cx: &App) -> Activity {
         let Some(space) = settings::get(cx).spaces.get(index) else {
-            return Activity::Quiet;
+            return Activity::default();
         };
         (space.projects.iter())
             .filter_map(|path| self.workspace.project_index(path))
             .map(|project| self.project_activity(&self.workspace.projects[project], cx))
-            .max()
-            .unwrap_or(Activity::Quiet)
+            .sum()
     }
 
     /// Shows space `index`, and the project it showed last, its first otherwise, in place of the

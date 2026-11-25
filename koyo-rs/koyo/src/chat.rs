@@ -2,6 +2,7 @@
 //! every thread's summary, and the rows of the ones a tab shows. One loop takes in what the host
 //! says, once a frame however fast it comes, and connects again when the connection ends.
 
+mod activity;
 mod asks;
 mod attachments;
 mod catalog;
@@ -17,6 +18,7 @@ mod output;
 mod queued;
 mod rewind;
 mod rows;
+mod sign;
 mod spinner;
 mod status;
 mod subagent_bar;
@@ -59,8 +61,11 @@ pub use asks::{AllowRequest, AllowRequestForChat, DenyRequest};
 pub use composer::{
     ImplementPlan, OpenModelMenu, RecallPrompt, SkipQuestion, StopTurn, TogglePlan,
 };
-pub use spinner::spinner_of;
-pub use status::Activity;
+pub use activity::Activity;
+#[cfg(test)]
+pub use activity::Attention;
+pub use sign::Sign;
+pub use spinner::spinner;
 pub use subagent_bar::OpenParent;
 pub use tabs::{ChatTabs, heard_at_window};
 pub use view::details::ToggleDetails;
@@ -101,8 +106,8 @@ pub enum ChatsEvent {
 pub struct Chats {
     client: Option<Arc<AgentClient>>,
     summaries: HashMap<ThreadId, ThreadSummary>,
-    /// What each checkout's row says of its chats, as the summaries have it.
-    checkout_marks: HashMap<PathBuf, status::CheckoutMarks>,
+    /// What goes on in each checkout's chats, as the summaries have it.
+    checkouts: HashMap<PathBuf, status::CheckoutActivity>,
     /// The threads open with the host, for as long as anything shows them.
     threads: HashMap<ThreadId, WeakEntity<ChatThread>>,
     /// What each checkout a tab shows can choose from.
@@ -149,7 +154,7 @@ impl Chats {
         let mut chats = Chats {
             client,
             summaries: HashMap::new(),
-            checkout_marks: HashMap::new(),
+            checkouts: HashMap::new(),
             threads: HashMap::new(),
             catalogs: HashMap::new(),
             claude_missing: cx.new(|_| false),
@@ -382,6 +387,10 @@ impl Chats {
                 Event::ThreadChanged(changed) => {
                     (touched.entry(changed.thread_id.clone()).or_default())
                         .push(ThreadEvent::Changed(changed));
+                }
+                Event::ThreadBeside(told) => {
+                    (touched.entry(told.thread_id).or_default())
+                        .push(ThreadEvent::Beside(told.beside));
                 }
                 Event::ItemAppended(appended) => {
                     (touched.entry(appended.thread_id.clone()).or_default())

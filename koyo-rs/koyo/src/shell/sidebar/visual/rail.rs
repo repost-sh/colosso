@@ -6,8 +6,9 @@
 //! page's tab in hand. Each saved whole, and the rail again larger.
 
 use gpui_kit::{Modifiers, Pixels, Point, point, px};
+use koyo_agent::protocol::model::Status;
 
-use super::acts::{Part, save_with, settle};
+use super::acts::{Part, hear, save_with, settle};
 use super::pins::{carry, let_go, middle, remove_pins, take_up};
 use super::web_page;
 use crate::settings::{self, Tabs};
@@ -138,6 +139,19 @@ fn landing(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     Ok(())
 }
 
+/// A chat among the checkout's tabs, with subagents and something for the person: its tab's sign.
+fn chat_tab(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    let root = checkout()?;
+    hear(drawn, ("0002", &root), (Status::Working, 3, 0), true);
+    settle(drawn)?;
+    said.push(format!(
+        "a chat's tab, its subagents at work and something for the person: {}",
+        save_with(drawn, "rail-chat-dark", Part::Rail)?
+    ));
+    hear(drawn, ("0002", &root), (Status::Idle, 0, 0), false);
+    settle(drawn)
+}
+
 /// Every pin removed: the zone in the pill's place, then its × under the pointer; put away, it's
 /// back while a page's tab is in hand, saying to let it go there.
 fn zone(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
@@ -177,6 +191,7 @@ fn zone(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 pub fn rail_pages(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     start(drawn)?;
     rail(drawn, said)?;
+    chat_tab(drawn, said)?;
     landing(drawn, said)?;
     zone(drawn, said)
 }

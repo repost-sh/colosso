@@ -10,7 +10,7 @@ use koyo_agent::protocol::events::{Appended, Changed, Event, Removed};
 use koyo_agent::protocol::ids::{ItemId, MessageId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
-    Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Status, Text, Thread, ThreadSummary,
+    Beside, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Status, Text, Thread, ThreadSummary,
     TitleSource,
 };
 use koyo_agent::protocol::requests::{Question, QuestionOption};
@@ -74,7 +74,7 @@ pub(crate) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> Thre
         plan: false,
         status: Status::Idle,
         needs: None,
-        background: false,
+        beside: Beside::default(),
         queued: 0,
         unread: false,
         tab_open,
@@ -85,6 +85,7 @@ pub(crate) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> Thre
 
 pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
     ThreadSnapshot {
+        beside: Beside::default(),
         thread: Thread {
             id: ThreadId(id.into()),
             cwd: "/work".into(),
@@ -102,7 +103,6 @@ pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
             queue_held: false,
             tab_open: true,
             parent: None,
-            background_tasks: 0,
             progress: None,
             created_at: Time(AT.into()),
             updated_at: Time(AT.into()),
@@ -113,6 +113,13 @@ pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
         items,
         requests: Vec::new(),
     }
+}
+
+/// The chats' host sends `summary`.
+pub(crate) fn tell(shell: &Entity<Shell>, summary: ThreadSummary, cx: &mut TestAppContext) {
+    let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
+    chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
+    cx.run_until_parked();
 }
 
 /// Run `id` of chat 0001, saying `text`, as it is at `seq`.

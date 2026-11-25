@@ -234,7 +234,6 @@ fn thread_of(params: CreateParams) -> Thread {
         queue_held: false,
         tab_open: false,
         parent: None,
-        background_tasks: 0,
         progress: None,
         created_at: Time(AT.into()),
         updated_at: Time(AT.into()),

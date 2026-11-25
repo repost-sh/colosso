@@ -147,7 +147,7 @@ fn quitting(drawn: &mut Drawn) -> Result<std::path::PathBuf> {
     let chats = drawn.cx.read(|cx| shell.read(cx).chats().clone());
     drawn.until(PATIENCE, |drawn| {
         let background = |cx: &gpui_kit::App| {
-            (chats.read(cx).summary(&id)).is_some_and(|summary| summary.background)
+            (chats.read(cx).summary(&id)).is_some_and(|summary| summary.beside.tasks > 0)
         };
         Ok(drawn.cx.read(background))
     })?;

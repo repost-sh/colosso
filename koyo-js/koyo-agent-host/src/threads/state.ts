@@ -1,14 +1,16 @@
 import type { MessageId, RequestId, RunId } from "../protocol/ids";
 import type { Delivered, Rows, ThreadSnapshot } from "../protocol/methods";
-import type {
-  AccountLimits,
-  Item,
-  Mode,
-  Prompt,
-  Request,
-  Run,
-  Thread,
-  ThreadSummary,
+import {
+  type AccountLimits,
+  type Beside,
+  type Item,
+  type Mode,
+  NOTHING_BESIDE,
+  type Prompt,
+  type Request,
+  type Run,
+  type Thread,
+  type ThreadSummary,
 } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { DriverEvent, ItemEvent } from "../providers/provider";
@@ -37,6 +39,8 @@ export class ThreadState {
   readonly #summarized: (summary: ThreadSummary) => void;
   readonly #limited: (limits: AccountLimits) => void;
   #thread: Thread;
+  /** What the agent runs beside its turn, which is its session's, so nothing's kept of it. */
+  #beside = NOTHING_BESIDE;
   /** The runs not yet settled, oldest first: the live one, if any, and the queue. */
   #unsettled: readonly Run[];
   /** The latest run that ran and ended. */
@@ -99,7 +103,7 @@ export class ThreadState {
 
   summary(): ThreadSummary {
     const state = { unsettled: this.#unsettled, ended: this.#ended, pending: this.#pending };
-    return summary(this.#thread, state, this.#said?.opening ?? null);
+    return summary(this.#thread, state, this.#said?.opening ?? null, this.#beside);
   }
 
   live(): Run | undefined {
@@ -125,34 +129,31 @@ export class ThreadState {
   }
 
   /**
-   * Whether a run is live or the agent has tasks running in the background, which go with the
-   * session: their ends start turns of the agent's own (docs/chat.md 4.5.6).
+   * Whether a run is live or the agent runs anything beside it, which goes with the session: the
+   * ends of those start turns of the agent's own (docs/chat.md 4.5.6).
    */
   atWork(): boolean {
-    return this.live() !== undefined || this.#thread.backgroundTasks > 0;
+    const { subagents, tasks } = this.#beside;
+    return this.live() !== undefined || subagents > 0 || tasks > 0;
   }
 
-  /** The agent has `tasks` running in the background now. */
-  background(tasks: number): void {
-    if (tasks !== this.#thread.backgroundTasks) {
-      this.commit({ thread: { ...this.#thread, backgroundTasks: tasks } });
+  /** What the agent runs beside its turn is now as `change` says. */
+  runsBeside(change: Partial<Beside>): void {
+    const beside = { ...this.#beside, ...change };
+    if (!Bun.deepEquals(beside, this.#beside)) {
+      this.#beside = beside;
+      this.broadcast(eventLine("thread.beside", { threadId: this.#thread.id, beside }));
+      this.#summarize();
     }
   }
 
-  /** The session went, and what ran in it beside its turn: its background, and its subagents'
-   * `requests`, released. */
+  /** The session went, and what ran in it beside its turn: its subagents and their `requests`,
+   * released, and its tasks. */
   sessionGone(requests: readonly Request[]): void {
-    const thread = this.#quieted(null);
-    if (thread !== null || requests.length > 0) {
-      this.commit({ thread, requests });
+    if (requests.length > 0) {
+      this.commit({ requests });
     }
-  }
-
-  /** `changed`, or else the thread, with nothing in the background; `changed` as it is when
-   * that's so already. */
-  #quieted(changed: Thread | null): Thread | null {
-    const thread = changed ?? this.#thread;
-    return thread.backgroundTasks === 0 ? changed : { ...thread, backgroundTasks: 0 };
+    this.runsBeside(NOTHING_BESIDE);
   }
 
   /** The thread with its queue held, when something is queued and it isn't yet. */
@@ -220,7 +221,8 @@ export class ThreadState {
     const rows = sinceSeq === null
       ? this.#store.latest(id, OPEN_RUNS)
       : this.#store.since(id, sinceSeq);
-    return { thread: this.#thread, ...rows, items: this.#overlay(rows.items, sinceSeq !== null) };
+    const items = this.#overlay(rows.items, sinceSeq !== null);
+    return { thread: this.#thread, beside: this.#beside, ...rows, items };
   }
 
   close(subscriber: Subscriber): void {
@@ -285,6 +287,11 @@ export class ThreadState {
         requests: [...committed.requests],
       }));
     }
+    this.#summarize();
+  }
+
+  /** Tells the watchers what lists show of the thread, if that's new: not a subagent's. */
+  #summarize(): void {
     if (this.#thread.parent === null) {
       const shown = this.summary();
       if (!Bun.deepEquals(shown, this.#told)) {
@@ -354,7 +361,7 @@ export class ThreadState {
     });
     const items = this.#store.openItems(this.#thread.id).map((item) => lost(item, at));
     const requests = this.#pending.flatMap((request) => orphaned(request, at) ?? []);
-    const thread = this.#quieted(this.holding());
+    const thread = this.holding();
     if (runs.length > 0 || items.length > 0 || requests.length > 0 || thread !== null) {
       this.commit({ thread, runs, items, requests });
     }

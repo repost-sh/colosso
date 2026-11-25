@@ -102,6 +102,8 @@ pub struct Palette {
     /// What's at work: the spinner on a chat's tab, its project's row and its space's mark. An
     /// amber, to be told at a glance from what waits for the person.
     pub working: Hsla,
+    /// What runs in the background with no agent at it: `working`, faded.
+    pub working_faded: Hsla,
     /// What waits for the person: the dot on a tab's row, its project's row and its space's
     /// mark. An indigo, apart from the amber of what's at work and the red of what went wrong.
     pub waiting: Hsla,
@@ -190,6 +192,7 @@ const DARK: Palette = Palette {
     removed: hsl(0.0, 0.7, 0.64),
     modified: hsl(0.11, 0.75, 0.6),
     working: hsl(0.105, 0.98, 0.56),
+    working_faded: hsl(0.105, 0.30, 0.38),
     waiting: hsl(0.655, 0.92, 0.72),
     code: DARK_CODE,
 };
@@ -217,6 +220,7 @@ const LIGHT: Palette = Palette {
     removed: hsl(0.0, 0.65, 0.48),
     modified: hsl(0.1, 0.8, 0.4),
     working: hsl(0.095, 0.96, 0.46),
+    working_faded: hsl(0.095, 0.38, 0.72),
     waiting: hsl(0.672, 0.78, 0.58),
     code: LIGHT_CODE,
 };

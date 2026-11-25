@@ -29,7 +29,6 @@ export function thread(): Thread {
     queueHeld: false,
     tabOpen: true,
     parent: null,
-    backgroundTasks: 0,
     progress: null,
     createdAt: AT,
     updatedAt: AT,

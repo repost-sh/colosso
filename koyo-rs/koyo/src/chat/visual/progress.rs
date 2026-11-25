@@ -44,7 +44,7 @@ fn plan_of(drawn: &Drawn, thread: &Entity<ChatThread>) -> (Option<Plan>, bool) {
     drawn.cx.read(|cx| {
         let replica = thread.read(cx).replica();
         let plan = replica.and_then(|replica| replica.thread.progress.clone());
-        (plan, replica.is_some_and(koyo_agent::replica::Replica::working))
+        (plan, replica.is_some_and(|replica| replica.work().any()))
     })
 }
 

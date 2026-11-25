@@ -113,13 +113,13 @@ The sidebar lists the projects of the space shown as rows, each with its branche
 - **A click on the row folds the project's branches away**, tabs and all, or brings them back,
   at once and without a slide; the state is kept for the next launch (section 9). Folded, ⌥↑ and
   ⌥↓ pass over the project's tabs, and only the row brings them back.
-- **Activity.** Indigo is what waits for the person (`Palette::waiting`), on a row, a tab's row
-  and a space's mark; amber is what's at work, and red is kept for what went wrong.
-  - Folded, a row says at its end how the project's doing (`Shell::project_activity`): the
-    spinner while a chat in it is at work, an indigo dot once something in it waits for the person
-    (a chat that finished and hasn't been seen, failed or asks, a terminal waiting for input).
-    Open, it says nothing: the tabs' rows say it.
-  - The spinner (`chat/spinner.rs`) is a small ring in amber with a gap in it, its line bold for
+- **Activity** is `docs/activity.md`'s: the spinner for work and the dot for what waits for the
+  person, side by side. Indigo is what waits (`Palette::waiting`), on a row, a tab's row and a
+  space's mark; amber is what's at work, faded while only a background task is, and red is kept
+  for what went wrong.
+  - Folded, a row says at its end what goes on in the project (`Shell::project_activity`). Open, it
+    says nothing: the tabs' rows say it.
+  - The spinner (`chat/spinner.rs`) is a small ring with a gap in it, its line bold for
     its size, going round. It's drawn at most 30 times a second while Koyo is in front and 10
     while another app is (`beat.rs`), all of them turning together, in the same frames. Wherever a
     chat is said to be working, it's this spinner.
@@ -157,11 +157,11 @@ stored on spaces. A space shows again at the project it showed last.
   and Files buttons on the rail. The pinned pages, and the unpinned pages when shared, stay put,
   as they stay in the sidebar (11.1).
 - **A mark's activity.** A space that isn't shown says on its mark what its projects' rows
-  would, so a chat that finished there is noticed: a small indigo dot up and right of the mark
-  while something in it waits for the person, the spinner in that same place while something
-  works, as strong as the dot's but smaller, half as wide again as the dot. It's the most urgent
-  of the space's projects (`Shell::space_activity`, from `project_activity`). It's laid over the
-  mark and takes no room, so no mark moves as it comes or goes. On a space just left it comes
+  would (`Shell::space_activity`, `docs/activity.md`), so a chat that finished there is noticed: the
+  spinner up and right of the mark while something works, half as wide again as the dot, and a
+  small indigo dot while something waits for the person, in the spinner's place, or as far left of
+  the mark while the spinner has that. They're laid over the mark and take no room, so no mark
+  moves as they come or go. On a space just left it comes
   once the capsule has shrunk back, out of the spring's way. The dot fades in; the spinner
   doesn't, as it's a view drawn again only as it turns. The space shown has none: its rows say it.
 - **Reordering.** Pressing a mark and dragging sideways moves it as tabs move in their list; let
@@ -183,8 +183,7 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
   **[asked]**
 - The row is a project's row's structure one step in: the branch's glyph, its name cut short
   with an ellipsis, muted unless it's selected, the selected branch's the pill; at its end the
-  count of terminals waiting on the person, and how its checkout's doing (the spinner while a
-  chat works, the dot once something waits). What's going on is said once, on the last row in
+  count of terminals waiting on the person, and what goes on in its checkout (`docs/activity.md`). What's going on is said once, on the last row in
   sight: a tab's on its own row while it's listed, on its branch's once that's collapsed, and on
   its project's once that's folded; with the tabs on the rail, on the branch's. **[asked,
   2026-11-25]** With its tabs listed the branch's row says only what they can't, a chat at work in
@@ -240,9 +239,8 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
   - A split tab's row shows its panes side by side: each pane's icon and title, sharing the row,
     a hairline between them and no fill of their own. Each pane shows its × while the pointer's
     on it; one with unsaved edits shows its dot always.
-  - A row says at its end how the tab's doing (`Shell::tab_activity`): the spinner while a chat
-    in it is at work, an indigo dot once something in it waits for the person, which wins over the
-    spinner. It has the ×'s place and leaves it to the × while the pointer's on the row; a
+  - A row says at its end what goes on in the tab (`Shell::tab_activity`, `docs/activity.md`): the
+    spinner for its work, an indigo dot before it once something in it waits for the person. It has the ×'s place and leaves it to the × while the pointer's on the row; a
     split's row has it before its panes.
   - Unsaved edits' and splits' dots, middle-click to close, and dragging to reorder stay.
 - A tab dragged past its list's end onto another branch's tabs or row moves to that branch and

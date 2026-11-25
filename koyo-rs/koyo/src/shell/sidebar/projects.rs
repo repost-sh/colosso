@@ -24,7 +24,7 @@ use gpui_kit::{
 };
 
 use super::edge_fade::edge_fade;
-use super::rows::{ROW_END, at_end, branch_tabs, end_place};
+use super::rows::{ROW_END, at_end, branch_tabs, end_place, sign};
 use super::{Look, noted, shown_on_hover, tab_rows};
 use crate::model::{BranchUnit, Front, Project};
 use crate::pane::ROW_GLYPH;
@@ -172,10 +172,9 @@ fn project_group(
 
 /// A project's row: its folder, open while its branches show under it and closed while they're
 /// `folded` away, its name, and under the pointer its New worktree button. Clicked, it folds them
-/// away or brings them back, kept for the next launch. Folded, it says at its end how the project's
-/// doing, as a branch's row does: the spinner while a chat in it works, the indigo dot once
-/// something in it waits for the person; the New worktree button takes that place under the
-/// pointer. It's the `place`th listed, known by `key`, its folder `path`.
+/// away or brings them back, kept for the next launch. Folded, it says at its end what goes on in
+/// the project, as a branch's row does (`docs/activity.md`); the New worktree button takes that
+/// place under the pointer. It's the `place`th listed, known by `key`, its folder `path`.
 fn project_row(
     shell: &Shell,
     (place, key, project_index): (usize, u64, usize),
@@ -186,11 +185,11 @@ fn project_row(
     let p = look.p;
     let mark = folded.then(|| {
         let place = || format!("sidebar-project-{}", project.path.display());
-        shell.project_activity(project, cx).sign(place, p, cx)
+        sign(shell.project_activity(project, cx), place, look, cx)
     });
     let mark = (mark.flatten()).map(|mark| {
         let name = move || format!("sidebar-project-mark-{project_index}");
-        at_end(mark.debug_selector(name), "sidebar-project")
+        at_end(mark.in_column().debug_selector(name), "sidebar-project")
     });
     let new = Rc::clone(path);
     let new_worktree = icon_button(
@@ -260,7 +259,7 @@ fn branch_rows(
 
 /// A branch's row, one step in from its project's, the `branch_index`th of its project's and known
 /// by `key` as it moves, `selected` or not, lit as selected unless its tabs are `listed` under it,
-/// where the one shown is, and saying how it's doing but for what they say, its title leaving off the prefix the person's own
+/// where the one shown is, and saying what goes on in it but for what they say, its title leaving off the prefix the person's own
 /// branches carry in its project, whose folder is `project`. Clicked with the tabs on the top rail
 /// it's selected; with them in the sidebar its tabs collapse or come back, kept for the next
 /// launch, and nothing's selected: a tab picked selects its branch (`docs/layout.md`, Sidebar).
@@ -285,9 +284,9 @@ fn branch_row(
     let panel = shell.row_panel_buttons((at, root), (ROW_GLYPH, look.pill), hovered, cx);
     let (activity, waiting) = shell.checkout_status(root, listed, cx);
     let place = || format!("sidebar-branch-{}", root.display());
-    let mark = (activity.sign(place, p, cx)).map(|mark| {
+    let mark = sign(activity, place, look, cx).map(|mark| {
         let name = move || format!("sidebar-branch-mark-{project_index}-{branch_index}");
-        mark.debug_selector(name)
+        mark.in_column().debug_selector(name)
     });
     let (path, is_main) = (Rc::<Path>::from(root), branch.is_main());
     let (menu, folders) = (Rc::clone(&path), (Rc::clone(project), path));

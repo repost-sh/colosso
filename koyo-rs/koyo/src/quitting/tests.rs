@@ -1,6 +1,6 @@
 use gpui_kit::TestAppContext;
 use koyo_agent::protocol::ids::{ThreadId, Time};
-use koyo_agent::protocol::model::{Status, ThreadSummary};
+use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
 use super::{HEIGHT, Next, OnQuit, QuitDialog, WIDTH, next, works};
@@ -53,7 +53,7 @@ fn the_dialog_names_the_terminals_and_the_chats_still_running() {
     );
 }
 
-fn chat(status: Status, needs: Option<RequestKind>, background: bool) -> ThreadSummary {
+fn chat(status: Status, needs: Option<RequestKind>, tasks: u64) -> ThreadSummary {
     ThreadSummary {
         id: ThreadId("0001".into()),
         cwd: "/work".into(),
@@ -66,7 +66,10 @@ fn chat(status: Status, needs: Option<RequestKind>, background: bool) -> ThreadS
         plan: false,
         status,
         needs,
-        background,
+        beside: Beside {
+            subagents: 0,
+            tasks,
+        },
         queued: 0,
         unread: false,
         tab_open: true,
@@ -77,18 +80,18 @@ fn chat(status: Status, needs: Option<RequestKind>, background: bool) -> ThreadS
 
 #[test]
 fn a_chat_at_work_runs_a_turn_waits_for_the_person_or_runs_tasks_in_the_background() {
-    assert!(works(&chat(Status::Working, None, false)), "a turn running");
+    assert!(works(&chat(Status::Working, None, 0)), "a turn running");
     assert!(
-        works(&chat(Status::Idle, Some(RequestKind::Approval), false)),
+        works(&chat(Status::Idle, Some(RequestKind::Approval), 0)),
         "waiting on you"
     );
     assert!(
-        works(&chat(Status::Idle, None, true)),
+        works(&chat(Status::Idle, None, 1)),
         "a task in the background"
     );
-    assert!(!works(&chat(Status::Idle, None, false)), "idle");
+    assert!(!works(&chat(Status::Idle, None, 0)), "idle");
     assert!(
-        !works(&chat(Status::Failed, None, false)),
+        !works(&chat(Status::Failed, None, 0)),
         "failed, with nothing running"
     );
 }

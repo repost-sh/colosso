@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { ItemId, ThreadId } from "./ids";
 import { Rows } from "./methods";
-import { AccountLimits, NoticeLevel, Thread, ThreadSummary } from "./model";
+import { AccountLimits, Beside, NoticeLevel, Thread, ThreadSummary } from "./model";
 
 export const events = {
   /** A thread as lists show it, to clients that watch threads, when what they show changed. */
@@ -16,6 +16,8 @@ export const events = {
     seq: z.int().nonnegative(),
     thread: Thread.nullable(),
   }),
+  /** What a thread's agent runs beside its turn, as that changes, to clients that opened it. */
+  "thread.beside": z.object({ threadId: ThreadId, beside: Beside }),
   /** Text a streaming item grew by, in order after the step that made the item. */
   "item.appended": z.object({ threadId: ThreadId, itemId: ItemId, text: z.string() }),
   "host.notice": z.object({ level: NoticeLevel, message: z.string() }),

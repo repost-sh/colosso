@@ -72,7 +72,7 @@ pub(super) fn section(
     let plan = shown(Some(replica), cx)?;
     let at = At {
         now: Utc::now(),
-        working: replica.working(),
+        working: replica.work().any(),
     };
     let open = settings::get(cx).chat_details.progress_open;
     Some(

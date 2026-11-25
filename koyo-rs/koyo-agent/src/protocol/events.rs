@@ -7,7 +7,7 @@ use serde_json::value::RawValue;
 
 use super::ids::{ItemId, ThreadId};
 use super::limits::AccountLimits;
-use super::model::{Item, NoticeLevel, Run, Thread, ThreadSummary};
+use super::model::{Beside, Item, NoticeLevel, Run, Thread, ThreadSummary};
 use super::requests::Request;
 
 macro_rules! events {
@@ -50,6 +50,8 @@ events! {
     "thread.removed" => ThreadRemoved(Removed);
     /// The rows one step of a thread's actor changed, whole, to a client that opened it.
     "thread.changed" => ThreadChanged(Box<Changed>);
+    /// What a thread's agent runs beside its turn, as that changes, to a client that opened it.
+    "thread.beside" => ThreadBeside(RunsBeside);
     /// Text a streaming item grew by, in order after the change that made the item.
     "item.appended" => ItemAppended(Appended);
     "host.notice" => HostNotice(HostNotice);
@@ -74,6 +76,13 @@ pub struct Changed {
     pub runs: Vec<Run>,
     pub items: Vec<Item>,
     pub requests: Vec<Request>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunsBeside {
+    pub thread_id: ThreadId,
+    pub beside: Beside,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

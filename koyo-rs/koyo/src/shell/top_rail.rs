@@ -12,11 +12,12 @@
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Axis, Context, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, Stateful, Styled as _, div, px,
+    AnyElement, App, Axis, Context, Div, ElementId, InteractiveElement as _, IntoElement,
+    MouseButton, ParentElement as _, Stateful, Styled as _, div, px,
 };
 
-use crate::model::Front;
+use crate::chat::Sign;
+use crate::model::{Front, Tab};
 use crate::pane::CLOSE;
 use crate::shell::{
     Shell, new_page_button, new_tab_button, row_shape, selectable, tab_area, tab_close_button,
@@ -84,12 +85,12 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
                 row.on_prepaint(crate::visual::noting(format!("rail-tab-{tab_index}")))
             };
             let list = (Axis::Horizontal, &shell.tab_hand);
-            let (dot, split_dot) = shell.tab_dots(tab, p, cx);
-            let row = row.children(split_dot);
+            let (sign, split_sign) = signs(shell, tab, p, cx);
+            let row = row.children(split_sign);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("rail-tab-close", tab_index);
                 let close = tab_close_button(close, at, (face.dirty, CLOSE), p, cx);
-                single_page(row, (face.icon(13.), face.label()), dot, close)
+                single_page(row, (face.icon(13.), face.label()), sign, close)
             })
         })
         .collect();
@@ -116,6 +117,26 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
     sliding(div().min_w_0(), tabs)
 }
 
+/// A tab's sign where its row shows it: after a single pane's icon (the first), or ahead of a
+/// split's chips (the second). Its spinner says its chats' work (`docs/activity.md`). Its dot says
+/// what's most urgent: a terminal that waits for the person, then what a chat has for them, then
+/// whatever a terminal's doing.
+fn signs(shell: &Shell, tab: &Tab, p: Palette, cx: &mut App) -> (Option<Div>, Option<Div>) {
+    let chats = shell.tab_chats_activity(tab, cx);
+    let chat = chats.attention.map(|attention| attention.colour(p));
+    let dot = match shell.tab_terminal_colour(tab, p) {
+        Some((colour, true)) => Some(colour),
+        Some((colour, false)) => chat.or(Some(colour)),
+        None => chat,
+    };
+    let name = || format!("tab-{}", tab.first().id);
+    let sign = Sign::new(name, chats.work, dot, cx).map(Sign::in_line);
+    match tab {
+        Tab::Single(_) => (sign, None),
+        Tab::Split(_) => (None, sign),
+    }
+}
+
 /// `piece`, the space's own on the top rail, carried with the sidebar's space on a switch
 /// (`Shell::carry`) inside `place`, its own place on the rail, as tall as the rail: the place
 /// stays put and clips it, so sliding out and in it never runs over what stays beside it, the
@@ -137,19 +158,19 @@ fn rail_shape(id: impl Into<ElementId>) -> Stateful<Div> {
     row_shape(id).h(px(28.)).flex_shrink(1.).min_w_0().overflow_hidden()
 }
 
-/// What a rail tab of a single page or of Settings shows, at most 220 wide: its `icon`, `dot`
+/// What a rail tab of a single page or of Settings shows, at most 220 wide: its `icon`, `sign`
 /// when there's one, its `title` and `close`.
 fn single_page(
     tab: Stateful<Div>,
     (icon, title): (AnyElement, Div),
-    dot: Option<Div>,
+    sign: Option<Div>,
     close: Stateful<Div>,
 ) -> Stateful<Div> {
     tab.max_w(px(220.))
         .pl_2()
         .pr_1()
         .child(icon)
-        .children(dot)
+        .children(sign)
         .child(title)
         .child(close)
 }

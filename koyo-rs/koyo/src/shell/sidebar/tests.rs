@@ -9,6 +9,7 @@ use gpui_kit::{
 };
 
 use crate::browser::profiles::By;
+use crate::chat::{Activity, Attention};
 use crate::files::tests::{dialog, tabs};
 use crate::launcher::Launcher;
 use crate::model::{Browser, Content, Edge, Pane, PaneKind, Tab, Unloaded};
@@ -20,6 +21,7 @@ use crate::shell::spaces::delete::DeleteSpace;
 use crate::shell::{CloseTab, Shell};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
+use koyo_agent::work::Work;
 
 use crate::test_support::{
     act, center_of, click_pane, draw, drawn, hold, let_go, let_go_on, move_held, open_page, repo,
@@ -316,14 +318,7 @@ fn hear(
         unread,
         ..crate::chat::tests::summary(id, cwd, "A chat", true)
     };
-    tell(shell, summary, cx);
-}
-
-/// The chats' host sends `summary`.
-fn tell(shell: &Entity<Shell>, summary: ThreadSummary, cx: &mut TestAppContext) {
-    let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
-    chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
-    cx.run_until_parked();
+    crate::chat::tests::tell(shell, summary, cx);
 }
 
 /// A tab of chat `0001`, called "A chat", and another tab after it, shown, so nothing marks the
@@ -343,10 +338,17 @@ fn unseen_chat(shell: &Entity<Shell>, cx: &mut TestAppContext) -> u64 {
     })
 }
 
-#[gpui_kit::test]
-fn a_tab_and_its_checkout_say_when_a_chat_wants_the_person(cx: &mut TestAppContext) {
-    use crate::chat::Activity;
+/// What goes on with a turn running or not, and something for the person or nothing.
+fn going_on(turn: bool, attention: Option<Attention>) -> Activity {
+    let work = Work {
+        turn,
+        ..Work::default()
+    };
+    Activity { work, attention }
+}
 
+#[gpui_kit::test]
+fn a_tab_and_its_checkout_say_a_chat_works_and_that_it_wants_the_person(cx: &mut TestAppContext) {
     let (window, shell, roots) = sidebar_shell(&["sidebar-attention"], cx);
     unseen_chat(&shell, cx);
     draw(window, cx);
@@ -358,26 +360,21 @@ fn a_tab_and_its_checkout_say_when_a_chat_wants_the_person(cx: &mut TestAppConte
         cx.read(|cx| {
             let shell = shell.read(cx);
             let tab = &shell.workspace.branch().unwrap().tabs[0];
-            let activity = shell.checkout_activity(&worktree, cx);
-            (shell.tab_wants_attention(tab, cx), activity)
+            let activity = shell.tab_activity(tab, cx);
+            assert_eq!(shell.checkout_activity(&worktree, cx), activity);
+            activity
         })
     };
     hear(Status::Working, None, false, cx);
-    assert_eq!(
-        told(cx),
-        (false, Activity::Working),
-        "working: a spinner, and nothing for the person"
-    );
+    assert_eq!(told(cx), going_on(true, None));
     hear(Status::Idle, None, true, cx);
-    assert_eq!(
-        told(cx),
-        (true, Activity::Attention),
-        "done and unread: a dot"
-    );
+    assert_eq!(told(cx), going_on(false, Some(Attention::Unread)));
+    hear(Status::Working, None, true, cx);
+    assert_eq!(told(cx), going_on(true, Some(Attention::Unread)), "both");
     hear(Status::Working, Some(RequestKind::Approval), false, cx);
-    assert_eq!(told(cx), (true, Activity::Attention), "asking: a dot");
+    assert_eq!(told(cx), going_on(false, Some(Attention::NeedsYou)));
     hear(Status::Idle, None, false, cx);
-    assert_eq!(told(cx), (false, Activity::Quiet), "seen: nothing");
+    assert_eq!(told(cx), Activity::default(), "seen: nothing");
 }
 
 /// The selected checkout's tabs, by their first panes' titles.

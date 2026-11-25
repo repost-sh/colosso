@@ -1,13 +1,12 @@
-//! A tab's row in the sidebar says how the tab's doing (`docs/layout.md`, Sidebar): the spinner
-//! while a chat in it is at work, an indigo dot once something in it waits for the person, at the
-//! row's end, where its × is.
+//! A tab's row in the sidebar says what goes on in the tab (`docs/activity.md`) at the row's end,
+//! where its × is: the spinner for its work, and an indigo dot once something in it waits for the
+//! person.
 
 use gpui_kit::{Modifiers, TestAppContext, VisualTestContext, point, px};
-use koyo_agent::protocol::model::{Status, ThreadSummary};
+use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
-use super::{drawn, hear, sidebar_shell, tell, unseen_chat};
-use crate::chat::Activity;
+use super::{drawn, hear, sidebar_shell, unseen_chat};
 use crate::model::Edge;
 use crate::test_support::{click, draw, hover};
 
@@ -22,19 +21,15 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     };
     let told = |cx: &mut TestAppContext| {
         draw(window, cx);
-        let activity = cx.read(|cx| {
-            let shell = shell.read(cx);
-            shell.tab_activity(&shell.workspace.branch().unwrap().tabs[0], cx)
-        });
-        let working = drawn(window, format!("sidebar-tab-working-{pane}"), cx);
-        let waiting = drawn(window, format!("sidebar-tab-waiting-{pane}"), cx);
-        (activity, working, waiting)
+        let spinner = drawn(window, format!("sidebar-tab-{pane}-spinner"), cx);
+        let dot = drawn(window, format!("sidebar-tab-{pane}-dot"), cx);
+        (spinner, dot)
     };
-    assert_eq!(told(cx), (Activity::Quiet, None, None));
+    assert_eq!(told(cx), (None, None));
 
     hear(Status::Working, None, false, cx);
-    let (activity, working, waiting) = told(cx);
-    assert_eq!((activity, waiting), (Activity::Working, None));
+    let (working, waiting) = told(cx);
+    assert_eq!(waiting, None);
     let spinner = working.expect("the spinner on the row of the chat at work");
     let row = drawn(window, "tab-0-0-0", cx).expect("the chat's row");
     assert!(
@@ -45,15 +40,22 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     assert_eq!(spinner.center().y, row.center().y);
 
     hear(Status::Idle, None, true, cx);
-    let (activity, working, waiting) = told(cx);
-    assert_eq!((activity, working), (Activity::Attention, None));
+    let (working, waiting) = told(cx);
+    assert_eq!(working, None);
     let dot = waiting.expect("the dot on the row of the chat that finished");
     assert_eq!(dot.center(), spinner.center());
 
+    hear(Status::Working, None, true, cx);
+    let (working, waiting) = told(cx);
+    let (both, beside) = (working.expect("the spinner too"), waiting.expect("with the dot"));
+    assert_eq!(both, spinner, "the spinner keeps its place in the column");
+    assert!(beside.right() < both.left(), "the dot beside it: {beside:?} and {both:?}");
+    assert_eq!(beside.center().y, both.center().y);
+
     hear(Status::Working, Some(RequestKind::Approval), false, cx);
-    assert_eq!(told(cx).0, Activity::Attention);
+    assert!(matches!(told(cx), (None, Some(_))), "asking isn't work");
     hear(Status::Idle, None, false, cx);
-    assert_eq!(told(cx), (Activity::Quiet, None, None), "seen: nothing");
+    assert_eq!(told(cx), (None, None), "seen: nothing");
 
     hear(Status::Working, None, false, cx);
     shell.update(cx, |shell, cx| {
@@ -65,8 +67,7 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
         );
         cx.notify();
     });
-    let (activity, working, _) = told(cx);
-    assert_eq!(activity, Activity::Working);
+    let (working, _) = told(cx);
     let spinner = working.expect("the spinner on the split's row");
     let row = drawn(window, "tab-0-0-0", cx).expect("the split's row");
     assert!(spinner.right() < row.center().x, "{spinner:?} in {row:?}");
@@ -80,7 +81,7 @@ fn a_chats_row_says_what_was_said_last_unless_its_tab_is_shown(cx: &mut TestAppC
         said: Some("It shares a folder.".into()),
         ..crate::chat::tests::summary("0001", &roots[0], "A chat", true)
     };
-    tell(&shell, summary, cx);
+    crate::chat::tests::tell(&shell, summary, cx);
     draw(window, cx);
     let said = format!("sidebar-tab-said-{pane}");
     assert!(
@@ -157,8 +158,8 @@ fn activity_is_said_once_on_the_last_row_in_sight_in_one_column(cx: &mut TestApp
     draw(window, cx);
     let key = cx.read(|cx| shell.read(cx).workspace.branch().unwrap().tabs[0].first().id);
     let (branch, project) = ("sidebar-branch-mark-0-0", "sidebar-project-mark-0");
-    for (state, unread, name) in [(Status::Working, false, "working"), (Status::Idle, true, "waiting")] {
-        let tab = format!("sidebar-tab-{name}-{key}");
+    for (state, unread, name) in [(Status::Working, false, "spinner"), (Status::Idle, true, "dot")] {
+        let tab = format!("sidebar-tab-{key}-{name}");
         let said = |cx: &mut TestAppContext| {
             hover(window, point(px(1000.), px(500.)), cx);
             [tab.as_str(), branch, project].map(|mark| {
@@ -192,7 +193,43 @@ fn a_chat_at_work_in_no_tab_is_said_on_its_branchs_row(cx: &mut TestAppContext) 
         tab_open: false,
         ..crate::chat::tests::summary("0002", &roots[0], "Closed at it", true)
     };
-    tell(&shell, summary, cx);
+    crate::chat::tests::tell(&shell, summary, cx);
     draw(window, cx);
     assert!(drawn(window, "sidebar-branch-mark-0-0".to_owned(), cx).is_some());
+}
+
+/// What an agent runs beside its turn is work too, turn or no turn: how many subagents work is said
+/// up and right of the spinner, and the rows a chat's work is said on put theirs together.
+#[gpui_kit::test]
+fn subagents_and_what_runs_in_the_background_are_said_past_the_turn(cx: &mut TestAppContext) {
+    let (window, shell, roots) = sidebar_shell(&["sidebar-beside"], cx);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    let pane = unseen_chat(&shell, cx);
+    let runs = |id: &str, subagents, tasks, cx: &mut TestAppContext| {
+        let summary = ThreadSummary {
+            beside: Beside { subagents, tasks },
+            ..crate::chat::tests::summary(id, &roots[0], "A chat", id == "0001")
+        };
+        crate::chat::tests::tell(&shell, summary, cx);
+        draw(window, cx);
+    };
+    let part = |part: &str, cx: &mut TestAppContext| {
+        drawn(window, format!("sidebar-tab-{pane}-{part}"), cx)
+    };
+    runs("0001", 0, 1, cx);
+    let spinner = part("spinner", cx).expect("a shell it left running is work");
+    assert_eq!(part("subagents", cx), None);
+
+    runs("0001", 4, 1, cx);
+    assert_eq!(part("spinner", cx), Some(spinner), "in its place");
+    let count = part("subagents", cx).expect("how many subagents");
+    let row = drawn(window, "tab-0-0-0", cx).expect("the chat's row");
+    assert!(count.right() > spinner.right() && count.center().y < spinner.center().y);
+    assert!(count.right() <= row.right(), "{count:?} in {row:?}");
+
+    runs("0002", 2, 0, cx);
+    let (all, waiting) = cx.read(|cx| shell.read(cx).checkout_status(&roots[0], false, cx));
+    assert_eq!((all.work.beside.subagents, all.work.beside.tasks, waiting), (6, 1, 0));
+    let (unlisted, _) = cx.read(|cx| shell.read(cx).checkout_status(&roots[0], true, cx));
+    assert_eq!(unlisted.work.beside.subagents, 2, "the chat in no tab");
 }

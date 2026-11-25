@@ -219,7 +219,7 @@ fn a_plan_nothing_runs_says_why(cx: &mut TestAppContext) {
         "chat-progress-working",
         |shown| {
             has_plan(shown);
-            shown.thread.background_tasks = 1;
+            shown.beside.tasks = 1;
         },
         cx,
     );

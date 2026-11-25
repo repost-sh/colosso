@@ -7,8 +7,9 @@
 //! shrinks back to a dot as the next one grows, its width going a little past and settling, the
 //! strength easing, so the eye follows the switch rather than seeing it jump.
 //!
-//! A space that isn't shown says what its projects would: an indigo dot by its mark while something
-//! in it waits for the person, a spinner while something works.
+//! A space that isn't shown says what its projects would (`docs/activity.md`): a spinner up and
+//! right of its mark while something works, an indigo dot while something in it waits for the
+//! person, in the spinner's place, or up and left of the mark while the spinner has that.
 
 use std::time::Duration;
 
@@ -24,7 +25,7 @@ use gpui_kit::{
 };
 
 use super::hover::Hovered;
-use crate::chat::{Activity, spinner_of};
+use crate::chat::{Activity, spinner};
 use crate::pane::dot;
 use crate::projects::{AddProject, NewWorktree};
 use crate::settings;
@@ -53,7 +54,7 @@ const FADE: Duration = Duration::from_millis(220);
 /// The dot by a mark whose space has something waiting for the person: smaller than a row's,
 /// as the mark is.
 const PILL: f32 = 5.;
-/// Where that dot is: from the mark's middle across, and from the top of its room down.
+/// Where that dot is: from the mark's middle across to the right, and from the top of its room down.
 const PILL_AT: (f32, f32) = (2.5, 3.5);
 /// The spinner by a mark whose space has something at work: where the dot would be, their
 /// middles one, and half as wide again, so its ring reads at that size.
@@ -70,7 +71,7 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
         .map(|(index, id)| {
             let state = (index == shown, shell.sidebar_hover.on == Some(Hovered::Space(id)));
             let activity = if index == shown {
-                Activity::Quiet
+                Activity::default()
             } else {
                 shell.space_activity(index, cx)
             };
@@ -115,18 +116,18 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
 }
 
 /// What the mark of the space at `index`, known by `id`, says of its `activity`
-/// (`docs/sidebar.md` 4): the dot or the spinner, in one place, up and right of the mark's
-/// middle, where the mark's dot is and the capsule's middle would be. It's laid over the mark,
-/// taking no room, so nothing moves as it comes and goes. It shows only by a mark that's `a_dot`:
-/// on a space just left, once the capsule has shrunk back.
-fn pill(
+/// (`docs/sidebar.md` 4): the spinner up and right of the mark's middle, and the dot there too, or
+/// as far left of it while the spinner's there. They're laid over the mark, taking no room, so
+/// nothing moves as they come and go. They show only by a mark that's `a_dot`: on a space just
+/// left, once the capsule has shrunk back.
+fn pills(
     (index, id): (usize, u64),
     activity: Activity,
     a_dot: bool,
     window: &mut Window,
     cx: &mut App,
-) -> Option<AnyElement> {
-    let waits = activity == Activity::Attention && a_dot;
+) -> [Option<AnyElement>; 2] {
+    let waits = activity.attention.is_some() && a_dot;
     let fade = transition(
         ElementId::from(("space-mark-pill", id)),
         if waits { 1. } else { 0. },
@@ -134,27 +135,30 @@ fn pill(
         window,
         cx,
     );
-    if !a_dot {
-        return None;
-    }
-    let (sign, wide) = match activity {
-        Activity::Quiet => return None,
-        Activity::Working => (spinner_of(format!("space-{id}"), RING, cx), RING),
-        Activity::Attention => {
-            let waiting = theme::palette(cx).waiting;
-            let dot = dot(waiting).size(px(PILL)).opacity(fade.clamp(0., 1.));
-            (dot, PILL)
-        }
-    };
+    let pace = activity.work.pace().filter(|_| a_dot);
+    let spins = pace.map(|pace| {
+        let ring = spinner(format!("space-{id}").into(), (RING, pace), cx);
+        let name = move || format!("space-mark-spinner-{index}");
+        placed(ring, RING, PILL_AT.0).debug_selector(name).into_any_element()
+    });
+    let dots = waits.then(|| {
+        let dot = dot(theme::palette(cx).waiting).size(px(PILL)).opacity(fade.clamp(0., 1.));
+        let across = if spins.is_some() { -PILL_AT.0 - PILL } else { PILL_AT.0 };
+        let name = move || format!("space-mark-dot-{index}");
+        placed(dot, PILL, across).debug_selector(name).into_any_element()
+    });
+    [dots, spins]
+}
+
+/// `sign`, `wide` wide, over a space's mark, its middle that of a dot `across` from the mark's.
+fn placed(sign: Div, wide: f32, across: f32) -> Div {
     let out = (wide - PILL) / 2.;
-    let pill = div()
-        .debug_selector(move || format!("space-mark-pill-{index}"))
+    div()
         .absolute()
         .top(px(PILL_AT.1 - out))
         .left(relative(0.5))
-        .ml(px(PILL_AT.0 - out))
-        .child(sign);
-    Some(pill.into_any_element())
+        .ml(px(across - out))
+        .child(sign)
 }
 
 /// The mark of the space at `index`, known by `id` whatever its place, `(shown, pointed)` at,
@@ -177,7 +181,7 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
         window,
         cx,
     );
-    let pill = pill((index, id), activity, width < DOT + 1., window, cx);
+    let pills = pills((index, id), activity, width < DOT + 1., window, cx);
     let strength = transition(
         ElementId::from(("space-mark-strength", id)),
         match (shown, pointed) {
@@ -207,7 +211,7 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
                 .bg(colour)
                 .opacity(strength.clamp(0., 1.)),
         )
-        .children(pill)
+        .children(pills.into_iter().flatten())
         .on_prepaint(note)
         .on_hover(cx.listener(move |this, hovered: &bool, window, cx| {
             this.hover(Hovered::Space(id), *hovered, window, cx);

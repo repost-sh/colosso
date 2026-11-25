@@ -135,9 +135,9 @@ export class ThreadActor {
     return this.#state.summary();
   }
 
-  /** Whether a run, a subagent or a background task is live, or the agent waits on the person. */
+  /** Whether the agent's at work, its subagents and tasks among it, or waits on the person. */
   busy(): boolean {
-    return this.#state.atWork() || this.#requests.waiting() || this.#subagents.live();
+    return this.#state.atWork() || this.#requests.waiting();
   }
 
   hasSession(): boolean {
@@ -429,7 +429,7 @@ export class ThreadActor {
         return;
       }
       case "background": {
-        this.#state.background(event.tasks);
+        this.#state.runsBeside({ tasks: event.tasks });
         return;
       }
       case "subagent.started":

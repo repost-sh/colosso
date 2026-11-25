@@ -1,64 +1,19 @@
-//! What a tab and a checkout's row say of a chat (`docs/chat.md` 5.3): a spinner while it works
-//! (`spinner.rs`), a dot in the text's colour when it needs you, red if it failed and a muted dot
-//! if it finished, until a person has seen it.
+//! What goes on in each place that shows chats (`docs/activity.md`): a tab, a checkout, a project,
+//! a space, put together from the chats' summaries (`activity.rs`) and said in signs (`sign.rs`).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{App, Context, Div, SharedString};
+use gpui_kit::{App, Context, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{ThreadParams, ThreadsRead};
-use koyo_agent::protocol::model::{Status, ThreadSummary};
-use koyo_agent::protocol::requests::RequestKind;
+use koyo_agent::protocol::model::ThreadSummary;
 
-use super::spinner::{self, spinner};
+use super::activity::Activity;
+use super::spinner;
 use super::{Chats, ChatsEvent, logged};
 use crate::model::{Project, Tab};
-use crate::pane::dot;
 use crate::shell::Shell;
-use crate::theme::Palette;
-
-/// How a chat is doing, least urgent first.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum ChatMark {
-    Unread,
-    Working,
-    Failed,
-    NeedsYou,
-}
-
-impl ChatMark {
-    fn of(summary: &ThreadSummary) -> Option<Self> {
-        if summary.needs.is_some() {
-            return Some(ChatMark::NeedsYou);
-        }
-        match summary.status {
-            Status::Working => Some(ChatMark::Working),
-            Status::Failed => summary.unread.then_some(ChatMark::Failed),
-            Status::Idle => summary.unread.then_some(ChatMark::Unread),
-        }
-    }
-
-    /// What a tab's or a checkout's row says of a chat with this mark: the spinner while it
-    /// works, the dot once it has something for the person.
-    fn activity(self) -> Activity {
-        if self == ChatMark::Working {
-            Activity::Working
-        } else {
-            Activity::Attention
-        }
-    }
-
-    /// As a tab or a row shows it, at the place that names.
-    fn shown(self, place: String, p: Palette, cx: &mut App) -> Div {
-        match self {
-            ChatMark::Working => spinner(place, cx),
-            ChatMark::NeedsYou => dot(p.text),
-            ChatMark::Failed => dot(p.danger),
-            ChatMark::Unread => dot(p.muted),
-        }
-    }
-}
 
 impl Chats {
     /// A person's chats, a subagent's not among them, in the checkout at `worktree` if it's given,
@@ -74,12 +29,8 @@ impl Chats {
 
     /// The summaries changed: what the rows say follows, and whoever shows them hears.
     pub(super) fn summaries_changed(&mut self, cx: &mut Context<Self>) {
-        self.checkout_marks = checkout_marks(self.summaries.values());
-        let working = self
-            .summaries
-            .values()
-            .any(|summary| summary.status == Status::Working);
-        if !working {
+        self.checkouts = checkouts(self.summaries.values());
+        if !self.summaries.values().any(|summary| summary.work().any()) {
             spinner::forget(cx);
         }
         cx.emit(ChatsEvent::Summaries);
@@ -107,187 +58,105 @@ impl Chats {
 pub(super) struct Shown<'a> {
     title: &'a str,
     cwd: &'a str,
-    status: Status,
-    needs: Option<RequestKind>,
-    unread: bool,
+    activity: Activity,
     tab_open: bool,
     said: Option<&'a str>,
 }
 
 impl<'a> Shown<'a> {
     pub(super) fn of(summary: &'a ThreadSummary) -> Self {
-        let ThreadSummary {
-            id: _,
-            cwd,
-            title,
-            provider: _,
-            model: _,
-            effort: _,
-            fast: _,
-            permission: _,
-            plan: _,
-            status,
-            needs,
-            background: _,
-            queued: _,
-            unread,
-            tab_open,
-            updated_at: _,
-            said,
-        } = summary;
         Shown {
-            title,
-            cwd,
-            status: *status,
-            needs: *needs,
-            unread: *unread,
-            tab_open: *tab_open,
-            said: said.as_deref(),
+            title: &summary.title,
+            cwd: &summary.cwd,
+            activity: Activity::of(summary),
+            tab_open: summary.tab_open,
+            said: summary.said.as_deref(),
         }
     }
 }
 
-/// What a checkout's chats have to show, the most urgent of them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct CheckoutMarks {
-    /// Of them all.
-    any: ChatMark,
-    /// Of those in no tab, which no tab's row shows.
-    tabless: Option<ChatMark>,
+/// What goes on in a checkout's chats.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct CheckoutActivity {
+    /// In them all.
+    all: Activity,
+    /// In those in no tab, which no tab's row says.
+    tabless: Activity,
 }
 
-/// The most urgent of each checkout's chats: those with tabs, and any other still at it, as one a
-/// person closed has nothing new to say until it's opened.
-fn checkout_marks<'a>(
+/// What goes on in each checkout's chats: those with tabs, and what's left to say of those without.
+fn checkouts<'a>(
     summaries: impl Iterator<Item = &'a ThreadSummary>,
-) -> HashMap<PathBuf, CheckoutMarks> {
-    let mut marks = HashMap::new();
+) -> HashMap<PathBuf, CheckoutActivity> {
+    let mut checkouts: HashMap<PathBuf, CheckoutActivity> = HashMap::new();
     for summary in summaries {
-        let Some(mark) = ChatMark::of(summary) else {
-            continue;
+        let activity = Activity::of(summary);
+        let activity = if summary.tab_open {
+            activity
+        } else {
+            activity.of_a_closed_chat()
         };
-        if summary.tab_open || matches!(mark, ChatMark::Working | ChatMark::NeedsYou) {
-            let tabless = (!summary.tab_open).then_some(mark);
-            let held = (marks.entry(PathBuf::from(&summary.cwd)))
-                .or_insert(CheckoutMarks { any: mark, tabless });
-            held.any = mark.max(held.any);
-            held.tabless = tabless.max(held.tabless);
+        if activity == Activity::default() {
+            continue;
+        }
+        let held = checkouts.entry(PathBuf::from(&summary.cwd)).or_default();
+        held.all = held.all + activity;
+        if !summary.tab_open {
+            held.tabless = held.tabless + activity;
         }
     }
-    marks
+    checkouts
 }
 
 impl Shell {
-    /// The mark on a tab with chats, the most urgent of theirs.
-    pub fn chat_tab_mark(&self, tab: &Tab, p: Palette, cx: &mut App) -> Option<Div> {
-        let mark = self.tab_chat_marks(tab, cx).max()?;
-        Some(mark.shown(format!("tab-{}", tab.first().id), p, cx))
-    }
-
-    /// The summaries of `tab`'s chats, as the host last sent them.
-    fn tab_summaries<'a>(
-        &'a self,
-        tab: &'a Tab,
-        cx: &'a App,
-    ) -> impl Iterator<Item = &'a ThreadSummary> {
-        let chats = self.chat_tabs.chats.read(cx);
-        (tab.panes().into_iter()).filter_map(move |pane| chats.summary(pane.chat()?))
-    }
-
-    /// The marks of `tab`'s chats, those with something to show.
-    fn tab_chat_marks<'a>(&'a self, tab: &'a Tab, cx: &'a App) -> impl Iterator<Item = ChatMark> {
-        self.tab_summaries(tab, cx).filter_map(ChatMark::of)
-    }
-
-    /// Whether a tab has something for the person (`docs/sidebar.md` 5): a terminal waiting
-    /// for them, or a chat that's unread, failed or needs them.
-    pub fn tab_wants_attention(&self, tab: &Tab, cx: &App) -> bool {
-        self.tab_chat_marks(tab, cx)
-            .any(|mark| mark != ChatMark::Working)
-            || self.tab_terminal_waits(tab)
-    }
-
-    /// How `tab` is doing, as its row says at its end (`docs/sidebar.md` 5): something in it
-    /// waits for the person, or else a chat in it is at work.
+    /// What goes on in `tab`, its chats and whether a terminal of its waits for the person.
     pub fn tab_activity(&self, tab: &Tab, cx: &App) -> Activity {
-        if self.tab_wants_attention(tab, cx) {
-            Activity::Attention
-        } else if self.tab_chat_marks(tab, cx).next().is_some() {
-            Activity::Working
-        } else {
-            Activity::Quiet
-        }
+        self.tab_chats_activity(tab, cx).with_waiting(self.tab_terminal_waits(tab))
     }
 
-    /// How `tab` is doing, as its row in the sidebar says at its end, and, while `says`, what it
-    /// says under its title (`docs/sidebar.md` 5): a single pane's chat, the start of what was
-    /// said last in it, as the host sums it up. A single pane's is read off the pane alone.
-    pub fn tab_status(&self, tab: &Tab, says: bool, cx: &App) -> (Activity, Option<SharedString>) {
+    /// What goes on in `tab`'s chats, as the host last said.
+    pub fn tab_chats_activity(&self, tab: &Tab, cx: &App) -> Activity {
+        let chats = self.chat_tabs.chats.read(cx);
+        (tab.panes().into_iter())
+            .filter_map(|pane| chats.summary(pane.chat()?))
+            .map(Activity::of)
+            .sum()
+    }
+
+    /// What a single pane's `tab` says under its title (`docs/sidebar.md` 5): the start of what
+    /// was said last in its chat, as the host sums it up.
+    pub fn tab_said(&self, tab: &Tab, cx: &App) -> Option<SharedString> {
         let Tab::Single(pane) = tab else {
-            return (self.tab_activity(tab, cx), None);
+            return None;
         };
-        let summary = (pane.chat()).and_then(|id| self.chat_tabs.chats.read(cx).summary(id));
-        let chat = summary.and_then(ChatMark::of).map_or(Activity::Quiet, ChatMark::activity);
-        let activity = if self.tab_terminal_waits(tab) {
-            Activity::Attention
-        } else {
-            chat
-        };
-        let said = summary.filter(|_| says).and_then(|summary| summary.said.clone());
-        (activity, said.map(SharedString::from))
+        let summary = self.chat_tabs.chats.read(cx).summary(pane.chat()?)?;
+        summary.said.clone().map(SharedString::from)
     }
 
-    /// How the checkout at `worktree` is doing, as its row says, and how many of its terminals
+    /// What goes on in the checkout at `worktree`, as its row says, and how many of its terminals
     /// wait for the person, as its row counts them. With its tabs `listed` under it, what they
     /// show is theirs to say, and the row says what they don't: a chat in no tab.
     pub fn checkout_status(&self, worktree: &Path, listed: bool, cx: &App) -> (Activity, usize) {
-        let marks = self.chat_tabs.chats.read(cx).checkout_marks.get(worktree);
+        let chats = self.chat_tabs.chats.read(cx).checkouts.get(worktree);
+        let chats = chats.copied().unwrap_or_default();
         if listed {
-            let tabless = marks.and_then(|marks| marks.tabless);
-            return (tabless.map_or(Activity::Quiet, ChatMark::activity), 0);
+            return (chats.tabless, 0);
         }
         let waiting = self.terminals_needing_input(worktree);
-        if waiting > 0 {
-            return (Activity::Attention, waiting);
-        }
-        (marks.map_or(Activity::Quiet, |marks| marks.any.activity()), waiting)
+        (chats.all.with_waiting(waiting > 0), waiting)
     }
 
-    /// How the checkout at `worktree` is doing, all of it.
+    /// What goes on in the checkout at `worktree`, all of it.
     pub fn checkout_activity(&self, worktree: &Path, cx: &App) -> Activity {
         self.checkout_status(worktree, false, cx).0
     }
 
-    /// How `project` is doing, the most urgent of its checkouts: what its row says, and, with
-    /// its space's other projects, its space's mark while the space isn't shown.
+    /// What goes on in `project`, in all its checkouts: what its row says, and, with its space's
+    /// other projects, its space's mark while the space isn't shown.
     pub fn project_activity(&self, project: &Project, cx: &App) -> Activity {
         (project.branches.iter())
             .map(|unit| self.checkout_activity(&unit.worktree.path, cx))
-            .max()
-            .unwrap_or(Activity::Quiet)
-    }
-}
-
-/// What's going on in a project or a checkout, the most urgent of it: what a tile's corner shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Activity {
-    Quiet,
-    /// A chat is at work: a spinner.
-    Working,
-    /// Something waits for the person: a dot.
-    Attention,
-}
-
-impl Activity {
-    /// How a tab's row, a branch's or a folded project's says it: the spinner turning at the place
-    /// `place` names while a chat works, an indigo dot once something waits for the person, and
-    /// nothing while all's quiet.
-    pub fn sign(self, place: impl FnOnce() -> String, p: Palette, cx: &mut App) -> Option<Div> {
-        match self {
-            Activity::Quiet => None,
-            Activity::Working => Some(spinner(place(), cx)),
-            Activity::Attention => Some(dot(p.waiting)),
-        }
+            .sum()
     }
 }
 
@@ -314,73 +183,51 @@ impl Chats {
 mod tests {
     use std::path::Path;
 
-    use koyo_agent::protocol::model::{Status, ThreadSummary};
-    use koyo_agent::protocol::requests::RequestKind;
+    use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
+    use koyo_agent::work::Work;
 
-    use super::{ChatMark, checkout_marks};
+    use super::{CheckoutActivity, checkouts};
+    use crate::chat::activity::Attention;
     use crate::chat::tests::summary as tests_summary;
 
-    fn summary(status: Status, unread: bool) -> ThreadSummary {
+    fn chat(cwd: &str, status: Status, unread: bool, tab_open: bool) -> ThreadSummary {
         ThreadSummary {
             status,
             unread,
-            ..tests_summary("0001", "/work".as_ref(), "A chat", true)
+            ..tests_summary("0001", cwd.as_ref(), "A chat", tab_open)
         }
     }
 
     #[test]
-    fn a_chat_says_what_it_is_up_to_and_nothing_once_seen() {
-        assert_eq!(
-            ChatMark::of(&summary(Status::Working, false)),
-            Some(ChatMark::Working)
-        );
-        assert_eq!(
-            ChatMark::of(&summary(Status::Idle, true)),
-            Some(ChatMark::Unread)
-        );
-        assert_eq!(ChatMark::of(&summary(Status::Idle, false)), None);
-        assert_eq!(
-            ChatMark::of(&summary(Status::Failed, true)),
-            Some(ChatMark::Failed)
-        );
-        assert_eq!(ChatMark::of(&summary(Status::Failed, false)), None);
-    }
-
-    #[test]
-    fn what_it_needs_comes_before_all_else() {
-        let asking = ThreadSummary {
-            needs: Some(RequestKind::Approval),
-            ..summary(Status::Working, true)
+    fn a_checkout_says_all_its_chats_and_a_closed_ones_work_alone() {
+        let chats = [
+            chat("/work", Status::Working, false, true),
+            chat("/work", Status::Failed, true, true),
+            chat("/closed", Status::Idle, true, false),
+            chat("/busy", Status::Working, true, false),
+            ThreadSummary {
+                beside: Beside {
+                    subagents: 0,
+                    tasks: 1,
+                },
+                ..chat("/watched", Status::Idle, true, false)
+            },
+        ];
+        let checkouts = checkouts(chats.iter());
+        let of = |checkout: &str| checkouts.get(Path::new(checkout)).copied();
+        let turn = Work {
+            turn: true,
+            ..Work::default()
         };
-        assert_eq!(ChatMark::of(&asking), Some(ChatMark::NeedsYou));
-        assert!(ChatMark::NeedsYou > ChatMark::Failed);
-        assert!(ChatMark::Failed > ChatMark::Working);
-        assert!(ChatMark::Working > ChatMark::Unread);
-    }
-
-    #[test]
-    fn a_row_says_the_most_urgent_of_its_chats_and_nothing_of_a_closed_one_at_rest() {
-        let working = summary(Status::Working, false);
-        let failed = summary(Status::Failed, true);
-        let closed = ThreadSummary {
-            cwd: "/other".into(),
-            tab_open: false,
-            ..summary(Status::Idle, true)
-        };
-        let closed_at_it = ThreadSummary {
-            cwd: "/busy".into(),
-            tab_open: false,
-            ..working.clone()
-        };
-
-        let marks = checkout_marks([&working, &failed, &closed, &closed_at_it].into_iter());
-
-        let of = |checkout: &str| {
-            let marks = marks.get(Path::new(checkout));
-            marks.map(|marks| (marks.any, marks.tabless))
-        };
-        assert_eq!(of("/work"), Some((ChatMark::Failed, None)));
-        assert_eq!(of("/busy"), Some((ChatMark::Working, Some(ChatMark::Working))));
-        assert_eq!(of("/other"), None);
+        let work = of("/work").expect("a working checkout");
+        assert_eq!(work.all.work, turn);
+        assert_eq!(work.all.attention, Some(Attention::Failed));
+        assert_eq!(work.tabless, CheckoutActivity::default().tabless);
+        let busy = of("/busy").expect("a closed chat at work");
+        assert_eq!((busy.all.work, busy.all.attention), (turn, None));
+        assert_eq!(busy.tabless, busy.all);
+        let watched = of("/watched").expect("a closed chat with a Monitor running");
+        assert_eq!(watched.tabless.work.beside.tasks, 1);
+        assert_eq!(of("/closed"), None);
     }
 }

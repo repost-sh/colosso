@@ -6,7 +6,7 @@ use std::path::Path;
 
 use gpui_kit::TestAppContext;
 use koyo_agent::protocol::ids::{ThreadId, Time};
-use koyo_agent::protocol::model::{Mode, Status, ThreadSummary};
+use koyo_agent::protocol::model::{Beside, Mode, Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 use koyo_app_control::{ErrorCode, Scope};
 use serde_json::{Value, json};
@@ -29,7 +29,7 @@ pub(super) fn summary(id: &str, cwd: &Path, at: &str) -> ThreadSummary {
         plan: false,
         status: Status::Working,
         needs: Some(RequestKind::Approval),
-        background: false,
+        beside: Beside::default(),
         queued: 1,
         unread: true,
         tab_open: false,

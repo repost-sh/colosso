@@ -96,12 +96,6 @@ export const Thread = z.object({
   tabOpen: z.boolean(),
   /** The row of the thread that started it, for a subagent's: it runs on its own (4.5.10). */
   parent: z.object({ threadId: ThreadId, itemId: ItemId }).nullable().default(null),
-  /**
-   * How many tasks the agent has running in the background, as its session last said: shells,
-   * Monitors, subagents past their turn. It goes on from them as they end, so the chat isn't done.
-   * None while no session runs.
-   */
-  backgroundTasks: Count.default(0),
   /** The plan the agent keeps with the progress tool, once it declared one. */
   progress: Plan.nullable().default(null),
   createdAt: Time,
@@ -435,6 +429,16 @@ export type Request = z.infer<typeof Request>;
 export const Status = z.enum(["idle", "working", "failed"]);
 export type Status = z.infer<typeof Status>;
 
+/**
+ * What an agent runs beside its turn (docs/activity.md): its subagents at work, their own among
+ * them, and the tasks it has in the background, as a shell or a Monitor, which it goes on from as
+ * they end. The chat isn't done while there's any.
+ */
+export const Beside = z.object({ subagents: Count, tasks: Count });
+export type Beside = z.infer<typeof Beside>;
+
+export const NOTHING_BESIDE: Beside = { subagents: 0, tasks: 0 };
+
 /** A thread as lists show it, with what it needs derived (docs/chat.md 4.4). */
 export const ThreadSummary = z.object({
   id: ThreadId,
@@ -450,8 +454,8 @@ export const ThreadSummary = z.object({
   status: Status,
   /** What the oldest pending request asks of the person. */
   needs: RequestKind.nullable(),
-  /** Whether the agent has tasks running in the background (`Thread.backgroundTasks`, 4.5.6). */
-  background: z.boolean(),
+  /** What the agent runs beside its turn: nothing while no session runs. */
+  beside: Beside,
   queued: Count,
   unread: z.boolean(),
   tabOpen: z.boolean(),

@@ -9,7 +9,7 @@ use koyo_agent::client::ClientError;
 use koyo_agent::protocol::events::{Appended, Changed};
 use koyo_agent::protocol::ids::{ItemId, ThreadId};
 use koyo_agent::protocol::methods::{Rows, ThreadSnapshot};
-use koyo_agent::protocol::model::Item;
+use koyo_agent::protocol::model::{Beside, Item};
 use koyo_agent::protocol::wire::ErrorCode;
 use koyo_agent::replica::Replica;
 
@@ -17,6 +17,7 @@ use koyo_agent::replica::Replica;
 #[derive(Debug)]
 pub enum ThreadEvent {
     Changed(Box<Changed>),
+    Beside(Beside),
     Appended(Appended),
 }
 
@@ -109,6 +110,10 @@ impl ChatThread {
                 ThreadEvent::Changed(changed) => {
                     set_texts(&self.texts, &changed.items, cx);
                     replica.apply(*changed);
+                    structure = true;
+                }
+                ThreadEvent::Beside(beside) => {
+                    replica.beside = beside;
                     structure = true;
                 }
                 ThreadEvent::Appended(appended) => {

@@ -1,7 +1,13 @@
 import { log } from "../log";
 import type { RunId, ThreadId } from "../protocol/ids";
 import type { FilesBack, Params } from "../protocol/methods";
-import type { Prompt, ProviderId, Thread, ThreadSummary } from "../protocol/model";
+import {
+  NOTHING_BESIDE,
+  type Prompt,
+  type ProviderId,
+  type Thread,
+  type ThreadSummary,
+} from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
@@ -274,5 +280,6 @@ function missing(id: ProviderId): Provider {
 /** `thread` as lists show it, summed up from the store as it is. */
 function stored(store: Store, thread: Thread): ThreadSummary {
   const said = store.said(thread.id);
-  return summary(thread, store.state(thread.id), said === null ? null : opening(said.text));
+  const words = said === null ? null : opening(said.text);
+  return summary(thread, store.state(thread.id), words, NOTHING_BESIDE);
 }

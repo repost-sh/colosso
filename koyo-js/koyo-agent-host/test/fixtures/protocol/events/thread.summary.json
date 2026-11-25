@@ -12,7 +12,7 @@
     "plan": true,
     "status": "working",
     "needs": "plan",
-    "background": true,
+    "beside": { "subagents": 2, "tasks": 1 },
     "queued": 1,
     "unread": false,
     "tabOpen": true,

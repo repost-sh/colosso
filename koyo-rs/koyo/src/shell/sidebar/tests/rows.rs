@@ -26,9 +26,7 @@ fn a_projects_row_folds_its_branches_away_and_shows_their_mark(cx: &mut TestAppC
         status: Status::Working,
         ..crate::chat::tests::summary("0001", &root, "A chat", true)
     };
-    let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
-    chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
-    cx.run_until_parked();
+    crate::chat::tests::tell(&shell, summary, cx);
     let folded = |cx: &TestAppContext| cx.read(|cx| settings::get(cx).is_folded(&root));
     assert!(drawn(window, "sidebar-branch-0-0", cx).is_some());
     let mark = |cx: &mut TestAppContext| drawn(window, "sidebar-project-mark-0", cx).is_some();
@@ -159,9 +157,7 @@ fn a_branch_row_says_its_chat_works_at_its_end(cx: &mut TestAppContext) {
         status: Status::Working,
         ..crate::chat::tests::summary("0001", &root, "A chat", true)
     };
-    let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
-    chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
-    cx.run_until_parked();
+    crate::chat::tests::tell(&shell, summary, cx);
     draw(window, cx);
     let mut vcx = VisualTestContext::from_window(window, cx);
     let row = vcx.debug_bounds("sidebar-branch-0-0").expect("the branch's row");

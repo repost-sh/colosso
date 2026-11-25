@@ -1,6 +1,7 @@
 //! The spinner that says a chat is at work (`docs/chat.md` 5.3), wherever one's said to be: on
-//! its tab, its checkout's row, its project's row and its space's mark. A small ring in amber
-//! with a gap in it, its line bold for its size, going round.
+//! its tab, its checkout's row, its project's row and its space's mark. A small ring with a gap
+//! in it, its line bold for its size, going round: in amber while an agent's at it, and in a
+//! faded amber while all there is is what one left running in the background.
 //!
 //! It turns at the beat (`crate::beat`), all of them together, in the same frames, whichever app
 //! is in front: a chat works while its person is elsewhere, and a spinner standing still there
@@ -13,13 +14,16 @@ use std::time::Duration;
 
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, Div, Entity, Global, Hsla, IntoElement,
-    ParentElement as _, Pixels, Render, Styled as _, Window, canvas, div, fill, point, px, size,
+    ParentElement as _, Pixels, Render, SharedString, Styled as _, Window, canvas, div, fill, point,
+    px, size,
 };
+
+use koyo_agent::work::Pace;
 
 use crate::{beat, theme};
 
 /// The spinner's square where nothing asks for another: the same as a dot's room.
-const SIZE: f32 = 10.;
+pub(super) const SIZE: f32 = 10.;
 /// How wide its line is, as a share of its square: bold, to be seen at its size.
 const LINE: f32 = 0.2;
 /// How long a turn takes.
@@ -30,14 +34,20 @@ const DRAWN: f32 = 0.75;
 /// that their edges read as one line's, with round ends.
 const STEP: f32 = 0.4;
 
-/// A spinner where a person sees it, in a square `size` wide, whose frames draw it alone.
+/// A spinner where a person sees it, in a square `size` wide, for work at `pace`, whose frames
+/// draw it alone.
 struct Spin {
     size: f32,
+    pace: Pace,
 }
 
 impl Render for Spin {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let colour = theme::palette(cx).working;
+        let p = theme::palette(cx);
+        let colour = match self.pace {
+            Pace::Agent => p.working,
+            Pace::Background => p.working_faded,
+        };
         let turn = beat::turn(TURN, window, cx);
         let holder = div().size(px(self.size)).flex_shrink_0();
         holder.child(ring(turn, colour))
@@ -73,26 +83,25 @@ fn marks(side: f32, turn: f32) -> impl Iterator<Item = (f32, f32)> {
 
 /// The spinners by place, each of which is a view drawn in one spot, for as long as a chat works.
 #[derive(Default)]
-struct Spinners(HashMap<String, Entity<Spin>>);
+struct Spinners(HashMap<SharedString, Entity<Spin>>);
 
 impl Global for Spinners {}
 
-/// The spinner `place` shows while a chat works there: a tab, a checkout's row, a project's
-/// row.
-pub fn spinner(place: String, cx: &mut App) -> Div {
-    spinner_of(place, SIZE, cx)
-}
-
-/// The spinner `place` shows, in a square `size` wide: by a space's mark, which is smaller
-/// than a row's.
-pub fn spinner_of(place: String, size: f32, cx: &mut App) -> Div {
-    let held = cx.default_global::<Spinners>().0.get(&place).cloned();
+/// The spinner the place called `name` shows for work at `pace`, in a square `size` wide.
+pub fn spinner(name: SharedString, (size, pace): (f32, Pace), cx: &mut App) -> Div {
+    let held = cx.default_global::<Spinners>().0.get(&name).cloned();
     let spin = held.unwrap_or_else(|| {
-        let spin = cx.new(|_| Spin { size });
+        let spin = cx.new(|_| Spin { size, pace });
         cx.default_global::<Spinners>()
             .0
-            .insert(place, spin.clone());
+            .insert(name, spin.clone());
         spin
+    });
+    spin.update(cx, |spin, cx| {
+        if spin.pace != pace {
+            spin.pace = pace;
+            cx.notify();
+        }
     });
     div().flex_shrink_0().child(spin)
 }

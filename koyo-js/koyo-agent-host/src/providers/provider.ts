@@ -159,7 +159,8 @@ export type DriverEvent =
   /** The agent started a turn no prompt asked for, as a subagent finished: it runs from now. */
   | { readonly type: "turn.adopted" }
   /** How many tasks the agent has running in the background now, which it goes on from as they
-   * end: shells, Monitors, subagents past their turn. None once its process ends. */
+   * end: shells, Monitors, whatever isn't a subagent, as `subagent.*` says those. None once its
+   * process ends. */
   | { readonly type: "background"; readonly tasks: number }
   | { readonly type: "usage"; readonly usage: Usage }
   /** What a response said of the account's subscription limits, whatever turn runs. */

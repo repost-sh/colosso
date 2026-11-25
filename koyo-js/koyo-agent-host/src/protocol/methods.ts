@@ -3,6 +3,7 @@ import { z } from "zod";
 import { RequestId, RunId, ThreadId } from "./ids";
 import {
   Attachment,
+  Beside,
   Effort,
   Item,
   Mode,
@@ -82,8 +83,9 @@ export const Rows = z.object({
 });
 export type Rows = z.infer<typeof Rows>;
 
-/** A thread with its latest runs' rows, or with the rows changed after `sinceSeq`. */
-export const ThreadSnapshot = Rows.extend({ thread: Thread });
+/** A thread with its latest runs' rows, or with the rows changed after `sinceSeq`, and what its
+ * agent runs beside its turn. */
+export const ThreadSnapshot = Rows.extend({ thread: Thread, beside: Beside });
 export type ThreadSnapshot = z.infer<typeof ThreadSnapshot>;
 
 /** `auto` starts a turn, or steers the running one; `queue` waits for it to end. */

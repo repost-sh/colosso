@@ -60,11 +60,6 @@ export class Subagents {
     this.#family = family;
   }
 
-  /** Whether any of them is working. */
-  live(): boolean {
-    return [...this.#children.values()].some((child) => child.running);
-  }
-
   /** Takes what the session said of one of them. */
   hear(event: SubagentEvent): void {
     if (event.type === "subagent.started") {
@@ -88,16 +83,18 @@ export class Subagents {
         return;
       }
       case "subagent.ended": {
-        this.#ended(child, event.outcome, event.summary, event.usage);
+        this.#settled(child, event.outcome, event.summary, event.usage);
+        this.#counted();
+        this.#family.ended();
       }
     }
   }
 
-  /** Their session went, and those still working with it. */
+  /** Their session went, and those still working with it, as the chat's thread says itself. */
   lost(): void {
     for (const child of this.#children.values()) {
       if (child.running) {
-        this.#ended(child, "interrupted", null, null);
+        this.#settled(child, "interrupted", null, null);
       }
     }
   }
@@ -110,6 +107,7 @@ export class Subagents {
     if (known !== undefined) {
       known.write(subagentAgain(known.row));
       known.actor.takeUp(subagent.prompt);
+      this.#counted();
       return;
     }
     const starter = parentKey === null ? undefined : this.#children.get(parentKey)?.actor;
@@ -126,10 +124,11 @@ export class Subagents {
       stop(key);
     });
     this.#children.set(key, new Child(actor, owner, row));
+    this.#counted();
   }
 
   /** Writes its row first: a host that stops between the two has the row closed for it. */
-  #ended(
+  #settled(
     child: Child,
     outcome: Outcome,
     summary: string | null,
@@ -137,6 +136,11 @@ export class Subagents {
   ): void {
     child.write(subagentEnded(child.row, outcome, { summary, usage, at: this.#family.now() }));
     child.actor.finish(outcome, summary);
-    this.#family.ended();
+  }
+
+  /** How many of them work changed: the chat's thread says it. */
+  #counted(): void {
+    const working = [...this.#children.values()].filter((child) => child.running);
+    this.#family.root.state.runsBeside({ subagents: working.length });
   }
 }

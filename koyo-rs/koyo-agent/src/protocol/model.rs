@@ -102,11 +102,6 @@ pub struct Thread {
     pub tab_open: bool,
     /// The row of the thread that started it, for a subagent's: it runs on its own.
     pub parent: Option<Box<ThreadParent>>,
-    /// How many tasks the agent has running in the background, as its session last said: shells,
-    /// Monitors, subagents past their turn. It goes on from them as they end, so the chat isn't
-    /// done. None while no session runs, and from a host from before it said.
-    #[serde(default)]
-    pub background_tasks: u64,
     /// The plan the agent keeps with the progress tool, once it declared one; none from a host
     /// from before it kept one.
     #[serde(default)]
@@ -449,6 +444,15 @@ pub enum Status {
     Failed,
 }
 
+/// What an agent runs beside its turn (`docs/activity.md`): its subagents at work, their own among
+/// them, and the tasks it has in the background, as a shell or a Monitor, which it goes on from as
+/// they end. The chat isn't done while there's any.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Beside {
+    pub subagents: u64,
+    pub tasks: u64,
+}
+
 /// A thread as lists show it, with what it needs derived (`docs/chat.md` 4.4).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -474,9 +478,8 @@ pub struct ThreadSummary {
     pub status: Status,
     /// What the oldest pending request asks of the person.
     pub needs: Option<RequestKind>,
-    /// Whether the agent runs tasks in the background, as a shell or a Monitor
-    /// (`docs/chat.md` 4.5.6).
-    pub background: bool,
+    /// What the agent runs beside its turn: nothing while no session runs.
+    pub beside: Beside,
     pub queued: u64,
     pub unread: bool,
     pub tab_open: bool,

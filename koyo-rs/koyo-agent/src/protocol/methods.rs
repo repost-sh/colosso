@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::ids::{RequestId, RunId, ThreadId};
-use super::model::{Attachment, Effort, Item, Mode, Prompt, Run, Thread, ThreadSummary};
+use super::model::{Attachment, Beside, Effort, Item, Mode, Prompt, Run, Thread, ThreadSummary};
 use super::requests::{Request, Response};
 
 /// A method of the host's: its name, and the shapes of its params and its result.
@@ -302,6 +302,8 @@ pub struct Rows {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ThreadSnapshot {
     pub thread: Thread,
+    /// What its agent runs beside its turn.
+    pub beside: Beside,
     pub runs: Vec<Run>,
     pub items: Vec<Item>,
     pub requests: Vec<Request>,

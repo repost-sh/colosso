@@ -112,7 +112,11 @@ fn a_chats_summary_renders_the_shell_once_when_it_changes_and_not_when_it_is_the
 ) {
     let (window, shell, _, _) = chat_card_down("budget-summary", settled("0001"), cx);
     let (chats, root) = (chats_of(&shell, cx), root_of(&shell, cx));
-    let failed = |cx: &mut TestAppContext| hears(&chats, at(&root, Status::Failed), cx);
+    let unseen = ThreadSummary {
+        unread: true,
+        ..at(&root, Status::Failed)
+    };
+    let failed = |cx: &mut TestAppContext| hears(&chats, unseen.clone(), cx);
 
     let budget = Built {
         shell: 1,

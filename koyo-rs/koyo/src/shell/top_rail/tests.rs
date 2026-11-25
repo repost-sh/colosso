@@ -10,6 +10,8 @@ use gpui_kit::{
     px,
 };
 
+use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
+
 use crate::model::tests::chat;
 use crate::projects::MoveProjectToNewSpace;
 use crate::settings;
@@ -268,4 +270,38 @@ fn the_checkouts_tabs_slide_within_their_own_place_never_over_the_pinned_zone(
         CursorStyle::Arrow,
         "the zone is still what's there, the tab clipped to its own place"
     );
+}
+
+/// A chat's tab on the rail says its work and what it has for the person beside each other, how
+/// many subagents work after the spinner, its title after them all.
+#[gpui_kit::test]
+fn a_chats_tab_says_its_work_and_what_waits_side_by_side(cx: &mut TestAppContext) {
+    let (window, shell) = shell_on_chat("rail-sign", cx);
+    let (root, pane) = cx.read(|cx| {
+        let unit = shell.read(cx).workspace.branch().expect("a checkout");
+        (unit.worktree.path.clone(), unit.tabs[0].first().id)
+    });
+    let summary = ThreadSummary {
+        status: Status::Working,
+        unread: true,
+        beside: Beside {
+            subagents: 3,
+            tasks: 0,
+        },
+        ..crate::chat::tests::summary("0001", &root, "A chat", true)
+    };
+    shell.update(cx, |shell, cx| {
+        shell.workspace.set_chat(pane, summary.id.clone());
+        shell.workspace.push_tab(chat("another"));
+        cx.notify();
+    });
+    crate::chat::tests::tell(&shell, summary, cx);
+    let [dot, spinner, count] = ["dot", "spinner", "subagents"].map(|part| {
+        drawn(window, format!("tab-{pane}-{part}"), cx).unwrap_or_else(|| panic!("its {part}"))
+    });
+    assert!(in_rail(spinner));
+    assert!(dot.right() < spinner.left(), "{dot:?} {spinner:?}");
+    assert!(count.right() > spinner.right(), "{spinner:?} {count:?}");
+    let close = drawn(window, "tab-0-0-0", cx).expect("its tab");
+    assert!(count.right() < close.right(), "{count:?} in {close:?}");
 }

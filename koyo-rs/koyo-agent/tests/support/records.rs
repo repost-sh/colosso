@@ -3,7 +3,7 @@
 use koyo_agent::protocol::ids::{ItemId, MessageId, RequestId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
-    Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Subagent, Text, Thread,
+    Beside, Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Subagent, Text, Thread,
     TitleSource, Tool, ToolFamily, UserMessage,
 };
 use koyo_agent::protocol::requests::{Request, RequestPayload, RequestStatus};
@@ -30,7 +30,6 @@ pub fn thread(seq: u64) -> Thread {
         queue_held: false,
         tab_open: true,
         parent: None,
-        background_tasks: 0,
         progress: None,
         created_at: Time(AT.into()),
         updated_at: Time(AT.into()),
@@ -91,6 +90,7 @@ pub fn message(text: &str) -> ItemBody {
 
 pub fn snapshot(seq: u64, runs: Vec<Run>, items: Vec<Item>) -> ThreadSnapshot {
     ThreadSnapshot {
+        beside: Beside::default(),
         thread: thread(seq),
         runs,
         items,

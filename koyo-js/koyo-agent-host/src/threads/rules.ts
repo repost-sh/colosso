@@ -1,4 +1,5 @@
 import type {
+  Beside,
   Item,
   Request,
   Run,
@@ -68,8 +69,14 @@ function unread(thread: Thread, state: State): boolean {
   return ended !== null && (thread.readAt === null || ended > thread.readAt);
 }
 
-/** `thread` as lists show it, `said` being what was said in it last as `opening` has it. */
-export function summary(thread: Thread, state: State, said: string | null): ThreadSummary {
+/** `thread` as lists show it, `said` being what was said in it last as `opening` has it, and
+ * `beside` what its agent runs beside its turn. */
+export function summary(
+  thread: Thread,
+  state: State,
+  said: string | null,
+  beside: Beside,
+): ThreadSummary {
   return {
     id: thread.id,
     cwd: thread.cwd,
@@ -82,7 +89,7 @@ export function summary(thread: Thread, state: State, said: string | null): Thre
     plan: thread.plan,
     status: status(state),
     needs: needs(state.pending),
-    background: thread.backgroundTasks > 0,
+    beside,
     queued: state.unsettled.filter((run) => run.status === "queued").length,
     unread: unread(thread, state),
     tabOpen: thread.tabOpen,

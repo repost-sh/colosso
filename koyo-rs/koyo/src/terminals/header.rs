@@ -27,20 +27,11 @@ use crate::theme::Palette;
 pub const BAR: f32 = 26.;
 
 impl Shell {
-    /// A tab's dot where its row shows it: after a single pane's icon (the first), or ahead
-    /// of a split's chips (the second). A terminal's dot is there whatever it's doing and a
-    /// chat's mark only when it has something to say, which goes first unless a terminal waits
-    /// for the person.
-    pub fn tab_dots(&self, tab: &Tab, p: Palette, cx: &mut App) -> (Option<Div>, Option<Div>) {
-        let status = most_urgent(self.tab_terminal_statuses(tab));
-        let mark = (!status.is_some_and(waits))
-            .then(|| self.chat_tab_mark(tab, p, cx))
-            .flatten();
-        let dot = mark.or_else(|| status.map(|status| dot(status, p)));
-        match tab {
-            Tab::Single(_) => (dot, None),
-            Tab::Split(_) => (None, dot),
-        }
+    /// The colour `tab`'s terminals are shown in, the most urgent of them, and whether it waits for
+    /// the person; none while it has no terminal.
+    pub fn tab_terminal_colour(&self, tab: &Tab, p: Palette) -> Option<(Hsla, bool)> {
+        let status = most_urgent(self.tab_terminal_statuses(tab))?;
+        Some((color(status, p), waits(status)))
     }
 
     /// Whether the shell draws terminal `handle`, in a tab of the selected checkout: the tab shown

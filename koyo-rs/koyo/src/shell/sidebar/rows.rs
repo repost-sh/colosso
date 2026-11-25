@@ -1,20 +1,19 @@
 //! A branch's tabs as rows under its row while the tabs are in the sidebar (`docs/layout.md`,
 //! Sidebar), and the rows the unpinned pages and the pinned pages' tiles share with them: the one
-//! shown a pill. A tab says at its end how it's doing: the spinner while a chat in it is at work,
-//! an indigo dot once something in it waits for the person.
+//! shown a pill. A tab says at its end what goes on in it (`docs/activity.md`).
 
 use std::path::Path;
 
 use gpui_kit::base::motion::{Transition, transition};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Axis, Context, Div, ElementId, InteractiveElement as _, ParentElement as _,
+    AnyElement, App, Axis, Context, Div, ElementId, InteractiveElement as _, ParentElement as _,
     Stateful, Styled as _, Window, div, px,
 };
 
 use super::pinned::takes_pins;
 use super::{Look, noted, shown_on_hover};
-use crate::chat::Activity;
+use crate::chat::{Activity, Sign};
 use crate::model::{BranchUnit, Tab};
 use crate::pane::{ROW_BUTTON, ROW_GLYPH, row_sized};
 use crate::settings;
@@ -110,14 +109,18 @@ fn tab_row_of(
     let p = look.p;
     let (project_index, branch_index, tab_index) = at;
     let first = tab.first().id;
-    let (activity, said) = shell.tab_status(tab, !active, cx);
+    let place = || format!("sidebar-tab-{first}");
+    let says = sign(shell.tab_activity(tab, cx), place, look, cx);
+    let (ahead, at_its_end) = match tab {
+        Tab::Split(_) => (says, None),
+        Tab::Single(_) => (None, says),
+    };
+    let said = (!active).then(|| shell.tab_said(tab, cx)).flatten();
     let row = sidebar_row(("sidebar-tab", branch_index * 100 + tab_index))
         .group("sidebar-tab")
         .pl(inset(2, cx));
     let row = Shell::tab_press(look.lit(row, active).pr(px(ROW_END)), at, cx)
-        .when(matches!(tab, Tab::Split(_)), |row| {
-            row.children(sign(activity, ("sidebar-tab", first), look, cx))
-        });
+        .children(ahead.map(Sign::in_line));
     let row = takes_pins(row, look, cx, move |this, key, cx| {
         this.unpin_onto(key, (project_index, branch_index), tab_index, cx);
     });
@@ -125,8 +128,7 @@ fn tab_row_of(
     let list = (Axis::Vertical, &shell.tab_hand);
     tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
         let close = ("sidebar-tab-close", branch_index * 100 + tab_index);
-        let mark = sign(activity, ("sidebar-tab", first), look, cx);
-        let mark = mark.map(|sign| at_end(sign, "sidebar-tab"));
+        let mark = at_its_end.map(|sign| at_end(sign.in_column(), "sidebar-tab"));
         let hidden = !face.dirty && (!active || mark.is_some());
         let shown = !hidden || mark.is_some();
         let close = tab_close_button(close, at, (face.dirty, ROW_GLYPH), p, cx);
@@ -157,22 +159,16 @@ fn tab_row_of(
     })
 }
 
-/// What a tab's row says of how it's doing: the spinner while a chat in it is at work, an indigo
-/// dot once something in it waits for the person. It's known as `of` and by `key`, its first
-/// pane's.
-fn sign(
+/// What a row of the sidebar, known as `place`, says of its `activity` (`docs/activity.md`): its
+/// work, and in an indigo dot that something in it waits for the person.
+pub(super) fn sign(
     activity: Activity,
-    (of, key): (&'static str, u64),
+    place: impl FnOnce() -> String,
     look: Look,
-    cx: &mut Context<Shell>,
-) -> Option<Div> {
-    let name = match activity {
-        Activity::Quiet => return None,
-        Activity::Working => "working",
-        Activity::Attention => "waiting",
-    };
-    let sign = activity.sign(|| format!("{of}-{key}"), look.p, cx)?;
-    Some(sign.debug_selector(move || format!("{of}-{name}-{key}")))
+    cx: &mut App,
+) -> Option<Sign> {
+    let waits = activity.attention.map(|_| look.p.waiting);
+    Sign::new(place, activity.work, waits, cx)
 }
 
 /// The place at a row's end, as wide as a row's button, where what's in it is centred: so what

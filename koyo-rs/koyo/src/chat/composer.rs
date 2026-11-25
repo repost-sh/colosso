@@ -295,7 +295,7 @@ impl ChatComposer {
         let settings = replica.map(|replica| Settings::of(&replica.thread));
         let context = replica.and_then(Replica::context);
         let turn = replica.map_or_else(Turn::default, Turn::of);
-        let working = replica.is_some_and(Replica::working);
+        let working = replica.is_some_and(|replica| replica.work().any());
         let asking = replica.and_then(Replica::asking);
         if self.asked.request() != asking.map(|asked| &asked.id) {
             self.asked = asking.map_or(Asked::Nothing, Asked::of);

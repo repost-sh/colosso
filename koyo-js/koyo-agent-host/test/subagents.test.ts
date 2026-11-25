@@ -2,29 +2,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import type { Item, RequestPayload, Response, Thread } from "../src/protocol/model";
 import { FakeProvider, type FakeSession } from "../src/providers/fake";
-import type {
-  ItemBody,
-  ItemEvent,
-  Outcome,
-  SubagentEvent,
-  SubagentStart,
-} from "../src/providers/provider";
+import type { ItemBody, ItemEvent, SubagentEvent } from "../src/providers/provider";
 import { Store } from "../src/store/store";
 import { Threads } from "../src/threads/threads";
 import { closeHarnesses, type Harness, harness, prompt } from "./support/actor";
 import { removeScratch, scratch } from "./support/scratch";
+import { CALL, ended, started } from "./support/subagents";
 import { settle } from "./support/wait";
 
 afterEach(closeHarnesses);
-
-const CALL = "toolu_agent";
-const START: SubagentStart = {
-  description: "Count files",
-  agentType: "general-purpose",
-  prompt: "Count the files.",
-  model: "haiku",
-  effort: "low",
-};
 
 function said(text: string): ItemBody {
   return { kind: "assistant_text", payload: { text } };
@@ -39,14 +25,6 @@ async function running(chats: Harness): Promise<FakeSession> {
 
 function heard(event: ItemEvent): SubagentEvent {
   return { type: "subagent.event", key: CALL, event };
-}
-
-function started(key = CALL, parentKey: string | null = null): SubagentEvent {
-  return { type: "subagent.started", key, parentKey, subagent: START };
-}
-
-function ended(outcome: Outcome = "completed", key = CALL): SubagentEvent {
-  return { type: "subagent.ended", key, outcome, summary: "One file.", usage: null };
 }
 
 /** A subagent started in a running turn: its session, row and thread. */
@@ -222,6 +200,18 @@ describe("a subagent in the background", () => {
     expect(chats.actor.closeSession()).toBe(true);
   });
 
+  test("is done with once it's ended, whatever others worked beside it", async () => {
+    const chats = harness();
+    const { session } = await spawned(chats);
+    session.report(started("toolu_other"));
+    session.finished();
+    session.report(ended());
+    session.report(ended("completed", "toolu_other"));
+    await settle();
+    expect(chats.children.map((each) => each.busy())).toEqual([false, false]);
+    expect(chats.actor.busy()).toBe(false);
+  });
+
   test("is told to its thread with no run of the parent's live", async () => {
     const chats = harness();
     const { session, child } = await spawned(chats);
@@ -243,6 +233,7 @@ describe("a subagent in the background", () => {
     session.report({ type: "session.ended", error: null });
     await settle();
     expect(row(chats).status).toBe("interrupted");
+    expect(chats.actor.summary().beside.subagents).toBe(0);
     expect(chats.store.latest(child.id, 10).runs.at(0)?.status).toBe("interrupted");
   });
 

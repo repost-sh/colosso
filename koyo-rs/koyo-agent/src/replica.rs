@@ -8,12 +8,14 @@ use std::collections::HashSet;
 use crate::protocol::events::{Appended, Changed};
 use crate::protocol::ids::{RequestId, RunId};
 use crate::protocol::methods::{Rows, ThreadSnapshot};
-use crate::protocol::model::{Item, ItemBody, Run, RunStatus, Thread};
+use crate::protocol::model::{Beside, Item, ItemBody, Run, RunStatus, Thread};
 use crate::protocol::requests::{Request, RequestPayload, RequestStatus};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Replica {
     pub thread: Thread,
+    /// What its agent runs beside its turn.
+    pub beside: Beside,
     /// The runs held, in the order they were sent; older ones come with history.
     pub runs: Vec<Run>,
     /// The timeline's entries held, in their order.
@@ -28,6 +30,7 @@ impl Replica {
         let seq = snapshot.thread.seq;
         let mut replica = Replica {
             thread: snapshot.thread,
+            beside: snapshot.beside,
             runs: Vec::new(),
             items: Vec::new(),
             requests: Vec::new(),
@@ -64,16 +67,6 @@ impl Replica {
         })
     }
 
-    /// Whether the agent's at work for the chat: its turn runs and isn't waiting on a person, a
-    /// subagent of its is still going, which one can be after the turn that started it, or it has
-    /// something running in the background it'll go on from, a shell or a Monitor.
-    pub fn working(&self) -> bool {
-        let turn = self.live().is_some() && self.asking().is_none();
-        turn || self.thread.background_tasks > 0
-            || (self.items.iter().rev())
-                .any(|item| matches!(item.body, ItemBody::Subagent(_)) && item.status.is_open())
-    }
-
     /// What the agent waits on a person for now: the oldest request still waiting, as they're
     /// answered one at a time. A waiting request's sequence is when it was asked.
     pub fn asking(&self) -> Option<&Request> {
@@ -107,6 +100,7 @@ impl Replica {
     pub fn catch_up(&mut self, snapshot: ThreadSnapshot) {
         self.seq = self.seq.max(snapshot.thread.seq);
         self.thread = snapshot.thread;
+        self.beside = snapshot.beside;
         self.merge(snapshot.runs, snapshot.items, snapshot.requests);
     }
 

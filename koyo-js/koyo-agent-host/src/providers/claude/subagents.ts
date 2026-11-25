@@ -20,6 +20,9 @@ import { resultText, settleResults, Steps } from "./steps";
 import { Texts } from "./text";
 import { fieldsOf, head, text, type ToolResult } from "./tools";
 
+/** The CLI's type of a task that is a subagent. */
+export const SUBAGENT_TASK = "local_agent";
+
 type System = Extract<SDKMessage, { type: "system" }>;
 type TaskStarted = Extract<System, { subtype: "task_started" }>;
 type TaskProgress = Extract<System, { subtype: "task_progress" }>;
@@ -374,7 +377,7 @@ function isAgent(frame: TaskStarted): boolean {
   }
   return frame.task_type === undefined
     ? frame.subagent_type !== undefined
-    : frame.task_type === "local_agent";
+    : frame.task_type === SUBAGENT_TASK;
 }
 
 /** Whether words to a subagent are the CLI's, telling it a task of its ended. */

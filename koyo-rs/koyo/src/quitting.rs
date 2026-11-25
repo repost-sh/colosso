@@ -15,7 +15,7 @@ use gpui_kit::{
 };
 use koyo_agent::agent_client::AgentClient;
 use koyo_agent::protocol::methods::{Empty, ThreadsWatch};
-use koyo_agent::protocol::model::{Status, ThreadSummary};
+use koyo_agent::protocol::model::ThreadSummary;
 use koyo_term::TermClient;
 use koyo_term_control::{Handle, RequestBody, ResponseBody};
 use serde::{Deserialize, Serialize};
@@ -212,10 +212,9 @@ fn at_work(data: &Path) -> Vec<String> {
     titles
 }
 
-/// Whether a chat is at work: a turn running, a question waiting for the person, or tasks of
-/// the agent's running in the background, all of which stopping the host would end.
+/// Whether a chat is at work, or waits for the person, all of which stopping the host would end.
 fn works(summary: &ThreadSummary) -> bool {
-    summary.status == Status::Working || summary.needs.is_some() || summary.background
+    summary.work().any() || summary.needs.is_some()
 }
 
 /// Closes the terminals rather than only stopping their daemon, whose shells would run again at

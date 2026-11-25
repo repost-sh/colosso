@@ -6,17 +6,17 @@
 use std::path::Path;
 use std::time::Duration;
 
-use gpui_kit::{Modifiers, MouseButton, Pixels, Point, point, px};
+use gpui_kit::{Action, Modifiers, MouseButton, Pixels, Point, point, px};
 use image::imageops::{self, FilterType};
 use koyo_agent::protocol::ids::{ThreadId, Time};
-use koyo_agent::protocol::model::{Status, ThreadSummary};
+use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
 
 use super::{OUT, titled, web_page};
 use crate::modal;
 use crate::model::{PaneKind, Tab};
 use crate::settings;
 use crate::shell::ToggleRightPanel;
-use crate::theme;
+use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
 /// The check shows a chat, which reaches the agent host of the app's data folder: that has to be
@@ -108,8 +108,14 @@ pub fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     Ok(format!("saved {} and {}", path.display(), beside.display()))
 }
 
-/// The chats' host says of chat `id`, in `folder`, that it's at `status`, read or not.
-fn hear(drawn: &mut Drawn, (id, folder): (&str, &Path), status: Status, unread: bool) {
+/// The chats' host says of chat `id`, in `folder`, that it's at `status` with `subagents` and
+/// `tasks` beside its turn, read or not.
+pub fn hear(
+    drawn: &mut Drawn,
+    (id, folder): (&str, &Path),
+    (status, subagents, tasks): (Status, u64, u64),
+    unread: bool,
+) {
     let summary = ThreadSummary {
         id: ThreadId(id.into()),
         cwd: folder.to_string_lossy().into_owned(),
@@ -122,7 +128,7 @@ fn hear(drawn: &mut Drawn, (id, folder): (&str, &Path), status: Status, unread: 
         plan: false,
         status,
         needs: None,
-        background: false,
+        beside: Beside { subagents, tasks },
         queued: 0,
         unread,
         tab_open: true,
@@ -133,19 +139,21 @@ fn hear(drawn: &mut Drawn, (id, folder): (&str, &Path), status: Status, unread: 
     (drawn.cx).update(|cx| chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx)));
 }
 
-/// The first space shown, a chat in the second space's project works, then is done and not
-/// seen, then seen: what the second space's mark says each time.
+/// The first space shown, a chat in the second space's project goes through what can go on in
+/// one: what the second space's mark says each time.
 pub fn pills(drawn: &mut Drawn, site: &Path, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     (drawn.cx).update(|cx| shell.update(cx, |shell, cx| shell.show_space(0, cx)));
     settle(drawn)?;
     let steps = [
-        (Status::Working, false, "sidebar-pill-working"),
-        (Status::Idle, true, "sidebar-pill-attention"),
-        (Status::Idle, false, "sidebar-pill-seen"),
+        ((Status::Working, 0, 0), false, "sidebar-pill-working"),
+        ((Status::Idle, 0, 1), false, "sidebar-pill-background"),
+        ((Status::Idle, 0, 0), true, "sidebar-pill-attention"),
+        ((Status::Working, 0, 0), true, "sidebar-pill-both"),
+        ((Status::Idle, 0, 0), false, "sidebar-pill-seen"),
     ];
-    for (status, unread, name) in steps {
-        hear(drawn, ("0001", site), status, unread);
+    for (doing, unread, name) in steps {
+        hear(drawn, ("0001", site), doing, unread);
         settle(drawn)?;
         let says = (drawn.cx).read(|cx| shell.read(cx).space_activity(1, cx));
         said.push(format!(
@@ -156,8 +164,8 @@ pub fn pills(drawn: &mut Drawn, site: &Path, said: &mut Vec<String>) -> Result<(
     Ok(())
 }
 
-/// A chat in a tab of the space shown works, then is done and not seen, then seen: what its
-/// row says at its end each time.
+/// A chat in a tab of the space shown goes through what can go on in one, in both appearances:
+/// what its row says at its end each time.
 pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     let root = checkout()?;
@@ -175,23 +183,31 @@ pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     });
     found.ok_or("no chat among the tabs shown")?;
     let steps = [
-        (Status::Working, false, "sidebar-tab-working"),
-        (Status::Idle, true, "sidebar-tab-waiting"),
-        (Status::Idle, false, "sidebar-tab-seen"),
+        ((Status::Working, 0, 0), false, "sidebar-tab-working"),
+        ((Status::Idle, 0, 1), false, "sidebar-tab-background"),
+        ((Status::Idle, 0, 1), true, "sidebar-tab-background-waiting"),
+        ((Status::Working, 4, 1), false, "sidebar-tab-subagents"),
+        ((Status::Idle, 12, 0), true, "sidebar-tab-subagents-waiting"),
+        ((Status::Idle, 0, 0), true, "sidebar-tab-waiting"),
+        ((Status::Idle, 0, 0), false, "sidebar-tab-seen"),
     ];
-    for (status, unread, name) in steps {
-        hear(drawn, ("0002", &root), status, unread);
-        settle(drawn)?;
-        let says = (drawn.cx).read(|cx| {
-            let shell = shell.read(cx);
-            let chat = |tab: &&Tab| tab.first().kind() == PaneKind::Chat;
-            let tab = shell.workspace.branch()?.tabs.iter().find(chat)?;
-            Some(shell.tab_activity(tab, cx))
-        });
-        said.push(format!(
-            "the chat's tab says {says:?}: {}",
-            save_with(drawn, name, Part::Rows)?
-        ));
+    let themes: [(&dyn Action, &str); 2] = [(&UseLightTheme, "light"), (&UseDarkTheme, "dark")];
+    for (action, theme) in themes {
+        drawn.cx.update(|cx| cx.dispatch_action(action));
+        for (doing, unread, name) in steps {
+            hear(drawn, ("0002", &root), doing, unread);
+            settle(drawn)?;
+            let says = (drawn.cx).read(|cx| {
+                let shell = shell.read(cx);
+                let chat = |tab: &&Tab| tab.first().kind() == PaneKind::Chat;
+                let tab = shell.workspace.branch()?.tabs.iter().find(chat)?;
+                Some(shell.tab_activity(tab, cx))
+            });
+            said.push(format!(
+                "the chat's tab says {says:?}: {}",
+                save_with(drawn, &format!("{name}-{theme}"), Part::Rows)?
+            ));
+        }
     }
     Ok(())
 }

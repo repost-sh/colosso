@@ -453,6 +453,7 @@ thread.summary   ThreadSummary, when something a list shows changed
 thread.removed   {threadId}, a thread deleted
 thread.changed   {threadId, seq, thread, runs, items, requests}: the rows one actor step
                  changed, whole
+thread.beside    {threadId, beside}: what its agent runs beside its turn, as that changes
 item.appended    {threadId, itemId, text}: what a streaming item grew by, in order
 host.notice      {level, message}, e.g. the CLI went missing
 account.limits   {status, window, utilization, resetsAt, fiveHour, sevenDay,
@@ -482,8 +483,6 @@ Thread {
   queueHeld: bool,
   tabOpen: bool,              // a tab shows it, and will again after a restart (C13)
   parent: {threadId, itemId} | null,   // the row of the thread that started it (4.5.10)
-  backgroundTasks: n,         // what the agent has running in the background now (4.7); 0
-                              // while no session runs, and as a host that stopped comes back
   progress: Plan | null,      // the plan the agent keeps with the progress tool (5.5)
   createdAt, updatedAt, readAt, seq
 }
@@ -535,7 +534,7 @@ Request {
 
 ThreadSummary = id, cwd, title, provider, model, effort, fast, permission, plan, updatedAt,
   status: "idle"|"working"|"failed", needs: "approval"|"question"|"plan" | null,
-  background: bool, queued: count, unread: bool,
+  beside: {subagents: count, tasks: count}, queued: count, unread: bool,
   said: string | null    // the start of the last message, the person's or the agent's
 ```
 
@@ -545,8 +544,8 @@ Derived, never stored (T3: status written twice drifts):
 - `said`, from the latest item of the person's message or the agent's reply that has words:
   its first such line, without markdown's marks, spaces closed up, at most 200 characters
   (`opening`). A tab's row in the sidebar shows it (`docs/sidebar.md` 5).
-  `unread` when the latest settled run ended after `readAt`. `background` while the thread's
-  `backgroundTasks` isn't 0 (4.5.6).
+  `unread` when the latest settled run ended after `readAt`. `beside` is the live session's (4.5.6): with `status` and
+  `needs` it's what `docs/activity.md` reads.
 - The stop divider ("You stopped this response") from `Run.stop`; the failure row from
   `Run.failure`; Force stop offered once `stop.requestedAt` is 10 s old and the run is still
   stopping; the user message of a run from its `user_message` item.
@@ -669,15 +668,17 @@ leaves the choice to the provider's settings. A change to the chat's mode reache
 session the same way. A change to Koyo's default leaves a live session in the mode it has,
 until it next opens.
 
-A session with a task in the background doesn't idle-close or get evicted. A task in the
-background is a shell the agent started with `run_in_background`, a Monitor, or a subagent
-(4.5.10). The agent ends its turn and waits for it: its end starts a turn of the agent's own,
+A session with anything beside its turn doesn't idle-close or get evicted: a subagent at work
+(4.5.10), or a task in the background, which is a shell the agent started with
+`run_in_background` or a Monitor. The agent ends its turn and waits for it: its end starts a turn of the agent's own,
 which only the session's process can start, and the task ends with that process. That turn is
 a run with no message of the person's (`turn.adopted`, 4.7), shown like any other. Once no
 task runs, the session closes after 5 minutes idle, as after a turn. The provider says how
-many tasks run each time that changes (the `background` event, kept as
-`Thread.backgroundTasks`), and lists show it as the summary's `background`; a task the
-provider says isn't activity, as a housekeeping one, doesn't count. A session that ends anyway
+many tasks run each time that changes (the `background` event), leaving out the subagents, which
+it says by `subagent.*`, and any that isn't activity, as a housekeeping one. The actor keeps both
+as `beside`, `tasks` as last said and `subagents` as many as work, for as long as the session
+lives and never in the store, and says it in the summary, in an open's snapshot and as
+`thread.beside` (`docs/activity.md`). A session that ends anyway
 ends its tasks with it: the host is stopped or replaced, or crashes, or a settings change
 reopens it. The next turn resumes the conversation, and Claude tells the agent they stopped. A
 task that never ends, as a dev server, keeps the session, and the host, until the agent stops
@@ -784,7 +785,8 @@ DriverEvent = session.ready {mode, model} | turn.started {promptId}
   | item.updated {key, item, status} | usage {usage} | request {request}
   | notice {level, text}
   | turn.finished {outcome: "completed"|"interrupted"|"failed", failure, usage}
-  | background {tasks}                  // how many run in the background, as that changes
+  | background {tasks}                  // how many run in the background, as that changes,
+                                        // subagents not among them (docs/activity.md 3)
   | session.ended {error}
 ```
 
@@ -829,9 +831,9 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
 - **Background.** `background_tasks_changed` lists every task the CLI runs in the background
   whenever that list changes, whatever turn runs: the shells and Monitors the agent started
   and the subagents running past their turn, which it goes on from as they end. Those it marks
-  `ambient` (watchers it started on its own) aren't the agent's work. Their count is the
-  thread's `backgroundTasks`, sent as the `background` driver event when it changes, and none
-  once the CLI's process restarts or the session goes, as the list is the process's. A session
+  `ambient` (watchers it started on its own) aren't the agent's work, and its subagents
+  (`local_agent`) are said by their own frames. The rest's count is `beside.tasks`,
+  sent as the `background` driver event when it changes, and none once the CLI's process restarts or the session goes, as the list is the process's. A session
   with one running is kept open, as each one's end starts a turn only its process can (4.5.6).
   As recorded (CLI 2.1.319): a shell started with `run_in_background` and a Monitor are both
   `local_bash` tasks, neither `ambient`. Each one's end, and each line a Monitor prints,
@@ -1078,7 +1080,7 @@ Layout, top to bottom inside the pane's card:
   0.7 s as work starts and out over 1.1 s as it ends, going on round meanwhile. A chat works
   while its turn runs and isn't waiting on a person, while any of its subagents runs (one can
   after the turn that started it), or while the agent has a shell or a Monitor running in the
-  background that it'll go on from (`Thread.backgroundTasks`), a dev server left running among
+  background that it'll go on from (`docs/activity.md`), a dev server left running among
   them; waiting on a person alone, it doesn't. Settings › Chat › Composer › While it works:
   "Subtle line" (the default), "Clear line" (brighter, 170 pt, 1.5 pt wide), "Still edge" (the
   whole edge a little brighter, holding still) or "Off" (the faint edge only). A line holds still
@@ -1275,14 +1277,15 @@ Layout, top to bottom inside the pane's card:
   the scrollbar counts as scrolling. Which prompt floats, and how far up it is, is worked out from
   the list's top row and where it laid the next prompt's row, as a person scrolls and after each
   draw of the tab.
-- **Status in the shell.** The tab face shows a spinner while working (`chat/spinner.rs`: a small
+- **Status in the shell.** What's said of a chat's work and of what it has for the person, and
+  where, is `docs/activity.md`. The tab face shows a spinner while working (`chat/spinner.rs`: a small
   bold ring in amber, going round, drawn at each beat (`beat.rs`), at most 30 a second while
   Koyo is in front and 10 while another app is; a window nobody can see, minimized, covered or
   on another desktop, asks for none, and is drawn whole again once it's seen; until 2026-11-14 it
-  stood still while Koyo wasn't in front), a dot in the text's colour
-  when it needs you, a dot when unread, red when failed. With the tabs in the sidebar a tab's row says it
-  at its end instead: the spinner, then an indigo dot (`docs/sidebar.md` 5). The sidebar's worktree row shows the
-  most urgent of its chats, and a chat with no tab counts only while it's working or needs you.
+  stood still while Koyo wasn't in front), and beside it a dot: in the text's colour
+  when it needs you, muted when unread, red when failed. With the tabs in the sidebar a tab's row says it
+  at its end instead, the dot indigo (`docs/sidebar.md` 5). The sidebar's worktree row says all its
+  chats together, and a chat with no tab counts only while it's working or needs you.
   A chat on show with the window in front has been seen, and says so to the host (`threads.read`),
   so a mark for what's new or failed goes once it's looked at. A macOS notification when a chat
   needs you or finishes while Koyo isn't frontmost, opening the chat when clicked; only a bundled

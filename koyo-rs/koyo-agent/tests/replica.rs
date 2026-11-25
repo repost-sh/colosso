@@ -13,10 +13,11 @@ use koyo_agent::protocol::events::{Appended, Changed};
 use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId};
 use koyo_agent::protocol::methods::Rows;
 use koyo_agent::protocol::methods::ThreadSnapshot;
-use koyo_agent::protocol::model::{Item, ItemBody, ItemStatus, Run, RunStatus};
+use koyo_agent::protocol::model::{Beside, Item, Run, RunStatus};
 use koyo_agent::protocol::requests::RequestStatus;
 use koyo_agent::replica::Replica;
-use records::{THREAD, answer, item, message, request, run, snapshot, subagent, thread};
+use koyo_agent::work::Work;
+use records::{THREAD, answer, item, message, request, run, snapshot, thread};
 
 fn changed(seq: u64, runs: Vec<Run>, items: Vec<Item>) -> Changed {
     Changed {
@@ -251,38 +252,29 @@ fn a_removed_run_goes_with_what_it_held_and_what_came_since_takes_its_place() {
 }
 
 #[test]
-fn the_agent_works_while_its_turn_runs_unwaited_or_while_anything_it_started_runs() {
-    let held = |status: RunStatus, agent: Option<ItemStatus>, waits: bool, background: u64| {
-        let agent = agent.map(|status| Item {
-            status,
-            ..item("s", 1, ItemBody::Subagent(Box::new(subagent("Look"))), 3)
-        });
-        let mut replica = Replica::new(ThreadSnapshot {
+fn the_agent_is_at_its_turn_unless_that_waits_and_at_what_runs_beside_it() {
+    let held = |status: RunStatus, waits: bool, beside: Beside| {
+        let replica = Replica::new(ThreadSnapshot {
+            beside,
             requests: (waits.then(|| request("q", RequestStatus::Pending)))
                 .into_iter()
                 .collect(),
-            ..snapshot(9, vec![run("r1", status, 1)], agent.into_iter().collect())
+            ..snapshot(9, vec![run("r1", status, 1)], Vec::new())
         });
-        replica.thread.background_tasks = background;
-        replica
+        replica.work()
     };
-    assert!(held(RunStatus::Running, None, false, 0).working());
-    assert!(!held(RunStatus::Completed, None, false, 0).working());
-    assert!(
-        !held(RunStatus::Running, None, true, 0).working(),
-        "a turn waiting on a person isn't working"
+    let none = Beside::default();
+    let some = Beside {
+        subagents: 2,
+        tasks: 1,
+    };
+    let work = |turn, beside| Work { turn, beside };
+    assert_eq!(held(RunStatus::Running, false, none), work(true, none));
+    assert_eq!(held(RunStatus::Completed, false, none), work(false, none));
+    assert_eq!(
+        held(RunStatus::Running, true, some),
+        work(false, some),
+        "a turn waiting on a person isn't at work, and what runs beside it is"
     );
-    assert!(
-        held(RunStatus::Completed, Some(ItemStatus::Running), false, 0).working(),
-        "a subagent running on past the turn that started it is"
-    );
-    assert!(
-        held(RunStatus::Running, Some(ItemStatus::Pending), true, 0).working(),
-        "and one still going while the turn waits on a person"
-    );
-    assert!(!held(RunStatus::Completed, Some(ItemStatus::Completed), false, 0).working());
-    assert!(
-        held(RunStatus::Completed, None, false, 1).working(),
-        "and a Monitor running past the turn"
-    );
+    assert_eq!(held(RunStatus::Completed, false, some), work(false, some));
 }
