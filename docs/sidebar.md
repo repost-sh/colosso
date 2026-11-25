@@ -367,6 +367,10 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
   glass with nothing of its own on it, as the top rail does, blurred by the window's own blur as
   the rest of the window is: no fill, no wallpaper (`docs/chat-backdrop.md` 2), and no hairline
   before the islands, whose corners are all rounded, those beside the sidebar among them.
+- **The scrolling rows fade** over 24 points as they reach an end of the area they scroll in, while
+  there's more past it: at the end they're scrolled to they're whole, and the fade comes as they
+  leave it. The rows themselves fade, as they're on glass (`shell/sidebar/edge_fade.rs`).
+  **[asked, 2026-11-25; ours: the 24 points]**
 - **Sidebar indentation** is how far in a branch's row starts from its project's, and a tab's from
   its branch's: 0, 8, 16, 24 or 32 points, 16 by default (`Settings::sidebar_step`, `inset`). The
   rows stay as wide as the sidebar. **[asked, 2026-11-25; ours: the stops]**

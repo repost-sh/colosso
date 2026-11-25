@@ -19,6 +19,17 @@ use crate::{
 pub(crate) struct Shape {
     pub(crate) bounds: Bounds<ScaledPixels>,
     pub(crate) radii: Corners<Size<ScaledPixels>>,
+    /// Koyo: how far in from the top and the bottom edge what's inside comes up
+    /// from nothing to whole (`Window::with_edge_fade`); none but there.
+    pub(crate) fade: EdgeFade,
+}
+
+/// Koyo: how far in from the top and the bottom edge of a clip what's inside
+/// comes up from nothing to whole, in device pixels.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct EdgeFade {
+    pub(crate) top: ScaledPixels,
+    pub(crate) bottom: ScaledPixels,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -55,6 +66,8 @@ impl ClipOperation {
                     shape.radii.bottom_right.height,
                     shape.radii.bottom_left.width,
                     shape.radii.bottom_left.height,
+                    shape.fade.top,
+                    shape.fade.bottom,
                 ] {
                     hasher.write_u32(value.0.to_bits());
                 }
@@ -100,6 +113,7 @@ impl Shape {
                 bottom_right: inner(radii.bottom_right, widths.right, widths.bottom),
                 bottom_left: inner(radii.bottom_left, widths.left, widths.bottom),
             },
+            fade: EdgeFade::default(),
         })
     }
 
@@ -228,8 +242,58 @@ pub(crate) fn track(operation: ClipOperation, active: &mut Vec<Shape>) -> anyhow
     Ok(())
 }
 
+/// Koyo: content that fades as it reaches an edge it scrolls under.
+impl Window {
+    /// Paints what `paint` paints in `bounds`, fading from whole to nothing over
+    /// the last `top` up to its top edge and the last `bottom` down to its
+    /// bottom one, whatever is behind it: each colour's own alpha is scaled, in
+    /// the fragments that evaluate rounded clips. The sides are left as they
+    /// are, and with neither edge fading nothing is recorded.
+    pub fn with_edge_fade(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        top: Pixels,
+        bottom: Pixels,
+        paint: impl FnOnce(&mut Window),
+    ) {
+        if top <= Pixels::ZERO && bottom <= Pixels::ZERO {
+            return paint(self);
+        }
+        let scale = self.scale_factor();
+        let width = self.viewport_size().width;
+        let shape = Shape {
+            bounds: Bounds::new(
+                point(Pixels::ZERO, bounds.origin.y),
+                size(width, bounds.size.height),
+            )
+            .scale(scale),
+            radii: Corners::default(),
+            fade: EdgeFade {
+                top: top.scale(scale),
+                bottom: bottom.scale(scale),
+            },
+        };
+        record(&mut self.next_frame.scene, ClipOperation::Begin(shape));
+        paint(self);
+        record(&mut self.next_frame.scene, ClipOperation::End);
+    }
+}
+
 #[cfg(any(test, feature = "test-support"))]
 impl Window {
+    /// Koyo: each edge fade of the rendered frame: where it is, and how far in
+    /// from its top and its bottom, in scaled pixels.
+    pub fn painted_edge_fades(&self) -> Vec<(Bounds<ScaledPixels>, ScaledPixels, ScaledPixels)> {
+        let scopes = &self.rendered_frame.scene.fast_rounded_clip.scopes;
+        (scopes.iter())
+            .filter(|scope| scope.shape.fade != EdgeFade::default())
+            .map(|scope| {
+                let fade = scope.shape.fade;
+                (scope.shape.bounds, fade.top, fade.bottom)
+            })
+            .collect()
+    }
+
     /// The complete rendered scene, including clip scopes and scroll layers,
     /// for tests that rasterize through a platform's headless GPU renderer.
     pub fn painted_scene(&self) -> &Scene {

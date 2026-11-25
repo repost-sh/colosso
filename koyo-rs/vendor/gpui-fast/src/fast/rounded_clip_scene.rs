@@ -19,6 +19,9 @@ use crate::{
 
 const CLIP_TEXTURE_BASE: u32 = 0xF100_0000;
 const GEOMETRY_KEY: LayerKey = LayerKey(u32::MAX);
+/// Koyo: a second frame of metadata, as the geometry frame is, whose background's
+/// red and green are how far in the group fades from its top and its bottom.
+const FADE_KEY: LayerKey = LayerKey(u32::MAX - 1);
 
 /// Materialize private paint scopes as existing, renderer-readable layer
 /// objects. Preserve the original operation stream for retained paint ranges.
@@ -62,6 +65,7 @@ pub(crate) fn compile(scene: &mut Scene) {
                     continue;
                 }
                 child.layers.frames.push(geometry(shape));
+                child.layers.frames.push(fade(shape));
                 child.finish();
                 let parent = stack.last_mut().expect("parent rounded clip scene");
                 let key = LayerKey(0x0100_0000 + parent.layers.frames.len() as u32);
@@ -116,17 +120,35 @@ pub(crate) fn compile(scene: &mut Scene) {
 
 fn geometry(shape: Shape) -> LayerFrame {
     let r = shape.radii;
-    LayerFrame {
-        key: GEOMETRY_KEY,
-        generation: 0,
-        // Private analytic geometry: horizontal radii are on the group sprite;
-        // this non-composited frame carries the corresponding vertical radii.
-        background: Rgba {
+    // Private analytic geometry: horizontal radii are on the group sprite;
+    // this non-composited frame carries the corresponding vertical radii.
+    metadata(
+        GEOMETRY_KEY,
+        Rgba {
             r: r.top_left.height.0,
             g: r.top_right.height.0,
             b: r.bottom_right.height.0,
             a: r.bottom_left.height.0,
         },
+    )
+}
+
+fn fade(shape: Shape) -> LayerFrame {
+    metadata(
+        FADE_KEY,
+        Rgba {
+            r: shape.fade.top.0,
+            g: shape.fade.bottom.0,
+            ..Rgba::default()
+        },
+    )
+}
+
+fn metadata(key: LayerKey, background: Rgba) -> LayerFrame {
+    LayerFrame {
+        key,
+        generation: 0,
+        background,
         tile_size: 0,
         content: Scene::default().into(),
         dirty_tiles: Vec::new(),

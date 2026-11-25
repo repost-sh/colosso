@@ -414,3 +414,50 @@ fn the_unpinned_rows_scroll_with_the_projects_under_the_pinned_tiles(cx: &mut Te
         assert!(space.bottom() <= foot.top(), "{pages:?}: the foot {foot:?} under it");
     }
 }
+
+/// The scrolling rows fade at an edge while there's more past it, the whole width of them and no
+/// further than the area they scroll in, and not at an end they're scrolled to; what's still over
+/// and under them isn't in it.
+#[gpui_kit::test]
+fn the_scrolling_rows_fade_at_an_edge_theres_more_past(cx: &mut TestAppContext) {
+    let (window, shell) = shell_on_chat("sidebar-edge-fade", cx);
+    act(window, SetTabs(Tabs::Sidebar), cx);
+    let fades = |cx: &mut TestAppContext| {
+        cx.update_window(window, |_, window, _| {
+            let scale = window.scale_factor();
+            let unscaled = |length: gpui_kit::ScaledPixels| px(length.0 / scale);
+            (window.painted_edge_fades().into_iter())
+                .map(|(at, top, bottom)| {
+                    let (from, to) = (unscaled(at.top()), unscaled(at.bottom()));
+                    ((from, to), unscaled(top), unscaled(bottom))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap()
+    };
+    assert_eq!(fades(cx), [], "they fit");
+
+    shell.update(cx, |shell, cx| {
+        for _ in 0..60 {
+            shell.workspace.push_tab(chat("a tab"));
+        }
+        cx.notify();
+    });
+    draw(window, cx);
+    let space = bounds(window, "sidebar-space", cx);
+    let whole = (space.top(), space.bottom());
+    let full = px(super::super::edge_fade::FADE);
+    let scrolled = |to: Option<f32>, cx: &mut TestAppContext| {
+        shell.update(cx, |shell, cx| {
+            let scroll = &shell.sidebar_scroll;
+            let down = to.map_or(scroll.max_offset().y, px);
+            scroll.set_offset(point(px(0.), -down));
+            cx.notify();
+        });
+        draw(window, cx);
+        fades(cx)
+    };
+    assert_eq!(scrolled(Some(0.), cx), [(whole, px(0.), full)], "at the top");
+    assert_eq!(scrolled(Some(200.), cx), [(whole, full, full)], "between");
+    assert_eq!(scrolled(None, cx), [(whole, full, px(0.))], "at the bottom");
+}

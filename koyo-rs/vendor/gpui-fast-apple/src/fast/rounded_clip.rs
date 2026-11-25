@@ -31,6 +31,9 @@ struct Clip {
     bounds: [f32; 4],
     horizontal: [f32; 4],
     vertical: [f32; 4],
+    /// Koyo: how far in it fades from its top and its bottom (`FADE_KEY` in
+    /// gpui-fast's `rounded_clip_scene`); the rest pads to the shader's layout.
+    fade: [f32; 4],
 }
 
 fn group(scene: &Scene, texture: AtlasTextureId) -> Option<&LayerFrame> {
@@ -54,12 +57,12 @@ pub(crate) fn has_groups(scene: &Scene) -> bool {
 
 pub(crate) fn default_mask(encoder: &ProtocolObject<dyn MTLRenderCommandEncoder>) {
     let count = 0u32;
-    let empty = [0f32; 12];
+    let empty = [0f32; 16];
     // SAFETY: Both values are live for the call, which copies their bytes into
     // the fragment slots the injected clip parameters read.
     unsafe {
         encoder.setFragmentBytes_length_atIndex(NonNull::from(&count).cast(), 4, 29);
-        encoder.setFragmentBytes_length_atIndex(NonNull::from(&empty).cast(), 48, 28);
+        encoder.setFragmentBytes_length_atIndex(NonNull::from(&empty).cast(), 64, 28);
     }
 }
 
@@ -222,13 +225,13 @@ fn encode(
             PrimitiveBatch::PolychromeSprites { texture_id, range } => {
                 if let Some(frame) = group(scene, texture_id) {
                     let child = frame.content.scene().context("rounded clip content")?;
-                    let radii = child
-                        .layers
-                        .frames
-                        .iter()
-                        .find(|frame| frame.key.0 == u32::MAX)
-                        .context("rounded clip geometry")?
-                        .background;
+                    let metadata = |key| {
+                        let frames = &child.layers.frames;
+                        let frame = frames.iter().find(|frame| frame.key.0 == key);
+                        frame.map(|frame| frame.background)
+                    };
+                    let radii = metadata(u32::MAX).context("rounded clip geometry")?;
+                    let fade = metadata(u32::MAX - 1).context("rounded clip fade")?;
                     for index in range {
                         let sprite = &scene.polychrome_sprites[index];
                         let b = sprite.bounds;
@@ -242,6 +245,7 @@ fn encode(
                                 r.bottom_left.0,
                             ],
                             vertical: [radii.r, radii.g, radii.b, radii.a],
+                            fade: [fade.r, fade.g, 0., 0.],
                         });
                         let child_bindings = write_instances(child, writer)?;
                         encoder = encode(

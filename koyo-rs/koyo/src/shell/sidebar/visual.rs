@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use gpui_kit::Action;
+use gpui_kit::{Action, point, px};
 
 use crate::browser::profiles::By;
 use crate::model::{Browser, Content, Pane, PaneKind, Tab, Unloaded};
@@ -102,6 +102,33 @@ fn open_tabs(shell: &mut Shell) {
     if let Some(unit) = shell.workspace.branch_mut() {
         unit.active_tab = unit.tabs.len() - 1;
     }
+}
+
+/// More tabs than the sidebar's height, scrolled between their ends: they fade at both.
+fn edge_fade(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    let shell = drawn.shell.clone();
+    drawn.cx.update(|cx| {
+        settings::update(cx, |settings| settings.tabs = Tabs::Sidebar);
+        shell.update(cx, |shell, cx| {
+            shell.show_space(0, cx);
+            for at in 0..60 {
+                let tab = titled(PaneKind::Editor, &format!("Tab {at}"));
+                shell.workspace.push_tab(tab);
+            }
+            cx.notify();
+        });
+    });
+    acts::settle(drawn)?;
+    drawn.cx.update(|cx| {
+        shell.update(cx, |shell, cx| {
+            shell.sidebar_scroll.set_offset(point(px(0.), px(-307.)));
+            cx.notify();
+        });
+    });
+    acts::settle(drawn)?;
+    let path = drawn.save("sidebar-edge-fade.png")?;
+    said.push(format!("saved {} (rows fading at both ends)", path.display()));
+    Ok(())
 }
 
 fn draw() -> Result<Vec<String>> {
@@ -186,5 +213,6 @@ fn draw() -> Result<Vec<String>> {
     let held = |path: &Path| path.display().to_string();
     said.push(format!("the second space's project: {}", held(&site)));
     rail::rail_pages(&mut drawn, &mut said)?;
+    edge_fade(&mut drawn, &mut said)?;
     Ok(said)
 }

@@ -23,6 +23,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
+use super::edge_fade::edge_fade;
 use super::rows::{ROW_END, at_end, branch_tabs, end_place};
 use super::{Look, noted, shown_on_hover, tab_rows};
 use crate::model::{BranchUnit, Front, Project};
@@ -76,10 +77,12 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .flex_1()
         .min_h_0()
         .overflow_y_scroll()
+        .track_scroll(&shell.sidebar_scroll)
         .flex()
         .flex_col()
         .children(unpinned)
         .child(rows);
+    let space = edge_fade(space, &shell.sidebar_scroll);
     let address = address.then(|| {
         let bar = div().flex_shrink_0().mb(px(tab_rows::GAP));
         bar.child(shell.sidebar_top.bar())

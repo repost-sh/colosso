@@ -14,6 +14,7 @@ use crate::theme::{self, Palette, gray};
 
 mod address;
 mod card;
+mod edge_fade;
 pub(crate) mod foot;
 mod frame;
 mod hover;

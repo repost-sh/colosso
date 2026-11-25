@@ -48,6 +48,8 @@ struct FastRoundedClip {
   float4 bounds;
   float4 horizontal;
   float4 vertical;
+  // Koyo: how far in it fades from its top and its bottom.
+  float4 fade;
 };
 float fast_rounded_clip_coverage(float2 position, constant FastRoundedClip &shape) {
   float2 extent = shape.bounds.zw - shape.bounds.xy;
@@ -69,11 +71,21 @@ float fast_rounded_clip_coverage(float2 position, constant FastRoundedClip &shap
   }
   return clamp(0.5f - distance, 0.0f, 1.0f);
 }
+// Koyo: how much shows at `position` of what fades at the shape's top and bottom.
+float fast_edge_fade(float2 position, constant FastRoundedClip &shape) {
+  float shown = 1;
+  if (shape.fade.x > 0) shown *= smoothstep(0.0f, shape.fade.x, position.y - shape.bounds.y);
+  if (shape.fade.y > 0) shown *= smoothstep(0.0f, shape.fade.y, shape.bounds.w - position.y);
+  return shown;
+}
 float4 fast_rounded_clip_color(float4 color, float2 position, constant FastRoundedClip *shapes, uint count, bool premultiplied) {
   float coverage = 1;
+  float shown = 1;
   for (uint index = 0; index < count; ++index) {
     coverage = min(coverage, fast_rounded_clip_coverage(position, shapes[index]));
+    shown *= fast_edge_fade(position, shapes[index]);
   }
+  coverage *= shown;
   if (premultiplied) color.rgb *= coverage;
   color.a *= coverage;
   return color;

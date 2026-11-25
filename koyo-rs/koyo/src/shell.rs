@@ -9,8 +9,8 @@ use gpui_kit::component::Theme;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, Pixels, Point, Render, Styled,
-    Subscription, Window, div, px,
+    IntoElement, MouseButton, ParentElement as _, Pixels, Point, Render, ScrollHandle,
+    Styled, Subscription, Window, div, px,
 };
 
 use crate::bottom::StatusBar;
@@ -114,6 +114,8 @@ pub struct Shell {
     /// Where the sidebar's space is as two fingers move it between spaces, or the spring
     /// settles it.
     pub swipe: spaces::Swipe,
+    /// How far the sidebar's rows are scrolled.
+    pub(crate) sidebar_scroll: ScrollHandle,
     pub focus: FocusHandle,
     /// What's still to happen to the keyboard, which only the person moves (`keys`).
     keys: keys::Handing,
@@ -216,6 +218,7 @@ impl Shell {
             keys: keys::Handing::default(),
             kept,
             swipe: spaces::Swipe::default(),
+            sidebar_scroll: ScrollHandle::new(),
             focus,
             right_clicked_at: Point::default(),
             sidebar_hover: sidebar::Hover::default(),
