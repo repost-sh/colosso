@@ -95,7 +95,8 @@ pub(super) fn branch_tabs(
 
 /// The tab `tab` at `at` as its row in the sidebar, what's in it a step further in than in its
 /// branch's: the one shown (`active`) a pill, the others tinted while hovered, and at its end how
-/// it's doing (`sign`), or its × while it's hovered, or shown with nothing to say. A pinned
+/// it's doing (`sign`), or its × while it's hovered, or shown with nothing to say; a split's says
+/// it after its panes, whose own × are theirs. A pinned
 /// page's tile let go on it is unpinned there. A chat's, but for the tab shown's, says under its
 /// title what was said last in it.
 fn tab_row_of(
@@ -111,24 +112,24 @@ fn tab_row_of(
     let first = tab.first().id;
     let place = || format!("sidebar-tab-{first}");
     let says = sign(shell.tab_activity(tab, cx), place, look, cx);
-    let (ahead, at_its_end) = match tab {
+    let (split_says, says) = match tab {
         Tab::Split(_) => (says, None),
         Tab::Single(_) => (None, says),
     };
+    let split_end = split_says.map(|sign| end_place().child(sign.in_column()));
     let said = (!active).then(|| shell.tab_said(tab, cx)).flatten();
     let row = sidebar_row(("sidebar-tab", branch_index * 100 + tab_index))
         .group("sidebar-tab")
         .pl(inset(2, cx));
-    let row = Shell::tab_press(look.lit(row, active).pr(px(ROW_END)), at, cx)
-        .children(ahead.map(Sign::in_line));
+    let row = Shell::tab_press(look.lit(row, active).pr(px(ROW_END)), at, cx);
     let row = takes_pins(row, look, cx, move |this, key, cx| {
         this.unpin_onto(key, (project_index, branch_index), tab_index, cx);
     });
     let row = noted(row, move || format!("sidebar-tab-{branch_index}-{tab_index}"));
     let list = (Axis::Vertical, &shell.tab_hand);
-    tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
+    tab_row(row, (at, tab), list, split_end, p, cx, |row, face, cx| {
         let close = ("sidebar-tab-close", branch_index * 100 + tab_index);
-        let mark = at_its_end.map(|sign| at_end(sign.in_column(), "sidebar-tab"));
+        let mark = says.map(|sign| at_end(sign.in_column(), "sidebar-tab"));
         let hidden = !face.dirty && (!active || mark.is_some());
         let shown = !hidden || mark.is_some();
         let close = tab_close_button(close, at, (face.dirty, ROW_GLYPH), p, cx);

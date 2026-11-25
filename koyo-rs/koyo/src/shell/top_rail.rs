@@ -85,9 +85,8 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
                 row.on_prepaint(crate::visual::noting(format!("rail-tab-{tab_index}")))
             };
             let list = (Axis::Horizontal, &shell.tab_hand);
-            let (sign, split_sign) = signs(shell, tab, p, cx);
-            let row = row.children(split_sign);
-            tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
+            let (sign, split_end) = signs(shell, tab, p, cx);
+            tab_row(row, (at, tab), list, split_end, p, cx, |row, face, cx| {
                 let close = ("rail-tab-close", tab_index);
                 let close = tab_close_button(close, at, (face.dirty, CLOSE), p, cx);
                 single_page(row, (face.icon(13.), face.label()), sign, close)
@@ -117,8 +116,8 @@ pub fn tabs(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement + use<> 
     sliding(div().min_w_0(), tabs)
 }
 
-/// A tab's sign where its row shows it: after a single pane's icon (the first), or ahead of a
-/// split's chips (the second). Its spinner says its chats' work (`docs/activity.md`). Its dot says
+/// A tab's sign where its row shows it: after a single pane's icon (the first), or one for
+/// all of a split's panes, after them (the second). Its spinner says its chats' work (`docs/activity.md`). Its dot says
 /// what's most urgent: a terminal that waits for the person, then what a chat has for them, then
 /// whatever a terminal's doing.
 fn signs(shell: &Shell, tab: &Tab, p: Palette, cx: &mut App) -> (Option<Div>, Option<Div>) {

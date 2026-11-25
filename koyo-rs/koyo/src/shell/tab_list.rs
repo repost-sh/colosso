@@ -41,13 +41,14 @@ pub fn tab_list(
 }
 
 /// The tab `tab` at `at`, as `(project, branch, tab)`, in its list along `axis`, keyed by
-/// what it keeps as it moves: `row` showing a split's panes as chips, and a single pane as
-/// `single` has it. Dragged, it's taken up by the list, and what's dropped on it from a
+/// what it keeps as it moves: `row` showing a split's panes as chips and `split_end` after them,
+/// and a single pane as `single` has it. Dragged, it's taken up by the list, and what's dropped on it from a
 /// split goes where it is.
 pub fn tab_row(
     row: Stateful<Div>,
     (at, tab): ((usize, usize, usize), &Tab),
     (axis, hand): (Axis, &Rc<TabHand>),
+    split_end: Option<Div>,
     p: Palette,
     cx: &mut Context<Shell>,
     single: impl FnOnce(Stateful<Div>, &Face, &mut Context<Shell>) -> Stateful<Div>,
@@ -57,7 +58,8 @@ pub fn tab_row(
         (Tab::Single(_), Some(face)) => single(row, face, cx),
         _ => row
             .when(axis == Axis::Horizontal, |row| row.px(px(3.)))
-            .child(split_chips(&faces, axis, p, cx)),
+            .child(split_chips(&faces, axis, p, cx))
+            .children(split_end),
     };
     let key = tab.first().id;
     let row = tab_drag(row, (at, key), (axis, hand), faces, p, cx);

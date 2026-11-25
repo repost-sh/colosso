@@ -241,7 +241,8 @@ Each branch is a row under its project's row (`shell/sidebar/projects.rs`, its t
     on it; one with unsaved edits shows its dot always.
   - A row says at its end what goes on in the tab (`Shell::tab_activity`, `docs/activity.md`): the
     spinner for its work, an indigo dot before it once something in it waits for the person. It has the ×'s place and leaves it to the × while the pointer's on the row; a
-    split's row has it before its panes.
+    split's row has it in that column too, after its panes, whose × stay theirs. **[asked,
+    2026-11-25]**
   - Unsaved edits' and splits' dots, middle-click to close, and dragging to reorder stay.
 - A tab dragged past its list's end onto another branch's tabs or row moves to that branch and
   shows there: where the tab it's dropped on is, or first. A collapsed branch's row takes it too,

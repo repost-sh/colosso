@@ -213,6 +213,7 @@ fn draw() -> Result<Vec<String>> {
     let held = |path: &Path| path.display().to_string();
     said.push(format!("the second space's project: {}", held(&site)));
     rail::rail_pages(&mut drawn, &mut said)?;
+    acts::split_mark(&mut drawn, &mut said)?;
     edge_fade(&mut drawn, &mut said)?;
     Ok(said)
 }

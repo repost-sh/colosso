@@ -21,7 +21,8 @@ Two things are said, and neither hides the other. **[asked, 2026-11-25]**
   running too changes nothing drawn. **[asked, 2026-11-25]** A subagent running past its turn is
   an agent at it, so it has the full spinner. **[ours]**
 - **How many subagents work** is written up and right of the spinner, as an exponent is: `x3`.
-  It's every one at work, those that subagents started among them. **[asked, 2026-11-25]** A
+  It's every one at work, those that subagents started among them, and it's written from two
+  up: one needs no count. **[asked, 2026-11-25]** A
   space's mark is too small for it and shows the spinner alone. **[ours]**
 - **A turn that waits for the person isn't work**: the dot says it. What runs beside it still is.
 - **Put together**, chats say all of their work and the most urgent attention: subagents and

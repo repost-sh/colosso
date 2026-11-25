@@ -1,6 +1,6 @@
 //! How a place says what goes on in it (`docs/activity.md`): the dot for what it has for the
-//! person, and after it the spinner for its work, with how many subagents work up and right of it,
-//! as an exponent is written. Each shows whatever the other does.
+//! person, and after it the spinner for its work, with how many subagents work up and right of it
+//! once there's more than one, as an exponent is written. Each shows whatever the other does.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -53,7 +53,7 @@ impl Sign {
             let count = work.beside.subagents;
             (div().flex().flex_shrink_0().items_start())
                 .child(spinner.debug_selector(known("spinner")))
-                .when(count > 0, |work| {
+                .when(count > 1, |work| {
                     let count = div()
                         .debug_selector(known("subagents"))
                         .flex_shrink_0()
@@ -71,7 +71,7 @@ impl Sign {
         Some(Sign { dot, work })
     }
 
-    /// The sign in a line, as wide as what it says: on a rail tab, on a split's row.
+    /// The sign in a line, as wide as what it says: on a rail tab.
     pub fn in_line(self) -> Div {
         (div().flex().flex_shrink_0().items_center())
             .gap(px(APART))

@@ -8,6 +8,7 @@ use koyo_agent::protocol::requests::RequestKind;
 
 use super::{drawn, hear, sidebar_shell, unseen_chat};
 use crate::model::Edge;
+use crate::model::tests::chat;
 use crate::test_support::{click, draw, hover};
 
 #[gpui_kit::test]
@@ -68,9 +69,30 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
         cx.notify();
     });
     let (working, _) = told(cx);
-    let spinner = working.expect("the spinner on the split's row");
+    let in_split = working.expect("the spinner on the split's row");
+    assert_eq!(in_split.center().x, spinner.center().x, "at the end, in the rows' column");
     let row = drawn(window, "tab-0-0-0", cx).expect("the split's row");
-    assert!(spinner.right() < row.center().x, "{spinner:?} in {row:?}");
+    let on = point(row.left() + row.size.width * 0.75, row.center().y);
+    hover(window, on, cx);
+    let right = cx.read(|cx| {
+        let unit = shell.read(cx).workspace.branch().expect("a checkout");
+        unit.tabs[0].panes()[1].id
+    });
+    let close = drawn(window, format!("pane-chip-close-{right}"), cx).expect("its ×");
+    assert!(close.right() <= in_split.left(), "{close:?} before {in_split:?}");
+
+    shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("a third"));
+        let unit = shell.workspace.branch_mut().expect("a checkout");
+        let beside = unit.tabs[0].first().id;
+        assert!(unit.drop_tab(1, beside, Edge::Right), "three side by side");
+        cx.notify();
+    });
+    hear(Status::Working, None, true, cx);
+    let (working, waiting) = told(cx);
+    let (one, dot) = (working.expect("one spinner"), waiting.expect("and one dot"));
+    assert_eq!(one, in_split, "for all three, in the same place");
+    assert!(dot.right() < one.left(), "{dot:?} beside {one:?}");
 }
 
 #[gpui_kit::test]
@@ -220,6 +242,8 @@ fn subagents_and_what_runs_in_the_background_are_said_past_the_turn(cx: &mut Tes
     let spinner = part("spinner", cx).expect("a shell it left running is work");
     assert_eq!(part("subagents", cx), None);
 
+    runs("0001", 1, 1, cx);
+    assert_eq!(part("subagents", cx), None, "one needs no count");
     runs("0001", 4, 1, cx);
     assert_eq!(part("spinner", cx), Some(spinner), "in its place");
     let count = part("subagents", cx).expect("how many subagents");

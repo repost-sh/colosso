@@ -13,7 +13,7 @@ use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
 
 use super::{OUT, titled, web_page};
 use crate::modal;
-use crate::model::{PaneKind, Tab};
+use crate::model::{Edge, Pane, PaneKind, Tab};
 use crate::settings;
 use crate::shell::ToggleRightPanel;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
@@ -209,6 +209,35 @@ pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
             ));
         }
     }
+    Ok(())
+}
+
+/// The chat's tab as a split of three, at work with subagents and something for the person: the
+/// one sign at its row's end.
+pub fn split_mark(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    let shell = drawn.shell.clone();
+    let root = checkout()?;
+    drawn.cx.update(|cx| {
+        settings::update(cx, |settings| settings.tabs = settings::Tabs::Sidebar);
+        shell.update(cx, |shell, cx| {
+            for title in ["Guide", "Notes"] {
+                let Some(unit) = shell.workspace.branch_mut() else {
+                    return;
+                };
+                let chat = |pane: &Pane| pane.chat().is_some_and(|id| id.0 == "0002");
+                let Some(at) = unit.tabs.iter().position(|tab| tab.any_pane(&chat)) else {
+                    return;
+                };
+                let beside = unit.tabs[at].first().id;
+                unit.tabs.push(web_page("https://docs.example.com/", title));
+                unit.drop_tab(unit.tabs.len() - 1, beside, Edge::Right);
+            }
+            cx.notify();
+        });
+    });
+    hear(drawn, ("0002", &root), (Status::Working, 3, 0), true);
+    settle(drawn)?;
+    said.push(save_with(drawn, "sidebar-split-mark", Part::Rows)?);
     Ok(())
 }
 

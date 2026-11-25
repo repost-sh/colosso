@@ -10,8 +10,10 @@ use gpui_kit::{
     px,
 };
 
+use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
 
+use crate::model::Edge;
 use crate::model::tests::chat;
 use crate::projects::MoveProjectToNewSpace;
 use crate::settings;
@@ -304,4 +306,34 @@ fn a_chats_tab_says_its_work_and_what_waits_side_by_side(cx: &mut TestAppContext
     assert!(count.right() > spinner.right(), "{spinner:?} {count:?}");
     let close = drawn(window, "tab-0-0-0", cx).expect("its tab");
     assert!(count.right() < close.right(), "{count:?} in {close:?}");
+}
+
+/// A split's tab on the rail says one sign for all its panes, after them.
+#[gpui_kit::test]
+fn a_splits_tab_says_one_sign_after_its_panes(cx: &mut TestAppContext) {
+    let (window, shell) = shell_on_chat("rail-split-sign", cx);
+    let (root, pane) = shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("beside"));
+        let unit = shell.workspace.branch_mut().expect("a checkout");
+        let (root, pane) = (unit.worktree.path.clone(), unit.tabs[0].first().id);
+        assert!(unit.drop_tab(1, pane, Edge::Right), "the two side by side");
+        shell.workspace.set_chat(pane, ThreadId("0001".into()));
+        cx.notify();
+        (root, pane)
+    });
+    let summary = ThreadSummary {
+        status: Status::Working,
+        ..crate::chat::tests::summary("0001", &root, "A chat", true)
+    };
+    crate::chat::tests::tell(&shell, summary, cx);
+    let spinner = drawn(window, format!("tab-{pane}-spinner"), cx).expect("its spinner");
+    let tab = drawn(window, "tab-0-0-0", cx).expect("the split's tab");
+    for at in cx.read(|cx| {
+        let unit = shell.read(cx).workspace.branch().expect("a checkout");
+        unit.tabs[0].panes().iter().map(|pane| pane.id).collect::<Vec<_>>()
+    }) {
+        let close = drawn(window, format!("pane-chip-close-{at}"), cx).expect("a pane's ×");
+        assert!(close.right() <= spinner.left(), "{close:?} before {spinner:?}");
+    }
+    assert!(spinner.right() < tab.right(), "{spinner:?} in {tab:?}");
 }
