@@ -239,8 +239,11 @@ chose).
 ### 4.7 Icons
 
 The icon a tab fetches for a page (`browser/favicon.rs`) is kept as a PNG per host in
-`history-icons/` beside the history. The launcher shows it next to that host's rows, as
-tabs do.
+`history-icons/` beside the history, again each time a page of the host names another. It's the
+host's of the page that named it, though its tab shows another page by then. The launcher shows it
+next to that host's rows. A page with no icon of its own shows it, on its tab, tile or button: one
+opened or opened again, until its own is fetched, and one whose own can't be
+(`BrowserView::favicon`).
 
 ## 5. Why Koyo keeps its own history, not Chromium's
 

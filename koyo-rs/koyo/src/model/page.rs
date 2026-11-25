@@ -167,7 +167,7 @@ impl Made {
     fn of(view: Entity<BrowserView>, cx: &App) -> Self {
         let page = view.read(cx);
         let (inspected, address, favicon) =
-            (page.inspected().cloned(), page.address(), page.favicon());
+            (page.inspected().cloned(), page.address(), page.favicon(cx));
         Made {
             view,
             inspected,

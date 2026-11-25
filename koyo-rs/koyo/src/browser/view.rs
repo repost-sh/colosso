@@ -3,14 +3,13 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use futures::channel::oneshot;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Pixels,
     Point, Subscription, WeakEntity, Window,
 };
 use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Session, Viewport};
@@ -196,8 +195,8 @@ pub struct BrowserView {
     /// The page's history around it and its scroll, as the host last said; or, until it
     /// says, as the page brought back had them (`navigation.rs`).
     pub(super) session: Session,
-    /// The page's own icon, once the host has fetched it.
-    pub(super) favicon: Option<Arc<Image>>,
+    /// The icon the page named last, once the host has fetched it (`favicon.rs`).
+    pub(super) favicon: Option<super::favicon::Favicon>,
     /// How the page being opened came, which the history's visit of it says, `None` back or
     /// forward; and the page last told as visited (`navigation.rs`).
     came: Option<How>,
@@ -268,6 +267,7 @@ impl BrowserView {
                 this.window_visible = visibility.is_visible();
                 this.tell_sight(cx);
             }),
+            crate::history::observe_icons(cx, Self::kept_favicons_changed),
             cx.on_focus(&focus, window, |this, window, cx| this.focus_moved(true, window, cx)),
             cx.on_blur(&focus, window, |this, window, cx| this.focus_moved(false, window, cx)),
             cx.subscribe_in(

@@ -321,6 +321,34 @@ fn cmd_shift_t_opens_a_closed_pinned_page_again_at_the_address_it_showed(cx: &mu
     assert_eq!(pinned(&shell, cx), [pages[0]], "a page no longer pinned stays gone");
 }
 
+/// A pinned page opened again shows its site's icon at once, picked or brought back with ⌘⇧T, before
+/// its page has loaded and named one.
+#[gpui_kit::test]
+fn a_pinned_page_opened_again_shows_its_sites_icon_at_once(cx: &mut TestAppContext) {
+    let (window, shell, _) = sidebar_shell(&["sidebar-pin-icon"], cx);
+    let key = pin(window, &shell, &["https://a.example/"], cx)[0];
+    let icon = |cx: &TestAppContext| {
+        cx.read(|cx| {
+            let page = shell.read(cx).workspace.pane(key).expect("the pinned page");
+            (page.view().is_some(), page.favicon().is_some())
+        })
+    };
+    let view = cx.read(|cx| shell.read(cx).workspace.pane(key)?.view().cloned());
+    view.expect("open").update(cx, |view, cx| {
+        view.pretend_page("https://a.example/", Some("https://a.example/a.ico"), cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(icon(cx), (true, true), "its own, once fetched");
+
+    act(window, CloseTab, cx);
+    assert_eq!(icon(cx), (false, true), "closed, on its tile");
+    act(window, ReopenClosedTab, cx);
+    assert_eq!(icon(cx), (true, true), "brought back, its page not loaded yet");
+    act(window, CloseTab, cx);
+    click(window, "sidebar-pinned-0", cx);
+    assert_eq!(icon(cx), (true, true), "picked, its page not loaded yet");
+}
+
 #[gpui_kit::test]
 fn a_pinned_page_closed_stays_pinned_and_goes_back_to_where_its_pinned(cx: &mut TestAppContext) {
     let (window, shell, _) = sidebar_shell(&["sidebar-pin-close"], cx);

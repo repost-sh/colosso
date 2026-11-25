@@ -27,16 +27,18 @@ impl Shell {
         }
     }
 
-    /// `view` changed: the page it shows, loaded, keeps the title and icon it has now.
+    /// `view` changed: the page it shows, loaded, keeps the title it has now, and the page that named
+    /// its icon keeps that as its site's.
     pub(super) fn note_page(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         let view = view.read(cx);
         let Some((url, title)) = view.loaded_page() else {
             return;
         };
-        let (url, title, icon) = (url.to_owned(), title.to_owned(), view.favicon());
+        let (url, title) = (url.to_owned(), title.to_owned());
+        let icon = view.named_favicon().map(|(page, icon)| (page.to_owned(), icon.clone()));
         history::retitled(&url, &title, cx);
-        if let Some(icon) = icon {
-            history::keep_icon(&url, &icon, cx);
+        if let Some((page, icon)) = icon {
+            history::keep_icon(&page, &icon, cx);
         }
     }
 
