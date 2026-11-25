@@ -13,6 +13,9 @@ pub use code::{Code, Declared, Kind, Token};
 /// The root of the koyo crate's shipped build, the app.
 pub const KOYO: &str = "koyo-rs/koyo/src/main.rs";
 
+/// The folder of the koyo crate's source.
+pub const KOYO_FILES: &str = "koyo-rs/koyo/src";
+
 /// The root of the browser host's, the library the app runs the engine with on its main
 /// thread.
 pub const BROWSER_HOST: &str = "koyo-rs/koyo-browser-host/src/lib.rs";

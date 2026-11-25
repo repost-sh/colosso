@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::failure::Failure;
 use crate::list_file::{self, Line};
+use crate::renames::Renames;
 
 /// The koyo crate's list of the files that still block, by its path in the checkout.
 pub const FILE: &str = "koyo-rs/blocking-debt.txt";
@@ -78,4 +79,41 @@ pub fn counts(debt: &Debt) -> BTreeMap<&str, usize> {
     (debt.entries.iter())
         .map(|entry| (entry.value.path.as_str(), entry.value.count))
         .collect()
+}
+
+/// Each file's allowance on `ledger`'s list at the last commit, by its path in the workspace, or
+/// `None` before the commit that adds the list. A file on `debt` the last commit's list lacks
+/// takes the allowance of the file git finds renamed to it, which has none left.
+pub fn at_head(
+    root: &Path,
+    ledger: &Ledger,
+    debt: &Debt,
+) -> Result<Option<BTreeMap<String, usize>>, Failure> {
+    let Some(head) = Debt::at_head_at(root, ledger.list)? else {
+        return Ok(None);
+    };
+    let mut allowed: BTreeMap<String, usize> = counts(&head)
+        .into_iter()
+        .map(|(path, count)| (path.to_owned(), count))
+        .collect();
+    let mut gained: Vec<&str> = counts(debt).into_keys().collect();
+    gained.retain(|path| !allowed.contains_key(*path));
+    if gained.is_empty() {
+        return Ok(Some(allowed));
+    }
+    let renames = Renames::since_head(root)?;
+    for path in gained {
+        let taken = renames
+            .before(&format!("{WORKSPACE}{path}"))
+            .and_then(|before| allowed.remove(workspace_path(before)));
+        if let Some(count) = taken {
+            allowed.insert(path.to_owned(), count);
+        }
+    }
+    Ok(Some(allowed))
+}
+
+/// The path in the workspace of a file by its path in the checkout.
+pub fn workspace_path(path: &str) -> &str {
+    path.strip_prefix(WORKSPACE).unwrap_or(path)
 }

@@ -36,7 +36,8 @@ script/cargo run -q -p koyo-hygiene -- --prune",
 pub static ADDED_EDGE: Rule = Rule {
     name: "added edge",
     fix: "koyo-rs/module-edges.txt only shrinks, and the last commit's list lacks this line. Change
-the code so the edge closes no cycle; --prune then takes the line off.",
+the code so the edge closes no cycle; --prune then takes the line off. An import in a file git
+finds renamed, or of one, keeps its line by its modules' new names, in place of the old line.",
 };
 
 pub static BLOCKING_CALL: Rule = Rule {
@@ -71,7 +72,7 @@ pub static ADDED_CALL: Rule = Rule {
     name: "added call",
     fix: "A crate's list of blocking calls only shrinks, and the last commit's list lacks this
 line or allows the file fewer calls. Move the calls onto a `Blocking` instead; --prune then lowers
-the line.",
+the line. A file git finds renamed keeps its line by its new path, in place of the old line.",
 };
 
 pub static RULES: [&Rule; 9] = [

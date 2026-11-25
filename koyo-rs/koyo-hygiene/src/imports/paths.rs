@@ -21,6 +21,9 @@ pub struct Reach {
     pub site: usize,
     pub base: Base,
     pub segment: Segment,
+    /// The names each way the path goes on after the segment, as a use list gives it several:
+    /// `[b]` and `[c, d]` for `a::{b, c::d}`.
+    pub onward: Vec<Vec<String>>,
     pub line: usize,
     pub start: usize,
 }
@@ -42,7 +45,7 @@ pub fn reaches(tokens: &[Token<'_>]) -> Vec<Reach> {
             (_, Some((base, colons))) => follow(tokens, colons, base, token.site, &mut found),
             (_, None) => {
                 if token.kind == "identifier" && kind_at(tokens, index + 1) == Some("::") {
-                    record(&mut found, token.site, Base::Up(0), token);
+                    record(tokens, index, token.site, Base::Up(0), &mut found);
                 }
                 index + 1
             }
@@ -109,8 +112,8 @@ fn follow(
     let at = colons + 1;
     match tokens.get(at) {
         Some(token) if token.kind == "{" => listed(tokens, at + 1, base, site, found),
-        Some(token) => {
-            record(found, site, base, token);
+        Some(_) => {
+            record(tokens, at, site, base, found);
             at + 1
         }
         None => at,
@@ -121,23 +124,36 @@ fn follow(
 /// further, as `super::{super::x}` does, is followed from where it climbs to.
 fn listed(
     tokens: &[Token<'_>],
-    mut index: usize,
+    index: usize,
     base: Base,
     site: usize,
     found: &mut Vec<Reach>,
 ) -> usize {
+    elements(tokens, index, |element| {
+        if let (Base::Up(levels), Some((Base::Up(more), colons))) = (base, root_at(tokens, element))
+        {
+            follow(tokens, colons, Base::Up(levels + more), site, found)
+        } else {
+            record(tokens, element, site, base, found);
+            element
+        }
+    })
+}
+
+/// Hands `read` the index each element at the top level of the use list opening before `index`
+/// starts at, for the index after the part of it `read` read, and returns the index after the
+/// list.
+fn elements(tokens: &[Token<'_>], mut index: usize, mut read: impl FnMut(usize) -> usize) -> usize {
     let mut depth = 1;
     let mut element_starts = true;
     while let Some(token) = tokens.get(index) {
         if element_starts && depth == 1 {
             element_starts = false;
-            if let (Base::Up(levels), Some((Base::Up(more), colons))) =
-                (base, root_at(tokens, index))
-            {
-                index = follow(tokens, colons, Base::Up(levels + more), site, found);
+            let after = read(index);
+            if after > index {
+                index = after;
                 continue;
             }
-            record(found, site, base, token);
         }
         match token.kind {
             "{" => depth += 1,
@@ -151,21 +167,77 @@ fn listed(
     index
 }
 
-/// The path from `base` whose first segment is `token`, if the token names one.
-fn record(found: &mut Vec<Reach>, site: usize, base: Base, token: &Token<'_>) {
-    let segment = match token.kind {
-        "identifier" | "type_identifier" => {
-            let name = token.text.strip_prefix("r#").unwrap_or(token.text);
-            Segment::Item(name.to_owned())
-        }
-        "self" | "*" => Segment::Itself,
-        _ => return,
+/// The path from `base` whose first segment is the token at `index`, if the token names one.
+fn record(tokens: &[Token<'_>], index: usize, site: usize, base: Base, found: &mut Vec<Reach>) {
+    let Some(token) = tokens.get(index) else {
+        return;
     };
+    let segment = match (name(token), token.kind) {
+        (Some(name), _) => Segment::Item(name),
+        (None, "self" | "*") => Segment::Itself,
+        (None, _) => return,
+    };
+    let mut onward = Vec::new();
+    go_on(tokens, index + 1, &mut Vec::new(), &mut onward);
     found.push(Reach {
         site,
         base,
         segment,
+        onward,
         line: token.line,
         start: token.start,
     });
+}
+
+/// Adds to `found` the names each way the path goes on at `index`, the end of one of its
+/// segments, each after `names`, and returns the index after the path.
+fn go_on(
+    tokens: &[Token<'_>],
+    index: usize,
+    names: &mut Vec<String>,
+    found: &mut Vec<Vec<String>>,
+) -> usize {
+    let next = (kind_at(tokens, index) == Some("::"))
+        .then(|| tokens.get(index + 1))
+        .flatten();
+    match next {
+        Some(token) if token.kind == "{" => elements(tokens, index + 2, |element| {
+            match kind_at(tokens, element) {
+                Some("}" | ",") | None => element,
+                Some(_) => step(tokens, element, names, found),
+            }
+        }),
+        Some(_) => step(tokens, index + 1, names, found),
+        None => {
+            found.push(names.clone());
+            index
+        }
+    }
+}
+
+/// Goes on with a path through the token at `index`: past the name it is, or no further.
+fn step(
+    tokens: &[Token<'_>],
+    index: usize,
+    names: &mut Vec<String>,
+    found: &mut Vec<Vec<String>>,
+) -> usize {
+    let Some(next) = tokens.get(index).and_then(name) else {
+        found.push(names.clone());
+        return index;
+    };
+    names.push(next);
+    let after = go_on(tokens, index + 1, names, found);
+    names.pop();
+    after
+}
+
+fn name(token: &Token<'_>) -> Option<String> {
+    matches!(token.kind, "identifier" | "type_identifier").then(|| {
+        token
+            .text
+            .strip_prefix("r#")
+            .unwrap_or(token.text)
+            .to_owned()
+    })
 }

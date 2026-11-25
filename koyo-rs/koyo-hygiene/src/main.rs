@@ -11,9 +11,11 @@ mod lexical;
 mod list_file;
 mod pool;
 mod process;
+mod renames;
 mod report;
 mod rule;
 mod scan;
+mod scratch;
 mod shipped;
 mod text;
 

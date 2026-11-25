@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::shipped::{Code, File};
 use crate::text::character_column;
@@ -6,9 +6,11 @@ use crate::text::character_column;
 use super::graph::{Edge, Graph, Place, ROOT};
 use super::paths::{Base, Reach, Segment, reaches};
 
-/// One file read: the top-level modules if it's the crate root, and each path in it with the
-/// module path it's written in and its place.
+/// One file read: the module it is, the top-level modules if it's the crate root, and each path
+/// in it with the module path it's written in and its place.
 pub struct Read {
+    file: String,
+    module: Vec<String>,
     top_level: Vec<String>,
     sites: Vec<Vec<String>>,
     reaches: Vec<(Reach, Place)>,
@@ -21,11 +23,15 @@ pub fn graph(reads: Vec<Read>) -> Graph {
     for read in &reads {
         graph.modules.extend(read.top_level.iter().cloned());
     }
+    let files: BTreeMap<Vec<String>, String> = reads
+        .iter()
+        .map(|read| (read.module.clone(), read.file.clone()))
+        .collect();
     for read in reads {
         for (reach, place) in read.reaches {
             let site = &read.sites[reach.site];
             if let Some(edge) = edge(site, reach.base, &reach.segment, &graph.modules) {
-                graph.add(edge, place);
+                graph.add(edge, place, reached(&reach, &files));
             }
         }
     }
@@ -33,7 +39,7 @@ pub fn graph(reads: Vec<Read>) -> Graph {
 }
 
 pub fn read(file: &File, text: &str, code: &Code<'_>) -> Read {
-    let display = file.path.display().to_string();
+    let path = file.path.display().to_string();
     let top_level = if file.module.is_empty() {
         code.modules
             .iter()
@@ -52,7 +58,7 @@ pub fn read(file: &File, text: &str, code: &Code<'_>) -> Read {
         .into_iter()
         .map(|reach| {
             let place = Place {
-                file: display.clone(),
+                file: path.clone(),
                 line: reach.line,
                 column: character_column(text, reach.start),
             };
@@ -60,6 +66,8 @@ pub fn read(file: &File, text: &str, code: &Code<'_>) -> Read {
         })
         .collect();
     Read {
+        file: path,
+        module: file.module.clone(),
         top_level,
         sites,
         reaches,
@@ -89,5 +97,20 @@ fn edge(
     (from != to).then(|| Edge {
         from: from.to_owned(),
         to: to.to_owned(),
+    })
+}
+
+/// The files a path from the crate root reaches, of `files` by the module each is: that of the
+/// last module along it that has one, for each way it goes on.
+fn reached(reach: &Reach, files: &BTreeMap<Vec<String>, String>) -> impl Iterator<Item = String> {
+    let first = match &reach.segment {
+        Segment::Item(name) => Some(name),
+        Segment::Itself => None,
+    };
+    reach.onward.iter().filter_map(move |names| {
+        let path: Vec<String> = first.into_iter().chain(names).cloned().collect();
+        (0..=path.len())
+            .rev()
+            .find_map(|end| files.get(&path[..end]).cloned())
     })
 }

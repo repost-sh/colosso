@@ -1,4 +1,3 @@
-use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 
@@ -26,10 +25,12 @@ pub struct Place {
     pub column: usize,
 }
 
-/// The places the source makes an edge: the first, and how many there are.
+/// The places the source makes an edge: the first, how many there are, and the files they're
+/// in, each with the files its paths reach there.
 pub struct Sites {
     pub first: Place,
     pub count: usize,
+    pub files: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// The import graph between the crate's top-level modules and its root.
@@ -41,21 +42,18 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn add(&mut self, edge: Edge, place: Place) {
-        match self.edges.entry(edge) {
-            Entry::Vacant(slot) => {
-                slot.insert(Sites {
-                    first: place,
-                    count: 1,
-                });
-            }
-            Entry::Occupied(mut slot) => {
-                let sites = slot.get_mut();
-                sites.count += 1;
-                if place < sites.first {
-                    sites.first = place;
-                }
-            }
+    /// Adds a path at `place` that makes `edge` and reaches the files `reached`.
+    pub fn add(&mut self, edge: Edge, place: Place, reached: impl Iterator<Item = String>) {
+        let sites = self.edges.entry(edge).or_insert_with(|| Sites {
+            first: place.clone(),
+            count: 0,
+            files: BTreeMap::new(),
+        });
+        sites.count += 1;
+        let files = sites.files.entry(place.file.clone()).or_default();
+        files.extend(reached);
+        if place < sites.first {
+            sites.first = place;
         }
     }
 }

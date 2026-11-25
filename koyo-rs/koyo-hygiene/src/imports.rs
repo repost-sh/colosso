@@ -1,5 +1,6 @@
 mod graph;
 mod list;
+mod moves;
 mod paths;
 mod ratchet;
 mod stats;
@@ -23,8 +24,8 @@ pub use walk::{graph, read};
 /// each listed edge that no longer does, and each line the list gained since the last commit.
 pub fn check(root: &Path, graph: &Graph) -> Result<Vec<FileReport>, Failure> {
     let list = List::read(root)?;
-    let head = List::at_head(root)?;
-    Ok(ratchet::compare(&Cycles::of(graph), &list, head.as_ref()))
+    let gained = moves::gained(root, graph, &list)?;
+    Ok(ratchet::compare(&Cycles::of(graph), &list, &gained))
 }
 
 /// Takes the edges that no longer lie on a cycle off the list, and returns how many went and
@@ -41,8 +42,8 @@ pub fn prune(root: &Path, graph: &Graph) -> Result<(usize, Vec<FileReport>), Fai
     if pruned > 0 {
         kept.write(root)?;
     }
-    let head = List::at_head(root)?;
-    Ok((pruned, ratchet::compare(&cycles, &kept, head.as_ref())))
+    let gained = moves::gained(root, graph, &kept)?;
+    Ok((pruned, ratchet::compare(&cycles, &kept, &gained)))
 }
 
 /// The import graph's size, its largest cycle and its cheapest cuts.

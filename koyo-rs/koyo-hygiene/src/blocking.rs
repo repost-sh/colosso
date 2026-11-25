@@ -15,7 +15,7 @@ use crate::shipped::{Code, File};
 use crate::text::character_column;
 
 use calls::Standing;
-use debt::{Debt, LEDGERS, Ledger, WORKSPACE, counts};
+use debt::{Debt, LEDGERS, Ledger, WORKSPACE, counts, workspace_path};
 
 /// The file that may block as it pleases: the log's sink, which `log::Log::log` hands no
 /// `Blocking`.
@@ -99,8 +99,8 @@ pub fn check(root: &Path, calls: &Calls) -> Result<Vec<FileReport>, Failure> {
     let mut found = Vec::new();
     for ledger in &LEDGERS {
         let debt = debt::read(root, ledger)?;
-        let head = Debt::at_head_at(root, ledger.list)?;
-        found.extend(compare(calls, ledger, &debt, head.as_ref()));
+        let at_head = debt::at_head(root, ledger, &debt)?;
+        found.extend(compare(calls, ledger, &debt, at_head.as_ref()));
     }
     Ok(found)
 }
@@ -126,20 +126,21 @@ pub fn prune(root: &Path, calls: &Calls) -> Result<(Lowered, Vec<FileReport>), F
             left.write(root)?;
             lowered.push((ledger.list, changed));
         }
-        let head = Debt::at_head_at(root, ledger.list)?;
-        found.extend(compare(calls, ledger, &left, head.as_ref()));
+        let at_head = debt::at_head(root, ledger, &left)?;
+        found.extend(compare(calls, ledger, &left, at_head.as_ref()));
     }
     Ok((lowered, found))
 }
 
-fn workspace_path(path: &str) -> &str {
-    path.strip_prefix(WORKSPACE).unwrap_or(path)
-}
-
-fn compare(calls: &Calls, ledger: &Ledger, debt: &Debt, head: Option<&Debt>) -> Vec<FileReport> {
+/// Where the source and `ledger`'s list disagree, and the list and what it allowed `at_head`.
+fn compare(
+    calls: &Calls,
+    ledger: &Ledger,
+    debt: &Debt,
+    at_head: Option<&BTreeMap<String, usize>>,
+) -> Vec<FileReport> {
     let list = ledger.list;
     let allowed = counts(debt);
-    let at_head = head.map(counts);
     let mut found = Found::default();
     let ours = (calls.0.iter()).filter(|(path, _)| path.starts_with(ledger.source));
     for (path, sites) in ours {
@@ -173,9 +174,7 @@ fn compare(calls: &Calls, ledger: &Ledger, debt: &Debt, head: Option<&Debt>) -> 
             let detail = format!("{} holds {holds}, not {}", owed.path, owed.count);
             found.add(list, entry.line, 1, &GONE_CALL, detail);
         }
-        let before = at_head
-            .as_ref()
-            .map(|counts| counts.get(owed.path.as_str()).copied());
+        let before = at_head.map(|allowed| allowed.get(&owed.path).copied());
         let detail = match before {
             Some(None) => format!(
                 "{} {}: not on the last commit's list",

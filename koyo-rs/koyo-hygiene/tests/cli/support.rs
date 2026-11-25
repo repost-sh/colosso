@@ -48,6 +48,13 @@ impl Scratch {
         fs::write(path, bytes).expect("fixture file");
     }
 
+    /// Moves a file on disk, and tells git nothing.
+    pub fn rename(&self, from: &str, to: &str) {
+        let to = self.path(to);
+        fs::create_dir_all(to.parent().expect("a parent folder")).expect("fixture folder");
+        fs::rename(self.path(from), to).expect("fixture file");
+    }
+
     pub fn read(&self, relative: &str) -> String {
         fs::read_to_string(self.path(relative)).expect("fixture file")
     }

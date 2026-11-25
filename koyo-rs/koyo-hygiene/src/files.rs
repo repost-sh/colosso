@@ -7,7 +7,8 @@ use std::process::{Command, Output};
 use crate::failure::Failure;
 use crate::language::Language;
 
-const TRACKED_PATHSPECS: [&str; 3] = ["koyo-rs/koyo", "koyo-rs/koyo-*", "koyo-js"];
+/// Where Koyo's source is, as git's pathspecs.
+pub const SOURCES: [&str; 3] = ["koyo-rs/koyo", "koyo-rs/koyo-*", "koyo-js"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Presence {
@@ -38,7 +39,7 @@ pub fn listed_by_git(root: &Path) -> Result<Vec<Source>, Failure> {
         "--full-name",
         "--",
     ];
-    arguments.extend(TRACKED_PATHSPECS);
+    arguments.extend(SOURCES);
     let listing = git(Some(root), &arguments)?;
     let sources = listing
         .split(|&byte| byte == 0)
@@ -111,18 +112,19 @@ fn in_path_order(mut sources: Vec<Source>) -> Vec<Source> {
 }
 
 pub fn git(directory: Option<&Path>, arguments: &[&str]) -> Result<Vec<u8>, Failure> {
-    let output = run_git(directory, arguments)?;
-    if output.status.success() {
-        Ok(output.stdout)
-    } else {
-        Err(git_failed(arguments, &output))
-    }
+    printed(arguments, run(&mut git_command(directory, arguments))?)
+}
+
+/// What git prints with `index` in place of the checkout's.
+pub fn git_on(root: &Path, index: &Path, arguments: &[&str]) -> Result<Vec<u8>, Failure> {
+    let mut command = git_command(Some(root), arguments);
+    printed(arguments, run(command.env("GIT_INDEX_FILE", index))?)
 }
 
 /// What git prints, or `None` when it exits 1, as `git rev-parse --verify -q` does for a name
 /// that names nothing.
 pub fn git_lookup(root: &Path, arguments: &[&str]) -> Result<Option<Vec<u8>>, Failure> {
-    let output = run_git(Some(root), arguments)?;
+    let output = run(&mut git_command(Some(root), arguments))?;
     match output.status.code() {
         Some(0) => Ok(Some(output.stdout)),
         Some(1) => Ok(None),
@@ -130,15 +132,27 @@ pub fn git_lookup(root: &Path, arguments: &[&str]) -> Result<Option<Vec<u8>>, Fa
     }
 }
 
-fn run_git(directory: Option<&Path>, arguments: &[&str]) -> Result<Output, Failure> {
+fn git_command(directory: Option<&Path>, arguments: &[&str]) -> Command {
     let mut command = Command::new("git");
     if let Some(directory) = directory {
         command.arg("-C").arg(directory);
     }
+    command.args(arguments);
     command
-        .args(arguments)
+}
+
+fn run(command: &mut Command) -> Result<Output, Failure> {
+    command
         .output()
         .map_err(|failure| Failure::new("git", format!("cannot run git: {failure}")))
+}
+
+fn printed(arguments: &[&str], output: Output) -> Result<Vec<u8>, Failure> {
+    if output.status.success() {
+        Ok(output.stdout)
+    } else {
+        Err(git_failed(arguments, &output))
+    }
 }
 
 fn git_failed(arguments: &[&str], output: &Output) -> Failure {
