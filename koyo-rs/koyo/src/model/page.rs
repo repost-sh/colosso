@@ -82,7 +82,7 @@ impl Browser {
     }
 
     /// Its page is closed: it holds what it opens once its tab is shown again, as a pinned
-    /// page does once it's closed (`docs/arc-sidebar.md` 11).
+    /// page does once it's closed (`docs/sidebar.md` 11).
     pub(super) fn unload(&mut self, unloaded: Unloaded) {
         self.page = Page::Unloaded(Box::new(unloaded));
     }

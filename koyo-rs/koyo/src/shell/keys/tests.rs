@@ -6,7 +6,7 @@ use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, Focusable as _, TestApp
 use crate::files::tests::with_shell;
 use crate::keyboard::{self, Holder, Part};
 use crate::model::PaneKind;
-use crate::settings::Layout;
+use crate::settings::AddressBar;
 use crate::shell::{CloseTab, Shell};
 use crate::test_support::{
     draw, keyboard_at_window, open_page, press_prompt, repo, select, shell_with,
@@ -400,13 +400,15 @@ fn a_tab_shown_again_gives_the_keyboard_back_to_the_devtools_it_was_in(cx: &mut 
     assert!(in_tools.unwrap(), "GPUI's focus is the DevTools' too");
 }
 
-/// ⌘L puts the keyboard in the page's address as the person asks, before GPUI's focus moves.
+/// With the address bar in the page, ⌘L puts the keyboard in the page's address as the person
+/// asks, before GPUI's focus moves.
 #[gpui_kit::test]
 fn command_l_puts_the_keyboard_in_the_address_at_once(cx: &mut TestAppContext) {
     let (window, shell) = shell("shell-address-holder", cx);
     (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
     cx.run_until_parked();
-    cx.update(|cx| crate::settings::update(cx, |settings| settings.layout = Layout::Orca));
+    let in_page = AddressBar::Page;
+    cx.update(|cx| crate::settings::update(cx, |settings| settings.address_bar = in_page));
     let pane = new_page(window, &shell, cx);
     let page_id = shell.read_with(cx, |shell, cx| {
         shell.workspace.pane(pane).unwrap().view().unwrap().read(cx).page_id()

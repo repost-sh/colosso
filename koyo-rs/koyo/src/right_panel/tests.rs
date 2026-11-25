@@ -7,9 +7,10 @@ use gpui_kit::{
 
 use super::*;
 use crate::files::tests::shell_showing;
-use crate::settings::Layout;
-use crate::test_support::{GRAB, center_of, cursor_at, drag, draw, repo, select, shell_with};
-use crate::theme::card::HANDLE_REACH;
+use crate::settings::{ChangesAndFiles, SetChangesAndFiles, Tabs};
+use crate::test_support::{
+    GRAB, center_of, cursor_at, drag, draw, drawn, hover, repo, select, shell_on, shell_with,
+};
 
 /// The width the Files panel is set to.
 fn files_width(cx: &TestAppContext) -> f32 {
@@ -135,29 +136,16 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
     let _ = std::fs::remove_dir_all(root);
 }
 
-/// The edge is picked up over the parts either side of it as well as on it, the resize cursor
-/// over all of it: on the one card a few points over the file shown and over the panel, which
-/// would each take the press otherwise; with islands, across the glass between them.
+/// The edge, the glass between the file shown's island and the panel's, is picked up across all
+/// of it, the resize cursor over all of it.
 #[gpui_kit::test]
-fn the_edge_is_picked_up_over_the_parts_either_side_of_it(cx: &mut TestAppContext) {
+fn the_edge_is_picked_up_across_the_glass_between_the_islands(cx: &mut TestAppContext) {
     let root = repo("right-panel-reach", &[("README.md", "hi\n")]);
     let (window, _, _) = shell_showing(&root, cx);
-    let gutter = theme::GUTTER / 2. - 1.;
-    let layouts = [
-        (Layout::Orca, [-HANDLE_REACH, HANDLE_REACH]),
-        (Layout::Arc, [-gutter, gutter]),
-    ];
-    for (layout, reaches) in layouts {
-        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
-        draw(window, cx);
-        for reach in reaches {
-            picked_up(
-                window,
-                reach,
-                &format!("{layout:?}, {reach} from the edge"),
-                cx,
-            );
-        }
+    let near = theme::GUTTER / 2. - 1.;
+    draw(window, cx);
+    for reach in [-near, near] {
+        picked_up(window, reach, &format!("{reach} from the edge"), cx);
     }
     let _ = std::fs::remove_dir_all(root);
 }
@@ -205,4 +193,39 @@ fn toggles(
         let shows = cx.read(|cx| shell.read(cx).right_panel.shows(view));
         assert_eq!(shows, open, "{view:?} after toggling it to {open}");
     }
+}
+
+/// Changes and Files placed on the worktree from the buttons' menu, the branch's row has them
+/// while the pointer's on it; placed on the top rail, the row has none, the rail having them.
+/// With the tabs in the sidebar there's no top rail, so they're on the worktree whatever's
+/// stored, and what's stored is kept for the tabs going back to the rail.
+#[gpui_kit::test]
+fn the_changes_and_files_buttons_go_where_their_menu_places_them(cx: &mut TestAppContext) {
+    let (window, _, root) = shell_on("right-panel-placement", cx);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    let on_row = |cx: &mut TestAppContext| {
+        hover(window, center_of(window, "sidebar-branch-0-0", cx), cx);
+        let row = drawn(window, "sidebar-branch-0-0", cx).expect("the branch's row");
+        drawn(window, "toggle-files-0-0", cx).is_some_and(|button| row.contains(&button.center()))
+    };
+    let on_rail = |cx: &TestAppContext| cx.read(|cx| settings::get(cx).panel_buttons_on_rail());
+    let tabs_in = |tabs: Tabs, cx: &mut TestAppContext| {
+        cx.update(|cx| settings::update(cx, |settings| settings.tabs = tabs));
+    };
+
+    cx.dispatch_action(window, SetChangesAndFiles(ChangesAndFiles::Worktree));
+    assert!(on_row(cx), "on the worktree");
+    assert!(!on_rail(cx));
+    cx.dispatch_action(window, SetChangesAndFiles(ChangesAndFiles::TopRail));
+    assert!(!on_row(cx), "on the rail, not the worktree");
+    assert!(on_rail(cx));
+
+    tabs_in(Tabs::Sidebar, cx);
+    assert!(on_row(cx), "no rail with the tabs in the sidebar: on the worktree");
+    assert!(!on_rail(cx));
+    let kept = cx.read(|cx| settings::get(cx).changes_and_files);
+    assert_eq!(kept, ChangesAndFiles::TopRail, "the choice kept");
+    tabs_in(Tabs::TopRail, cx);
+    assert!(on_rail(cx), "back on the rail with the tabs");
+    let _ = std::fs::remove_dir_all(root);
 }

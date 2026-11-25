@@ -6,7 +6,10 @@ use std::time::Duration;
 use koyo_browser_ipc::Go;
 use serde_json::json;
 
-use super::{PATIENCE, finish, open, pause, run, serve, wait_for, wait_for_title};
+use super::{
+    PATIENCE, address_in_page, finish, open, open_with, pause, run, serve, wait_for,
+    wait_for_title,
+};
 use crate::browser::agent;
 use crate::browser::view::Notice;
 
@@ -26,7 +29,8 @@ fn slow(name: &str) -> Option<String> {
 #[ignore = "needs the engine script/browser-engine packages"]
 fn a_loading_page_shows_how_far_it_got_until_it_is_done(cx: &mut gpui_kit::TestAppContext) {
     let port = serve(slow);
-    let (view, cx, scratch) = open("progress", &format!("http://127.0.0.1:{port}/slow"), cx);
+    let address = format!("http://127.0.0.1:{port}/slow");
+    let (view, cx, scratch) = open_with("progress", &address, address_in_page, cx);
     wait_for(cx, &view, "the page partly loaded", |view| {
         view.page.loading && view.progress > 0 && view.progress < 100
     });

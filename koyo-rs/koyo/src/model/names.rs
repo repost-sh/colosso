@@ -1,5 +1,5 @@
-//! What the sidebars call a worktree: its branch, or the commit it's detached at; and that in
-//! words, as both layouts' rows show it.
+//! What the sidebar calls a worktree: its branch, or the commit it's detached at; and that in
+//! words, as its rows show it.
 
 use gpui_kit::SharedString;
 use koyo_git::Head;
@@ -15,10 +15,9 @@ impl BranchUnit {
         }
     }
 
-    /// Its name in words, as both layouts' sidebars show it: its branch less `prefix`, the one
-    /// the person's own branches carry, its dashes and underscores spaces and its first letter a
-    /// capital, so `schulzfel/some-nasty-name` is "Some nasty name". A detached checkout keeps
-    /// its name.
+    /// Its name in words, as the sidebar shows it: its branch less `prefix`, the one the person's
+    /// own branches carry, its dashes and underscores spaces and its first letter a capital, so
+    /// `schulzfel/some-nasty-name` is "Some nasty name". A detached checkout keeps its name.
     pub fn title(&self, prefix: Option<&str>) -> SharedString {
         let Head::Branch(branch) = &self.worktree.head else {
             return self.name();

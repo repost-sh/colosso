@@ -1,9 +1,8 @@
-//! ⌘B folds every rail as thin as the gutter with the sidebar, compact mode, but for the Orca
-//! layout's top rail, which holds its tabs, and brings them back, moving rather than jumping; in
-//! the Arc layout the top rail is over the sidebar alone, the card beside it rising to the gutter
-//! along the window's top; the status bar is tall only
-//! with the sidebar out and servers to show; and the traffic lights are gone once the top rail is
-//! too thin to hold them.
+//! ⌘B folds every rail as thin as the gutter with the sidebar, compact mode, but for the top
+//! rail while it holds the tabs, and brings them back, moving rather than jumping; with the tabs
+//! in the sidebar the sidebar's top row is over the sidebar alone, the islands beside it rising
+//! to the gutter along the window's top; the status bar is tall only with the sidebar out and
+//! servers to show; and the traffic lights are gone once the top rail is too thin to hold them.
 
 use std::time::Duration;
 
@@ -13,10 +12,9 @@ use gpui_kit::{
 };
 
 use super::{LIGHTS_GONE, lights, thickness};
-use crate::files::tests::press;
-use crate::settings::{self, Layout};
+use crate::settings::{self, Tabs};
 use crate::shell::Shell;
-use crate::test_support::{draw, shell_with};
+use crate::test_support::{draw, press, shell_with};
 use crate::theme;
 
 /// The test's window is 1400 × 900.
@@ -29,13 +27,13 @@ fn card(window: AnyWindowHandle, cx: &mut TestAppContext) -> Bounds<Pixels> {
         .unwrap()
 }
 
-/// Where the card is in compact mode in `layout`: a gutter in from every edge, but under the
-/// Orca layout's top rail, which stays.
-fn compact(layout: Layout) -> Bounds<Pixels> {
+/// Where the card is in compact mode with the tabs where `tabs` puts them: a gutter in from
+/// every edge, but under the top rail, which stays while it holds the tabs.
+fn compact(tabs: Tabs) -> Bounds<Pixels> {
     let gutter = px(theme::GUTTER);
-    let top = match layout {
-        Layout::Orca => px(theme::TITLE_BAR_HEIGHT),
-        Layout::Arc => gutter,
+    let top = match tabs {
+        Tabs::TopRail => px(theme::TITLE_BAR_HEIGHT),
+        Tabs::Sidebar => gutter,
     };
     let far = point(px(WINDOW.0) - gutter, px(WINDOW.1) - gutter);
     Bounds::from_corners(point(gutter, top), far)
@@ -52,21 +50,18 @@ fn after(by: Duration, window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut 
 fn cmd_b_folds_every_rail_as_thin_as_the_gutter_and_brings_them_back(cx: &mut TestAppContext) {
     let (window, _shell) = shell_with(&[], cx);
     cx.update(|cx| cx.set_reduce_motion(true));
-    for layout in Layout::ALL {
-        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    for tabs in Tabs::ALL {
+        cx.update(|cx| settings::update(cx, |settings| settings.tabs = tabs));
         draw(window, cx);
         let out = card(window, cx);
-        let sidebar = match layout {
-            Layout::Orca => 0.,
-            Layout::Arc => cx.read(|cx| settings::get(cx).sidebar_width()),
-        };
+        let sidebar = cx.read(|cx| settings::get(cx).sidebar_width());
         let left = px(theme::GUTTER + sidebar);
-        let top = match layout {
-            Layout::Orca => theme::TITLE_BAR_HEIGHT,
-            Layout::Arc => theme::GUTTER,
+        let top = match tabs {
+            Tabs::TopRail => theme::TITLE_BAR_HEIGHT,
+            Tabs::Sidebar => theme::GUTTER,
         };
-        assert_eq!(out.origin, point(left, px(top)), "{layout:?}");
-        let compact = compact(layout);
+        assert_eq!(out.origin, point(left, px(top)), "{tabs:?}");
+        let compact = compact(tabs);
         assert_eq!(
             (out.right(), out.bottom()),
             (compact.right(), compact.bottom())
@@ -74,21 +69,22 @@ fn cmd_b_folds_every_rail_as_thin_as_the_gutter_and_brings_them_back(cx: &mut Te
 
         press(window, "cmd-b", cx);
         draw(window, cx);
-        assert_eq!(card(window, cx), compact, "{layout:?} compact");
+        assert_eq!(card(window, cx), compact, "{tabs:?} compact");
 
         press(window, "cmd-b", cx);
         draw(window, cx);
-        assert_eq!(card(window, cx), out, "{layout:?} out again");
+        assert_eq!(card(window, cx), out, "{tabs:?} out again");
     }
 }
 
-/// The sidebar slides in the Arc layout, the card's left edge with it; in Orca's the card stays
-/// put under its top rail, only the sidebar in it sliding.
+/// The sidebar slides on the glass wherever the tabs are, the islands' left edge with it, their
+/// top staying on the gutter with the tabs in the sidebar and under the top rail with them on
+/// it.
 #[gpui_kit::test]
 fn the_rails_move_to_compact_mode_rather_than_jump(cx: &mut TestAppContext) {
     let (window, shell) = shell_with(&[], cx);
-    for layout in Layout::ALL {
-        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    for tabs in Tabs::ALL {
+        cx.update(|cx| settings::update(cx, |settings| settings.tabs = tabs));
         draw(window, cx);
         let out = card(window, cx);
 
@@ -98,17 +94,12 @@ fn the_rails_move_to_compact_mode_rather_than_jump(cx: &mut TestAppContext) {
         let between = card(window, cx);
         let moving = |from: Pixels, to: Pixels, now: Pixels| to < now && now < from;
         let (x, y) = (between.origin.x, between.origin.y);
-        let gutter = compact(layout).origin;
-        match layout {
-            Layout::Arc => {
-                assert!(moving(out.origin.x, gutter.x, x), "{between:?}");
-                assert_eq!(y, gutter.y, "the card's top stays on the gutter");
-            }
-            Layout::Orca => assert_eq!(between, out, "the card stays under the top rail"),
-        }
+        let gutter = compact(tabs).origin;
+        assert!(moving(out.origin.x, gutter.x, x), "{tabs:?} {between:?}");
+        assert_eq!(y, gutter.y, "{tabs:?} the card's top stays put");
 
         after(Duration::from_secs(1), window, &shell, cx);
-        assert_eq!(card(window, cx), compact(layout), "{layout:?}");
+        assert_eq!(card(window, cx), compact(tabs), "{tabs:?}");
         press(window, "cmd-b", cx);
         after(Duration::from_secs(1), window, &shell, cx);
     }
@@ -128,7 +119,7 @@ fn the_status_bar_is_out_only_with_the_sidebar_out_and_servers_to_show(cx: &mut 
 
     press(window, "cmd-b", cx);
     draw(window, cx);
-    assert_eq!(card(window, cx), compact(Layout::Orca), "compact, with servers");
+    assert_eq!(card(window, cx), compact(Tabs::TopRail), "compact, with servers");
 
     press(window, "cmd-b", cx);
     shell.update(cx, |shell, cx| {
@@ -138,7 +129,7 @@ fn the_status_bar_is_out_only_with_the_sidebar_out_and_servers_to_show(cx: &mut 
     draw(window, cx);
     assert_eq!(
         card(window, cx).bottom(),
-        compact(Layout::Orca).bottom(),
+        compact(Tabs::TopRail).bottom(),
         "out, with none"
     );
 }

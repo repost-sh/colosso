@@ -24,6 +24,7 @@ use crate::popup::{self, Kind, Opening};
 use crate::theme;
 use card::{CARD_GAP, CARD_HEIGHT, CARD_RADIUS, CARD_WIDTH, Card};
 
+pub(super) mod avatar;
 mod card;
 mod show;
 #[cfg(all(target_os = "macos", feature = "visual-check"))]

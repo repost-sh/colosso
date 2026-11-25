@@ -245,7 +245,7 @@ pub fn read_address(text: &str) -> Option<Address> {
     Some(Address::Search(text.to_owned()))
 }
 
-/// What stands for a project where a page is none's (`docs/arc-sidebar.md` 11): a loose page
+/// What stands for a project where a page is none's (`docs/sidebar.md` 11): a loose page
 /// opened outside any project. Such pages use Default, the person's own, in every space.
 pub const NO_PROJECT: &str = "no-project";
 

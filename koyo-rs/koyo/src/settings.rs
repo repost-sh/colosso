@@ -6,8 +6,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, Window};
+use gpui_kit::{App, Context, Global, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
 mod accounts;
@@ -23,8 +22,10 @@ mod fonts;
 mod language_servers;
 mod layout;
 mod loose_pages;
+mod menus;
 mod migration;
 mod picks;
+mod placement;
 mod project_scripts;
 mod save_scope;
 #[cfg(target_os = "macos")]
@@ -44,9 +45,15 @@ pub use fonts::{
     CHAT_SIZES, Fonts, SetChatTextSize, SetCodeFont, SetInterfaceFont, chat_size_menu,
 };
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
-pub use layout::{GLASS_CLEAR, GLASS_OWN, GLASS_STOPS, Layout, SetLayout};
+#[cfg(test)]
+pub use layout::GLASS_OWN;
+pub use layout::{GLASS_CLEAR, GLASS_STOPS};
 pub use loose_pages::{LoosePages, SetLoosePages};
+pub use menus::{checked_items, checked_menu};
 pub use picks::{SetBranchPrefix, SetMostLanguageServers, SetPreviewFiles};
+pub use placement::{AddressBar, ChangesAndFiles, SetTabs, Tabs};
+#[cfg(test)]
+pub use placement::{SetAddressBar, SetChangesAndFiles};
 pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use save_scope::{SaveScope, SetSaveScope};
 
@@ -58,19 +65,6 @@ use crate::theme::{self, ThemePreference};
 const FILE: &str = "settings.json";
 /// How long changes must settle before they are written, so a drag saves once.
 pub(crate) const SAVE_DELAY: Duration = Duration::from_millis(500);
-
-/// A menu of `choices` with `current` checked, each named by `label` and, picked, setting
-/// itself through `action`.
-pub fn checked_menu<T: Copy + PartialEq, L: Into<SharedString>>(
-    choices: impl IntoIterator<Item = T>,
-    current: T,
-    label: impl Fn(T) -> L,
-    action: impl Fn(T) -> Box<dyn Action>,
-) -> NativeMenu {
-    choices.into_iter().fold(NativeMenu::new(), |menu, choice| {
-        menu.menu_with_check(label(choice), choice == current, action(choice))
-    })
-}
 
 /// What the branches of new worktrees are named under: `<prefix>/<name>`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -94,12 +88,16 @@ pub struct Settings {
     pub dark_theme: GradientTheme,
     /// What text is in, and how big a chat's is.
     pub fonts: Fonts,
-    pub layout: Layout,
+    /// Where every tab is.
+    pub tabs: Tabs,
+    /// Where the address of the page shown is, with back, forward and reload.
+    pub address_bar: AddressBar,
+    /// Where the person put the Changes and Files buttons; where they are is
+    /// [`Settings::changes_and_files_shown`].
+    pub changes_and_files: ChangesAndFiles,
     /// How much of the window's glass the sidebar lets through, along its slider
     /// (`sidebar_opacity`).
     pub sidebar_glass: f32,
-    /// How blurred the desktop behind the sidebar is, along its slider (`sidebar_blur_scale`).
-    pub sidebar_blur: f32,
     pub sidebar_width: f32,
     pub changes_files_width: f32,
     /// The Files panel's width, its tree's.
@@ -122,14 +120,14 @@ pub struct Settings {
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
-    /// The spaces the Arc sidebar shows the projects in (`docs/arc-sidebar.md` 9), and the
+    /// The spaces the sidebar shows the projects in (`docs/sidebar.md` 9), and the
     /// one it shows, by its place among them.
     pub spaces: Vec<crate::spaces::Space>,
     pub space: usize,
     /// What projects are called and show as in Koyo, by their main checkout.
     pub project_looks: crate::spaces::ProjectLooks,
-    /// Whether the person put the Arc sidebar's empty zone for pinned tabs away
-    /// (`docs/arc-sidebar.md` 11): it shows again only while a page's tab is dragged.
+    /// Whether the person put the empty zone for pinned tabs away (`docs/sidebar.md` 11): it shows
+    /// again only while a page's tab is dragged.
     pub pinned_zone_dismissed: bool,
     /// Whether each space lists loose pages of its own or every space the same ones.
     pub loose_pages: LoosePages,
@@ -253,9 +251,10 @@ impl Default for Settings {
             light_theme: GradientTheme::default(),
             dark_theme: GradientTheme::default(),
             fonts: Fonts::default(),
-            layout: Layout::default(),
+            tabs: Tabs::default(),
+            address_bar: AddressBar::default(),
+            changes_and_files: ChangesAndFiles::default(),
             sidebar_glass: GLASS_CLEAR,
-            sidebar_blur: GLASS_OWN,
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,
@@ -363,9 +362,7 @@ pub fn init(cx: &mut App, may: Blocking<'_>) {
         path,
         file,
     });
-    cx.on_action(|SetLayout(layout): &SetLayout, cx| {
-        update(cx, |settings| settings.layout = *layout);
-    });
+    placement::init(cx);
     cx.on_action(|SetPreviewFiles(on): &SetPreviewFiles, cx| {
         update(cx, |settings| settings.preview_files = *on);
     });

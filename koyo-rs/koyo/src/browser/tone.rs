@@ -73,7 +73,6 @@ mod tests {
     use crate::browser::BrowserView;
     use crate::browser::host::fake::FakeHost;
     use crate::budget::{Built, built_after, ratchet, within};
-    use crate::settings::Layout;
     use crate::test_support::{draw, in_window, open_page_view, shell_on};
 
     fn said(of: impl Fn(usize, usize) -> f32, canvas: [u8; 3]) -> Said {
@@ -112,7 +111,7 @@ mod tests {
     /// whose glass takes its tone from the page.
     #[gpui_kit::test]
     fn a_page_turning_dark_builds_its_view_again(cx: &mut TestAppContext) {
-        let (window, shell, _) = shell_on("budget-tone", Layout::Orca, cx);
+        let (window, shell, _) = shell_on("budget-tone", cx);
         let view = open_page_view(window, &shell, "https://example.com/", cx);
         let toned = |lightness: f32| {
             let view = view.clone();

@@ -20,17 +20,17 @@ check runs it in real windows off screen (section 7).
   it's listed in: **[ours]**
   1. the tabs beside the one shown: its worktree's, or the loose pages the space lists;
   2. the rest of what the sidebar lists: the space's loose pages (every space's, while
-     they're shared, `docs/arc-sidebar.md` 11.3), the open project's worktrees;
+     they're shared, `docs/sidebar.md` 11.3), the open project's worktrees;
   3. other projects' tabs, and other spaces' loose pages.
-- A pinned page is listed once it's been looked at: until then it's a tile, with no page
-  open (`docs/arc-sidebar.md` 11.7). **[ours]**
+- A pinned page is listed once it's been looked at: until then it's a tile or a rail button,
+  with no page open (`docs/sidebar.md` 11.7). **[ours]**
 - The one shown is the first card, and the pick starts on the second: ⌃⇥ tapped goes back to
   the tab before, or, with none looked at before it, on to the nearest tab open. **[asked]**
 - What follows from the rule: **[ours]**
   - A tab moved keeps its place: pinned, unpinned, made loose, or dragged to another worktree.
     The switcher knows a tab by its first pane, which goes with it.
-  - A tab closed leaves the list. A pinned page closed stays a tile, but its page is gone
-    until the tile is picked again, so it leaves the list too.
+  - A tab closed leaves the list. A pinned page closed stays pinned, but its page is gone
+    until it is picked again, so it leaves the list too.
   - Moving through the cards doesn't reorder them. Only the tab let go on is looked at.
   - Another space shown with a pinned page staying in the panes isn't a new look at it: it
     never left.
@@ -66,7 +66,7 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
   in the sidebar does: a worktree's tab leaves a pinned or a loose page for it, a loose page
   the space shown doesn't list shows its own space, and a pinned page shows over whatever
   space is shown.
-  The tab picked takes the keyboard (`docs/arc-sidebar.md` 9).
+  The tab picked takes the keyboard (`docs/sidebar.md` 9).
 - With the keyboard in a browser page, the page's view hears ⌃ let go in GPUI's place; the
   window hands GPUI each change of the modifiers all the same (`docs/native-pages.md` 6), so
   ⌃⇥ from a page, a pinned one's or a worktree's, switches as from anywhere.
@@ -112,8 +112,9 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
   a rim and a shadow of its own, which showed round the glass's as a second edge. It's made
   borderless once GPUI has built it, not while: `AppKit` tells GPUI of the change as it makes
   it, which GPUI can't hear mid-build. **[ours]**
-- A tab of another project than the one shown carries that project's tile on its picture's
-  corner, small, so two `zsh` terminals are told apart. **[ours]**
+- A tab of another project than the one shown carries that project's picture on its picture's
+  corner, small: its git host's avatar, or its initials until it has one, so two `zsh`
+  terminals are told apart. **[ours]**
 
 ## 4. The pictures
 
@@ -168,9 +169,9 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
 1. The order (`model/visits.rs`): every tab shown stamped, pinned and loose pages too; the
    five latest across the workspace, then the open ones not looked at, the nearest first; a
    tab picked shown wherever it is (`switcher/show.rs`),
-   as its row or its tile picked shows it. A worktree's tab in another space had that space's
+   as its row, tile or button picked shows it. A worktree's tab in another space had that space's
    last loose page shown over it, by whatever selected it: mended where the shell follows a
-   project into its space (`follow_space`, `docs/arc-sidebar.md` 9), for app control and
+   project into its space (`follow_space`, `docs/sidebar.md` 9), for app control and
    links as for ⌃⇥. Unit tests, and a shell test across two spaces and a loose page.
    **Built.**
 2. The glass, compared with ⌘⇥ (section 6). **The owner picked the App switcher's.**

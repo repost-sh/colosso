@@ -8,9 +8,9 @@ Koyo only through them: never edit its settings, data or other files.
 
 ## Finding your way
 
-- `app_status` says what the window shows (the workspace or a settings page), its layout
-  and panels, and the selected project, worktree and pane, and whether the window is on
-  screen at all (`onScreen`: not minimized or on another desktop). Start here.
+- `app_status` says what the window shows (the workspace or a settings page), its panels,
+  and the selected project, worktree and pane, and whether the window is on screen at all
+  (`onScreen`: not minimized or on another desktop). Start here.
 - `project_list` lists the projects in sidebar order, each with its worktrees: path,
   branch, whether it's the main checkout or selected, and how many tabs and terminals it
   has.
@@ -370,7 +370,7 @@ tell them what the message says.
 
 - `app_focus` brings the window forward, opening it when it's closed.
 - `layout_set` opens or closes the sidebar, the right panel (`changes`, `files` or
-  `none`) and the bottom panel, and switches the layout (`orca` or `arc`).
+  `none`) and the bottom panel.
 - `settings_open` shows a settings page and `settings_close` leaves it; neither changes a
   setting.
 - `settings_get` reads the settings agents may see, and `settings_set` changes them:

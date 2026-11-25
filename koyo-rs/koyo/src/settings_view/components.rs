@@ -107,6 +107,12 @@ impl SettingsSection {
                 .iter()
                 .any(|row| mentions(&row.title) || row.description.as_deref().is_some_and(mentions))
     }
+
+    /// Its rows' titles, in the order it shows them.
+    #[cfg(test)]
+    pub fn titles(&self) -> Vec<&str> {
+        self.rows.iter().map(|row| &*row.title).collect()
+    }
 }
 
 impl RenderOnce for SettingsSection {
@@ -290,7 +296,8 @@ impl PillButton {
 impl RenderOnce for PillButton {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
-        pill(self.id, self.disabled, p)
+        pill(self.id.clone(), self.disabled, p)
+            .debug_selector(|| self.id.to_string())
             .when_some(self.on_click.filter(|_| !self.disabled), |pill, handler| {
                 pill.on_click(move |event, window, cx| handler(event, window, cx))
             })

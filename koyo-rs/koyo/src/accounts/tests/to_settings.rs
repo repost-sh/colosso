@@ -7,14 +7,13 @@ use super::layout::shell_on;
 use super::signed_in;
 use crate::accounts::accounts;
 use crate::popup::{self, Kind};
-use crate::settings::Layout;
 use crate::model::SettingsTab;
 use crate::navigation::SettingsPage;
 
 #[gpui_kit::test]
 fn the_button_beside_the_macs_login_opens_settings_on_accounts(cx: &mut TestAppContext) {
     let sandbox = signed_in();
-    let (window, shell, button) = shell_on(&sandbox, Layout::Orca, cx);
+    let (window, shell, button) = shell_on(&sandbox, cx);
     let shown = &mut VisualTestContext::from_window(window, cx);
     shown.simulate_click(button.center(), Modifiers::none());
     shown.run_until_parked();

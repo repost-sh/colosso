@@ -46,7 +46,7 @@ fn profiles(cx: &App) -> SettingsSection {
         );
     let listed = kept.all().enumerate().map(|(index, (id, name))| {
         let names: Vec<String> = (kept.on(id, &settings.projects))
-            .map(|project| project_name(&settings.project_looks, project).to_string())
+            .map(|project| project_name(project).to_string())
             .collect();
         let used = match names.as_slice() {
             [] => "No project uses it.".to_owned(),
@@ -107,7 +107,7 @@ fn project_profiles(cx: &App) -> SettingsSection {
         .map(|(index, project)| {
             let on = kept.name(kept.of(project)).to_owned();
             let path = project.clone();
-            SettingRow::new(project_name(&settings.project_looks, project))
+            SettingRow::new(project_name(project))
                 .description(project.display().to_string())
                 .control(MenuButton::new(("project-profile", index), on, move |cx| {
                     profiles::menu(&path, cx)

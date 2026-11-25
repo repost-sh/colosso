@@ -1,10 +1,12 @@
 # Shell
 
-The shell is Koyo's one window. On its left is the sidebar: in the Orca layout a list of
-projects with their worktrees and tabs; in the Arc layout an icon rail, spaces, pinned tiles
-and loose pages. The rest of the window shows the selected tab, which may be split into panes.
-The person opens tabs from the launcher (⌘T) or the sidebar, moves between them with ⌥↑/⌥↓ and
-the tab switcher (⌃⇥), and closes them with ⌘W.
+The shell is Koyo's one window. Across its top is the rail: the pinned and unpinned pages and
+the selected worktree's tabs. On its left is the sidebar: the address bar, the projects with
+their worktrees, and the spaces. With the tabs set to the sidebar (`tabs`), the rail is gone and
+the pinned tiles, unpinned pages and each worktree's tabs are in the sidebar. The rest of the
+window shows the selected tab, which may be split into panes. The person opens tabs from the
+launcher (⌘T) or the rail and sidebar, moves between them with ⌥↑/⌥↓ and the tab switcher (⌃⇥),
+and closes them with ⌘W.
 
 ## Sub-features
 
@@ -15,17 +17,18 @@ the tab switcher (⌃⇥), and closes them with ⌘W.
 - `shell-tab-select`: a tab is selected by the sidebar, ⌥↑/⌥↓ or app control.
 - `shell-tab-close`: ⌘W closes the shown tab. ⌘⇧T reopens it.
 - `shell-split`: a pane splits to an edge, and focus moves between panes.
-- `shell-layout`: Orca ⇄ Arc, the sidebar toggled with ⌘B, the right panel with ⌘⌥B, the bottom
-  panel with ⌘J.
+- `shell-layout`: tabs on the rail ⇄ the sidebar, the address bar in the sidebar ⇄ the page, the
+  sidebar toggled with ⌘B, the right panel with ⌘⌥B, the bottom panel with ⌘J.
 - `shell-switcher`: ⌃⇥ shows the switcher with a picture of each tab. Releasing ⌃ picks one.
 - `shell-launcher`: ⌘T opens the launcher. Tab and ⇧Tab change its kind (chat, page, file…).
 - `shell-kept`: tabs and panes come back after a relaunch (`window.json`).
 
 ## How to get to it (user POV)
 
-- The sidebar's rows (projects, worktrees, tabs), its `+` buttons and the new-tab button.
+- The rail's and the sidebar's rows and tabs (projects, worktrees, pages), their `+` buttons
+  and the new-tab button.
 - ⌘T for the launcher, ⌘W, ⌘⇧T, ⌥↑/⌥↓ between tabs, ⌥←/⌥→ between projects, ⌃⇥ / ⌃⇧⇥ for
-  the switcher, ⌘B, ⌘⌥B, ⌘J, ⌘⇧M (sidebar mode), ⌘N (new worktree).
+  the switcher, ⌘B, ⌘⌥B, ⌘J, ⌘N (new worktree).
 - The menu bar's View and Window menus. These are native menus, and they would show on the
   owner's desktop: don't open them.
 - App control: `app_status`, `project_add`, `project_list`, `tab_open`, `tab_list`,
@@ -49,9 +52,12 @@ Preconditions: the baseline. `$B app tab_list '{}'` lists no tab yet.
   leaves `tab_list`. `$B probe 'key 17 t cmd shift' 'wait 500'` brings it back.
 - **Split.** `$B app pane_split '{"pane":<pane>,"edge":"right","kind":"terminal","command":["/bin/zsh","-f"]}'`.
   A shot shows two panes. `$B app pane_focus '{"pane":<new pane>}'` moves the focus.
-- **Layout.** `$B app layout_set '{"layout":"arc"}'` switches to Arc: the shot shows the icon
-  rail and tiles. `$B app layout_set '{"sidebar":false}'` hides the sidebar, as ⌘B does
-  (`$B probe 'key 11 b cmd'`).
+- **Layout.** Write `tabs` in the settings file with `jq` (`.tabs = "Sidebar"`, as in
+  [settings.md](./settings.md), `settings-file`): within 2 s the shot shows no rail, the pinned
+  tiles and each worktree's tabs in the sidebar. `.address_bar = "Page"` moves the address into
+  each page's toolbar. `$B app layout_set '{"sidebar":false}'` hides the sidebar, as ⌘B does
+  (`$B probe 'key 11 b cmd'`). A fresh start with the choice already made is
+  `$B prepare --tabs Sidebar --address-bar Page`.
 - **Switcher** (a floating panel: SKILL.md, rule 5, so close it at
   once). Hold ⌃ and press ⇥ with `$B probe 'key 48 "\t" ctrl'`, then take
   `$B shot switcher`. The panel lives in a window of its own, so get its number from

@@ -1,6 +1,6 @@
 //! The right panel beside the chat: the selected checkout's changed files, or its file tree,
-//! each opened and closed by its own button, on the worktree's header in the Arc sidebar and at
-//! the Orca top rail's end (`buttons`);
+//! each opened and closed by its own button, on the branch's row in the sidebar or at the top
+//! rail's end, where Changes and Files places them (`buttons`);
 //! a file picked in either opens in the workspace's tabs, its diff in the checkout's Changes tab
 //! or the file in a tab of its own. Each checkout in the sidebar keeps its panels while it's
 //! there, and whether its panel's open and on which (`side`), so leaving it and coming back
@@ -161,13 +161,12 @@ impl RightPanel {
         shown.map_or((0, 0), |panels| panels.totals)
     }
 
-    /// The right panel as the card shows it, if it's open while it's `shown`, `beside` being
-    /// how wide what's left of the chat is, `next_to_page` whether the tab beside it has a page.
+    /// The right panel beside the tab shown, if it's open while it's `shown`, `beside` being
+    /// how wide what's left of the chat is.
     pub fn render(
         &mut self,
         shown: bool,
         beside: f32,
-        next_to_page: bool,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Div> {
@@ -181,18 +180,14 @@ impl RightPanel {
         .unwrap_or_else(|| Empty.into_any_element());
         let width = self.width(cx);
         let p = theme::palette(cx);
-        let islands = theme::card::islands(cx);
         Some(
             div()
                 .h_full()
                 .flex_shrink_0()
                 .flex()
-                .children(theme::card::seam(
-                    "right-panel-resize",
-                    true,
-                    RightPanelResize,
-                    next_to_page,
-                    theme::card::part(p, islands)
+                .child(theme::card::seam("right-panel-resize", true, RightPanelResize))
+                .child(
+                    theme::card::island(p)
                         .h_full()
                         .w(px(width))
                         .flex_shrink_0()
@@ -202,8 +197,7 @@ impl RightPanel {
                             cx,
                         ))
                         .child(panel),
-                    cx,
-                )),
+                ),
         )
     }
 

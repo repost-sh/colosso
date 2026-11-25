@@ -379,8 +379,8 @@ impl Render for BrowserView {
         if self.fills_screen() || self.is_inspector() {
             return column.child(div().flex_1().min_h_0().w_full().child(page));
         }
-        let arc = settings::get(cx).layout == settings::Layout::Arc;
-        let toolbar = (!arc).then(|| toolbar::toolbar(self, window, cx));
+        let in_sidebar = settings::get(cx).address_in_sidebar();
+        let toolbar = (!in_sidebar).then(|| toolbar::toolbar(self, window, cx));
         let device = super::responsive::bar::device_bar(self, window, cx);
         let body = self.body(page, device, cx);
         column

@@ -74,9 +74,11 @@ ours() {
 cmd_help() {
   cat <<EOF
 koyo-verify paths                  the folders, the bundle and the desktop_open input
-koyo-verify prepare [--pin URL]... [--layout Orca|Arc] [--native-switches "a b=c"] [--log LEVEL]
+koyo-verify prepare [--pin URL]... [--tabs TopRail|Sidebar] [--address-bar Sidebar|Page]
+                    [--native-switches "a b=c"] [--log LEVEL]
                                    KoyoVerify.app from the dev bundle, and a fresh instance:
-                                   settings, a fixture repo and page, pinned pages
+                                   settings, a fixture repo and page, pinned pages; the two
+                                   layout options left out keep Koyo's defaults
 koyo-verify confirm <pid>          after desktop_open: ours and isolated, else killed; waits ready
 koyo-verify doctor                 read-only: is this instance worth driving?
 koyo-verify run <label>            a new evidence folder; later commands log into it
@@ -109,17 +111,20 @@ EOF
 }
 
 cmd_prepare() {
-  local pins=() layout=Orca switches="" level=""
+  local pins=() tabs="" address_bar="" switches="" level=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --pin) pins+=("$2"); shift ;;
-      --layout) layout="$2"; shift ;;
+      --tabs) tabs="$2"; shift ;;
+      --address-bar) address_bar="$2"; shift ;;
       --native-switches) switches="$2"; shift ;;
       --log) level="$2"; shift ;;
       *) die "prepare: unknown option $1" ;;
     esac
     shift
   done
+  case "$tabs" in ""|TopRail|Sidebar) ;; *) die "prepare: --tabs is TopRail or Sidebar" ;; esac
+  case "$address_bar" in ""|Sidebar|Page) ;; *) die "prepare: --address-bar is Sidebar or Page" ;; esac
   [ ${#SOCK} -le 100 ] || die "the socket path would be ${#SOCK} bytes, over 100: this checkout's path ($R) is too long for an instance here; ask the owner where to put it"
   if pid_of >/dev/null; then die "a test Koyo of this checkout runs (pid $(pid_of)): koyo-verify stop first"; fi
   [ -x "$DEV/Contents/MacOS/koyo" ] || die "no dev bundle: run  nice -n 10 script/dev-bundle --no-run  first"
@@ -238,15 +243,17 @@ HTML
   # of its own), the Mac's Claude login left alone (accounts.manage), quitting ends what runs,
   # worktrees and downloads inside the checkout, and app control on for this helper's client alone, its MCP
   # server on a port the system picks so it never answers on the owner's 6272. `desktop` and
-  # `devices` aren't granted.
-  jq -n --arg repo "$FIX/repo" --arg wt "$V/worktrees" --arg dl "$V/downloads" --arg layout "$layout" \
-    --arg client "$CLIENT" '{
-    projects: [$repo], layout: $layout, worktrees_dir: $wt, downloads_dir: $dl, agent_desktop: false,
+  # `devices` aren't granted. `tabs` and `address_bar` are written only when given, so Koyo's
+  # defaults apply otherwise.
+  jq -n --arg repo "$FIX/repo" --arg wt "$V/worktrees" --arg dl "$V/downloads" \
+    --arg tabs "$tabs" --arg address_bar "$address_bar" --arg client "$CLIENT" '{
+    projects: [$repo], worktrees_dir: $wt, downloads_dir: $dl, agent_desktop: false,
     on_quit: "End",
     accounts: { manage: false, autoSwitch: false },
     externalControl: { enabled: true, port: 0, showWhatAgentsOpen: false, pagesOpenAt: "fill",
       clients: [{ name: $client, approvedAt: 0,
-        scopes: ["read", "navigate", "manage", "browser", "settings", "destructive"] }] } }' \
+        scopes: ["read", "navigate", "manage", "browser", "settings", "destructive"] }] } }
+    + ({ tabs: $tabs, address_bar: $address_bar } | with_entries(select(.value != "")))' \
     > "$C/settings.json"
   if [ ${#pins[@]} -gt 0 ]; then
     printf '%s\n' "${pins[@]}" | jq -R . | jq -s --arg repo "$FIX/repo" '{ version: 1, shown: 0,

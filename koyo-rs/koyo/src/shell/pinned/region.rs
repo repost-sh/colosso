@@ -1,8 +1,8 @@
-//! The pinned pages' region, in either layout (`docs/arc-sidebar.md` 11): the Arc sidebar's
-//! tiles at its head, the Orca layout's buttons in a pill in its top rail. Each layout says how
-//! its region, its slots and its zone look; this is what they do: a page's tab or a loose page
-//! let go on the region is pinned where the slots made room for it, a slot dragged among them
-//! moves there, and the zone that says where one goes while none is pinned is put away by its ×.
+//! The pinned pages' region (`docs/sidebar.md` 11): the tiles at the sidebar's head, or the buttons
+//! in a pill on the top rail, as **Tabs** puts them. Each says how its region, its slots and its
+//! zone look; this is what they do: a page's tab or a loose page let go on the region is pinned
+//! where the slots made room for it, a slot dragged among them moves there, and the zone that says
+//! where one goes while none is pinned is put away by its ×.
 
 use std::rc::Rc;
 
@@ -17,8 +17,8 @@ use gpui_kit::{
 use crate::model::{Front, Pinned};
 use crate::shell::{Arrange, Dragged, DraggedPane, Landing, Shell, TileGrid};
 
-/// What the zone that says where a pinned page goes says, in either layout: to let a page go
-/// there while `taking` one, and to drag one there otherwise.
+/// What the zone that says where a pinned page goes says, in the sidebar and on the rail: to let a
+/// page go there while `taking` one, and to drag one there otherwise.
 pub fn pinned_zone_says(taking: bool) -> &'static str {
     if taking {
         "Drop to pin"
@@ -27,8 +27,8 @@ pub fn pinned_zone_says(taking: bool) -> &'static str {
     }
 }
 
-/// `button`, the zone's ×, in either layout: it says it hides the zone, and pressed, puts the
-/// zone away, the press going no further.
+/// `button`, the zone's ×, in the sidebar and on the rail: it says it hides the zone, and pressed,
+/// puts the zone away, the press going no further.
 pub fn hides_pinned_zone(button: Stateful<Div>) -> Stateful<Div> {
     button
         .tooltip(|window, cx| Tooltip::new("Hide").build(window, cx))

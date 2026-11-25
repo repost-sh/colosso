@@ -74,7 +74,7 @@ made up.
 
 | Asked | Where it's told | The keyboard |
 | --- | --- | --- |
-| ⌘L | `BrowserView::focus_address` | the page's address (in Arc, the launcher, a window of its own) |
+| ⌘L | `BrowserView::focus_address` | the page's address (with the address bar in the sidebar, the launcher, a window of its own) |
 | ⌥⌘I | `BrowserView::toggle_devtools` | hidden with the keyboard in them, `DevTools` give it back to their page; shown, it stays where it is and `DevTools` asking for it are refused |
 | a new tab | `Shell::keys_to_new_tab`, `open_browser_tab` | the new tab, as the shell hands it (a new page, its page; a start page, its address) |
 | ⌘⇧T | `shell/reopen.rs` | the tab brought back |

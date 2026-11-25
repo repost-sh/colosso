@@ -1,5 +1,5 @@
 //! Whether the loose pages, the unpinned ones, are each space's own or shared by every space
-//! (`docs/layout.md`, `docs/arc-sidebar.md` 11.3), and the menu that picks it. Shared unless the
+//! (`docs/layout.md`, `docs/sidebar.md` 11.3), and the menu that picks it. Shared unless the
 //! person picks Per space.
 
 use gpui_kit::Action;
@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use super::checked_menu;
 
-/// Which loose pages the top rail and the Arc sidebar list, the pages after the pinned ones
-/// that are no worktree's. Either way each is filed under the space it was opened in or brought
-/// to, so going back to [`LoosePages::PerSpace`] puts each back in its space.
+/// Which loose pages the top rail and the sidebar list, the pages after the pinned ones that are no
+/// worktree's. Either way each is filed under the space it was opened in or brought to, so going
+/// back to [`LoosePages::PerSpace`] puts each back in its space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LoosePages {
     /// Each space lists its own.

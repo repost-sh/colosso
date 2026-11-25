@@ -9,12 +9,12 @@ use gpui_kit::{AnyWindowHandle, App, Entity, TestAppContext};
 use super::here::{Here, OpenTab};
 use super::rows::{self, Act, Query};
 use super::{Kind, Launcher, Opens};
-use crate::files::tests::{dialog, press, tabs};
+use crate::files::tests::{dialog, tabs};
 use crate::history::{self, Place};
 use crate::model::PaneKind;
 use crate::new_worktree::NewWorktreeDialog;
 use crate::shell::Shell;
-use crate::test_support::{draw, repo, select, shell_with};
+use crate::test_support::{draw, press, repo, select, shell_with};
 
 mod icons;
 mod on_page;

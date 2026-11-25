@@ -157,17 +157,6 @@ impl Drawn {
         })
     }
 
-    /// Closes the window and opens the app's window again, as its next launch does, on the
-    /// settings as they are. What was noted of the window closed goes with it.
-    pub fn reopen(&mut self) -> Result<()> {
-        (self.cx)
-            .update_window(self.window, |_, window, _| window.remove_window())
-            .map_err(|error| error.to_string())?;
-        NOTED.with_borrow_mut(HashMap::clear);
-        (self.window, self.shell) = shell_window(&mut self.cx)?;
-        self.draw()
-    }
-
     /// The shell off screen, its pictures going to `out` under the checkout, and its
     /// settings, which the check may change, to `KOYO_CONFIG_DIR` rather than the app's.
     pub fn open_in(out: &str) -> Result<Drawn> {

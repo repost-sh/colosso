@@ -99,10 +99,10 @@ pub struct Palette {
     pub removed: Hsla,
     /// Files changed in place.
     pub modified: Hsla,
-    /// What's at work: the spinner on a chat's tab, its project's tile and its space's mark. An
+    /// What's at work: the spinner on a chat's tab, its project's row and its space's mark. An
     /// amber, to be told at a glance from what waits for the person.
     pub working: Hsla,
-    /// What waits for the person: the dot on a tab's row, its project's tile and its space's
+    /// What waits for the person: the dot on a tab's row, its project's row and its space's
     /// mark. An indigo, apart from the amber of what's at work and the red of what went wrong.
     pub waiting: Hsla,
     /// The colours of code by kind of token.

@@ -8,7 +8,7 @@ use super::*;
 use crate::changes::{Mark, Touched};
 use crate::checkout::{Content, read_at_most};
 use crate::settings::{self, SaveScope};
-use crate::test_support::{scratch, write};
+use crate::test_support::{press, scratch, write};
 
 pub(crate) mod support;
 pub(crate) use support::*;

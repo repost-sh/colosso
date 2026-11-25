@@ -544,7 +544,7 @@ Derived, never stored (T3: status written twice drifts):
   when the latest settled run failed; else idle. `needs` from the oldest pending request.
 - `said`, from the latest item of the person's message or the agent's reply that has words:
   its first such line, without markdown's marks, spaces closed up, at most 200 characters
-  (`opening`). A tab's row in the Arc sidebar shows it (`docs/arc-sidebar.md` 5).
+  (`opening`). A tab's row in the sidebar shows it (`docs/sidebar.md` 5).
   `unread` when the latest settled run ended after `readAt`. `background` while the thread's
   `backgroundTasks` isn't 0 (4.5.6).
 - The stop divider ("You stopped this response") from `Run.stop`; the failure row from
@@ -1232,7 +1232,7 @@ Layout, top to bottom inside the pane's card:
   to icons from the end as the pane
   narrows. What shows is what the thread says, so it's what the agent runs with: a change goes
   to the host and shows when the host says so; a new chat holds what it will start with.
-- **Model menu** (the chip, ⌃M as ⌘⇧M is the sidebar's, or `/model`): the same dropdown as the
+- **Model menu** (the chip, ⌃M, or `/model`): the same dropdown as the
   permission's, in a popup window of its own below the chip, or over it with no room below: a line
   for each model from the catalog, ✓ on the current, and below a separator Fast's switch, as in
   Settings, if the chat's model can; it flips where it is and leaves the menu up. ↑/↓, Enter picks
@@ -1280,8 +1280,8 @@ Layout, top to bottom inside the pane's card:
   Koyo is in front and 10 while another app is; a window nobody can see, minimized, covered or
   on another desktop, asks for none, and is drawn whole again once it's seen; until 2026-11-14 it
   stood still while Koyo wasn't in front), a dot in the text's colour
-  when it needs you, a dot when unread, red when failed. In the Arc layout a tab's row says it
-  at its end instead: the spinner, then an indigo dot (`docs/arc-sidebar.md` 5). The sidebar's worktree row shows the
+  when it needs you, a dot when unread, red when failed. With the tabs in the sidebar a tab's row says it
+  at its end instead: the spinner, then an indigo dot (`docs/sidebar.md` 5). The sidebar's worktree row shows the
   most urgent of its chats, and a chat with no tab counts only while it's working or needs you.
   A chat on show with the window in front has been seen, and says so to the host (`threads.read`),
   so a mark for what's new or failed goes once it's looked at. A macOS notification when a chat

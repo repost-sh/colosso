@@ -1,5 +1,5 @@
 //! The browser panes the tools see, every worktree's and the person's own, pinned and loose
-//! (`docs/arc-sidebar.md` 11), and the one a call means: the pane it names; else, never one of
+//! (`docs/sidebar.md` 11), and the one a call means: the pane it names; else, never one of
 //! the person's, the page the caller acted on last, the shown tab's, or the only one.
 //! `browser_list` lists them all; of the person's, who holds one is said only as the caller
 //! (`you`), another agent, or the person, and what it asks only to a caller they let use it.

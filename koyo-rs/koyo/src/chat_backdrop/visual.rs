@@ -1,10 +1,11 @@
 //! `--visual-check-chat-backdrop` (`docs/chat-backdrop.md` 10, step 9): a chat over a wallpaper
 //! kept in the checkout, not the person's, drawn by the real shell in a real window off screen and
 //! saved as PNGs under `.artifacts/qa/chat-backdrop/`: the backdrop on and off, in the light
-//! appearance and the dark, at each Quality stop (with a crop of each at a pixel a pixel, where
-//! the picture is sharp), the Orca layout's sidebar, tabs and Files panel over it, its compact
-//! mode, the tabs still in its top rail, and Appearance › Chat background. A window off screen lies on no screen,
-//! so the check's window stands on one of its own, 2560 × 1440 points, at (480, 220).
+//! appearance and the dark, at each Quality stop (with a crop of each at a pixel a pixel, where the
+//! picture is sharp), the Files panel over it, the sidebar and the top rail round it on the glass,
+//! compact mode, the tabs still on the top rail, and Appearance › Chat background. A window off
+//! screen lies on no screen, so the check's window stands on one of its own, 2560 × 1440 points, at
+//! (480, 220).
 //!
 //! ```sh
 //! Q=$PWD/.artifacts/qa/chat-backdrop && mkdir -p $Q/tmp &&
@@ -116,7 +117,7 @@ fn draw() -> Result<Vec<String>> {
         let shell = drawn.shell.clone();
         shell.update(cx, |shell, cx| shell.show(View::Files, cx));
     });
-    saved.push(settled(&mut drawn, "orca-files-dark.png")?);
+    saved.push(settled(&mut drawn, "files-dark.png")?);
     let shell = drawn.shell.clone();
     for open in [false, true] {
         drawn.cx.update(|cx| {
@@ -124,7 +125,7 @@ fn draw() -> Result<Vec<String>> {
             shell.update(cx, |shell, cx| shell.set_sidebar_open(open, cx));
         });
         if !open {
-            saved.push(settled(&mut drawn, "orca-compact-dark.png")?);
+            saved.push(settled(&mut drawn, "compact-dark.png")?);
         }
     }
     drawn.cx.update(|cx| {

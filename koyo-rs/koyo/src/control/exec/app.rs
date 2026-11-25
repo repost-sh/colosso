@@ -1,5 +1,5 @@
-//! The window: its status, bringing it forward, its panels and layout, and the Settings tab
-//! and the page it shows.
+//! The window: its status, bringing it forward, its panels, and the Settings tab and the page
+//! it shows.
 
 use futures::channel::oneshot;
 use gpui_kit::App;
@@ -8,7 +8,6 @@ use koyo_app_control::ops::app::{
     AppStatusOutput, LayoutSetInput, LayoutState, McpStatus, RightPanel, RightPanelChoice,
     Selected, SettingsPage,
 };
-use koyo_app_control::ops::shared::Layout;
 use serde_json::Value;
 
 use super::{Exec, main_shell, output, try_update_shell, update_shell};
@@ -20,14 +19,12 @@ use crate::shell::Shell;
 
 /// What the window shows, as `app_status` answers it.
 pub(crate) fn status(cx: &mut App) -> AppStatusOutput {
-    let layout: Layout = settings::get(cx).layout.into();
     let closed = AppStatusOutput {
         version: env!("CARGO_PKG_VERSION").to_owned(),
         window_open: false,
         focused: false,
         on_screen: false,
         route: "workspace".to_owned(),
-        layout,
         sidebar_open: false,
         right_panel: None,
         bottom_panel_open: false,
@@ -105,11 +102,8 @@ fn focused(cx: &mut App) -> Result<Value, ControlError> {
     status_value(cx)
 }
 
-/// Opens or closes the panels and switches the layout, as `input` says.
+/// Opens or closes the panels, as `input` says.
 pub(crate) fn layout_set(input: &LayoutSetInput, cx: &mut App) -> Result<Value, ControlError> {
-    if let Some(layout) = input.layout {
-        settings::update(cx, |settings| settings.layout = layout.into());
-    }
     let state = update_shell(cx, |shell, _, cx| {
         if let Some(open) = input.sidebar {
             shell.set_sidebar_open(open, cx);
@@ -124,7 +118,6 @@ pub(crate) fn layout_set(input: &LayoutSetInput, cx: &mut App) -> Result<Value, 
             None => {}
         }
         LayoutState {
-            layout: settings::get(cx).layout.into(),
             sidebar_open: shell.sidebar_open(),
             right_panel: right_panel(shell),
             bottom_panel_open: shell.bottom_panel_open(),

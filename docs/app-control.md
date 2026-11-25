@@ -214,13 +214,13 @@ selected checkout.
 
 ```
 app_status [read] R    {} → { version, windowOpen, focused, route: "workspace"|"settings:<page>",
-                         layout, sidebarOpen, rightPanel: null|"changes"|"files", bottomPanelOpen,
+                         sidebarOpen, rightPanel: null|"changes"|"files", bottomPanelOpen,
                          selected: { project?, worktree?, pane? }, mcp: { http, url? }, dataDir }
 app_focus  [navigate] I {} → brings the window forward, opening it when closed
 app_launch (stdio relay only, answered by the relay) → starts Koyo when it isn't running
            and waits up to 30 s for its socket
 layout_set [navigate] I { sidebar?: bool, rightPanel?: "changes"|"files"|"none",
-                         bottomPanel?: bool, layout?: "orca"|"arc" } → app_status subset;
+                         bottomPanel?: bool } → app_status subset;
                          the right panel is the selected worktree's: each worktree keeps its
                          own, `rightPanel` changes as another is selected, and with none
                          selected it stays null
@@ -231,7 +231,7 @@ settings_open [navigate] I { page?: "general"|"chat"|"accounts"|"appearance"|"ed
 ```
 
 `settings_open` opens the Settings tab among the loose pages, or picks it if it's open, on
-`page` or the page it shows (`docs/arc-sidebar.md` 11.9); `settings_close` closes it, and the tab
+`page` or the page it shows (`docs/sidebar.md` 11.9); `settings_close` closes it, and the tab
 it was over shows again. `route` is `settings:<page>` while the Settings tab is shown.
 
 `sidebar: false` (or ⌘B) is compact mode: the rails fold with the sidebar until every edge is as
@@ -271,7 +271,7 @@ tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{
              `persons` lists the person's own pages whatever worktree is asked for: the
              pinned in the order of their tiles, every space's loose pages in the order of
              their rows (`index` a page's place among its space's), `selected` the one shown
-             in place of the worktree's tab (`docs/arc-sidebar.md` 11). The window tools
+             in place of the worktree's tab (`docs/sidebar.md` 11). The window tools
              refuse them (below); the browser tools need the person's consent (Browser).
              PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat"|
              "desktop"|"device", title,
@@ -496,7 +496,7 @@ browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?,
 
 #### The person's own pages [decided 2026-11-15]
 
-The pinned pages and the loose ones (`docs/arc-sidebar.md` 11) are the person's: no
+The pinned pages and the loose ones (`docs/sidebar.md` 11) are the person's: no
 worktree's, signed in as they are. Agents see them and can't use them unless the person says
 so, in Koyo's window.
 
@@ -603,7 +603,7 @@ so, in Koyo's window.
   asks for a page it opened itself then.
 - **Profiles are shared.** `browser_list` lists a person's page's address, so an agent may
   `tab_open` it in a worktree of the same project and read it signed in, as that profile is
-  the page's too (`docs/arc-sidebar.md` 11.6), while agents' pages are signed in as the
+  the page's too (`docs/sidebar.md` 11.6), while agents' pages are signed in as the
   person. Kept apart, the page it opens is of the Agents profile, with none of the person's
   sign-ins (`docs/browser.md` 15.7).
 - **The window tools** refuse the person's pages outright (Tabs and panes).
@@ -760,13 +760,20 @@ Accounts, and `settings_set` doesn't reach them (a test holds the catalog to it)
 
 ```
 settings_get [read] R {} → the allowlisted settings, camelCase
-settings_set [settings] I { appearance?: "system"|"light"|"dark", layout?,
+settings_set [settings] I { appearance?: "system"|"light"|"dark",
+             tabs?: "top_rail"|"sidebar", addressBar?: "page"|"sidebar",
+             changesAndFiles?: "worktree"|"top_rail",
              loosePages?: "per_space"|"shared", previewFiles?,
              saveScope?: "shown"|"all", inlayHints?, semanticColouring?, sidebarOpenOnLaunch?,
              worktreesDir?: path|null, branchPrefix?: { githubUser } | { custom } | { none },
              mostLanguageServers?: int|null, stopIdleLanguageServers?, sidebarWidth?,
              devtools? } → the settings after
 ```
+
+`tabs`, `addressBar` and `changesAndFiles` are Settings → Appearance → Layout's
+(`docs/layout.md`). While `tabs` is `sidebar` the Changes and Files buttons are on the
+worktree's row whatever `changesAndFiles` says, and a `top_rail` set then is kept for the tabs'
+return to the top rail.
 
 Not reachable: `projects` (project tools), `externalControl` (the person only), themes'
 gradients, fonts and language server tables `[not built]`.

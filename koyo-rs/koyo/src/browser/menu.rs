@@ -125,8 +125,8 @@ fn command(entry: &MenuEntry) -> Option<Row> {
 /// Every row of the menu, with no leading, trailing or doubled rules. A page (`Some`)
 /// ends with Save as PDF, beside Chrome's own Print further up (`docs/browser.md` 16), then
 /// Responsive mode, Inspect and Show or Hide `DevTools`, as Chrome's menus end with Inspect:
-/// the page's toolbar had the switches for them, and in the Arc layout it has no toolbar
-/// (`docs/arc-sidebar.md` 2). `DevTools` (`None`) have none of them.
+/// the page's toolbar had the switches for them, and with the address bar in the sidebar it
+/// has no toolbar (`docs/layout.md`). `DevTools` (`None`) have none of them.
 fn rows(
     entries: &[MenuEntry],
     target: &MenuTarget,

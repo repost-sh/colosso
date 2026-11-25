@@ -1,5 +1,5 @@
-//! The shell's side of the pinned pages (`docs/arc-sidebar.md` 11), tiles at the Arc sidebar's
-//! head and buttons in the Orca layout's top rail: their region in either layout (`region.rs`),
+//! The shell's side of the pinned pages (`docs/sidebar.md` 11), tiles at the sidebar's head and
+//! buttons in the top rail, wherever **Tabs** puts them: their region (`region.rs`),
 //! a page's tab pinned as it's dropped on it, where they made room for it, a pinned page shown
 //! as its tile is picked, moved among them, closed and still pinned, pinned at another address,
 //! unpinned onto a checkout's tabs or among the space's loose pages, or removed, as its menu
@@ -43,8 +43,8 @@ fn initial(address: &str) -> Option<SharedString> {
     Some(first.to_uppercase().collect::<String>().into())
 }
 
-/// A pinned page's picture, `size` points across, on its tile in the Arc sidebar and its button
-/// in the Orca rail: its site's icon, its corners a little rounded; with none, its host's
+/// A pinned page's picture, `size` points across, on its tile in the sidebar and its button on
+/// the top rail: its site's icon, its corners a little rounded; with none, its host's
 /// initial; a globe for a page with no host, as a new tab's start page. Fainter while its page
 /// isn't open, closed or not opened since the window came back.
 pub fn pinned_picture(page: &Pane, size: f32, p: Palette) -> Div {
@@ -88,7 +88,7 @@ impl Shell {
         })
     }
 
-    /// Whether what's in hand is something the Arc sidebar's loose pages take, once it has left
+    /// Whether what's in hand is something the sidebar's loose pages take, once it has left
     /// where it was taken from: what their rows light up for, and what their strip shows for.
     /// They take a page's tab off a checkout's list (`loose_taking_tab`), and a pinned page's
     /// tile well away from the others; not while it's still on the grid it was taken from.
@@ -97,7 +97,7 @@ impl Shell {
     }
 
     /// Whether a page's tab is in hand that has left the checkout's list it was taken from: what
-    /// the loose pages take, along the top rail and down the Arc sidebar, and what the spot that
+    /// the loose pages take, along the top rail or down the sidebar, and what the spot that
     /// takes the first of them shows for. Not while it's still on its list.
     pub(crate) fn loose_taking_tab(&self) -> bool {
         (self.tab_hand.left_list()).is_some_and(|pane| {
@@ -123,7 +123,7 @@ impl Shell {
         pinned.is_some()
     }
 
-    /// What's in `held` let go on the pinned pages' region, in either layout: a page's tab or a
+    /// What's in `held` let go on the pinned pages' region, tiles or pill: a page's tab or a
     /// loose page is pinned where the tiles made room for it, or after them, as on the zone
     /// that's there while none is pinned.
     fn pin_dropped(&mut self, held: &DraggedPane, cx: &mut Context<Self>) {
@@ -133,7 +133,7 @@ impl Shell {
         }
     }
 
-    /// Whether the pinned pages' region shows, in either layout: their tiles while any is
+    /// Whether the pinned pages' region shows, tiles or pill: their slots while any is
     /// pinned, else the zone that says where one goes, unless the person put it away
     /// (`settings.json` `pinned_zone_dismissed`) and nothing it takes is in hand, as `taking`
     /// says.

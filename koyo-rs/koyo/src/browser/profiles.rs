@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 use crate::blocking::Blocking;
 use crate::kept_file::{self, KeptFile};
 use crate::settings;
-use crate::spaces::ProjectLooks;
 
 mod actions;
 
@@ -243,14 +242,13 @@ impl Profiles {
     }
 
     /// Lists the profile each of `projects` kept of its own before profiles had names, called
-    /// as the project is in `looks`, with the project on it: what a project's pages are signed
+    /// as the project is, with the project on it: what a project's pages are signed
     /// in to stays. Only a profile that `kept` says has a folder is, so a project whose pages
     /// kept nothing starts on Default, as a new one does; a project on a profile already is
     /// left be.
     pub fn bring_over(
         &mut self,
         projects: &[PathBuf],
-        looks: &ProjectLooks,
         kept: impl Fn(&str) -> bool,
     ) {
         for project in projects {
@@ -258,7 +256,7 @@ impl Profiles {
             if self.projects.contains_key(project) || self.has(&id) || !kept(&id) {
                 continue;
             }
-            let name = crate::model::project_name(looks, project).to_string();
+            let name = crate::model::project_name(project).to_string();
             self.made.push(Profile {
                 id: id.clone(),
                 name,
@@ -336,7 +334,7 @@ fn open(path: Option<PathBuf>, kept: impl Fn(&str) -> bool, may: Blocking<'_>, c
     let mut profiles = read.unwrap_or_default();
     if bring_over {
         let settings = settings::get(cx);
-        profiles.bring_over(&settings.projects, &settings.project_looks, kept);
+        profiles.bring_over(&settings.projects, kept);
         kept_file::write_due(path.clone().zip(kept_file::encode(&profiles)), cx);
     }
     let file = RefCell::new(KeptFile::new(path));

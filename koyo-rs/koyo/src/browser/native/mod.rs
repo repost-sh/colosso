@@ -10,7 +10,7 @@
 
 use std::io;
 
-use gpui_kit::{App, Bounds, Pixels, Window};
+use gpui_kit::{Bounds, Pixels, Window};
 use koyo_browser_ipc::PaneId;
 use koyo_browser_ipc::client::{Connection, Embedded, Launch, Sink};
 use objc2::MainThreadMarker;
@@ -82,9 +82,9 @@ pub struct NativePage {
 const RESIZING_FOR: std::time::Duration = std::time::Duration::from_millis(250);
 
 impl Hosted for NativePage {
-    fn remove(self, cx: &mut App) {
+    fn into_surface(self) -> Surface {
         koyo_browser_host::native::release(self.pane, &self.container);
-        self.surface.remove(cx);
+        self.surface
     }
 }
 

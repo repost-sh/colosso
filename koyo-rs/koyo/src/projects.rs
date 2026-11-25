@@ -9,9 +9,8 @@ use std::sync::{LazyLock, Mutex};
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
-    Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement,
-    MouseButton, MouseDownEvent, PathPromptOptions, SharedString, Task, WeakEntity, Window,
-    actions,
+    Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement as _,
+    PathPromptOptions, SharedString, Task, WeakEntity, Window, actions,
 };
 use koyo_git::{Repo, Worktree};
 
@@ -51,24 +50,41 @@ pub struct RevealInFinder(pub PathBuf);
 #[action(namespace = projects, no_json)]
 pub struct CopyPath(pub PathBuf);
 
-/// Has `element` open the menu `build` makes where it is right-clicked, rather than any menu of
-/// what it's in.
-pub fn with_menu<E: InteractiveElement>(
-    element: E,
-    build: impl Fn(&mut Window, &mut App) -> NativeMenu + 'static,
-) -> E {
-    element.on_mouse_down(
-        MouseButton::Right,
-        move |event: &MouseDownEvent, window, cx| {
-            cx.stop_propagation();
-            build(window, cx).show(event.position, window, cx);
-        },
-    )
+/// Moves the project whose main checkout is at the path to the space with the id given, and
+/// shows that space.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = projects, no_json)]
+pub struct MoveProject(pub PathBuf, pub u64);
+
+/// Makes a space and moves the project whose main checkout is at the path into it, shown.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = projects, no_json)]
+pub struct MoveProjectToNewSpace(pub PathBuf);
+
+/// The menu a project's row opens, for its main checkout at `path`: Move to Space first, then
+/// what any project's menu offers.
+pub fn project_menu(path: &Path, cx: &App) -> NativeMenu {
+    let menu = NativeMenu::new()
+        .submenu("Move to Space", move_to_space(path, cx))
+        .separator();
+    project_items(menu, path, cx)
 }
 
-/// The menu a project's row opens, for its main checkout at `path`.
-pub fn project_menu(path: &Path, cx: &App) -> NativeMenu {
-    project_items(NativeMenu::new(), path, cx)
+/// Where the project at `path` can move (`docs/layout.md`, Moving a project to another space):
+/// the spaces, the one it's in checked, then a new space.
+pub fn move_to_space(path: &Path, cx: &App) -> NativeMenu {
+    let settings = settings::get(cx);
+    let owned = || path.to_owned();
+    (settings.spaces.iter())
+        .fold(NativeMenu::new(), |menu, space| {
+            menu.menu_with_check(
+                space.name.clone(),
+                space.holds(path),
+                Box::new(MoveProject(owned(), space.id)),
+            )
+        })
+        .separator()
+        .menu("New Space…", Box::new(MoveProjectToNewSpace(owned())))
 }
 
 /// What any project's menu offers, after `menu`'s own items: the profile its pages use, a new
@@ -112,18 +128,9 @@ pub fn pick_folder(
     prompt: &'static str,
     cx: &mut App,
 ) -> impl Future<Output = Option<PathBuf>> + use<> {
-    pick_path(prompt, true, cx)
-}
-
-/// Asks the user for a file, or a folder if `folder`, `prompt` naming the button that picks it.
-pub fn pick_path(
-    prompt: &'static str,
-    folder: bool,
-    cx: &mut App,
-) -> impl Future<Output = Option<PathBuf>> + use<> {
     let picked = cx.prompt_for_paths(PathPromptOptions {
-        files: !folder,
-        directories: folder,
+        files: false,
+        directories: true,
         multiple: false,
         prompt: Some(prompt.into()),
     });
@@ -306,20 +313,8 @@ impl Shell {
         settings::get(cx).branch_prefix.own(user)
     }
 
-    /// Whether the worktrees of the project at `project` are folded away under its name in
-    /// either layout's sidebar.
-    pub(crate) fn is_folded(&self, project: &Path, cx: &App) -> bool {
-        settings::get(cx).is_folded(project)
-    }
-
-    /// Folds the worktrees of the project at `project` away under its name in either layout's
-    /// sidebar, or brings them back, kept for the next launch.
-    pub(crate) fn toggle_fold(&mut self, project: &Path, cx: &mut Context<Self>) {
-        settings::update(cx, |settings| settings.toggle_folded(project));
-    }
-
     /// Moves the project at `from` among `group`, places in the sidebar's order, to `to`'s, and
-    /// saves the order: what a project dragged in either layout's sidebar does.
+    /// saves the order: what a project dragged in the sidebar does.
     pub(crate) fn move_project_among(
         &mut self,
         group: &[usize],
@@ -334,8 +329,7 @@ impl Shell {
     }
 
     /// Moves the worktree of the project at `project` from `from` to where the one at `to` is,
-    /// in both layouts' lists, and keeps the order for the next launch (`docs/arc-sidebar.md`
-    /// 5, 9).
+    /// in the sidebar's list, and keeps the order for the next launch (`docs/sidebar.md` 5, 9).
     pub fn move_worktree(
         &mut self,
         project: usize,
@@ -449,9 +443,10 @@ impl Shell {
         self.ask_pages_then(pages, ask, cx);
     }
 
-    /// The pages of the space at `index`: its projects', and its loose ones.
-    pub(crate) fn pages_of_space(&self, index: usize, cx: &App) -> Vec<WeakEntity<BrowserView>> {
-        let Some(space) = settings::get(cx).spaces.get(index) else {
+    /// The pages of the space with id `space`: its projects', and its loose ones.
+    pub(crate) fn pages_of_space(&self, space: u64, cx: &App) -> Vec<WeakEntity<BrowserView>> {
+        let settings = settings::get(cx);
+        let Some(space) = settings.space_index(space).map(|at| &settings.spaces[at]) else {
             return Vec::new();
         };
         let mut pages = self.pages_of_projects(&space.projects);

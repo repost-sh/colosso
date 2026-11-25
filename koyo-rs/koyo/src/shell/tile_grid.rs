@@ -1,13 +1,12 @@
-//! Tiles in a grid they're dragged about in (`docs/arc-sidebar.md` 3, 11): the tile in hand
-//! follows the pointer, the others step out of its way into the slot it left, along their row
-//! and round onto the next, and let go it slides into the slot it's over. Taken well away from
-//! the grid it goes back to its own slot, and letting go there changes nothing. The grid's
-//! counterpart of the tab lists' `Reorder`, which runs one way only. The Arc sidebar's projects
-//! are one grid, the pinned pages another, down the Arc sidebar or along the Orca layout's top
-//! rail, each with its own hand. A grid that takes a page from elsewhere, as the pinned pages
-//! take a page's tab or a loose page, lays itself out while one is over the region that takes
-//! it as it will be once it's among the tiles: every tile from the slot the pointer is nearest
-//! on steps one along, the slot it leaves lit, and let go the page lands there.
+//! Tiles in a grid they're dragged about in (`docs/sidebar.md` 11): the tile in hand follows the
+//! pointer, the others step out of its way into the slot it left, along their row and round onto
+//! the next, and let go it slides into the slot it's over. Taken well away from the grid it goes
+//! back to its own slot, and letting go there changes nothing. The grid's counterpart of the tab
+//! lists' `Reorder`, which runs one way only. The pinned pages are one, down the sidebar or along
+//! the top rail, with a hand of its own. A grid that takes a page from elsewhere, as the pinned
+//! pages take a page's tab or a loose page, lays itself out while one is over the region that takes
+//! it as it will be once it's among the tiles: every tile from the slot the pointer is nearest on
+//! steps one along, the slot it leaves lit, and let go the page lands there.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -33,14 +32,14 @@ pub use hand::TileHand;
 #[derive(Clone, Copy)]
 pub enum Arrange {
     /// As many to a row as the function says for how many there are, sharing the grid's width,
-    /// a row under another: the Arc sidebar's.
+    /// a row under another: the sidebar's.
     Grid(fn(usize) -> usize),
-    /// One row, each tile as wide as it is: the Orca layout's top rail.
+    /// One row, each tile as wide as it is: the top rail's.
     Row,
 }
 
 impl Arrange {
-    /// How many cells a row holds with `count` of them: a row of the Orca rail holds them all,
+    /// How many cells a row holds with `count` of them: a row of the top rail holds them all,
     /// and one more.
     fn per_row(self, count: usize) -> usize {
         match self {

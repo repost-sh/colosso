@@ -10,7 +10,6 @@ use koyo_browser_ipc::{AppRequest, HostEvent, PaneId};
 
 use crate::browser::profiles::By;
 use crate::browser::{BrowserView, FakeHost};
-use crate::settings::Layout;
 use crate::shell::Shell;
 use crate::test_support::{draw, open_page_view, shell_on};
 
@@ -52,7 +51,7 @@ fn opens(host: &FakeHost, opener: &Entity<BrowserView>, (pane, url): (PaneId, &s
 
 #[gpui_kit::test]
 fn a_page_a_page_opens_gets_a_tab_right_after_its_and_closing_itself_goes_back_to_it(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("page-opens-tab", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("page-opens-tab", cx);
     let host = FakeHost::serve("page-opens-tab-host", cx);
     let opener = open_page_view(window, &shell, "https://a.example/", cx);
     open_page_view(window, &shell, "https://b.example/", cx);
@@ -86,7 +85,7 @@ fn a_page_a_page_opens_gets_a_tab_right_after_its_and_closing_itself_goes_back_t
 
 #[gpui_kit::test]
 fn a_popup_an_agents_page_opens_out_of_sight_is_the_agents_and_stays_behind(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("agent-page-opens-tab", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("agent-page-opens-tab", cx);
     let host = FakeHost::serve("agent-page-opens-tab-host", cx);
     let opener = open_page_view(window, &shell, "https://a.example/", cx);
     opener.update(cx, |view, cx| {

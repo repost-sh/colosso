@@ -11,7 +11,6 @@ use koyo_seam::keyboard::state::{Holder, Part};
 use koyo_seam::keyboard::testing::{Fake, installed};
 
 use crate::keyboard::{self, key_of};
-use crate::settings::Layout;
 use crate::shell::Shell;
 use crate::test_support::{draw, open_page_view, shell_on};
 
@@ -32,7 +31,7 @@ fn focus_root(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppCo
 /// A shell in a key window whose page, shown and drawn, has the keyboard.
 fn on_page(name: &str, cx: &mut TestAppContext) -> (Rc<Fake>, AnyWindowHandle, Entity<Shell>) {
     let (fake, _turns) = installed();
-    let (window, shell, _) = shell_on(name, Layout::default(), cx);
+    let (window, shell, _) = shell_on(name, cx);
     activate(window, cx);
     let page = open_page_view(window, &shell, "https://example.com/", cx);
     let page_id = page.read_with(cx, |page, _| page.page_id());

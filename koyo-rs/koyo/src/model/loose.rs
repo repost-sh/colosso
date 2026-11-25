@@ -1,4 +1,4 @@
-//! Loose pages (`docs/arc-sidebar.md` 11): pages open in a space that are no project's, listed
+//! Loose pages (`docs/sidebar.md` 11): pages open in a space that are no project's, listed
 //! under the pinned pages and over the open project. Each is filed under a space; a space lists
 //! its own, or every space's while the settings share them (`settings::LoosePages`), in the
 //! order of their rows. Its own, a space shows again the one it showed last when it's come back
@@ -177,11 +177,6 @@ impl Workspace {
         let changed = self.apart.shared != shared;
         self.apart.shared = shared;
         changed
-    }
-
-    /// Whether every space lists every loose page.
-    pub fn loose_shared(&self) -> bool {
-        self.apart.shared
     }
 
     /// Whether the page shown stays shown whichever space is: a pinned page, or a loose one

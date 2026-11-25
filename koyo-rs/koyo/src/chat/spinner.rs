@@ -1,5 +1,5 @@
 //! The spinner that says a chat is at work (`docs/chat.md` 5.3), wherever one's said to be: on
-//! its tab, its checkout's row, its project's tile and its space's mark. A small ring in amber
+//! its tab, its checkout's row, its project's row and its space's mark. A small ring in amber
 //! with a gap in it, its line bold for its size, going round.
 //!
 //! It turns at the beat (`crate::beat`), all of them together, in the same frames, whichever app
@@ -78,13 +78,13 @@ struct Spinners(HashMap<String, Entity<Spin>>);
 impl Global for Spinners {}
 
 /// The spinner `place` shows while a chat works there: a tab, a checkout's row, a project's
-/// tile.
+/// row.
 pub fn spinner(place: String, cx: &mut App) -> Div {
     spinner_of(place, SIZE, cx)
 }
 
 /// The spinner `place` shows, in a square `size` wide: by a space's mark, which is smaller
-/// than a tile.
+/// than a row's.
 pub fn spinner_of(place: String, size: f32, cx: &mut App) -> Div {
     let held = cx.default_global::<Spinners>().0.get(&place).cloned();
     let spin = held.unwrap_or_else(|| {

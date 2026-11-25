@@ -11,8 +11,9 @@ test instance that [SKILL.md](../SKILL.md) launches, never the owner's Koyo.
   `$B doctor` shows no `warn` about a stale binary.
 - The instance comes from `$B prepare`: an empty data folder, the fixture repository
   `.superpowers/v/fixture/repo` (one commit on `main`) as the only project, the fixture page
-  `file://<checkout>/.superpowers/v/fixture/focus.html`, and the Orca layout unless the journey
-  says `--layout Arc`.
+  `file://<checkout>/.superpowers/v/fixture/focus.html`, and Koyo's default layout (tabs on the
+  top rail, the address bar in the sidebar) unless the journey says `--tabs Sidebar` or
+  `--address-bar Page`.
 - It was opened with `desktop_open` after the owner's go, and `$B confirm <pid>` passed.
 - `$B doctor` exits 0, and `$B run <feature-id>` started the evidence folder.
 
@@ -48,7 +49,7 @@ labelled bullet pairs an act with its command and the result you observe), and `
 
 ## Features
 
-- [Shell](./shell.md): the window, the sidebar in both layouts, projects, tabs, panes, the
+- [Shell](./shell.md): the window, the sidebar and the top rail, projects, tabs, panes, the
   launcher and the tab switcher.
 - [Chats](./chats.md): a chat tab, its composer, sending, the fake agent's answer, stopping.
 - [Terminals](./terminals.md): a terminal tab, typing in it, reading its screen and stream.

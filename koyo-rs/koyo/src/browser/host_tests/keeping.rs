@@ -217,7 +217,7 @@ fn account(name: &str) -> Option<String> {
     })
 }
 
-/// What a pinned page counts on (`docs/arc-sidebar.md` 11): its project's profile keeps a
+/// What a pinned page counts on (`docs/sidebar.md` 11): its project's profile keeps a
 /// sign-in across Koyo quitting and starting again, when the engine goes and comes back.
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]

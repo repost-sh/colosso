@@ -2,26 +2,12 @@
 //! and sets them: the sidebar and the bottom panel. Where the keyboard is among the panes is
 //! `keys.rs`'s, and the Settings tab `settings_tab.rs`'s.
 
-use gpui_kit::{AppContext as _, Context, SharedString};
+use gpui_kit::{AppContext as _, Context};
 
 use super::{Place, Shell};
 use crate::model::{Content, Pane, PaneKind};
 
 impl Shell {
-    /// What the sidebar's search field holds.
-    pub fn search_query(&self) -> &str {
-        &self.query
-    }
-
-    /// The search field holds `query` now: the sidebar narrows to it, drawn again only if it
-    /// changed.
-    pub(super) fn searched(&mut self, query: SharedString, cx: &mut Context<Self>) {
-        if self.query != query {
-            self.query = query;
-            cx.notify();
-        }
-    }
-
     /// Whether the sidebar is open, or sliding open; closed, the window is in compact mode.
     pub(crate) fn sidebar_open(&self) -> bool {
         self.sidebar_open

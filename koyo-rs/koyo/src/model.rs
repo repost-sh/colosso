@@ -115,13 +115,6 @@ impl BranchUnit {
     pub fn is_main(&self) -> bool {
         self.worktree.is_main
     }
-
-    /// Whether a search for `query`, lowercased, finds it by its name or its folder's.
-    fn matches(&self, query: &str) -> bool {
-        let folder = self.worktree.path.file_name().unwrap_or_default();
-        self.name().to_lowercase().contains(query)
-            || folder.to_string_lossy().to_lowercase().contains(query)
-    }
 }
 
 fn short(commit: &str) -> &str {
@@ -141,19 +134,12 @@ pub struct Project {
     /// The number of the worktree listing shown, so an older one arriving late is ignored.
     pub read: u64,
     /// The GitHub user the person's own branches are prefixed with here, once git's listing
-    /// said: what the Arc sidebar leaves off their worktrees' names.
+    /// said: what the sidebar leaves off their worktrees' names.
     pub user: Option<SharedString>,
 }
 
-/// What a project is called until it's given a name: its folder's.
-/// What the project whose main checkout is at `path` is called in Koyo: the name given it in
-/// `looks`, its folder's otherwise.
-pub fn project_name(looks: &crate::spaces::ProjectLooks, path: &Path) -> SharedString {
-    let given = looks.get(path).and_then(|look| look.name.as_deref());
-    given.map_or_else(|| folder_name(path), SharedString::from)
-}
-
-fn folder_name(path: &Path) -> SharedString {
+/// What the project whose main checkout is at `path` is called in Koyo: its folder's name.
+pub fn project_name(path: &Path) -> SharedString {
     path.file_name()
         .map_or_else(
             || path.display().to_string(),
@@ -165,7 +151,7 @@ fn folder_name(path: &Path) -> SharedString {
 impl Project {
     fn new(path: PathBuf) -> Self {
         Project {
-            name: folder_name(&path),
+            name: project_name(&path),
             path,
             branches: Vec::new(),
             active_branch: 0,
@@ -173,16 +159,6 @@ impl Project {
             read: 0,
             user: None,
         }
-    }
-
-    /// The branch units a sidebar search for `query` shows, by index: all of them when the
-    /// query is empty or names the project, otherwise those it finds.
-    pub fn shown_branches(&self, query: &str) -> Vec<usize> {
-        let query = query.trim().to_lowercase();
-        let all = query.is_empty() || self.name.to_lowercase().contains(&query);
-        (0..self.branches.len())
-            .filter(|&index| all || self.branches[index].matches(&query))
-            .collect()
     }
 
     pub fn initials(&self) -> SharedString {
@@ -204,7 +180,7 @@ impl Project {
 pub struct Workspace {
     pub projects: Vec<Project>,
     /// The project selected, by its place; none while the window shows no project, as an empty
-    /// space shows none (`docs/arc-sidebar.md` 9): then `project()`, `branch()` and `shown_tab()`
+    /// space shows none (`docs/sidebar.md` 9): then `project()`, `branch()` and `shown_tab()`
     /// answer `None` everywhere, until a project is selected.
     active_project: Option<usize>,
     /// Tabs closed lately, the newest last.
@@ -287,21 +263,6 @@ impl Workspace {
             .collect()
     }
 
-    /// Names each project as Koyo calls it: the name the person gave it in `looks`, or its
-    /// folder's.
-    pub fn name_projects(&mut self, looks: &crate::spaces::ProjectLooks) {
-        for project in &mut self.projects {
-            let given = looks
-                .get(&project.path)
-                .and_then(|look| look.name.as_deref());
-            let folder = project.path.file_name().and_then(|name| name.to_str());
-            if given.or(folder) == Some(project.name.as_ref()) {
-                continue;
-            }
-            project.name = given.map_or_else(|| folder_name(&project.path), SharedString::from);
-        }
-    }
-
     /// Adds the project at `path` unless it is already there, and selects it.
     pub fn add_project(&mut self, path: PathBuf) -> usize {
         let index = self.project_index(&path).unwrap_or_else(|| {
@@ -329,7 +290,7 @@ impl Workspace {
     }
 
     /// Takes what git now reports for `project`, in `order` by the worktrees' folders, those it
-    /// doesn't name after them in git's order (`docs/arc-sidebar.md` 5). Checkouts it still has
+    /// doesn't name after them in git's order (`docs/sidebar.md` 5). Checkouts it still has
     /// keep their tabs, and the selected one stays selected; if it went away, the main checkout
     /// is selected.
     pub fn set_worktrees(&mut self, project: usize, worktrees: Vec<Worktree>, order: &[PathBuf]) {

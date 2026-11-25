@@ -29,7 +29,7 @@ These are the sequences a focus refactor must keep working, each scripted end to
 
 Preconditions:
 
-- `$B prepare --layout Arc --pin "file://$PWD/.superpowers/v/fixture/focus.html"`, launched and
+- `$B prepare --tabs Sidebar --pin "file://$PWD/.superpowers/v/fixture/focus.html"`, launched and
   confirmed.
 - A new chat tab in the fixture worktree, with nothing sent yet:
   `$B app tab_open '{"kind":"chat","select":false}'`.

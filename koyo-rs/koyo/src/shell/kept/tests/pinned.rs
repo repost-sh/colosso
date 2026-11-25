@@ -1,4 +1,4 @@
-//! The pinned pages kept for the next launch (`docs/arc-sidebar.md` 11): the file reads back what
+//! The pinned pages kept for the next launch (`docs/sidebar.md` 11): the file reads back what
 //! was written, a file as this build writes it still loads, one a later or an earlier build
 //! wrote loses nothing, and they come back in a window whose own file can't be read.
 
@@ -10,7 +10,6 @@ use serde_json::{Value, json};
 use super::super::SAVE_DELAY;
 use super::super::pinned::{FILE, KeptPinned, KeptPins};
 use crate::blocking::in_test;
-use crate::settings::{self, Layout};
 use crate::shell::Shell;
 use crate::test_support::{draw, open_page, repo, scratch, select, shell_window, shell_with};
 
@@ -210,7 +209,6 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
     let root = repo("kept-pinned-back", &[("README.md", "hi\n")]);
     let window_file: PathBuf = scratch("kept-pinned-back-file").join("window.json");
     let (window, shell) = shell_with(&[&root], cx);
-    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
     shell.update(cx, |shell, _| shell.keep_window_at(&window_file));
     select(&shell, &root, cx);
     let pages = [
@@ -283,9 +281,6 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
         shell.show_tab_holding(first, cx);
     });
     assert_eq!(pins_of(&back, cx).1, Some(0));
-    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
-    cx.run_until_parked();
-    assert_eq!(pins_of(&back, cx).1, Some(0), "the Orca layout's rail lists it too");
     assert_eq!(pins_of(&back, cx).0.len(), 2);
 }
 

@@ -1,4 +1,4 @@
-//! A checkout's tabs as a list, along the top rail in Orca and down the sidebar in Arc: dragged,
+//! A checkout's tabs as a list, along the top rail or down the sidebar as **Tabs** says: dragged,
 //! a tab moves among them or joins another side by side, and pulled off the list it goes onto a
 //! side of a pane; a pane of a split dropped on a tab goes where that tab is.
 
@@ -6,9 +6,9 @@ use std::rc::Rc;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Along as _, AnyElement, AppContext as _, Axis, Context, Div, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Point, Stateful, StatefulInteractiveElement as _,
-    Styled as _, div, px,
+    Along as _, AnyElement, AppContext as _, Axis, ClickEvent, Context, Div,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Point,
+    Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
 use super::Shell;
@@ -65,7 +65,7 @@ pub fn tab_row(
 }
 
 /// `title`, and `end` over its end rather than after it, filling the rest of a sidebar row
-/// (`docs/arc-sidebar.md` 5): the title runs on to the end while nothing's there, and makes
+/// (`docs/sidebar.md` 5): the title runs on to the end while nothing's there, and makes
 /// room while `shown`, or while the pointer's on `group`, as `end` shows then. The title has an
 /// id because GPUI lays a hover out only for an element that has one.
 pub fn title_with_end(
@@ -132,6 +132,27 @@ fn tab_drag(
 }
 
 impl Shell {
+    /// `row`, the row of the tab at `at`, as `(project, branch, tab)`, on the rail or in the
+    /// sidebar: picked, its tab shows, and double-clicked, the files it previews stay open
+    /// (`keep_tab`); a middle click closes it.
+    pub(super) fn tab_press(
+        row: Stateful<Div>,
+        at: (usize, usize, usize),
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let (project, branch, tab) = at;
+        row.on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
+            this.pick_tab(project, branch, tab, cx);
+            if event.click_count() > 1 {
+                this.keep_tab(at, cx);
+            }
+        }))
+        .on_mouse_down(
+            MouseButton::Middle,
+            cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
+        )
+    }
+
     /// A tab of the checkout `(project, branch)` let go over its list, which then shows.
     fn drop_in_list(
         &mut self,

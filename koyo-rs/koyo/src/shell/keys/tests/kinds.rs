@@ -9,7 +9,6 @@ use super::{ask_for, shell, typing_in};
 use crate::files::Place;
 use crate::files::tests::with_shell;
 use crate::model::{Edge, Pane, PaneKind, Tab};
-use crate::settings::Layout;
 use crate::terminals::budget::no_daemon;
 use crate::test_support::{
     close_shown, draw, iphone, keyboard_in, open_page, shell_on, terminals_listed,
@@ -50,7 +49,7 @@ fn the_desktop_and_a_device_take_the_keyboard_and_come_back_as_they_were(cx: &mu
 /// keyboard.
 #[gpui_kit::test]
 fn a_terminal_asked_for_takes_the_keyboard_into_its_view(cx: &mut TestAppContext) {
-    let (window, shell, root) = shell_on("keys-terminal", Layout::default(), cx);
+    let (window, shell, root) = shell_on("keys-terminal", cx);
     no_daemon(&shell, cx);
     terminals_listed(&shell, &root, &[("term_keys", "zsh")], cx);
     let terminal = shell.read_with(cx, |shell, _| {
@@ -113,7 +112,7 @@ fn a_chat_before_a_page_keeps_the_keyboard_from_it_when_its_tab_is_shown(
 /// keyboard, as a file open already does.
 #[gpui_kit::test]
 fn a_file_brought_back_and_asked_for_opens_with_the_keyboard(cx: &mut TestAppContext) {
-    let (window, shell, root) = shell_on("keys-file-back", Layout::default(), cx);
+    let (window, shell, root) = shell_on("keys-file-back", cx);
     let file = shell.update(cx, |shell, cx| {
         shell.new_tab(PaneKind::Chat, cx);
         let pane = Pane::of_path(root.join("README.md"));

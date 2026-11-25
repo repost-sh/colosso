@@ -20,8 +20,8 @@ use crate::budget::wakes_a_minute;
 use crate::chat_backdrop::layout::Scaling;
 use crate::chat_backdrop::wallpaper::Wallpaper;
 use crate::model::{Pane, PaneKind};
-use crate::settings::{ChatBackdrop, Quality, Surface};
-use crate::test_support::{Blank, in_window, on_screen, scratch};
+use crate::settings::{ChatBackdrop, Quality, Surface, Tabs};
+use crate::test_support::{Blank, draw, in_window, on_screen, scratch, shell_on_chat, shell_with};
 use crate::viewer::bitmap::Canvas;
 
 /// Red over the top half of `canvas`, blue under, a white bar down its middle third.
@@ -443,6 +443,20 @@ fn each_kind_of_pane_has_the_backdrop_of_what_it_shows(cx: &mut TestAppContext) 
             assert_eq!(shown, *behind == Some(surface), "{name}, only {surface:?} on");
         }
     }
+}
+
+/// The sidebar and the rails have no backdrop: with no pane to show it behind, the window holds
+/// no screen's picture, where a chat's holds one.
+#[gpui_kit::test]
+fn only_what_is_in_the_islands_has_a_backdrop(cx: &mut TestAppContext) {
+    let (window, _) = shell_with(&[], cx);
+    for tabs in Tabs::ALL {
+        cx.update(|cx| crate::settings::update(cx, |settings| settings.tabs = tabs));
+        draw(window, cx);
+        assert_eq!(cx.update(screens::tick), None, "{tabs:?}, the sidebar out and no tab");
+    }
+    shell_on_chat("chat-backdrop-islands", cx);
+    assert!(cx.update(screens::tick).is_some(), "a chat shown");
 }
 
 mod reading;

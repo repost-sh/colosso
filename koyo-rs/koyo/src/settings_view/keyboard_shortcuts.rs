@@ -4,7 +4,6 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
-use crate::arc::{NextProject, NextSpace, NextTab, PreviousProject, PreviousSpace, PreviousTab};
 use crate::chat::{
     AllowRequest, AllowRequestForChat, DenyRequest, ImplementPlan, OpenModelMenu, OpenParent,
     RecallPrompt, SkipQuestion, StopTurn, ToggleDetails, TogglePlan,
@@ -14,9 +13,11 @@ use crate::go_to_file::GoToFile;
 use crate::launcher::NewTab;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
+use crate::shell::spaces::{
+    NextProject, NextSpace, NextTab, PreviousProject, PreviousSpace, PreviousTab,
+};
 use crate::shell::{
     CloseTab, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar,
-    ToggleSidebarMode,
 };
 use crate::theme::{self, CycleTheme};
 
@@ -38,7 +39,6 @@ const SECTIONS: &[(&str, &[Command])] = &[
         "Window",
         &[
             ("Toggle sidebar", &ToggleSidebar),
-            ("Switch between Orca and Arc layouts", &ToggleSidebarMode),
             ("Toggle right panel", &ToggleRightPanel),
             ("Toggle bottom panel", &ToggleBottomPanel),
             ("Cycle theme", &CycleTheme),
@@ -48,17 +48,17 @@ const SECTIONS: &[(&str, &[Command])] = &[
         "Spaces",
         &[
             (
-                "Show the project to the left, in this space or the one before",
+                "Show the previous project row, in this space or the one before",
                 &PreviousProject,
             ),
             (
-                "Show the project to the right, in this space or the next",
+                "Show the next project row, in this space or the next",
                 &NextProject,
             ),
-            ("Show the space to the left", &PreviousSpace),
-            ("Show the space to the right", &NextSpace),
-            ("Show the tab above in the sidebar", &PreviousTab),
-            ("Show the tab below in the sidebar", &NextTab),
+            ("Show the previous space", &PreviousSpace),
+            ("Show the next space", &NextSpace),
+            ("Show the previous tab, in the order the tabs are listed", &PreviousTab),
+            ("Show the next tab, in the order the tabs are listed", &NextTab),
         ],
     ),
     ("Worktrees", &[("New worktree", &NewWorktree)]),
@@ -134,7 +134,7 @@ mod tests {
     fn every_chat_and_space_command_has_its_key(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::blocking::in_test(|may| chat::init(cx, may));
-            crate::arc::bind_keys(cx);
+            crate::shell::spaces::bind_keys(cx);
             let sections = SECTIONS
                 .iter()
                 .filter(|(title, _)| ["Chat", "Spaces"].contains(title));

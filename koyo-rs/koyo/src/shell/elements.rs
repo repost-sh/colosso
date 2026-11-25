@@ -1,15 +1,14 @@
-//! The pieces the window and its sidebars are drawn from: buttons on the glass, rows, the
-//! search field, the + that opens a new tab, and the + that opens an unpinned page.
+//! The pieces the window and its sidebars are drawn from: buttons on the glass, rows, the + that
+//! opens a new tab, the + that opens an unpinned page, and the grab strip that resizes a panel.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::{Disableable as _, Icon, Sizable as _};
+use gpui_kit::component::{Disableable as _, Icon};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, App, AppContext as _, Context, Div, ElementId, Entity, EventEmitter, Hsla,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Render,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    Action, App, AppContext as _, Context, Div, ElementId, Hsla, InteractiveElement as _,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Render, SharedString,
+    Stateful, StatefulInteractiveElement as _, Styled, div, px,
 };
 
 use super::Shell;
@@ -25,10 +24,14 @@ pub fn new_tab_button(id: impl Into<ElementId>, cx: &App) -> Button {
         .on_click(|_, window, cx| window.dispatch_action(Box::new(NewTab), cx))
 }
 
-/// The + after the unpinned pages, which opens the launcher for one, a browser page only,
-/// whatever tab is shown (`docs/layout.md`).
+/// What the + after the unpinned pages says it does, on the rail and in the sidebar.
+pub const NEW_PAGE: &str = "New unpinned page";
+
+/// The + after the unpinned pages on the top rail, which opens the launcher for one, a browser page
+/// only, whatever tab is shown (`docs/layout.md`). In the sidebar it's a row
+/// (`sidebar::unpinned::new_tab`).
 pub fn new_page_button(id: &'static str, cx: &App) -> Button {
-    action_button(id, IconName::Plus, "New unpinned page", NewUnpinnedPage, cx)
+    action_button(id, IconName::Plus, NEW_PAGE, NewUnpinnedPage, cx)
 }
 
 /// Empty rail space that moves the window, since the app owns titlebar dragging.
@@ -112,8 +115,17 @@ pub fn icon(name: IconName, size: f32) -> Icon {
 
 /// A selectable row: highlighted when selected, tinted on hover otherwise.
 pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div> {
-    selectable(row_shape(id), selected, p)
+    selectable(row_shape(id), selected, (p.selected, p.hover))
 }
+
+/// How far in from a row's edge what's in it starts: every row's, in the sidebar a project's, a
+/// branch's, a tab's and an unpinned page's at its depth (`inset`).
+const ROW_INSET: f32 = 8.;
+
+/// How far what's in a row starts in from where it starts in the row it's under: a branch's from
+/// its project's. The row's own room before what's in it, never a margin, so the row, and its
+/// background lit under the pointer or selected, stays as wide as the sidebar (`docs/layout.md`).
+pub const INDENT: f32 = 16.;
 
 /// A row's shape, without what the pointer does to it: a row high, rounded, what's in it in a
 /// line.
@@ -122,7 +134,7 @@ pub fn row_shape(id: impl Into<ElementId>) -> Stateful<Div> {
         .id(id)
         .h(px(theme::ROW_HEIGHT))
         .flex_shrink_0()
-        .px_2()
+        .px(px(ROW_INSET))
         .flex()
         .items_center()
         .gap_2()
@@ -130,12 +142,24 @@ pub fn row_shape(id: impl Into<ElementId>) -> Stateful<Div> {
         .text_sm()
 }
 
-/// `row` under the pointer, as a selectable row is: highlighted when `selected`, tinted on hover
-/// otherwise.
-pub fn selectable(row: Stateful<Div>, selected: bool, p: Palette) -> Stateful<Div> {
+/// `row` with what's in it one [`INDENT`] in from the row it's under.
+pub fn indented(row: Stateful<Div>) -> Stateful<Div> {
+    row.pl(inset(1))
+}
+
+/// How far in from a sidebar row's edge what's in it starts, `depth` [`INDENT`]s in: a project's
+/// none, a branch's one, and a branch's tab's two, under the branch's row while the tabs are in
+/// the sidebar (`docs/layout.md`). The row's own room, as `indented`'s is.
+pub fn inset(depth: u8) -> Pixels {
+    px(ROW_INSET + INDENT * f32::from(depth))
+}
+
+/// `row` under the pointer, as a selectable row is: `lit` when `selected`, tinted `hover` under
+/// the pointer otherwise.
+pub fn selectable(row: Stateful<Div>, selected: bool, (lit, hover): (Hsla, Hsla)) -> Stateful<Div> {
     row.cursor_pointer()
-        .when(selected, |row| row.bg(p.selected))
-        .when(!selected, |row| row.hover(|style| style.bg(p.hover)))
+        .when(selected, |row| row.bg(lit))
+        .when(!selected, |row| row.hover(|style| style.bg(hover)))
 }
 
 /// The × that closes the tab at `(project, branch, tab)` without selecting it, asking
@@ -183,66 +207,6 @@ pub fn pane_close_button(
         }))
 }
 
-/// What the search field holds, told as it changes.
-pub struct Searched(pub SharedString);
-
-/// The sidebar's search field, a view of its own, so a key or a caret blink builds it and not
-/// the shell.
-pub struct SearchField {
-    input: Entity<InputState>,
-    _changes: Subscription,
-}
-
-impl EventEmitter<Searched> for SearchField {}
-
-impl SearchField {
-    pub(super) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Search")
-                .clean_on_escape()
-        });
-        let _changes = cx.subscribe(&input, |_, input, event, cx| {
-            if let InputEvent::Change = event {
-                cx.emit(Searched(input.read(cx).value()));
-            }
-        });
-        SearchField { input, _changes }
-    }
-}
-
-impl Render for SearchField {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        div()
-            .debug_selector(|| "sidebar-search".to_owned())
-            .h(px(theme::ROW_HEIGHT))
-            .px_1()
-            .flex()
-            .items_center()
-            .text_sm()
-            .child(
-                Input::new(&self.input)
-                    .appearance(false)
-                    .small()
-                    .prefix(icon(IconName::Search, 14.).text_color(p.muted))
-                    .flex_1(),
-            )
-    }
-}
-
-/// What a sidebar says where a search found no worktrees.
-pub fn no_matches(p: Palette) -> Div {
-    div()
-        .h(px(theme::ROW_HEIGHT))
-        .px_2()
-        .flex()
-        .items_center()
-        .text_sm()
-        .text_color(p.muted)
-        .child("No worktrees match.")
-}
-
 pub fn section_label(p: Palette) -> Div {
     div()
         .h(px(24.))
@@ -257,6 +221,7 @@ pub fn section_label(p: Palette) -> Div {
 /// The row that adds a first project, where a sidebar would list them.
 pub fn add_project_row(id: &'static str, p: Palette) -> Stateful<Div> {
     row(id, false, p)
+        .debug_selector(|| id.to_owned())
         .text_color(p.muted)
         .on_click(|_, window, cx| window.dispatch_action(Box::new(AddProject), cx))
         .child(icon(IconName::FolderPlus, 14.))
@@ -275,4 +240,22 @@ pub fn project_error(error: SharedString, p: Palette) -> Div {
 
 pub fn ellipsized(text: impl IntoElement) -> Div {
     div().min_w_0().truncate().child(text)
+}
+
+/// A grab strip down the side of a panel, which must be `relative`, dragging `payload` so the
+/// drag says which panel it resizes: the sidebar's, or a terminal's activity panel's. Place it on
+/// the panel's left or right edge.
+pub fn resize_handle<T: Render + Clone>(id: &'static str, payload: T) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(|| id.to_owned())
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .w(px(6.))
+        .cursor_col_resize()
+        .on_drag(payload, |payload, _, _, cx| {
+            let payload = payload.clone();
+            cx.new(|_| payload)
+        })
 }

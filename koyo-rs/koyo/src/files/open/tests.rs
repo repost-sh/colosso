@@ -13,7 +13,7 @@ use super::super::{At, Place};
 use crate::budget::{Built, built_again, frame_of, ratchet, settle};
 use crate::modal;
 use crate::right_panel::ShowFiles;
-use crate::settings::{self, Layout};
+use crate::settings;
 use crate::test_support::{shell_on, write};
 
 #[gpui_kit::test]
@@ -215,7 +215,7 @@ fn a_change_of_a_files_pane_renders_the_shell_that_draws_its_tab(cx: &mut TestAp
 /// alone, its tab's dot as it was, with the file tree open beside it too.
 #[gpui_kit::test]
 fn a_key_typed_into_an_unsaved_file_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("files-typed-unsaved", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("files-typed-unsaved", cx);
     let (_, editor, _) = editing(window, &shell, "README.md", At::Bytes(0..0), cx);
     typed(window, &editor, "x", cx);
 

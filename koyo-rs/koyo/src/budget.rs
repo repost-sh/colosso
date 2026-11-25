@@ -23,8 +23,6 @@ use std::time::Duration;
 
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, TestAppContext, Window};
 
-use crate::settings::Layout;
-
 mod deferred;
 use crate::test_support::{in_front, shell_on};
 
@@ -253,7 +251,7 @@ fn on<R>(
 
 #[gpui_kit::test]
 fn a_window_nothing_changes_in_draws_no_frame_however_long_it_waits(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-rest", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-rest", cx);
     let minute = Duration::from_secs(60);
 
     assert_eq!(built_after(window, cx, |_| {}), Built::default());
@@ -285,7 +283,7 @@ fn a_window_nothing_changes_in_draws_no_frame_however_long_it_waits(cx: &mut Tes
 
 #[gpui_kit::test]
 fn a_change_to_the_shell_renders_it_once_in_one_frame(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-shell", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-shell", cx);
 
     let built = built_after(window, cx, |cx| shell.update(cx, |_, cx| cx.notify()));
     let budget = Built {

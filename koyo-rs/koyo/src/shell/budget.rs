@@ -4,7 +4,6 @@
 //! its trigger costs more, and as better when a fix has lowered it, which takes the new number.
 
 use std::cell::Cell;
-use std::time::Duration;
 
 use gpui_kit::{AppContext as _, TestAppContext, point, px};
 
@@ -19,17 +18,22 @@ use crate::popup::{self, Kind};
 use crate::right_panel::ToggleFiles;
 use super::Shell;
 use crate::navigation::SettingsPage;
-use crate::settings::{self, Layout};
+use crate::settings::{self, Tabs};
 use crate::test_support::{
-    center_of, click, draw, hover, in_front, open_changes, open_page, open_page_view, scratch,
-    shell_on, write,
+    center_of, draw, hover, open_changes, open_page, open_page_view, scratch, shell_on, write,
 };
+
+/// Puts the tabs in the sidebar, where a branch's row lists its tabs, and lets it settle.
+fn tabs_in_the_sidebar(cx: &mut TestAppContext) {
+    cx.update(|cx| settings::update(cx, |settings| settings.tabs = Tabs::Sidebar));
+    settle(cx);
+}
 
 /// A frame of the shown page's view, as each page-state update and cursor-shape change makes,
 /// builds the view and leaves the shell alone.
 #[gpui_kit::test]
 fn a_frame_of_a_shown_pages_view_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-page-shown", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-page-shown", cx);
     let view = open_page_view(window, &shell, "https://example.com/", cx);
 
     let held = Built {
@@ -46,7 +50,7 @@ fn a_frame_of_a_shown_pages_view_leaves_the_shell_alone(cx: &mut TestAppContext)
 /// key and as GPUI's focus comes into it, never as it draws.
 #[gpui_kit::test]
 fn a_frame_of_a_page_with_the_keyboard_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-page-keyboard", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-page-keyboard", cx);
     (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
     let view = open_page_view(window, &shell, "https://example.com/", cx);
     draw(window, cx);
@@ -69,7 +73,7 @@ fn a_frame_of_a_page_with_the_keyboard_leaves_the_shell_alone(cx: &mut TestAppCo
 /// A frame of a page's view whose tab is in the strip but not shown draws nothing.
 #[gpui_kit::test]
 fn a_frame_of_a_hidden_pages_view_draws_nothing(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-page-hidden", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-page-hidden", cx);
     let hidden = open_page_view(window, &shell, "https://example.com/", cx);
     let shown = open_page(window, &shell, Some("https://example.org/"), cx);
     draw(window, cx);
@@ -81,28 +85,12 @@ fn a_frame_of_a_hidden_pages_view_draws_nothing(cx: &mut TestAppContext) {
     ratchet(built, held, "a frame of a hidden page's view");
 }
 
-/// In the Arc layout a frame of the shown page's view builds it and the address bar, which
-/// reads it for its site buttons (`arc::Top`), and leaves the shell and the back, forward and
-/// reload buttons alone.
+/// With the tabs in the sidebar showing another tab, as a press on its row does, renders the
+/// shell twice: as the tab is shown, and as its page takes the keyboard (`keys_to_shown_tab`).
 #[gpui_kit::test]
-fn a_frame_of_a_shown_pages_view_leaves_the_arc_shell_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-page-arc", Layout::Arc, cx);
-    let view = open_page_view(window, &shell, "https://example.com/", cx);
-
-    let held = Built {
-        shell: 0,
-        views: 2,
-        frames: 1,
-    };
-    let built = built_again(window, cx, frame_of(&view));
-    ratchet(built, held, "a frame of the shown page's view in Arc");
-}
-
-/// In the Arc layout showing another tab, as a press on its row does, renders the shell twice:
-/// as the tab is shown, and as its page takes the keyboard (`keys_to_shown_tab`).
-#[gpui_kit::test]
-fn a_tab_switch_in_arc_renders_the_shell_twice(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-arc-switch", Layout::Arc, cx);
+fn a_tab_switch_in_the_sidebar_renders_the_shell_twice(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("budget-sidebar-switch", cx);
+    tabs_in_the_sidebar(cx);
     let first = open_page(window, &shell, Some("https://example.com/"), cx);
     let second = open_page(window, &shell, Some("https://example.org/"), cx);
     draw(window, cx);
@@ -123,17 +111,18 @@ fn a_tab_switch_in_arc_renders_the_shell_twice(cx: &mut TestAppContext) {
         frames: 2,
     };
     let built = built_again(window, cx, switch);
-    ratchet(built, held, "a tab switch in Arc");
+    ratchet(built, held, "a tab switch in the sidebar");
 }
 
-/// In the Arc layout the pointer coming onto the address bar fades its site buttons in, and
-/// each frame of the fade builds the bar alone, never the page's view it reads. The shell
-/// renders once, as the pointer comes onto the bar.
+/// With the tabs and the address bar in the sidebar the pointer coming onto the address bar
+/// fades its site buttons in, and each frame of the fade builds the bar alone, never the page's
+/// view it reads. The shell renders once, as the pointer comes onto the bar.
 #[gpui_kit::test]
-fn the_arc_address_bars_hover_fade_leaves_the_page_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-address-hover", Layout::Arc, cx);
+fn the_sidebars_address_bars_hover_fade_leaves_the_page_alone(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("budget-address-hover", cx);
+    tabs_in_the_sidebar(cx);
     open_page_view(window, &shell, "https://example.com/", cx);
-    let bar = center_of(window, "arc-address", cx);
+    let bar = center_of(window, "sidebar-address", cx);
     let away = point(bar.x, bar.y + px(400.));
     hover(window, away, cx);
     settle(cx);
@@ -148,34 +137,7 @@ fn the_arc_address_bars_hover_fade_leaves_the_page_alone(cx: &mut TestAppContext
         frames: 10,
     };
     let built = built_after(window, cx, |cx| hover(window, bar, cx));
-    ratchet(built, held, "the pointer onto the Arc address bar");
-}
-
-/// While the sidebar's search field has the keyboard, each turn of its caret's 500 ms blink
-/// builds the field, a view of its own, and leaves the shell alone.
-#[gpui_kit::test]
-fn the_search_fields_caret_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, _, _) = shell_on("budget-search-blink", Layout::Orca, cx);
-    in_front(window, true, cx);
-    settle(cx);
-    click(window, "sidebar-search", cx);
-    let two_seconds = Duration::from_secs(2);
-
-    let held = Built {
-        shell: 0,
-        views: 8,
-        frames: 4,
-    };
-    let built = built_during(window, cx, two_seconds);
-    ratchet(built, held, "two seconds of the search field's caret");
-
-    in_front(window, false, cx);
-    let built = built_during(window, cx, two_seconds);
-    ratchet(built, Built::default(), "two seconds of it behind another app's");
-    in_front(window, true, cx);
-    let again = Built { views: 9, ..held };
-    let built = built_during(window, cx, two_seconds);
-    ratchet(built, again, "two seconds of it in front again");
+    ratchet(built, held, "the pointer onto the sidebar's address bar");
 }
 
 /// A notify of the selected checkout, as each git re-read and each batch of syntax colours
@@ -185,7 +147,7 @@ fn the_search_fields_caret_leaves_the_shell_alone(cx: &mut TestAppContext) {
 /// it (`terminals/budget.rs`).
 #[gpui_kit::test]
 fn a_notify_of_the_selected_checkout_leaves_the_shell_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-checkout", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-checkout", cx);
     settle(cx);
     let checkout = shell.read_with(cx, |shell, _| shell.right_panel.checkout().unwrap().clone());
 
@@ -208,7 +170,7 @@ fn a_notify_of_the_selected_checkout_leaves_the_shell_alone(cx: &mut TestAppCont
 /// the shell, whose changes button says so.
 #[gpui_kit::test]
 fn the_selected_checkouts_totals_changed_render_the_shell(cx: &mut TestAppContext) {
-    let (window, shell, root) = shell_on("budget-totals", Layout::Orca, cx);
+    let (window, shell, root) = shell_on("budget-totals", cx);
     settle(cx);
     let checkout = shell.read_with(cx, |shell, _| shell.right_panel.checkout().unwrap().clone());
     let edited = |cx: &mut TestAppContext| {
@@ -234,7 +196,7 @@ fn the_selected_checkouts_totals_changed_render_the_shell(cx: &mut TestAppContex
 /// builds the panel again.
 #[gpui_kit::test]
 fn a_change_to_the_shell_leaves_the_open_right_panel_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-shell-panel", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-shell-panel", cx);
     let notified = |cx: &mut TestAppContext| shell.update(cx, |_, cx| cx.notify());
     let shell_alone = Built {
         shell: 1,
@@ -259,15 +221,16 @@ fn a_change_to_the_shell_leaves_the_open_right_panel_alone(cx: &mut TestAppConte
     ratchet(built, shell_alone, "a change to the shell, its files open");
 }
 
-/// In the Arc layout the pointer coming onto a worktree's header fades its pill in over 150 ms,
-/// and each frame of the fade renders the shell, which runs the fade as it draws the header.
-/// With the fade in a view of its own, the shell renders in none of its frames.
+/// With the tabs in the sidebar the pointer coming onto a branch's row fades its Changes and
+/// Files in over 150 ms, and each frame of the fade renders the shell, which runs the fade as it
+/// draws the row. With the fade in a view of its own, the shell renders in none of its frames.
 #[gpui_kit::test]
-fn a_worktree_headers_hover_fade_renders_the_arc_shell_at_each_frame(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-header-hover", Layout::Arc, cx);
+fn a_branch_rows_hover_fade_renders_the_shell_at_each_frame(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell_on("budget-branch-hover", cx);
+    tabs_in_the_sidebar(cx);
     open_page_view(window, &shell, "https://example.com/", cx);
-    let header = center_of(window, "arc-header-0", cx);
-    let away = point(header.x, header.y + px(400.));
+    let row = center_of(window, "sidebar-branch-0-0", cx);
+    let away = point(row.x, row.y + px(400.));
     hover(window, away, cx);
     settle(cx);
 
@@ -280,18 +243,18 @@ fn a_worktree_headers_hover_fade_renders_the_arc_shell_at_each_frame(cx: &mut Te
         views: 10,
         frames: 10,
     };
-    let built = built_after(window, cx, |cx| hover(window, header, cx));
-    ratchet(built, held, "the pointer onto a worktree's header");
+    let built = built_after(window, cx, |cx| hover(window, row, cx));
+    ratchet(built, held, "the pointer onto a branch's row");
 }
 
 /// ⌘B closing the sidebar renders the shell at each frame of the rails' spring as they fold
 /// away, as the shell runs the spring as it renders. With the rails in a view of their own, the
 /// shell would render once and the rails at each frame. The sidebar's search field, a view of
-/// its own, is built again in the frames that move it. Orca's top rail stays, its tabs with it,
+/// its own, is built again in the frames that move it. The top rail stays, its tabs with it,
 /// so only the sidebar and the status bar move.
 #[gpui_kit::test]
 fn closing_the_sidebar_renders_the_shell_at_each_frame_of_the_rails(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-sidebar-close", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-sidebar-close", cx);
     settle(cx);
 
     let held = Built {
@@ -311,7 +274,7 @@ fn closing_the_sidebar_renders_the_shell_at_each_frame_of_the_rails(cx: &mut Tes
 /// The save 500 ms later writes the file and tells no one, so it builds nothing.
 #[gpui_kit::test]
 fn the_sidebar_resized_renders_the_shell_once_and_its_save_not_at_all(cx: &mut TestAppContext) {
-    let (window, _, _) = shell_on("budget-sidebar-width", Layout::Orca, cx);
+    let (window, _, _) = shell_on("budget-sidebar-width", cx);
     let folder = scratch("budget-sidebar-width-settings");
     let file = cx.update(|cx| settings::tests::saved_in(&folder, cx));
     settle(cx);
@@ -342,7 +305,7 @@ fn the_sidebar_resized_renders_the_shell_once_and_its_save_not_at_all(cx: &mut T
 /// window, and in the picker's own, which shows the theme it picks.
 #[gpui_kit::test]
 fn a_theme_picker_drag_step_builds_what_the_theme_colours(cx: &mut TestAppContext) {
-    let (window, _, _) = shell_on("budget-theme", Layout::Orca, cx);
+    let (window, _, _) = shell_on("budget-theme", cx);
     settle(cx);
     let opened = cx.update_window(window, |_, window, cx| {
         crate::picker::open(point(px(40.), px(40.)), window, cx);
@@ -375,7 +338,7 @@ fn a_theme_picker_drag_step_builds_what_the_theme_colours(cx: &mut TestAppContex
 /// place, again: the panes' backdrops and what floats over a chat.
 #[gpui_kit::test]
 fn the_chat_backdrop_turned_off_builds_what_draws_it(cx: &mut TestAppContext) {
-    let (window, _, _) = shell_on("budget-backdrop", Layout::Orca, cx);
+    let (window, _, _) = shell_on("budget-backdrop", cx);
     settle(cx);
     let turned = |cx: &mut TestAppContext| {
         cx.update(|cx| settings::update(cx, |settings| {
@@ -397,7 +360,7 @@ fn the_chat_backdrop_turned_off_builds_what_draws_it(cx: &mut TestAppContext) {
 /// what draws them draws in those colours.
 #[gpui_kit::test]
 fn a_setting_nothing_draws_from_builds_what_draws_in_the_themes_colours(cx: &mut TestAppContext) {
-    let (window, _, _) = shell_on("budget-setting", Layout::Orca, cx);
+    let (window, _, _) = shell_on("budget-setting", cx);
     settle(cx);
     let turned = |cx: &mut TestAppContext| {
         cx.update(|cx| settings::update(cx, |settings| {
@@ -417,7 +380,7 @@ fn a_setting_nothing_draws_from_builds_what_draws_in_the_themes_colours(cx: &mut
 /// shell while Settings → Browser, which lists them, is shown, and nothing while it isn't.
 #[gpui_kit::test]
 fn a_change_of_the_profiles_builds_the_shell_while_settings_lists_them(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-profiles", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-profiles", cx);
     settle(cx);
     let changed = |cx: &mut TestAppContext| {
         cx.update(|cx| profiles::update(cx, |profiles| {
@@ -450,7 +413,7 @@ type Page<'a> = (SettingsPage, &'a dyn Fn(&mut TestAppContext), Built, Built);
 fn a_change_of_what_a_settings_page_draws_from_builds_the_shell_while_it_is_shown(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _) = shell_on("budget-settings-pages", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-settings-pages", cx);
     settle(cx);
     let (desk, devices, accounts) = cx.update(|cx| {
         let desk = crate::agent_desktop::desk(cx);

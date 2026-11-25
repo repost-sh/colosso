@@ -398,19 +398,19 @@ pub const PAGES: [&[Preset]; 5] = [
     ],
 ];
 
-/// The theme of the appearance on screen; light and dark each keep their own, and in the Arc
-/// layout each space too (`docs/arc-sidebar.md` 6).
+/// The theme of the appearance on screen: the window's one theme, whatever space shows, in which
+/// light and dark each keep their own (`docs/layout.md`, Space menu and theme).
 pub fn current(cx: &App) -> &GradientTheme {
-    settings::get(cx).shown_theme(cx.theme().mode.is_dark())
+    settings::get(cx).theme(cx.theme().mode.is_dark())
 }
 
-/// Applies `change` to the theme on screen, the space's in the Arc layout. What's drawn in its
-/// colours is drawn again, as each window follows the settings (`settings::observe`).
+/// Applies `change` to the theme on screen. What's drawn in its colours is drawn again, as each
+/// window follows the settings (`settings::observe`).
 pub fn update(cx: &mut App, change: impl FnOnce(&mut GradientTheme)) {
     let mut theme = current(cx).clone();
     change(&mut theme);
     if theme != *current(cx) {
         let dark = cx.theme().mode.is_dark();
-        settings::update(cx, |settings| *settings.shown_theme_mut(dark) = theme);
+        settings::update(cx, |settings| *settings.theme_mut(dark) = theme);
     }
 }

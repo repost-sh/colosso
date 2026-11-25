@@ -87,22 +87,6 @@ fn unit_with_tabs(count: usize, active: usize) -> Workspace {
 }
 
 #[test]
-fn searching_shows_the_worktrees_whose_branch_or_folder_matches() {
-    let workspace = workspace(&["fix-login", "Payout-Retries"]);
-    let project = workspace.project().unwrap();
-    assert_eq!(project.shown_branches(""), [0, 1, 2]);
-    assert_eq!(project.shown_branches("  payout "), [2]);
-    assert_eq!(project.shown_branches("MAIN"), [0]);
-    assert_eq!(project.shown_branches("nothing"), Vec::<usize>::new());
-}
-
-#[test]
-fn searching_for_a_project_shows_all_its_worktrees() {
-    let workspace = workspace(&["fix-login"]);
-    assert_eq!(workspace.project().unwrap().shown_branches("ap"), [0, 1]);
-}
-
-#[test]
 fn closing_a_tab_before_the_active_one_keeps_the_same_tab_active() {
     let mut workspace = unit_with_tabs(3, 2);
     workspace.close_tab(0, 0, 0);
@@ -245,20 +229,9 @@ fn a_tab_moves_to_another_checkout_and_shows_there() {
 }
 
 #[test]
-fn projects_are_called_what_they_were_named_in_koyo_or_their_folder() {
-    let mut workspace = Workspace::new(&["/src/app".into(), "/src/site".into()]);
-    let mut looks = crate::spaces::ProjectLooks::new();
-    looks.insert(
-        "/src/site".into(),
-        crate::spaces::ProjectLook {
-            name: Some("Website".into()),
-            ..crate::spaces::ProjectLook::default()
-        },
-    );
-    workspace.name_projects(&looks);
+fn projects_are_called_by_their_folder() {
+    let workspace = Workspace::new(&["/src/app".into(), "/src/site".into()]);
     assert_eq!(workspace.projects[0].name, "app");
-    assert_eq!(workspace.projects[1].name, "Website");
-    workspace.name_projects(&crate::spaces::ProjectLooks::new());
     assert_eq!(workspace.projects[1].name, "site");
 }
 
@@ -407,18 +380,6 @@ fn a_pane_is_the_persons_unless_it_is_a_page_an_agent_opened() {
     };
     let agents = Pane::of(Content::Browser(Browser::waiting(unloaded, By::Agent)));
     assert_eq!(agents.by(), By::Agent);
-}
-
-#[test]
-fn a_tab_shows_a_page_when_a_pane_of_it_is_a_browsers() {
-    assert!(page("https://example.com/").shows_page());
-    assert!(Tab::Single(Pane::new(PaneKind::Browser)).shows_page(), "the start page");
-    let beside = Tab::split(SplitAxis::Row, chat("Plan"), page("https://example.com/"));
-    assert!(beside.shows_page(), "beside a chat");
-    for kind in PaneKind::ALL.into_iter().filter(|kind| *kind != PaneKind::Browser) {
-        assert!(!Tab::Single(Pane::new(kind)).shows_page(), "{kind:?}");
-    }
-    assert!(!Tab::Single(Pane::of_changes(None)).shows_page());
 }
 
 #[test]

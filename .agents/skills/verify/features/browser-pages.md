@@ -3,8 +3,9 @@
 A browser tab shows a native page: Chromium's own views, run by the engine inside Koyo's
 process, moved into the tab's pane (`docs/native-pages.md`). The person types an address
 (⌘L), clicks and types in the page, scrolls, finds (⌘F), zooms (⌘=, ⌘-, ⌘0), opens DevTools
-(⌘⌥I, F12), switches to responsive mode (⌘⌥R), pins a page by dragging its tab onto the tiles
-(Arc layout), and uses the site controls off the address field.
+(⌘⌥I, F12), switches to responsive mode (⌘⌥R), pins a page by dragging its tab onto the
+pinned pages (the rail's pill, or the sidebar's tiles), and uses the site controls off the
+address field.
 
 ## Sub-features
 
@@ -20,14 +21,15 @@ process, moved into the tab's pane (`docs/native-pages.md`). The person types an
 - `page-responsive`: ⌘⌥R and `browser_viewport` size the page, and a click lands at the scaled
   place.
 - `page-menu`: a right-click's native menu opens. Escape closes it, and the window stays live.
-- `page-pinned`: a pinned page's tile shows the page, and the page takes input.
+- `page-pinned`: a pinned page's button or tile shows the page, and the page takes input.
 - `page-extensions`: extensions' icons, popups and menus (needs the patched engine).
 
 ## How to get to it (user POV)
 
 - ⌘T, then type an address. Or the new-tab button, then the page kind. A link that opens a tab.
 - ⌘L, ⌘R, ⌘[ / ⌘], ⌘F, ⌘G, ⌘=, ⌘-, ⌘0, ⌘⌥I, F12, ⌘⌥R.
-- In the Arc layout, the pinned tiles and the loose pages.
+- The pinned and the unpinned pages, in the rail or, with `tabs` set to the sidebar, as tiles and
+  rows.
 - App control: `tab_open {"kind":"browser","url":…}`, and the `browser_*` operations.
 
 ## Driving it with koyo-verify
@@ -69,8 +71,9 @@ made key (SKILL.md, Keyboard focus) before any probe click.
   The menu closes, and a later click still reaches the page. This is the "window left dead"
   bug fixed in cdcebcf5a. The menu itself shows on the owner's desktop, so keep it brief and
   don't shoot it.
-- **Pinned page.** Use `$B prepare --layout Arc --pin "file://$PWD/.superpowers/v/fixture/focus.html"`.
-  After launch, `$B shot pinned` shows its tile in the sidebar. Click the tile, then click in
+- **Pinned page.** Use `$B prepare --tabs Sidebar --pin "file://$PWD/.superpowers/v/fixture/focus.html"`.
+  After launch, `$B shot pinned` shows its tile in the sidebar (without `--tabs Sidebar`, its
+  button in the rail's pill). Click the tile, then click in
   the page as above. `$B probe pages` lists its host pane, and
   `$B probe 'eval <hostPane> window.keys'` reads its keys, since app control can't reach it.
 - **Extensions.** These need the patched engine and its switches (the `browser-extensions`

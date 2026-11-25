@@ -39,6 +39,16 @@ impl ChatMark {
         }
     }
 
+    /// What a tab's or a checkout's row says of a chat with this mark: the spinner while it
+    /// works, the dot once it has something for the person.
+    fn activity(self) -> Activity {
+        if self == ChatMark::Working {
+            Activity::Working
+        } else {
+            Activity::Attention
+        }
+    }
+
     /// As a tab or a row shows it, at the place that names.
     fn shown(self, place: String, p: Palette, cx: &mut App) -> Div {
         match self {
@@ -177,7 +187,7 @@ impl Shell {
         self.tab_summaries(tab, cx).filter_map(ChatMark::of)
     }
 
-    /// Whether a tab has something for the person (`docs/arc-sidebar.md` 5): a terminal waiting
+    /// Whether a tab has something for the person (`docs/sidebar.md` 5): a terminal waiting
     /// for them, or a chat that's unread, failed or needs them.
     pub fn tab_wants_attention(&self, tab: &Tab, cx: &App) -> bool {
         self.tab_chat_marks(tab, cx)
@@ -185,7 +195,7 @@ impl Shell {
             || self.tab_terminal_waits(tab)
     }
 
-    /// How `tab` is doing, as its row says at its end (`docs/arc-sidebar.md` 5): something in it
+    /// How `tab` is doing, as its row says at its end (`docs/sidebar.md` 5): something in it
     /// waits for the person, or else a chat in it is at work.
     pub fn tab_activity(&self, tab: &Tab, cx: &App) -> Activity {
         if self.tab_wants_attention(tab, cx) {
@@ -197,64 +207,47 @@ impl Shell {
         }
     }
 
-    /// What a chat's tab says under its title in the Arc sidebar (`docs/arc-sidebar.md` 5): the
-    /// start of what was said last in its chat, as the host sums it up.
-    pub fn tab_said(&self, tab: &Tab, cx: &App) -> Option<SharedString> {
-        let Tab::Single(_) = tab else {
-            return None;
+    /// How `tab` is doing, as its row in the sidebar says at its end, and, while `says`, what it
+    /// says under its title (`docs/sidebar.md` 5): a single pane's chat, the start of what was
+    /// said last in it, as the host sums it up. A single pane's is read off the pane alone.
+    pub fn tab_status(&self, tab: &Tab, says: bool, cx: &App) -> (Activity, Option<SharedString>) {
+        let Tab::Single(pane) = tab else {
+            return (self.tab_activity(tab, cx), None);
         };
-        Some(self.tab_summaries(tab, cx).next()?.said.clone()?.into())
+        let summary = (pane.chat()).and_then(|id| self.chat_tabs.chats.read(cx).summary(id));
+        let chat = summary.and_then(ChatMark::of).map_or(Activity::Quiet, ChatMark::activity);
+        let activity = if self.tab_terminal_waits(tab) {
+            Activity::Attention
+        } else {
+            chat
+        };
+        let said = summary.filter(|_| says).and_then(|summary| summary.said.clone());
+        (activity, said.map(SharedString::from))
     }
 
-    /// How the checkout at `worktree` is doing, as a project's tile sums it up.
+    /// How the checkout at `worktree` is doing, as its row sums it up, and how many of its
+    /// terminals wait for the person, as its row counts them.
+    pub fn checkout_status(&self, worktree: &Path, cx: &App) -> (Activity, usize) {
+        let waiting = self.terminals_needing_input(worktree);
+        if waiting > 0 {
+            return (Activity::Attention, waiting);
+        }
+        let mark = self.chat_tabs.chats.read(cx).checkout_marks.get(worktree);
+        (mark.copied().map_or(Activity::Quiet, ChatMark::activity), waiting)
+    }
+
+    /// How the checkout at `worktree` is doing, as its row sums it up.
     pub fn checkout_activity(&self, worktree: &Path, cx: &App) -> Activity {
-        if self.terminals_needing_input(worktree) > 0 {
-            return Activity::Attention;
-        }
-        match self.chat_tabs.chats.read(cx).checkout_marks.get(worktree) {
-            None => Activity::Quiet,
-            Some(ChatMark::Working) => Activity::Working,
-            Some(_) => Activity::Attention,
-        }
+        self.checkout_status(worktree, cx).0
     }
 
-    /// How `project` is doing, the most urgent of its checkouts: what its tile's corner says,
-    /// and, with its space's other projects, its space's mark while the space isn't shown.
+    /// How `project` is doing, the most urgent of its checkouts: what its row says, and, with
+    /// its space's other projects, its space's mark while the space isn't shown.
     pub fn project_activity(&self, project: &Project, cx: &App) -> Activity {
         (project.branches.iter())
             .map(|unit| self.checkout_activity(&unit.worktree.path, cx))
             .max()
             .unwrap_or(Activity::Quiet)
-    }
-
-    /// How many chats are at work in the checkout at `worktree`.
-    pub fn chats_working(&self, worktree: &Path, cx: &App) -> usize {
-        (self
-            .chat_tabs
-            .chats
-            .read(cx)
-            .latest_first(Some(worktree))
-            .into_iter())
-        .filter(|summary| summary.status == Status::Working)
-        .count()
-    }
-
-    /// Asks the chats `tab` shows to stop whatever they're running.
-    pub fn stop_chats_in(&self, tab: &Tab, cx: &mut App) {
-        let threads: Vec<ThreadId> = (tab.panes().into_iter())
-            .filter_map(|pane| pane.chat().cloned())
-            .collect();
-        if threads.is_empty() {
-            return;
-        }
-        self.chat_tabs.chats.update(cx, |chats, cx| {
-            for thread in &threads {
-                let working = chats.summary(thread).map(|summary| summary.status);
-                if working == Some(Status::Working) {
-                    chats.stop(thread, cx);
-                }
-            }
-        });
     }
 }
 
@@ -269,9 +262,9 @@ pub enum Activity {
 }
 
 impl Activity {
-    /// How a tile's corner, a tab's row or a checkout's says it, in either layout: the spinner
-    /// turning at the place `place` names while a chat works, an indigo dot once something waits
-    /// for the person, and nothing while all's quiet.
+    /// How a tab's row, a branch's or a folded project's says it: the spinner turning at the place
+    /// `place` names while a chat works, an indigo dot once something waits for the person, and
+    /// nothing while all's quiet.
     pub fn sign(self, place: impl FnOnce() -> String, p: Palette, cx: &mut App) -> Option<Div> {
         match self {
             Activity::Quiet => None,

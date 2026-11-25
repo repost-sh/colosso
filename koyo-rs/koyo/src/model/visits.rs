@@ -99,7 +99,7 @@ impl Workspace {
 
     /// The first pane that is `found`, wherever its tab is, a checkout's, a pinned page's or a
     /// loose one's: how a page's pane is found, so it goes the same way whichever kind of tab
-    /// it's in (`docs/arc-sidebar.md` 11).
+    /// it's in (`docs/sidebar.md` 11).
     pub fn locate(&self, found: impl Fn(&Pane) -> bool) -> Option<Located> {
         self.everywhere().find_map(|visited| {
             let pane = visited.tab.panes().into_iter().find(|pane| found(pane))?;

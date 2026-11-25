@@ -7,10 +7,9 @@ use std::sync::Arc;
 use gpui_kit::{Entity, Image, ImageFormat, TestAppContext};
 
 use super::{Launcher, launch, place, shell};
-use crate::files::tests::press;
 use crate::history::{self, How};
 use crate::launcher::rows::{Act, Glyph};
-use crate::test_support::scratch;
+use crate::test_support::{press, scratch};
 
 /// The icons of the rows that visit a page: each site's PNG bytes, or `None` for the globe.
 fn glyphs(launcher: &Entity<Launcher>, cx: &TestAppContext) -> Vec<Option<Vec<u8>>> {

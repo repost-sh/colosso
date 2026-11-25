@@ -1,6 +1,6 @@
 //! Tabs as the tab operations change them: opened of each kind, listed, selected, moved,
 //! closed (not over unsaved edits unless they're discarded) and reopened; and the window's
-//! panels, layout and settings pages.
+//! panels and settings pages.
 
 use gpui_kit::TestAppContext;
 use koyo_app_control::{ErrorCode, Scope};
@@ -233,14 +233,13 @@ fn the_window_s_panels_layout_and_settings_pages_follow_the_calls(cx: &mut TestA
     let rig = controlled("control-layout", &[&root], cx);
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
-    let set =
-        json!({ "sidebar": false, "bottomPanel": true, "rightPanel": "files", "layout": "arc" });
+    let set = json!({ "sidebar": false, "bottomPanel": true, "rightPanel": "files" });
     let layout = call(&agent, "layout_set", set, cx).unwrap();
-    let expected = json!({ "layout": "arc", "sidebarOpen": false, "rightPanel": "files", "bottomPanelOpen": true });
+    let expected = json!({ "sidebarOpen": false, "rightPanel": "files", "bottomPanelOpen": true });
     assert_eq!(layout, expected);
     let status = call(&agent, "app_status", json!({}), cx).unwrap();
     assert_eq!(status["windowOpen"], json!(true));
-    assert_eq!(status["layout"], json!("arc"));
+    assert!(status.get("layout").is_none(), "one layout, nothing to switch");
     assert_eq!(status["sidebarOpen"], json!(false));
     assert_eq!(status["rightPanel"], json!("files"));
     assert_eq!(status["selected"]["worktree"], json!(root));

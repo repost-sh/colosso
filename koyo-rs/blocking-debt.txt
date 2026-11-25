@@ -4,11 +4,11 @@
 # lends one to), one `path count` line each: the calls the file makes outside one. This is the
 # main thread's debt, and it only shrinks: a file may lose calls but not gain them, and a file
 # not listed may make none. koyo-hygiene, which script/hygiene runs, fails on a call the list
-# doesn't allow, and on a line the last commit's list lacks or allows less. When a file makes
-# fewer, `script/cargo run -q -p koyo-hygiene -- --prune` lowers its line, or takes it off at none.
+# doesn't allow, and on a line the last commit's list lacks or allows less; a file git finds
+# renamed keeps its line by its new path. When a file makes fewer,
+# `script/cargo run -q -p koyo-hygiene -- --prune` lowers its line, or takes it off at none.
 koyo/src/accounts/environment.rs 2
 koyo/src/agent_desktop/host.rs 1
-koyo/src/arc/avatar.rs 1
 koyo/src/browser/dialog.rs 1
 koyo/src/browser/engine.rs 1
 koyo/src/browser/extensions.rs 1
@@ -38,5 +38,6 @@ koyo/src/language/watch.rs 1
 koyo/src/launcher/suggest.rs 3
 koyo/src/settings_view/chat.rs 1
 koyo/src/shell/kept/shape.rs 1
+koyo/src/shell/switcher/avatar.rs 1
 koyo/src/viewer/svg.rs 2
 koyo/src/viewer/view.rs 1

@@ -55,15 +55,17 @@ impl Shell {
 
     /// Whether a terminal of `tab` waits for the person.
     pub fn tab_terminal_waits(&self, tab: &Tab) -> bool {
-        self.tab_terminal_statuses(tab).any(waits)
+        tab.any_pane(&|pane| self.pane_terminal_status(pane).is_some_and(waits))
     }
 
     /// What `tab`'s terminals are doing, those the daemon has told of.
     fn tab_terminal_statuses(&self, tab: &Tab) -> impl Iterator<Item = Status> {
-        (tab.panes().into_iter())
-            .filter_map(Pane::terminal)
-            .filter_map(|id| self.terminal_state(id))
-            .map(|state| state.status)
+        (tab.panes().into_iter()).filter_map(|pane| self.pane_terminal_status(pane))
+    }
+
+    /// What the terminal `pane` shows is doing, while it shows one the daemon has told of.
+    fn pane_terminal_status(&self, pane: &Pane) -> Option<Status> {
+        Some(self.terminal_state(pane.terminal()?)?.status)
     }
 
     /// How many terminals the daemon keeps for the checkout at `worktree`.

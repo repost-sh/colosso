@@ -25,14 +25,14 @@ Status marks: `[decided]`, `[not built]`.
 - Each tab's panes, split as they were: side by side or one over the other, each split's
   share of the room as it was dragged.
 - Each project on the checkout that was selected in it. Which project and space are shown is
-  in `settings.json` already (`docs/arc-sidebar.md` 9).
+  in `settings.json` already (`docs/sidebar.md` 9).
 - A pane's content, by kind:
   - **Page:** at the address it showed, titled as it was until its page says otherwise, with
     its site's icon when one is kept (`history-icons/`, `docs/new-tab.md` 4.7), the pages
     back and forward of it, scrolled where it was (7.1). A new tab still on its start page
     comes back as one.
   - **Terminal:** the terminal it showed, by its handle in the daemon, where its tab was,
-    even on another worktree's list than its own (`docs/arc-sidebar.md` 5).
+    even on another worktree's list than its own (`docs/sidebar.md` 5).
   - **Chat:** the thread it showed. A chat with nothing sent yet comes back as its tab, with
     the draft its folder keeps (`chat/drafts.rs`), so text typed and not sent is where it
     was typed.
@@ -103,7 +103,7 @@ beside `history.json`:
   each, as they did then. From the first change on, `window.json` has them. The old file is
   never written again and is left where it is, for a build that still reads it.
 
-- **Loose pages** (`docs/arc-sidebar.md` 11), the pages open in a space that are no
+- **Loose pages** (`docs/sidebar.md` 11), the pages open in a space that are no
   project's, are in this file too, under `spaces`, left out while there are none, in the
   order of their rows as they're listed shared, each run of pages filed under one space an
   entry of its own:
@@ -126,7 +126,7 @@ beside `history.json`:
   waiting for no checkout: `Shell::restore_pages`. Those of a space the settings no longer
   have are the space shown's. A build from before `shown_in` reads every page into its
   space, and a space that showed another's page shows its project's tab there.
-- **Pinned pages** (`docs/arc-sidebar.md` 11) aren't in this file: they're no checkout's and
+- **Pinned pages** (`docs/sidebar.md` 11) aren't in this file: they're no checkout's and
   no space's. They have a file of their own beside it, section 10.
 
 ## 3. One rule for what's kept [decided]
@@ -222,7 +222,7 @@ don't make one of their own.
 - Docked or detached `DevTools`: the page comes back without them.
 - Responsive mode (`docs/responsive.md` 1; a page an agent opened at 1440 × 900 comes back
   filling its pane), and who held a page's lease.
-- Which pane of a split the person was in (`docs/arc-sidebar.md` 2): the first, until
+- Which pane of a split the person was in (`docs/sidebar.md` 2): the first, until
   they're in one again.
 - A file's unsaved edits, its scroll position and whether it was a preview; the Changes
   pane's place in the diffs.
@@ -560,10 +560,10 @@ was run.
 
 ## 10. Pinned pages [decided]
 
-Added 2026-11-13 on `schulzfel/pinned-browser-tabs`. The pages pinned at the head of the Arc
-sidebar (`docs/arc-sidebar.md` 11) are no checkout's and common to every space, so the window's
-file doesn't hold them. They're kept in `pinned-tabs.json`, beside `window.json` in the data
-folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
+Added 2026-11-13 on `schulzfel/pinned-browser-tabs`. The pages pinned at the head of the
+sidebar, or on the top rail (`docs/sidebar.md` 11), are no checkout's and common to every
+space, so the window's file doesn't hold them. They're kept in `pinned-tabs.json`, beside
+`window.json` in the data folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
 
 ```json
 {
@@ -813,8 +813,8 @@ leaves out. Zen's is `ZenSiteDataPanel.sys.mjs` and `zen-panels/site-data.inc`
 
 ### 12.1 In the address field [decided]
 
-- Two buttons at the field's right end, with a page shown, in both layouts (the Arc
-  sidebar's bar, `arc/top.rs`; the page's toolbar in Orca's, `browser/toolbar.rs`):
+- Two buttons at the field's right end, with a page shown, wherever the address bar is (the
+  sidebar's field, `shell/sidebar/address.rs`; the page's toolbar, `browser/toolbar.rs`):
   - **Copy link:** the page's whole address to the clipboard. The link turns to a check for
     a second and a half.
   - **Site controls** (sliders): opens the popover under it, and closes it again. It stays
@@ -823,7 +823,7 @@ leaves out. Zen's is `ZenSiteDataPanel.sys.mjs` and `zen-panels/site-data.inc`
   tab's close button does over its row (`theme::hover::eased`), and whatever the pointer
   does while the popover is up or the address was just copied.
 - Neither is there while the field is being typed in, nor on a start page, which has no
-  site. In the Arc layout a press on either is theirs alone: the launcher, which a press on
+  site. In the sidebar's field a press on either is theirs alone: the launcher, which a press on
   the rest of the bar opens, stays shut.
 
 ### 12.2 The popover [decided]
@@ -937,7 +937,7 @@ again. The owner allowed a location on it and the page had its position.
 
 Not tried: the picture, which writes the person's clipboard; the camera and the microphone
 allowed, kept and answered by their setting (the owner's camera request ended in
-`NotAllowedError`, not looked into); the Orca layout's field. There is no test of the
+`NotAllowedError`, not looked into); the page toolbar's field. There is no test of the
 popover or the question in a window: `site/panel.rs` has its height and its names,
 `site/prompt.rs` its wording, `host/site.rs` a site's address and a media request's devices.
 
@@ -1254,7 +1254,7 @@ the owner's to change, **[ours]**.
 
 ### 15.2 Where it's picked [decided]
 
-- Right-clicking a project's tile in the Arc sidebar, or its row in the Orca layout:
+- Right-clicking a project's row in the sidebar:
   **Set Profile ›**, beside New Worktree… among what any project's menu offers
   (`project_items`), lists Default and the profiles made, the one the project is on checked,
   then a divider and **New Profile…**, which asks for a name, makes the profile and puts the
@@ -1438,8 +1438,8 @@ The app keeps one list of what this run downloaded and saved as PDFs, oldest fir
 quit. It's shown as Safari shows its downloads (`koyo/src/browser/downloads/button.rs`,
 `panel.rs`):
 
-- **The button** is in the window's top bar, right of the sidebar's toggle, in both layouts
-  (in the Arc layout the row with the traffic lights and back, forward and reload). It's there
+- **The button** is in the window's top bar, right of the sidebar's toggle: on the top rail,
+  or in the sidebar's top row when **Tabs** is on the sidebar (`docs/sidebar.md` 1). It's there
   while the list has a download, an agent's too, and goes when Clear empties it. While
   something comes in its arrow is accent, in a ring as full as what's coming has come (empty
   while the server hasn't said how much). As each download starts, the arrow drops into the
@@ -1456,8 +1456,8 @@ quit. It's shown as Safari shows its downloads (`koyo/src/browser/downloads/butt
   takes off what has ended.
 - **Sizes** are the Finder's: 1 KB is 1000 bytes, `1.3 KB` for 1,280 bytes.
 
-`--visual-check-downloads` draws the button and the open list in both layouts and themes
-(`koyo/src/browser/downloads/visual.rs`).
+`--visual-check-downloads` draws the button and the open list in each top row, the rail's and
+the sidebar's, and in both themes (`koyo/src/browser/downloads/visual.rs`).
 
 Chromium's own download bubble, which Chrome style pops over the page as a download ends with
 Chrome's units (`1,280 B • Done`), stays down: the host sets Chrome's "Show downloads when

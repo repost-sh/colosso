@@ -7,9 +7,10 @@
 use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 
 use super::{Kind, Launcher, kind, launch};
-use crate::files::tests::{dialog, press};
+use crate::files::tests::dialog;
 use crate::shell::Shell;
-use crate::test_support::{click, draw, drawn, loose, open_page, orca_on_chat, pin};
+use crate::settings::{SetTabs, Tabs};
+use crate::test_support::{act, click, draw, drawn, loose, open_page, pin, press, shell_on_chat};
 
 /// What the launcher's field says with nothing in it.
 fn placeholder(launcher: &Entity<Launcher>, cx: &TestAppContext) -> String {
@@ -47,8 +48,29 @@ fn visit(window: AnyWindowHandle, address: &str, cx: &mut TestAppContext) {
 fn the_plus_after_the_unpinned_pages_opens_one_while_a_branchs_tab_shows(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell) = orca_on_chat("launcher-unpinned-plus", cx);
-    click(window, "orca-new-page", cx);
+    let (window, shell) = shell_on_chat("launcher-unpinned-plus", cx);
+    the_plus_opens_one(window, &shell, "rail-new-page", cx);
+}
+
+/// The New Tab row after the unpinned pages, with the tabs in the sidebar, opens the same.
+#[gpui_kit::test]
+fn the_new_tab_row_after_the_unpinned_pages_opens_one_while_a_branchs_tab_shows(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell) = shell_on_chat("launcher-unpinned-new-tab-row", cx);
+    act(window, SetTabs(Tabs::Sidebar), cx);
+    the_plus_opens_one(window, &shell, "sidebar-new-page", cx);
+}
+
+/// `plus` in `window`, clicked, opens the launcher for an unpinned page, and an address opens as
+/// one.
+fn the_plus_opens_one(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    plus: &'static str,
+    cx: &mut TestAppContext,
+) {
+    click(window, plus, cx);
     cx.run_until_parked();
     let (launcher_window, launcher) = dialog::<Launcher>(cx).expect("the launcher");
     assert_eq!(offers_kinds(launcher_window, cx), (false, false), "the field alone");
@@ -60,8 +82,8 @@ fn the_plus_after_the_unpinned_pages_opens_one_while_a_branchs_tab_shows(
     visit(launcher_window, "example.org/news", cx);
     assert!(dialog::<Launcher>(cx).is_none(), "it closes once it's done");
     let news = vec!["https://example.org/news".to_owned()];
-    assert_eq!(unpinned(&shell, cx), (news, Some(0)), "an unpinned page, shown");
-    assert_eq!(branch_tabs(&shell, cx), 1, "the branch's chat alone");
+    assert_eq!(unpinned(shell, cx), (news, Some(0)), "an unpinned page, shown");
+    assert_eq!(branch_tabs(shell, cx), 1, "the branch's chat alone");
 }
 
 /// ⌘T on an unpinned or a pinned page opens the launcher for an unpinned page, and Enter opens
@@ -70,7 +92,7 @@ fn the_plus_after_the_unpinned_pages_opens_one_while_a_branchs_tab_shows(
 fn cmd_t_on_an_unpinned_or_pinned_page_opens_it_for_an_unpinned_page_only(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell) = orca_on_chat("launcher-unpinned-cmd-t", cx);
+    let (window, shell) = shell_on_chat("launcher-unpinned-cmd-t", cx);
     let page = open_page(window, &shell, Some("https://news.example/"), cx);
     shell.update(cx, |shell, cx| shell.loosen_tab_of(page, usize::MAX, cx));
     draw(window, cx);
@@ -84,7 +106,7 @@ fn cmd_t_on_an_unpinned_or_pinned_page_opens_it_for_an_unpinned_page_only(
     assert_eq!(branch_tabs(&shell, cx), 1);
 
     pin(window, &shell, &["https://pinned.example/"], cx);
-    click(window, "orca-pinned-0", cx);
+    click(window, "rail-pinned-0", cx);
     let (launcher_window, _) = launch(window, cx);
     assert_eq!(offers_kinds(launcher_window, cx), (false, false), "on a pinned page");
     press(launcher_window, "escape", cx);

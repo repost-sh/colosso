@@ -57,7 +57,7 @@ fn edit(path: &Path, json: &str, secs: u64) {
 fn settings_survive_a_round_trip() {
     let mut settings = Settings {
         appearance: ThemePreference::Dark,
-        layout: Layout::Arc,
+        tabs: Tabs::Sidebar,
         sidebar_width: 320.,
         changes_files_width: 400.,
         projects: vec!["/src/app".into()],
@@ -78,8 +78,8 @@ fn settings_survive_a_round_trip() {
     reason = "a missing width is the default itself, not near it"
 )]
 fn missing_fields_fall_back_to_defaults() {
-    let settings: Settings = serde_json::from_str(r#"{ "layout": "Arc" }"#).unwrap();
-    assert_eq!(settings.layout, Layout::Arc);
+    let settings: Settings = serde_json::from_str(r#"{ "tabs": "Sidebar" }"#).unwrap();
+    assert_eq!(settings.tabs, Tabs::Sidebar);
     assert_eq!(settings.sidebar_width, theme::SIDEBAR_WIDTH);
     assert_eq!(settings.changes_files_width, theme::CHANGES_FILES_WIDTH);
     assert_eq!(settings.dark_theme, GradientTheme::default());
@@ -182,6 +182,8 @@ fn a_file_with_retired_keys_reads_without_them() {
     let path = scratch("settings-migrate").join(FILE);
     let old = r#"{
         "layout": "Arc",
+        "tabs": "Sidebar",
+        "project_looks": { "/src/app": { "name": "App", "icon": "/app.png", "folded": true } },
         "files_width": 280,
         "native_pages": true,
         "key_repeat": {
@@ -199,11 +201,14 @@ fn a_file_with_retired_keys_reads_without_them() {
     std::fs::write(&path, old).unwrap();
     let mut value = serde_json::from_str(old).unwrap();
     migrate(&mut value);
+    assert!(value.get("layout").is_none(), "one layout now");
+    let look = serde_json::json!({ "folded": true });
+    assert_eq!(value["project_looks"]["/src/app"], look, "no name or picture of its own");
     assert!(value.get("files_width").is_none());
     assert!(value.get("native_pages").is_none());
     assert_eq!(value["key_repeat"], serde_json::json!({ "delay_ms": 200 }));
     let settings = read(&path).unwrap();
-    assert_eq!(settings.layout, Layout::Arc);
+    assert_eq!(settings.tabs, Tabs::Sidebar);
     let repeat = KeyRepeat {
         delay_ms: 200,
         ..KeyRepeat::default()
@@ -222,6 +227,41 @@ fn a_file_with_retired_keys_reads_without_them() {
         [PathBuf::from("/old/project")]
     );
     assert!(settings.runs_server("pyrefly", None));
+}
+
+/// A file from a build that gave each space a theme of its own reads with the window's one
+/// theme as it was, each space as it was but for its theme, and saves without them.
+#[test]
+fn a_file_with_themes_of_each_space_reads_and_saves_without_them() {
+    let path = scratch("settings-space-themes").join(FILE);
+    let mut own = GradientTheme::default();
+    own.move_primary(point(300., 120.));
+    let own = serde_json::to_value(own).unwrap();
+    let old = serde_json::json!({
+        "spaces": [
+            { "id": 1, "name": "Work", "light_theme": own, "dark_theme": own },
+            { "id": 2, "name": "Side projects", "dark_theme": own }
+        ],
+        "space": 1
+    });
+    let themed = |value: &serde_json::Value| {
+        (value["spaces"].as_array().unwrap().iter())
+            .any(|space| space.get("light_theme").is_some() || space.get("dark_theme").is_some())
+    };
+    let mut value = old.clone();
+    migrate(&mut value);
+    assert!(!themed(&value), "{value}");
+    assert_eq!(value["spaces"][1]["name"], "Side projects");
+
+    std::fs::write(&path, old.to_string()).unwrap();
+    let settings = read(&path).unwrap();
+    let names: Vec<_> = (settings.spaces.iter()).map(|space| space.name.as_str()).collect();
+    assert_eq!(names, ["Work", "Side projects"]);
+    assert_eq!(settings.space, 1);
+    assert_eq!(settings.light_theme, GradientTheme::default());
+    assert_eq!(settings.dark_theme, GradientTheme::default(), "no space's theme is the window's");
+    let saved = serde_json::to_value(&settings).unwrap();
+    assert!(!themed(&saved), "{saved}");
 }
 
 #[test]
@@ -268,17 +308,39 @@ fn a_chat_text_size_picked_before_sizes_came_down_a_notch_keeps_its_place_on_the
 }
 
 #[test]
-fn the_cards_glass_and_the_windows_blur_picked_before_are_dropped_for_the_sidebars_defaults() {
+fn the_cards_glass_and_the_windows_blur_picked_before_are_dropped_for_the_sidebars_default() {
     let path = scratch("settings-sidebar-glass").join(FILE);
-    let old = serde_json::json!({ "layout": "Arc", "card_glass": 1., "glass_blur": 0.75 });
+    let old = serde_json::json!({ "tabs": "Sidebar", "card_glass": 1., "glass_blur": 0.75 });
     std::fs::write(&path, old.to_string()).unwrap();
     let settings = read(&path).unwrap();
     let json = serde_json::to_value(&settings).unwrap();
     let defaults = serde_json::to_value(Settings::default()).unwrap();
-    assert_eq!(settings.layout, Layout::Arc);
+    assert_eq!(settings.tabs, Tabs::Sidebar);
     assert_eq!(json["sidebar_glass"], defaults["sidebar_glass"]);
-    assert_eq!(json["sidebar_blur"], defaults["sidebar_blur"]);
     assert!(json.get("card_glass").is_none() && json.get("glass_blur").is_none());
+}
+
+#[test]
+fn the_sidebars_blur_and_its_wallpaper_picked_before_are_dropped_and_the_rest_stays() {
+    let mut old = serde_json::json!({
+        "sidebar_glass": 0.25,
+        "sidebar_blur": 1.,
+        "chat_backdrop": { "surfaces": { "chat": false, "sidebar": true } },
+    });
+    let path = scratch("settings-sidebar-blur").join(FILE);
+    std::fs::write(&path, old.to_string()).unwrap();
+    let settings = read(&path).unwrap();
+    assert_eq!(settings.sidebar_glass.to_bits(), 0.25_f32.to_bits());
+    assert!(!settings.chat_backdrop.surfaces.chat);
+    migrate(&mut old);
+    let kept = serde_json::json!({
+        "sidebar_glass": 0.25,
+        "chat_backdrop": { "surfaces": { "chat": false } },
+    });
+    assert_eq!(old, kept);
+    let saved = serde_json::to_value(&settings).unwrap();
+    assert!(saved.get("sidebar_blur").is_none());
+    assert!(saved["chat_backdrop"]["surfaces"].get("sidebar").is_none());
 }
 
 #[test]

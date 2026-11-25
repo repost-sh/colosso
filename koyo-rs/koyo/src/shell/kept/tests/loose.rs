@@ -1,4 +1,4 @@
-//! The loose pages kept with the window (`docs/arc-sidebar.md` 11, `docs/browser.md` 2): each
+//! The loose pages kept with the window (`docs/sidebar.md` 11, `docs/browser.md` 2): each
 //! space's in the window's file, by the space's id, and back in a new window, the one each space
 //! showed shown; a file from before them reads as it did.
 
@@ -8,7 +8,7 @@ use super::super::loose::{KeptLoose, KeptSpace};
 use super::pinned::relaunched;
 use super::{Kept, read_file, written};
 use crate::browser::NO_PROJECT;
-use crate::settings::{self, Layout, LoosePages};
+use crate::settings::{self, LoosePages};
 use crate::test_support::{draw, open_page, repo, scratch, select, shell_with};
 
 fn kept(url: &str, title: &str, project: &str) -> KeptLoose {
@@ -69,7 +69,6 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
     let (window, shell) = shell_with(&[&root], cx);
     let ids = cx.update(|cx| {
         settings::update(cx, |settings| {
-            settings.layout = Layout::Arc;
             settings.loose_pages = LoosePages::PerSpace;
             settings.add_space();
         });
@@ -158,7 +157,6 @@ fn shared_loose_pages_come_back_shared_in_their_order_and_each_in_its_space_per_
     let (window, shell) = shell_with(&[&root], cx);
     let ids = cx.update(|cx| {
         settings::update(cx, |settings| {
-            settings.layout = Layout::Arc;
             settings.loose_pages = LoosePages::Shared;
             settings.add_space();
         });

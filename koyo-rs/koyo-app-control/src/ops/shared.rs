@@ -69,16 +69,6 @@ pub enum Edge {
     Bottom,
 }
 
-/// The window's layout.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Layout {
-    /// The sidebar of projects beside the content.
-    Orca,
-    /// Tabs down the side, as Arc has them.
-    Arc,
-}
-
 /// One pane of a tab.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

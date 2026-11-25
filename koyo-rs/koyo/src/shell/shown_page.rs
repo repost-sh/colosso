@@ -1,14 +1,27 @@
-//! The page the window's own controls act on: the Arc sidebar's address, its back, forward and
-//! reload, and ⌘L. It's the page of the pane the person is in, a page's `DevTools` standing for
-//! their page; in a pane of another kind, the shown tab's first page, so a page beside a chat
-//! can still be steered from the chat.
+//! The page the window's own controls act on: the sidebar's address, the back, forward and reload
+//! beside it, and ⌘L. It's the page of the pane the person is in, a page's `DevTools` standing for
+//! their page; in a pane of another kind, the shown tab's first page, so a page beside a chat can
+//! still be steered from the chat.
 
-use gpui_kit::{Context, Entity};
+use gpui_kit::{Context, Div, Entity, InteractiveElement as _, actions};
 use koyo_browser_ipc::Go;
 
 use super::Shell;
 use crate::browser::BrowserView;
 use crate::model::Pane;
+
+actions!(page, [PageBack, PageForward, PageReload]);
+
+/// Has the window's root handle back, forward and reload for the page shown.
+pub(super) fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
+    root.on_action(cx.listener(|this, _: &PageBack, _, cx| this.steer_page(Go::Back, cx)))
+        .on_action(cx.listener(|this, _: &PageForward, _, cx| this.steer_page(Go::Forward, cx)))
+        .on_action(cx.listener(|this, _: &PageReload, _, cx| {
+            if let Some(page) = this.shown_page() {
+                page.update(cx, BrowserView::reload_or_stop);
+            }
+        }))
+}
 
 impl Shell {
     /// Every page in the tab shown, each pane's own, `DevTools` too: what the launcher may float
@@ -30,7 +43,7 @@ impl Shell {
         page.cloned()
     }
 
-    pub(crate) fn steer_page(&mut self, to: Go, cx: &mut Context<Self>) {
+    fn steer_page(&mut self, to: Go, cx: &mut Context<Self>) {
         if let Some(page) = self.shown_page() {
             page.update(cx, |page, cx| page.go(to, cx));
         }

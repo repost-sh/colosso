@@ -30,7 +30,7 @@ pub fn open(shell: WeakEntity<Shell>, project: PathBuf, window: &mut Window, cx:
 }
 
 /// Opens the dialog for a new worktree of the project at `project`, its name `name` already,
-/// as the launcher's Worktree kind hands it over (`docs/arc-sidebar.md` 8).
+/// as the launcher's Worktree kind hands it over (`docs/sidebar.md` 8).
 pub fn open_named(
     shell: WeakEntity<Shell>,
     project: PathBuf,

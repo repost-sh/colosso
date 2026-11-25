@@ -4,8 +4,9 @@
 # takes one, or the closure koyo-browser-host/src/blocking.rs's thread, at_launch or in_test lends
 # one to), one `path count` line each, as koyo-rs/blocking-debt.txt is the app's. It only
 # shrinks, as that list does: koyo-hygiene fails on a call the list doesn't allow, and on a line
-# the last commit's list lacks or allows less; `script/cargo run -q -p koyo-hygiene -- --prune`
-# lowers a line once its file makes fewer. Seeded 2026-11-19 at what was left once the start,
+# the last commit's list lacks or allows less, but for a file git finds renamed, which keeps its
+# line by its new path; `script/cargo run -q -p koyo-hygiene -- --prune` lowers a line once its
+# file makes fewer. Seeded 2026-11-19 at what was left once the start,
 # the socket's threads and the profiles' generation took a `Blocking`: a socket's type in a
 # struct or on the main thread (devtools.rs, embedded.rs, host/start.rs), and the profiles'
 # folders the app asks of the host from its own threads (host/profiles.rs), whose `Blocking`

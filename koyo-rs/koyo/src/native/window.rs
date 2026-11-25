@@ -156,10 +156,8 @@ pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &
     refresh_edge(window.window_handle(), cx);
 }
 
-/// The `BlurredView` GPUI puts under a blurred window's content, if `window` has one: the
-/// backmost of the content view's, as GPUI puts it under all of them and the sidebar's blur goes
-/// over it (`sidebar_blur.rs`).
-pub(super) fn blur_view(window: &Window) -> Option<Retained<NSView>> {
+/// The `BlurredView` GPUI puts under a blurred window's content, if `window` has one.
+fn blur_view(window: &Window) -> Option<Retained<NSView>> {
     use objc2::msg_send;
     use objc2::runtime::AnyClass;
 

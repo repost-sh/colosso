@@ -12,14 +12,17 @@ use std::time::Duration;
 
 use gpui_kit::base::motion::{MotionStatus, Transition, transition_with_status};
 use gpui_kit::{
-    AlignItems, Along as _, AnyElement, App, Axis, BorderStyle, Bounds, Context, Corners,
-    DispatchPhase, Display, Element, ElementId, Empty, FlexDirection, GlobalElementId, Hsla,
-    InspectorElementId, IntoElement, LayoutId, Length, MouseUpEvent, Pixels, Point, Render,
-    Style, Window, fill, outline, point, px, relative, size,
+    AlignItems, Along as _, AnyElement, App, AppContext as _, Axis, BorderStyle, Bounds, Context,
+    Corners, DispatchPhase, Display, Div, Element, ElementId, Empty, FlexDirection,
+    GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId, Length, MouseUpEvent,
+    Pixels, Point, Render, Stateful, StatefulInteractiveElement as _, Style, Window, fill,
+    outline, point, px, relative, size,
 };
 
 use hand::{Holds, Laid};
 pub use hand::{Drop, TabHand};
+
+use super::Shell;
 
 /// A row or a tile in hand. Nothing's drawn for it under the pointer: its list or grid draws it
 /// there.
@@ -31,18 +34,50 @@ impl Render for InHand {
     }
 }
 
+impl TabHand {
+    /// Has `row`, known by `key` in slot `at` of `list`, taken up by the list as it's dragged
+    /// along `axis`, held where the pointer took hold of it: nothing's drawn for it under the
+    /// pointer, as the list draws it there (`InHand`).
+    pub fn lift(
+        self: &Rc<Self>,
+        row: Stateful<Div>,
+        (list, key, at): (List, u64, usize),
+        axis: Axis,
+    ) -> Stateful<Div> {
+        let hand = Rc::clone(self);
+        row.on_drag(InHand, move |_, grab, _, cx| {
+            hand.take(list, key, at, grab.along(axis));
+            cx.new(|_| InHand)
+        })
+    }
+}
+
+/// What's done with a row let go over its list, rows only moving: `moved` has the shell take the
+/// row from its slot to the one it's over, as `from` and `to`.
+pub fn on_move(
+    cx: &Context<Shell>,
+    moved: impl Fn(&mut Shell, usize, usize, &mut Context<Shell>) + 'static,
+) -> OnDrop {
+    Rc::new(cx.listener(move |this, drop: &Drop, _, cx| {
+        if let Drop::Move { from, to } = *drop {
+            moved(this, from, to, cx);
+        }
+    }))
+}
+
 /// Which list a tab or a row is dragged along.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum List {
-    /// The tabs of the checkout `(project, branch)`, along the Orca layout's top rail or down
-    /// the Arc sidebar.
+    /// The tabs of the checkout `(project, branch)`, along the top rail or down the sidebar.
     Checkout(usize, usize),
-    /// The worktrees of the project at `project`, in either layout.
+    /// The worktrees of the project at `project`.
     Worktrees(usize),
-    /// The Orca layout's projects.
+    /// The space's projects.
     Projects,
-    /// The space's loose pages, down the Arc sidebar or along the Orca layout's top rail.
+    /// The space's loose pages, down the sidebar or along the top rail.
     Loose,
+    /// The spaces' marks, along the sidebar's foot.
+    Spaces,
 }
 
 impl List {
@@ -53,6 +88,7 @@ impl List {
             List::Worktrees(project) => ("worktree-list", project).into(),
             List::Projects => "project-list".into(),
             List::Loose => "loose-list".into(),
+            List::Spaces => "space-marks".into(),
         }
     }
 }
@@ -91,7 +127,7 @@ fn outside(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> Pixels {
 }
 
 /// Whether `at` is past either end of a list down the sidebar, where the next checkout's list
-/// is, which a tab can be taken to (`docs/arc-sidebar.md` 5): the list lets it go at once, so
+/// is, which a tab can be taken to (`docs/sidebar.md` 5): the list lets it go at once, so
 /// it doesn't keep a tab another list takes. Along the strip a tab stops at its ends.
 fn beyond_ends(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> bool {
     axis == Axis::Vertical && past(axis, bounds, at) > px(0.)
@@ -100,8 +136,8 @@ fn beyond_ends(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> bool {
 /// What's done with a tab let go over its list.
 pub type OnDrop = Rc<dyn Fn(&Drop, &mut Window, &mut App)>;
 
-/// Tabs in a list, each drawn where its motion has it; or a project's worktrees, by the same
-/// rules but for joining and leaving the list.
+/// Tabs in a list, each drawn where its motion has it; or rows, by the same rules but for joining
+/// and, as `Holds` says, leaving the list.
 pub struct Reorder {
     list: List,
     holds: Holds,
@@ -148,11 +184,10 @@ impl Reorder {
         }
     }
 
-    /// The space's loose pages, down the Arc sidebar or along the Orca layout's top rail as
-    /// `axis` says, each by a key it keeps as it moves, with `gap` between them, `on_drop` doing
-    /// what's done with one let go over the list: they move as tabs do and leave the list as tabs
-    /// do, but join none, and they take the tabs of the other lists, which are off their own
-    /// over them.
+    /// The space's loose pages, down the sidebar or along the top rail as `axis` says, each by a
+    /// key it keeps as it moves, with `gap` between them, `on_drop` doing what's done with one let
+    /// go over the list: they move as tabs do and leave the list as tabs do, but join none, and
+    /// they take the tabs of the other lists, which are off their own over them.
     pub(super) fn pages(
         axis: Axis,
         pages: Vec<(u64, AnyElement)>,
@@ -171,12 +206,14 @@ impl Reorder {
         }
     }
 
-    /// Rows of a sidebar that move as tabs do but join none and stay on the list wherever
-    /// they're taken: a project's worktrees down either layout's sidebar, the Orca layout's
-    /// projects. Each is known by a key it keeps as it moves, with `gap` between them, `on_drop`
-    /// doing what's done with one let go.
+    /// Rows of `list`, running along `axis`, that move as tabs do but join none: down the
+    /// sidebar a project's worktrees and the space's projects, which stay on the list wherever
+    /// they're taken; along its foot the spaces' marks, which, as `leaves` says, leave it as tabs
+    /// do, one pulled off sliding back into its slot to do nothing let go there. Each is known by
+    /// a key it keeps as it moves, with `gap` between them, `on_drop` doing what's done with one
+    /// let go.
     pub fn rows(
-        list: List,
+        (list, axis, leaves): (List, Axis, bool),
         rows: Vec<(u64, AnyElement)>,
         hand: Rc<TabHand>,
         gap: Pixels,
@@ -184,8 +221,8 @@ impl Reorder {
     ) -> Self {
         Reorder {
             list,
-            holds: Holds::Rows,
-            axis: Axis::Vertical,
+            holds: Holds::Rows { leaves },
+            axis,
             tabs: rows,
             hand,
             gap,

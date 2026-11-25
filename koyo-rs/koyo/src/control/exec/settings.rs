@@ -7,10 +7,9 @@ use std::path::PathBuf;
 use gpui_kit::App;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::settings::{
-    Appearance, BranchPrefix, Devtools, DevtoolsDock, LoosePages, SaveScope, SettingsSetInput,
-    SettingsValues,
+    AddressBar, Appearance, BranchPrefix, ChangesAndFiles, Devtools, DevtoolsDock, LoosePages,
+    SaveScope, SettingsSetInput, SettingsValues, Tabs,
 };
-use koyo_app_control::ops::shared::Layout;
 use serde_json::Value;
 
 use super::{info, output};
@@ -26,7 +25,9 @@ pub(crate) fn values(settings: &Settings) -> SettingsValues {
             ThemePreference::Light => Appearance::Light,
             ThemePreference::Dark => Appearance::Dark,
         },
-        layout: settings.layout.into(),
+        tabs: settings.tabs.into(),
+        address_bar: settings.address_bar.into(),
+        changes_and_files: settings.changes_and_files.into(),
         loose_pages: match settings.loose_pages {
             settings::LoosePages::PerSpace => LoosePages::PerSpace,
             settings::LoosePages::Shared => LoosePages::Shared,
@@ -107,6 +108,32 @@ fn check(input: &SettingsSetInput) -> Result<(), ControlError> {
     Ok(())
 }
 
+/// Applies the layout's choices an input names, each left as it is where it's `None`: where the
+/// tabs, the address bar and the Changes and Files buttons go, and the unpinned pages.
+fn arrange(
+    tabs: Option<Tabs>,
+    bar: Option<AddressBar>,
+    place: Option<ChangesAndFiles>,
+    pages: Option<LoosePages>,
+    settings: &mut Settings,
+) {
+    if let Some(tabs) = tabs {
+        settings.tabs = tabs.into();
+    }
+    if let Some(bar) = bar {
+        settings.address_bar = bar.into();
+    }
+    if let Some(place) = place {
+        settings.changes_and_files = place.into();
+    }
+    if let Some(pages) = pages {
+        settings.loose_pages = match pages {
+            LoosePages::PerSpace => settings::LoosePages::PerSpace,
+            LoosePages::Shared => settings::LoosePages::Shared,
+        };
+    }
+}
+
 /// Changes the settings `input` names, all or none, and answers the settings after.
 pub(crate) fn set(input: SettingsSetInput, cx: &mut App) -> Result<Value, ControlError> {
     check(&input)?;
@@ -135,15 +162,13 @@ pub(crate) fn set(input: SettingsSetInput, cx: &mut App) -> Result<Value, Contro
                 Appearance::Dark => ThemePreference::Dark,
             };
         }
-        if let Some(layout) = input.layout {
-            settings.layout = layout.into();
-        }
-        if let Some(pages) = input.loose_pages {
-            settings.loose_pages = match pages {
-                LoosePages::PerSpace => settings::LoosePages::PerSpace,
-                LoosePages::Shared => settings::LoosePages::Shared,
-            };
-        }
+        arrange(
+            input.tabs,
+            input.address_bar,
+            input.changes_and_files,
+            input.loose_pages,
+            settings,
+        );
         if let Some(scope) = input.save_scope {
             settings.save_scope = match scope {
                 SaveScope::Shown => settings::SaveScope::Shown,
@@ -205,20 +230,56 @@ pub(crate) fn set(input: SettingsSetInput, cx: &mut App) -> Result<Value, Contro
     get(cx)
 }
 
-impl From<settings::Layout> for Layout {
-    fn from(layout: settings::Layout) -> Layout {
-        match layout {
-            settings::Layout::Orca => Layout::Orca,
-            settings::Layout::Arc => Layout::Arc,
+impl From<settings::Tabs> for Tabs {
+    fn from(tabs: settings::Tabs) -> Tabs {
+        match tabs {
+            settings::Tabs::TopRail => Tabs::TopRail,
+            settings::Tabs::Sidebar => Tabs::Sidebar,
         }
     }
 }
 
-impl From<Layout> for settings::Layout {
-    fn from(layout: Layout) -> settings::Layout {
-        match layout {
-            Layout::Orca => settings::Layout::Orca,
-            Layout::Arc => settings::Layout::Arc,
+impl From<Tabs> for settings::Tabs {
+    fn from(tabs: Tabs) -> settings::Tabs {
+        match tabs {
+            Tabs::TopRail => settings::Tabs::TopRail,
+            Tabs::Sidebar => settings::Tabs::Sidebar,
+        }
+    }
+}
+
+impl From<settings::AddressBar> for AddressBar {
+    fn from(bar: settings::AddressBar) -> AddressBar {
+        match bar {
+            settings::AddressBar::Page => AddressBar::Page,
+            settings::AddressBar::Sidebar => AddressBar::Sidebar,
+        }
+    }
+}
+
+impl From<AddressBar> for settings::AddressBar {
+    fn from(bar: AddressBar) -> settings::AddressBar {
+        match bar {
+            AddressBar::Page => settings::AddressBar::Page,
+            AddressBar::Sidebar => settings::AddressBar::Sidebar,
+        }
+    }
+}
+
+impl From<settings::ChangesAndFiles> for ChangesAndFiles {
+    fn from(place: settings::ChangesAndFiles) -> ChangesAndFiles {
+        match place {
+            settings::ChangesAndFiles::Worktree => ChangesAndFiles::Worktree,
+            settings::ChangesAndFiles::TopRail => ChangesAndFiles::TopRail,
+        }
+    }
+}
+
+impl From<ChangesAndFiles> for settings::ChangesAndFiles {
+    fn from(place: ChangesAndFiles) -> settings::ChangesAndFiles {
+        match place {
+            ChangesAndFiles::Worktree => settings::ChangesAndFiles::Worktree,
+            ChangesAndFiles::TopRail => settings::ChangesAndFiles::TopRail,
         }
     }
 }

@@ -1,4 +1,4 @@
-//! The pinned pages kept for the next launch (`docs/arc-sidebar.md` 11, `docs/browser.md` 10):
+//! The pinned pages kept for the next launch (`docs/sidebar.md` 11, `docs/browser.md` 10):
 //! each by the address it showed, its title, the address it's pinned at and the project whose
 //! profile it keeps, in the order of their tiles, with the one shown. In a file of their own
 //! beside the window's, so a window file that can't be read never takes them with it.

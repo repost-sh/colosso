@@ -12,12 +12,10 @@ use koyo_browser_ipc::{AppRequest, Dialog, HostEvent, PaneId};
 
 use crate::browser::agent::{Actor, Unanswered};
 use crate::browser::{BrowserView, FakeHost};
-use crate::files::tests::support::press;
 use crate::model::{Pane, Spot, Tab};
-use crate::settings::Layout;
 use crate::projects::RemoveProject;
 use crate::shell::{ClosePinned, CloseTab, Shell};
-use crate::test_support::{act, draw, open_page_view, pin, pinned, shell_on};
+use crate::test_support::{act, draw, open_page_view, pin, pinned, press, shell_on};
 use crate::modal;
 
 /// The person may leave `pane`'s page, as the host says, and the window draws what that changes.
@@ -66,7 +64,7 @@ fn in_dialog(key: &str, cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_pinned_page_the_person_closes_asks_first_and_stays_pinned_once_it_went(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-pinned", Layout::Arc, cx);
+    let (window, shell, _) = shell_on("leave-pinned", cx);
     let host = FakeHost::serve("leave-pinned-host", cx);
     let [key] = pin(window, &shell, &["https://a.example/"], cx)[..] else {
         panic!("one pinned page");
@@ -103,7 +101,7 @@ fn a_pinned_page_the_person_closes_asks_first_and_stays_pinned_once_it_went(cx: 
 
 #[gpui_kit::test]
 fn a_pinned_page_closed_from_its_menu_out_of_sight_shows_as_it_asks(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-pinned-unseen", Layout::Arc, cx);
+    let (window, shell, _) = shell_on("leave-pinned-unseen", cx);
     let host = FakeHost::serve("leave-pinned-unseen-host", cx);
     let keys = pin(window, &shell, &["https://a.example/", "https://b.example/"], cx);
     shell.update(cx, |shell, cx| assert!(shell.show_tab_holding(keys[0], cx)));
@@ -129,7 +127,7 @@ fn a_pinned_page_closed_from_its_menu_out_of_sight_shows_as_it_asks(cx: &mut Tes
 
 #[gpui_kit::test]
 fn a_loose_page_the_person_closes_is_kept_to_open_again_once_it_went(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-loose", Layout::Arc, cx);
+    let (window, shell, _) = shell_on("leave-loose", cx);
     let host = FakeHost::serve("leave-loose-host", cx);
     let key = (cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
@@ -170,7 +168,7 @@ fn a_loose_page_the_person_closes_is_kept_to_open_again_once_it_went(cx: &mut Te
 
 #[gpui_kit::test]
 fn a_worktrees_page_tab_the_person_closes_goes_once_its_page_went(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-tab", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-tab", cx);
     let host = FakeHost::serve("leave-tab-host", cx);
     let view = open_page_view(window, &shell, "https://a.example/", cx);
     let pane = host_pane(&view, cx);
@@ -194,7 +192,7 @@ fn a_worktrees_page_tab_the_person_closes_goes_once_its_page_went(cx: &mut TestA
 
 #[gpui_kit::test]
 fn a_page_whose_question_is_withdrawn_is_not_being_closed_any_more(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-withdrawn", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-withdrawn", cx);
     let host = FakeHost::serve("leave-withdrawn-host", cx);
     let view = open_page_view(window, &shell, "https://a.example/", cx);
     let pane = host_pane(&view, cx);
@@ -227,7 +225,7 @@ fn two_pages(window: AnyWindowHandle, shell: &Entity<Shell>, (a, b): (&str, &str
 
 #[gpui_kit::test]
 fn a_page_split_beside_another_asks_as_its_pane_closes(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-split", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-split", cx);
     let host = FakeHost::serve("leave-split-host", cx);
     let [_, b] = two_pages(window, &shell, ("https://a.example/", "https://b.example/"), cx);
     let pane_b = host_pane(&b, cx);
@@ -263,7 +261,7 @@ fn asks_each(
     gone: impl Fn(&Entity<Shell>, &TestAppContext) -> bool,
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _) = shell_on(name, Layout::Orca, cx);
+    let (window, shell, _) = shell_on(name, cx);
     let host = FakeHost::serve(&format!("{name}-host"), cx);
     let [a, b] = two_pages(window, &shell, ("https://a.example/", "https://b.example/"), cx);
     let [a, b] = [host_pane(&a, cx), host_pane(&b, cx)];
@@ -299,20 +297,6 @@ fn a_tab_of_two_pages_asks_each_before_it_closes(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn clearing_a_worktrees_tabs_asks_each_page_first(cx: &mut TestAppContext) {
-    let clear = |shell: &Entity<Shell>, window: AnyWindowHandle, cx: &mut TestAppContext| {
-        (cx.update_window(window, |_, window, cx| {
-            shell.update(cx, |shell, cx| {
-                let path = shell.workspace.branch().expect("a checkout").worktree.path.clone();
-                shell.clear_worktree(&path, window, cx);
-            });
-        }))
-        .unwrap();
-    };
-    asks_each("leave-clear", clear, no_tabs, cx);
-}
-
-#[gpui_kit::test]
 fn removing_a_project_asks_each_of_its_pages_first(cx: &mut TestAppContext) {
     let remove = |shell: &Entity<Shell>, window: AnyWindowHandle, cx: &mut TestAppContext| {
         let project = cx.read(|cx| shell.read(cx).workspace.project().expect("a project").path.clone());
@@ -324,7 +308,7 @@ fn removing_a_project_asks_each_of_its_pages_first(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn closing_the_window_asks_each_page_first(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-window", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-window", cx);
     let host = FakeHost::serve("leave-window-host", cx);
     let pane = host_pane(&open_page_view(window, &shell, "https://a.example/", cx), cx);
     host.asked(cx);
@@ -359,7 +343,7 @@ fn quits(shell: &Entity<Shell>, window: AnyWindowHandle, cx: &mut TestAppContext
 
 #[gpui_kit::test]
 fn quitting_again_while_a_page_asks_waits_for_the_answer(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-quit", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-quit", cx);
     let host = FakeHost::serve("leave-quit-host", cx);
     let view = open_page_view(window, &shell, "https://a.example/", cx);
     let pane = host_pane(&view, cx);
@@ -383,7 +367,7 @@ fn quitting_again_while_a_page_asks_waits_for_the_answer(cx: &mut TestAppContext
 
 #[gpui_kit::test]
 fn a_page_gone_as_the_person_quits_holds_nothing_up(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-gone", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-gone", cx);
     let host = FakeHost::serve("leave-gone-host", cx);
     let [a, b] = two_pages(window, &shell, ("https://a.example/", "https://b.example/"), cx);
     let (first, second) = (host_pane(&a, cx), host_pane(&b, cx));
@@ -403,7 +387,7 @@ fn a_page_gone_as_the_person_quits_holds_nothing_up(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_page_that_asks_for_another_reason_is_shown_and_not_left(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-already", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-already", cx);
     let host = FakeHost::serve("leave-already-host", cx);
     let [a, b] = two_pages(window, &shell, ("https://a.example/", "https://b.example/"), cx);
     let (first, second) = (host_pane(&a, cx), host_pane(&b, cx));
@@ -429,7 +413,7 @@ fn a_page_that_asks_for_another_reason_is_shown_and_not_left(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn a_page_asked_for_two_closes_is_asked_for_the_later_alone(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("leave-twice", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("leave-twice", cx);
     let host = FakeHost::serve("leave-twice-host", cx);
     let view = open_page_view(window, &shell, "https://a.example/", cx);
     let pane = host_pane(&view, cx);

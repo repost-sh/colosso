@@ -67,8 +67,8 @@ Read these before every run. Each one protects the owner's machine.
 2. **Prepare** the bundle and a fresh instance:
 
    ```sh
-   $B prepare                                   # Orca layout, no pins
-   $B prepare --layout Arc --pin "file://$PWD/.superpowers/v/fixture/focus.html"   # a pinned page
+   $B prepare                                   # Koyo's default layout, no pins
+   $B prepare --tabs Sidebar --pin "file://$PWD/.superpowers/v/fixture/focus.html"   # tabs in the sidebar, a pinned page
    ```
 
    This clones the dev bundle to `.superpowers/v/KoyoVerify.app`. The clone gets its own id and
@@ -83,7 +83,9 @@ Read these before every run. Each one protects the owner's machine.
    - `worktrees_dir` and `downloads_dir` inside `.superpowers/v`, so a page's download never
      lands in the owner's Downloads folder;
    - app control on for the client `koyo-verify` alone, with no `desktop` or `devices` scope, and
-     its MCP server on port 0, so it never takes the owner's 6272.
+     its MCP server on port 0, so it never takes the owner's 6272;
+   - `tabs` (`--tabs TopRail|Sidebar`) and `address_bar` (`--address-bar Sidebar|Page`), only when
+     given: left out, Koyo's defaults apply (docs/layout.md).
 
    It refuses while an instance runs, and when the dev bundle is older than
    `koyo-rs/target/debug/koyo`. Its last line is the `desktop_open` input.
@@ -328,8 +330,9 @@ Run `$B stop` after every failed attempt too, so no process or socket outlives i
   history. Open terminals with a command, `{"command": ["/bin/zsh", "-f"]}`, and never run
   `koyo`, `claude` or `git push` in them.
 - **Pinned and loose pages aren't in `tab_list` or `browser_list`.** App control can't drive
-  them. Seed them with `$B prepare --pin <url>` (the Arc layout shows their tiles), click
-  them through the probe, and read them with `probe eval <hostPane>`.
+  them. Seed them with `$B prepare --pin <url>` (`--tabs Sidebar` shows their tiles, the default
+  rail a pill of buttons), click them through the probe, and read them with
+  `probe eval <hostPane>`.
 - **The probe's `type` sends key code 0 for every character.** A page sees the right
   `event.key`, but `event.code` is `KeyA` for every character. Assert on `key`.
 - **A second `tick` stops the window drawing.** If shots look frozen, run `$B doctor` before
@@ -358,7 +361,7 @@ None of these is on the default path, but each is worth knowing:
   `nice -n 10 script/cargo test -p koyo --bin koyo <filter>`.
 - **Visual checks.** `script/cargo run -p koyo --features visual-check -- --visual-check-<name>`
   takes one of `finder lsp settings chat chat-theme chat-markdown native-controls accounts
-  accent arc terminal switcher devices`, or plain `--visual-check` for files. Each opens real
+  accent sidebar terminal switcher devices`, or plain `--visual-check` for files. Each opens real
   windows off screen and saves PNGs under `.superpowers/qa/<name>/`. They need
   `KOYO_CONFIG_DIR`, `KOYO_DATA_DIR`, `TMPDIR` and `KOYO_LOG_DIR` inside the checkout, and the
   chat ones need `KOYO_AGENT_PROVIDER=fake` (`docs/tab-switcher.md` section 7 has the full

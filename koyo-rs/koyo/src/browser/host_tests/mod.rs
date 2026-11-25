@@ -67,6 +67,13 @@ fn open_with<'a>(
     (view, cx, scratch)
 }
 
+/// Puts the address bar in the page, as [`open_with`]'s setup, for a test of what the page's own
+/// toolbar shows or takes.
+fn address_in_page(cx: &mut gpui_kit::App) {
+    use crate::settings::{self, AddressBar};
+    settings::update(cx, |settings| settings.address_bar = AddressBar::Page);
+}
+
 /// Has the test's panes start their host on the packaged engine, with profiles in a
 /// scratch folder of the test's own, which it returns.
 fn prepare(test: &str, cx: &mut TestAppContext) -> PathBuf {

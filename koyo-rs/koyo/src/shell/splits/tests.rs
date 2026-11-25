@@ -10,7 +10,7 @@ use crate::model::{Edge, PaneKind, SplitAxis, Tab};
 use crate::settings;
 use crate::shell::Shell;
 use crate::test_support::{center_of, cursor_at, drag, draw, open_page, repo, select, shell_with};
-use crate::theme::card::HANDLE_REACH;
+use crate::theme;
 
 fn selector(name: String) -> &'static str {
     Box::leak(name.into_boxed_str())
@@ -271,27 +271,29 @@ fn the_divider_of_a_split_shares_its_room_as_dragged(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_divider_side_by_side_is_picked_up_over_the_panes_either_side_of_it(cx: &mut TestAppContext) {
+fn a_divider_side_by_side_is_picked_up_across_the_glass_between_the_panes(
+    cx: &mut TestAppContext,
+) {
     picked_up_either_side("split-reach-row", Edge::Right, false, cx);
 }
 
 #[gpui_kit::test]
-fn a_divider_one_above_the_other_is_picked_up_over_the_panes_either_side_of_it(
+fn a_divider_one_above_the_other_is_picked_up_across_the_glass_between_the_panes(
     cx: &mut TestAppContext,
 ) {
     picked_up_either_side("split-reach-column", Edge::Bottom, false, cx);
 }
 
 #[gpui_kit::test]
-fn a_divider_beside_a_page_is_picked_up_over_the_panes_either_side_of_it(cx: &mut TestAppContext) {
+fn a_divider_beside_a_page_is_picked_up_across_the_glass_between_the_panes(
+    cx: &mut TestAppContext,
+) {
     picked_up_either_side("split-reach-page", Edge::Right, true, cx);
 }
 
-/// A file split at `edge` of another file, or of a `page`, their divider picked up a few points
-/// over each, where the pane or the header over it would take the press otherwise: the resize
-/// cursor shows there, and a drag from there gives the first more of the room. Side by side,
-/// it's picked up by the headers and below them; one above the other, the second's header is
-/// under it.
+/// A file split at `edge` of another file, or of a `page`, their divider, the glass between their
+/// islands, picked up near either island: the resize cursor shows there, and a drag from there
+/// gives the first more of the room. Side by side, it's picked up by the headers and below them.
 fn picked_up_either_side(name: &str, edge: Edge, page: bool, cx: &mut TestAppContext) {
     let files = [("README.md", "hi\n"), ("src/lib.rs", "pub fn a() {}\n")];
     let root = repo(name, &files);
@@ -322,12 +324,8 @@ fn picked_up_either_side(name: &str, edge: Edge, page: bool, cx: &mut TestAppCon
             _ => panic!("the files are split"),
         })
     };
-    let reaches = [
-        (-HANDLE_REACH, row),
-        (HANDLE_REACH, row),
-        (-HANDLE_REACH, false),
-        (HANDLE_REACH, false),
-    ];
+    let near = theme::GUTTER / 2. - 1.;
+    let reaches = [(-near, row), (near, row), (-near, false), (near, false)];
     for (reach, by_headers) in reaches {
         let mut vcx = VisualTestContext::from_window(window, cx);
         let divider = vcx.debug_bounds("split-[]").expect("the split's divider");

@@ -17,7 +17,6 @@ use super::AWAKE_AFTER;
 use crate::browser::agent;
 use crate::browser::host::fake::FakeHost;
 use crate::browser::view::BrowserView;
-use crate::settings::Layout;
 use crate::test_support::{
     center_of, click_pane, draw, hover, in_front, in_window, on_screen, open_page_view, shell_on,
 };
@@ -126,7 +125,7 @@ fn a_page_the_person_sees_stays_on_screen_after_an_agents_command(cx: &mut TestA
 /// Two pages in tabs of their own, the second shown, its page with the keyboard: the window,
 /// the host and the two pages' panes.
 fn two_tabs(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, FakeHost, PaneId, PaneId) {
-    let (window, shell, _) = shell_on(name, Layout::Orca, cx);
+    let (window, shell, _) = shell_on(name, cx);
     let host = FakeHost::serve(&format!("{name}-host"), cx);
     let first = open_page_view(window, &shell, "https://a.example/", cx);
     let second = open_page_view(window, &shell, "https://b.example/", cx);
@@ -180,7 +179,7 @@ fn a_tab_left_by_a_press_and_release_at_once_tells_the_host_nothing_of_either_pa
 /// throughout, so what wakes the page is that it's kept.
 #[gpui_kit::test]
 fn an_agents_command_on_a_tab_left_keeps_its_page_before_it_runs(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("sight-left-driven", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("sight-left-driven", cx);
     let host = FakeHost::serve("sight-left-driven-host", cx);
     let left = open_page_view(window, &shell, "https://a.example/", cx);
     open_page_view(window, &shell, "https://b.example/", cx);

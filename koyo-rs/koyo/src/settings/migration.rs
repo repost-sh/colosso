@@ -8,10 +8,15 @@ use super::{CHAT_SIZES, Preset};
 /// The sizes a chat's text could be, under `fonts.chat_size`, before they came down a notch.
 const OLD_CHAT_SIZES: [f64; 7] = [13., 14., 15., 16., 18., 20., 22.];
 
-/// Settings a file may hold that the app no longer has, each where it was and why it went.
-/// A key that changes what it means goes here under its old name; one that only changes
-/// its name goes in [`RENAMED`].
-const RETIRED: [(&[&str], &str); 10] = [
+/// On the way to a key, each value of a map keyed by what the person has, as `project_looks`
+/// holds a look for each project.
+const EACH: &str = "*";
+
+/// Settings a file may hold that the app no longer has, each where it was and why it went:
+/// where a list is on the way, in each of its entries, and in each value of a map at [`EACH`].
+/// A key that changes what it means goes here under its old name; one that only changes its
+/// name goes in [`RENAMED`].
+const RETIRED: [(&[&str], &str); 17] = [
     (&[], "files_width"),
     (&[], "files_panel_width"),
     (&[], "changes_width"),
@@ -22,6 +27,13 @@ const RETIRED: [(&[&str], &str); 10] = [
     (&[], "native_pages"),
     (&[], "card_glass"),
     (&[], "glass_blur"),
+    (&[], "sidebar_blur"),
+    (&["chat_backdrop", "surfaces"], "sidebar"),
+    (&["spaces"], "light_theme"),
+    (&["spaces"], "dark_theme"),
+    (&[], "layout"),
+    (&["project_looks", EACH], "name"),
+    (&["project_looks", EACH], "icon"),
 ];
 
 /// Settings a file may hold under a name the app no longer uses for them, each where it is,
@@ -36,15 +48,15 @@ const RENAMED: [(&[&str], &str, &str); 2] = [
 /// keys are moved to their new name, unless the file has that one already.
 pub(super) fn migrate(value: &mut Value) {
     for (within, key) in RETIRED {
-        if let Some(object) = object_within(value, within) {
+        for object in objects_within(value, within) {
             object.remove(key);
         }
     }
     for (within, old, new) in RENAMED {
-        if let Some(object) = object_within(value, within)
-            && let Some(moved) = object.remove(old)
-        {
-            object.entry(new).or_insert(moved);
+        for object in objects_within(value, within) {
+            if let Some(moved) = object.remove(old) {
+                object.entry(new).or_insert(moved);
+            }
         }
     }
     chat_work(value);
@@ -54,7 +66,7 @@ pub(super) fn migrate(value: &mut Value) {
 /// A chat's text sizes came down a notch: what was picked of the old ones is the size at the same
 /// place on the slider now, the old default the new one.
 fn chat_size(value: &mut Value) {
-    let Some(fonts) = object_within(value, &["fonts"]) else {
+    let Some(fonts) = value.get_mut("fonts").and_then(Value::as_object_mut) else {
         return;
     };
     let Some(old) = fonts.remove("chat_size").and_then(|old| old.as_f64()) else {
@@ -89,10 +101,22 @@ fn chat_work(value: &mut Value) {
     }
 }
 
-/// The object at `path` in `value`, if there's one.
-fn object_within<'a>(value: &'a mut Value, path: &[&str]) -> Option<&'a mut Map<String, Value>> {
-    let value = path
-        .iter()
-        .try_fold(value, |value, key| value.get_mut(*key))?;
-    value.as_object_mut()
+/// The objects at `path` in `value`: one at most, unless a list is on the way, which stands for
+/// each of its entries, as `spaces` holds an object for each space, or [`EACH`], which stands
+/// for each value of the map there.
+fn objects_within<'a>(value: &'a mut Value, path: &[&str]) -> Vec<&'a mut Map<String, Value>> {
+    match value {
+        Value::Array(entries) => (entries.iter_mut())
+            .flat_map(|entry| objects_within(entry, path))
+            .collect(),
+        Value::Object(object) => match path.split_first() {
+            None => vec![object],
+            Some((key, rest)) if *key == EACH => (object.values_mut())
+                .flat_map(|inner| objects_within(inner, rest))
+                .collect(),
+            Some((key, rest)) => (object.get_mut(*key))
+                .map_or_else(Vec::new, |inner| objects_within(inner, rest)),
+        },
+        _ => Vec::new(),
+    }
 }

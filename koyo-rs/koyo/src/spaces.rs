@@ -1,23 +1,20 @@
-//! Spaces (`docs/arc-sidebar.md` 6, 9): the Arc sidebar shows the projects of one space at a
-//! time, and the window takes that space's colours. Each project is in exactly one space, and
-//! there's always a space. What a project is called and shows as in Koyo, whatever its folder,
-//! and the order and folding of its worktrees in the sidebar, are kept here too. All of it lives
-//! in the settings file.
+//! Spaces (`docs/sidebar.md` 4, 9): the sidebar shows the projects of one space at a time, in the
+//! window's one theme. Each project is in exactly one space, and there's always a space. What a
+//! project is called and shows as in Koyo, whatever its folder, and the order and folding of its
+//! worktrees in the sidebar, are kept here too. All of it lives in the settings file.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use gpui_kit::Hsla;
 use serde::{Deserialize, Serialize};
 
-use crate::gradient::GradientTheme;
-use crate::settings::{Layout, Settings};
+use crate::settings::Settings;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Space {
     /// What it's known by whatever its place among the spaces, which a space deleted before it
-    /// changes: the pages open in it that are no project's go by it (`docs/arc-sidebar.md` 11).
+    /// changes: the pages open in it that are no project's go by it (`docs/sidebar.md` 11).
     /// None, 0, until the spaces are next put right, which gives it one.
     pub id: u64,
     pub name: String,
@@ -25,9 +22,6 @@ pub struct Space {
     pub projects: Vec<PathBuf>,
     /// The project it shows, so coming back to the space comes back to it.
     pub selected: Option<PathBuf>,
-    /// Its own colours, for the light and the dark appearance; the window's until it has some.
-    pub light_theme: Option<GradientTheme>,
-    pub dark_theme: Option<GradientTheme>,
 }
 
 impl Default for Space {
@@ -43,8 +37,6 @@ impl Space {
             name: name.into(),
             projects: Vec::new(),
             selected: None,
-            light_theme: None,
-            dark_theme: None,
         }
     }
 
@@ -53,43 +45,21 @@ impl Space {
         (self.selected.as_deref()).or_else(|| self.projects.first().map(PathBuf::as_path))
     }
 
-    /// Its own theme for the appearance, if it has one.
-    pub fn theme(&self, dark: bool) -> Option<&GradientTheme> {
-        if dark {
-            self.dark_theme.as_ref()
-        } else {
-            self.light_theme.as_ref()
-        }
-    }
-
-    fn theme_slot(&mut self, dark: bool) -> &mut Option<GradientTheme> {
-        if dark {
-            &mut self.dark_theme
-        } else {
-            &mut self.light_theme
-        }
-    }
-
     pub fn holds(&self, project: &Path) -> bool {
         self.projects.iter().any(|held| held == project)
     }
 }
 
-/// What a project is called and shows as in Koyo, whatever its folder, and how its worktrees
-/// show in the sidebar (`docs/arc-sidebar.md` 5).
+/// How a project's worktrees show in the sidebar (`docs/layout.md`, Sidebar).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectLook {
-    /// The name the person gave it; its folder's otherwise.
-    pub name: Option<String>,
-    /// An image the person picked; the git host's avatar otherwise.
-    pub icon: Option<PathBuf>,
     /// Its worktrees in the order the person dragged them into, by their folders; git's order
     /// until they do, and for any git lists that isn't here, after these.
     pub worktrees: Vec<PathBuf>,
-    /// Its worktrees collapsed in the Arc sidebar, by their folders.
+    /// Its worktrees whose tabs are collapsed under their rows, by their folders.
     pub collapsed: BTreeSet<PathBuf>,
-    /// Whether its worktrees are folded away under its name in the sidebar, in either layout.
+    /// Whether its worktrees are folded away under its row in the sidebar.
     pub folded: bool,
 }
 
@@ -102,8 +72,8 @@ impl ProjectLook {
 /// What happens to the projects of a space that's deleted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Leftovers {
-    /// They go to the space at this place in the list, before the deleted one goes.
-    MoveTo(usize),
+    /// They go to the space with this id.
+    MoveTo(u64),
     /// They're taken out of Koyo.
     Remove,
 }
@@ -164,18 +134,14 @@ impl Settings {
         }
     }
 
-    /// The id of the space the Arc sidebar shows; none of any space's, 0, with none shown.
+    /// The id of the space the sidebar shows; none of any space's, 0, with none shown.
     pub fn shown_space_id(&self) -> u64 {
         self.shown_space().map_or(0, |space| space.id)
     }
 
-    /// The space the Arc sidebar shows.
+    /// The space the sidebar shows.
     pub fn shown_space(&self) -> Option<&Space> {
         self.spaces.get(self.space)
-    }
-
-    pub fn shown_space_mut(&mut self) -> Option<&mut Space> {
-        self.spaces.get_mut(self.space)
     }
 
     /// Where the space holding `project` is in the list.
@@ -183,8 +149,14 @@ impl Settings {
         self.spaces.iter().position(|space| space.holds(project))
     }
 
-    /// Orders `space`'s projects as the sidebar lists them (`projects`), so Arc's tiles and the
-    /// Orca list agree, and a project moved in one moves in the other.
+    /// Where the space with id `id` is in the list, whatever spaces moved or went since the id
+    /// was taken.
+    pub fn space_index(&self, id: u64) -> Option<usize> {
+        self.spaces.iter().position(|space| space.id == id)
+    }
+
+    /// Orders `space`'s projects as the sidebar lists them (`projects`), so the space and the
+    /// sidebar agree, and a project moved in one moves in the other.
     fn order_space(projects: &[PathBuf], space: &mut Space) {
         space
             .projects
@@ -219,6 +191,21 @@ impl Settings {
         self.spaces.len() - 1
     }
 
+    /// Moves the space at `from` to the place `to` among the spaces, those between closing up,
+    /// as its mark is let go there; the space shown stays shown. The list's order is the one
+    /// the settings file keeps. Nothing changes with no such place.
+    pub fn move_space(&mut self, from: usize, to: usize) {
+        if from >= self.spaces.len() || to >= self.spaces.len() {
+            return;
+        }
+        let shown = self.shown_space_id();
+        let space = self.spaces.remove(from);
+        self.spaces.insert(to, space);
+        if let Some(shown) = self.space_index(shown) {
+            self.space = shown;
+        }
+    }
+
     /// "Space N", the lowest N no space is called.
     fn next_space_name(&self) -> String {
         (1..=self.spaces.len() + 1)
@@ -227,27 +214,24 @@ impl Settings {
             .unwrap_or_default()
     }
 
-    /// Where the space known by `id` is.
-    pub fn space_known_by(&self, id: u64) -> Option<usize> {
-        self.spaces.iter().position(|space| space.id == id)
-    }
-
-    /// Deletes the space at `index`, its projects going as `leftovers` says, unless it's the last
-    /// one; gives back the projects to take out of Koyo. The space shown stays shown, or the one
-    /// before it once it's gone.
-    pub fn delete_space(&mut self, index: usize, leftovers: Leftovers) -> Vec<PathBuf> {
-        if self.spaces.len() <= 1 || index >= self.spaces.len() {
+    /// Deletes the space with id `id`, its projects going as `leftovers` says, unless it's the
+    /// last one; gives back the projects to take out of Koyo. The space shown stays shown, or
+    /// the one before it once it's gone.
+    pub fn delete_space(&mut self, id: u64, leftovers: Leftovers) -> Vec<PathBuf> {
+        let Some(index) = self.space_index(id).filter(|_| self.spaces.len() > 1) else {
             return Vec::new();
-        }
+        };
         let projects = self.spaces[index].projects.clone();
         let removed = match leftovers {
-            Leftovers::MoveTo(to) if to != index && to < self.spaces.len() => {
+            Leftovers::MoveTo(to) => {
+                let Some(to) = self.space_index(to).filter(|to| *to != index) else {
+                    return Vec::new();
+                };
                 for project in &projects {
                     self.move_project(project, to);
                 }
                 Vec::new()
             }
-            Leftovers::MoveTo(_) => return Vec::new(),
             Leftovers::Remove => projects,
         };
         self.spaces.remove(index);
@@ -255,60 +239,6 @@ impl Settings {
             self.space = self.space.saturating_sub(1);
         }
         removed
-    }
-
-    /// The colour the space at `index` shows as, its dot in the switcher and by its name
-    /// (`docs/arc-sidebar.md` 7): its theme's first colour, the window's while it has none of its
-    /// own; none while that has no colour either.
-    pub fn space_colour(&self, index: usize, dark: bool) -> Option<Hsla> {
-        let space = self.spaces.get(index)?;
-        space
-            .theme(dark)
-            .unwrap_or_else(|| self.theme(dark))
-            .primary()
-    }
-
-    /// The gradient theme the window shows for the appearance: the space's own in the Arc
-    /// layout, once it has one, and the window's otherwise.
-    pub fn shown_theme(&self, dark: bool) -> &GradientTheme {
-        let space = (self.shown_space())
-            .filter(|_| self.layout == Layout::Arc)
-            .and_then(|space| space.theme(dark));
-        space.unwrap_or_else(|| self.theme(dark))
-    }
-
-    /// The theme a change to the colours goes to: in the Arc layout, the space shown's, which
-    /// starts as the window's; the window's otherwise.
-    pub fn shown_theme_mut(&mut self, dark: bool) -> &mut GradientTheme {
-        if self.layout != Layout::Arc || self.space >= self.spaces.len() {
-            return self.theme_mut(dark);
-        }
-        let window = self.theme(dark).clone();
-        self.spaces[self.space]
-            .theme_slot(dark)
-            .get_or_insert(window)
-    }
-
-    /// The image picked for `project`, if any.
-    pub fn project_icon(&self, project: &Path) -> Option<&Path> {
-        self.project_looks.get(project)?.icon.as_deref()
-    }
-
-    /// Names `project` `name` in Koyo; an empty name gives it back its folder's.
-    pub fn rename_project(&mut self, project: &Path, name: &str) {
-        let name = name.trim();
-        let look = self.project_looks.entry(project.to_owned()).or_default();
-        look.name = (!name.is_empty()).then(|| name.to_owned());
-        self.drop_empty_look(project);
-    }
-
-    /// Has `project` show the image at `icon`, or the git host's avatar with none.
-    pub fn set_project_icon(&mut self, project: &Path, icon: Option<PathBuf>) {
-        self.project_looks
-            .entry(project.to_owned())
-            .or_default()
-            .icon = icon;
-        self.drop_empty_look(project);
     }
 
     /// The order the person put `project`'s worktrees in, by their folders: none until they
@@ -328,12 +258,12 @@ impl Settings {
         self.drop_empty_look(project);
     }
 
-    /// Whether `project`'s worktree at `worktree` is collapsed in the Arc sidebar.
+    /// Whether `project`'s worktree at `worktree` is collapsed in the sidebar.
     pub fn is_collapsed(&self, project: &Path, worktree: &Path) -> bool {
         (self.project_looks.get(project)).is_some_and(|look| look.collapsed.contains(worktree))
     }
 
-    /// Collapses `project`'s worktree at `worktree` in the Arc sidebar, or opens it again.
+    /// Collapses `project`'s worktree at `worktree` in the sidebar, or opens it again.
     pub fn toggle_collapsed(&mut self, project: &Path, worktree: &Path) {
         let collapsed = &mut self
             .project_looks
@@ -346,7 +276,7 @@ impl Settings {
         self.drop_empty_look(project);
     }
 
-    /// Whether `project`'s worktrees are folded away under its name in either layout's sidebar.
+    /// Whether `project`'s worktrees are folded away under its row in the sidebar.
     pub fn is_folded(&self, project: &Path) -> bool {
         (self.project_looks.get(project)).is_some_and(|look| look.folded)
     }

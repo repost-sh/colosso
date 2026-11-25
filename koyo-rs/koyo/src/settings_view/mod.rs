@@ -1,4 +1,4 @@
-//! Settings, shown in the Settings tab (`docs/arc-sidebar.md` 11.9): its pages listed at the
+//! Settings, shown in the Settings tab (`docs/sidebar.md` 11.9): its pages listed at the
 //! tab's left, and the page picked beside them. Each page lives in a module of its own.
 
 mod about;

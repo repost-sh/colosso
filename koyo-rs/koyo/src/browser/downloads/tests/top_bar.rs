@@ -8,13 +8,15 @@ use koyo_browser_ipc::DownloadState;
 
 use super::*;
 use crate::popup::{self, Kind};
-use crate::settings::Layout;
+use crate::settings::{self, AddressBar, Tabs};
 use crate::shell::Shell;
 use crate::test_support::{click, draw, open_page_view, shell_on};
 
-/// The shell in `layout`, a host of the test's own, and the list's folder.
-fn window_with_host(name: &str, layout: Layout, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>, FakeHost, PathBuf) {
-    let (window, shell, _) = shell_on(name, layout, cx);
+/// The shell with the tabs where `tabs` puts them, a host of the test's own, and the list's
+/// folder.
+fn window_with_host(name: &str, tabs: Tabs, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>, FakeHost, PathBuf) {
+    let (window, shell, _) = shell_on(name, cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.tabs = tabs));
     let host = FakeHost::serve(&format!("{name}-host"), cx);
     let folder = crate::test_support::scratch(&format!("{name}-downloads"));
     let downloads = cx.update(Downloads::global);
@@ -33,8 +35,8 @@ fn list_up(cx: &mut TestAppContext) -> Option<AnyWindowHandle> {
     drawn(menu, "downloads-panel", cx).map(|_| menu)
 }
 
-fn top_bar_has_the_button_once_there_are_downloads(name: &str, layout: Layout, cx: &mut TestAppContext) {
-    let (window, _, _host, _) = window_with_host(name, layout, cx);
+fn top_bar_has_the_button_once_there_are_downloads(name: &str, tabs: Tabs, cx: &mut TestAppContext) {
+    let (window, _, _host, _) = window_with_host(name, tabs, cx);
     assert_eq!(drawn(window, "downloads-button", cx), None, "no downloads, no button");
     asked(1, At::Person, cx);
     let button = drawn(window, "downloads-button", cx).expect("the button, with a download listed");
@@ -50,17 +52,18 @@ fn top_bar_has_the_button_once_there_are_downloads(name: &str, layout: Layout, c
 }
 
 #[gpui_kit::test]
-fn the_arc_top_bar_has_the_downloads_button_once_there_are_downloads(cx: &mut TestAppContext) {
-    top_bar_has_the_button_once_there_are_downloads("downloads-top-arc", Layout::Arc, cx);
+fn the_sidebars_top_row_has_the_downloads_button_once_there_are_downloads(cx: &mut TestAppContext) {
+    top_bar_has_the_button_once_there_are_downloads("downloads-top-sidebar", Tabs::Sidebar, cx);
 }
 
 #[gpui_kit::test]
-fn the_orca_top_bar_has_the_downloads_button_once_there_are_downloads(cx: &mut TestAppContext) {
-    top_bar_has_the_button_once_there_are_downloads("downloads-top-orca", Layout::Orca, cx);
+fn the_top_rail_has_the_downloads_button_once_there_are_downloads(cx: &mut TestAppContext) {
+    top_bar_has_the_button_once_there_are_downloads("downloads-top-rail", Tabs::TopRail, cx);
 }
 
-fn the_address_field_has_no_downloads_button(name: &str, layout: Layout, field: &'static str, cx: &mut TestAppContext) {
-    let (window, shell, _host, _) = window_with_host(name, layout, cx);
+fn the_address_field_has_no_downloads_button(name: &str, address_bar: AddressBar, field: &'static str, cx: &mut TestAppContext) {
+    let (window, shell, _host, _) = window_with_host(name, Tabs::TopRail, cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.address_bar = address_bar));
     open_page_view(window, &shell, "https://example.com/", cx);
     asked(1, At::Person, cx);
     let field = drawn(window, field, cx).expect("the page's address field");
@@ -69,18 +72,18 @@ fn the_address_field_has_no_downloads_button(name: &str, layout: Layout, field: 
 }
 
 #[gpui_kit::test]
-fn the_arc_address_bar_has_no_downloads_button(cx: &mut TestAppContext) {
-    the_address_field_has_no_downloads_button("downloads-field-arc", Layout::Arc, "arc-address", cx);
+fn the_sidebars_address_bar_has_no_downloads_button(cx: &mut TestAppContext) {
+    the_address_field_has_no_downloads_button("downloads-field-sidebar", AddressBar::Sidebar, "sidebar-address", cx);
 }
 
 #[gpui_kit::test]
 fn a_pages_toolbar_has_no_downloads_button(cx: &mut TestAppContext) {
-    the_address_field_has_no_downloads_button("downloads-field-orca", Layout::Orca, "browser-address", cx);
+    the_address_field_has_no_downloads_button("downloads-field-page", AddressBar::Page, "browser-address", cx);
 }
 
 #[gpui_kit::test]
 fn a_download_starting_or_ending_opens_nothing(cx: &mut TestAppContext) {
-    let (window, _, host, folder) = window_with_host("downloads-open-nothing", Layout::Arc, cx);
+    let (window, _, host, folder) = window_with_host("downloads-open-nothing", Tabs::Sidebar, cx);
     asked(1, At::Person, cx);
     draw(window, cx);
     host.says(going(1, &folder.join("report.pdf"), 512, DownloadState::Going), cx);
@@ -93,7 +96,7 @@ fn a_download_starting_or_ending_opens_nothing(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn option_command_l_toggles_the_list(cx: &mut TestAppContext) {
-    let (window, _, _host, _) = window_with_host("downloads-key", Layout::Orca, cx);
+    let (window, _, _host, _) = window_with_host("downloads-key", Tabs::TopRail, cx);
     cx.simulate_keystrokes(window, "alt-cmd-l");
     assert_eq!(list_up(cx), None, "with nothing to list it opens nothing");
     asked(1, At::Person, cx);
@@ -117,7 +120,7 @@ fn option_command_l_toggles_the_list(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn the_list_shows_each_download_as_it_stands_with_what_can_be_done_to_it(cx: &mut TestAppContext) {
-    let (window, _, host, folder) = window_with_host("downloads-rows", Layout::Arc, cx);
+    let (window, _, host, folder) = window_with_host("downloads-rows", Tabs::Sidebar, cx);
     for id in 1..=4 {
         asked(id, At::Person, cx);
     }
@@ -168,7 +171,7 @@ fn a_size_under_a_kilobyte_and_a_half_is_said_in_kilobytes() {
 
 #[gpui_kit::test]
 fn an_agents_download_is_listed_with_its_agent(cx: &mut TestAppContext) {
-    let (window, _, _host, _) = window_with_host("downloads-agent", Layout::Arc, cx);
+    let (window, _, _host, _) = window_with_host("downloads-agent", Tabs::Sidebar, cx);
     asked(1, At::Agent("claude-code:7f3a".into()), cx);
     assert!(drawn(window, "downloads-button", cx).is_some());
     assert_eq!(list_up(cx), None, "an agent's download opens nothing either");

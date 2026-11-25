@@ -6,7 +6,9 @@ use koyo_app_control::{Command, ErrorCode};
 use serde_json::json;
 
 use super::{call, controlled, terminal};
-use crate::settings::{self, BranchPrefix, LoosePages, SaveScope};
+use crate::settings::{
+    self, AddressBar, BranchPrefix, ChangesAndFiles, LoosePages, SaveScope, Tabs,
+};
 use crate::test_support::repo;
 use crate::theme::ThemePreference;
 
@@ -72,6 +74,45 @@ fn settings_set_changes_the_allowlisted_settings_only(cx: &mut TestAppContext) {
         cx,
     );
     assert_eq!(refused.unwrap_err().code, ErrorCode::InvalidInput);
+}
+
+/// The tabs, the address bar and the Changes and Files buttons read and move as the Layout
+/// settings do, and the buttons' top rail is kept while the tabs in the sidebar leave none.
+#[gpui_kit::test]
+fn settings_set_moves_the_tabs_the_address_bar_and_changes_and_files(cx: &mut TestAppContext) {
+    let root = repo("control-placement", &[("README.md", "hi\n")]);
+    let _rig = controlled("control-placement", &[&root], cx);
+    let agent = terminal("term_1");
+    let read = call(&agent, "settings_get", json!({}), cx).unwrap();
+    let defaults = json!({
+        "tabs": "top_rail",
+        "addressBar": "sidebar",
+        "changesAndFiles": "top_rail",
+    });
+    for (key, value) in defaults.as_object().unwrap() {
+        assert_eq!(&read[key], value, "{key}");
+    }
+    let set = json!({ "tabs": "sidebar", "addressBar": "page", "changesAndFiles": "worktree" });
+    let after = call(&agent, "settings_set", set.clone(), cx).unwrap();
+    for (key, value) in set.as_object().unwrap() {
+        assert_eq!(&after[key], value, "{key}");
+    }
+    let placed = |cx: &mut TestAppContext| {
+        cx.read(|cx| {
+            let settings = settings::get(cx);
+            (settings.tabs, settings.address_bar, settings.changes_and_files)
+        })
+    };
+    assert_eq!(
+        placed(cx),
+        (Tabs::Sidebar, AddressBar::Page, ChangesAndFiles::Worktree)
+    );
+    let kept = json!({ "changesAndFiles": "top_rail" });
+    let after = call(&agent, "settings_set", kept, cx).unwrap();
+    assert_eq!(after["changesAndFiles"], json!("top_rail"));
+    assert_eq!(placed(cx).2, ChangesAndFiles::TopRail, "kept for the top rail");
+    let shown = cx.read(|cx| settings::get(cx).changes_and_files_shown());
+    assert_eq!(shown, ChangesAndFiles::Worktree, "on the row while the tabs are in the sidebar");
 }
 
 #[test]

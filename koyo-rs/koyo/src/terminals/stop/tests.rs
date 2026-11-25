@@ -3,7 +3,6 @@ use koyo_term::Source;
 use koyo_term_control::{Control, Handle, Status, TerminalRecord};
 
 use super::busy;
-use crate::settings::Layout;
 use crate::shell::Shell;
 use crate::terminals::budget::terminal_shown;
 use crate::terminals::states::State;
@@ -106,7 +105,7 @@ fn closing_a_busy_terminal_asks_and_cancelling_keeps_it(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn closing_a_terminals_tab_lets_go_of_its_view_at_once(cx: &mut TestAppContext) {
-    let (window, shell, root) = shell_on("close-terminal-view", Layout::Orca, cx);
+    let (window, shell, root) = shell_on("close-terminal-view", cx);
     terminal_shown(window, &shell, &root, cx);
     let id = shell.read_with(cx, |shell, _| {
         shell.workspace.terminal_tabs().next().unwrap().1

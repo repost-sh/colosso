@@ -14,11 +14,11 @@ use gpui_kit::{
 use super::card::Card;
 use super::{HOLD, Switcher, placed};
 use crate::files::At;
-use crate::files::tests::{checkout, editing, let_go, new_chat, press, shell_showing, tabs};
+use crate::files::tests::{checkout, editing, let_go, new_chat, shell_showing, tabs};
 use crate::model::tests::chat;
 use crate::popup::{self, Kind};
 use crate::shell::Shell;
-use crate::test_support::draw;
+use crate::test_support::{draw, press};
 
 /// The switcher, if it's up: its cards' titles, the pick, and whether its panel shows.
 fn up(cx: &TestAppContext) -> Option<(Vec<String>, usize, bool)> {

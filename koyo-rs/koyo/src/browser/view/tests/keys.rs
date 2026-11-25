@@ -5,7 +5,6 @@ use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 use koyo_browser_ipc::{AppRequest, Print};
 
 use crate::browser::{BrowserView, FakeHost};
-use crate::settings::Layout;
 use crate::shell::Shell;
 use crate::test_support::{keyboard_in, open_page_view, shell_on};
 
@@ -31,7 +30,7 @@ fn keys_to_window(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestA
 fn command_p_prints_the_page_with_the_keyboard_and_opens_go_to_file_anywhere_else(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, _) = shell_on("command-p-prints", Layout::default(), cx);
+    let (window, shell, _) = shell_on("command-p-prints", cx);
     let host = FakeHost::serve("command-p-prints-host", cx);
     let view = open_page_view(window, &shell, "https://example.com/", cx);
     view.update(cx, BrowserView::pretend_opened);

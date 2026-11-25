@@ -4,8 +4,8 @@ Written 2026-11-11 on branch `main`. Drafted with Claude. Author of the vision: 
 
 Koyo keeps several Claude Code logins and makes one of them the Mac's login, the way
 claude-swap (`cswap`) does, so every Claude Code on the Mac follows: Koyo's chats, Koyo's
-terminals, other terminals, the VS Code extension. A button at the left of the sidebar's foot,
-or on the top rail in the Orca layout, opens a glass panel with each account's weekly usage and switches with a click. Auto-switch
+terminals, other terminals, the VS Code extension. A button at the left of the sidebar's foot
+opens a glass panel with each account's weekly usage and switches with a click. Auto-switch
 moves to another account at a threshold the person sets, or when an account hits its limit.
 
 The account logic is a port of claude-swap at commit `0fe22a8` (2026-11-11), not a redesign:
@@ -121,9 +121,8 @@ cswap's engine with its `weekly-first` strategy:
 
 ## 6. Where the person sees it
 
-- **The button:** the 24 px spacer at the left of the Arc sidebar's foot
-  (`koyo-rs/koyo/src/arc/foot.rs`, `bar`), so the space dots stay centred; in the Orca layout,
-  on the top rail beside the sidebar's toggle (`koyo-rs/koyo/src/shell/rails.rs`). It shows the
+- **The button:** the 24 px spacer at the left of the sidebar's foot
+  (`koyo-rs/koyo/src/shell/sidebar/foot.rs`, `bar`), so the spaces' marks stay centred. It shows the
   active account's weekly usage as a small ring, amber near auto-switch's threshold, red at it.
 - **The panel:** a glass panel anchored to the button, opening away from it
   (`menu::Trigger::toggle_panel` with a `MenuBody`, as `chat/composer/context.rs`), and fitting

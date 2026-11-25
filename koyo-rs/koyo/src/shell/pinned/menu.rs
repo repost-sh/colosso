@@ -1,14 +1,13 @@
-//! A pinned page's menu (`docs/arc-sidebar.md` 11), in either layout, as a right-click on its
-//! tile in the Arc sidebar or its button in the Orca layout's top rail opens it: what it offers,
+//! A pinned page's menu (`docs/sidebar.md` 11), as a right-click on its tile in the sidebar or
+//! its button on the top rail opens it: what it offers,
 //! which of it can be picked, and what each pick does, which the window's root hears.
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, Context, Div, InteractiveElement, Window};
 
-use crate::arc::rename;
 use crate::browser::{Address, read_address};
-use crate::projects::with_menu;
-use crate::shell::Shell;
+use crate::modal::rename;
+use crate::shell::{Shell, with_menu};
 
 /// Closes the pinned page known by this, its page's pane: it stays pinned.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -106,7 +105,7 @@ impl Shell {
     }
 }
 
-/// What a pinned page's menu offers (`docs/arc-sidebar.md` 11), and which of it can be picked.
+/// What a pinned page's menu offers (`docs/sidebar.md` 11), and which of it can be picked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PinnedMenu {
     key: u64,

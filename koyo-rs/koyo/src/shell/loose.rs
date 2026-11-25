@@ -1,11 +1,10 @@
-//! The shell's side of the loose pages (`docs/arc-sidebar.md` 11), the pages open in a space
-//! that are no project's: their list, down the Arc sidebar or along the Orca layout's top rail,
-//! and a page's row in it; one opened where the person is in no worktree, shown as its row is
-//! picked, moved among them, closed, taken from a checkout's tabs or to them, and to and from
-//! the pinned pages. A page's tab let go on a row lands there, and with none, on the dashed
-//! spot that shows where they'd be while one is in hand (`docs/layout.md`). What a page's
-//! events do, a link it opens, its `DevTools` beside it, what it tells the history, goes one way
-//! whichever kind of tab it's in (`browser_tabs.rs`).
+//! The shell's side of the loose pages (`docs/sidebar.md` 11), the pages open in a space that are
+//! no project's: their list, down the sidebar or along the top rail, and a page's row in it; one
+//! opened where the person is in no worktree, shown as its row is picked, moved among them, closed,
+//! taken from a checkout's tabs or to them, and to and from the pinned pages. A page's tab let go
+//! on a row lands there, and with none, on the dashed spot that shows where they'd be while one is
+//! in hand (`docs/layout.md`). What a page's events do, a link it opens, its `DevTools` beside it,
+//! what it tells the history, goes one way whichever kind of tab it's in (`browser_tabs.rs`).
 
 use std::rc::Rc;
 
@@ -22,7 +21,7 @@ use super::reorder::{Drop, List, Reorder, TabHand};
 use super::splits::{Dragged, DraggedPane};
 use super::tab_face::Face;
 use crate::model::{ClosedFrom, ClosedTab, Loose, Tab};
-use crate::settings::{self, LoosePages};
+use crate::settings;
 use crate::theme::Palette;
 
 /// The space's loose pages, each a row `loose_row` made, in a list along `axis` with `gap`
@@ -160,15 +159,6 @@ impl Shell {
         cx.notify();
     }
 
-    /// Shows the space known by `space`, unless it's the one shown or is gone.
-    pub(super) fn show_space_known_by(&mut self, space: u64, cx: &mut Context<Self>) {
-        let settings = settings::get(cx);
-        let index = settings.space_known_by(space);
-        if let Some(index) = index.filter(|index| *index != settings.space) {
-            self.show_space(index, cx);
-        }
-    }
-
     /// Closes the pinned or the loose page known by `key` with `close`, as the person asks by
     /// its ×, its menu or ⌘W, once the person may leave it
     /// (`leaving.rs`): closed with the keyboard in it,
@@ -243,7 +233,7 @@ impl Shell {
     /// whether the settings share them among the spaces.
     pub(crate) fn follow_space_pages(&mut self, cx: &mut Context<Self>) {
         let settings = settings::get(cx);
-        let shared = settings.loose_pages == LoosePages::Shared;
+        let shared = settings.loose_pages_shared();
         let space = (self.workspace).show_pages_of(settings.shown_space_id());
         if self.workspace.share_loose(shared) || space {
             cx.notify();
@@ -255,16 +245,5 @@ impl Shell {
     pub(crate) fn hand_on_loose(&mut self, gone: u64, to: Option<u64>, cx: &mut Context<Self>) {
         drop(self.workspace.hand_on_loose(gone, to));
         cx.notify();
-    }
-
-    /// The settings changed: every terminal's program follows the app's theme, its tab shown or
-    /// not; each project goes by the name the person gave it in Koyo, or its folder's; and the
-    /// loose pages are those of the space shown. A pinned or a loose page shown stays shown
-    /// whichever layout lists it.
-    pub(super) fn settings_changed(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        self.terminals.tell_theme(cx);
-        let settings = settings::get(cx);
-        self.workspace.name_projects(&settings.project_looks);
-        self.follow_space_pages(cx);
     }
 }

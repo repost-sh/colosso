@@ -3,8 +3,8 @@
 //! as a person's drag is drawn.
 
 use gpui_kit::{
-    AnyWindowHandle, Modifiers, MouseButton, Pixels, Point, TestAppContext, VisualTestContext,
-    point, px,
+    AnyWindowHandle, Modifiers, MouseButton, Pixels, Point, ScrollDelta, ScrollEvent,
+    TestAppContext, TouchPhase, VisualTestContext, point, px,
 };
 
 use super::{center_of, draw};
@@ -86,4 +86,19 @@ pub fn let_go_on(window: AnyWindowHandle, to: &'static str, cx: &mut TestAppCont
     move_held(window, target, cx);
     draw(window, cx);
     let_go(window, target, cx);
+}
+
+/// Two fingers on the trackpad over the middle of the sidebar, in `phase`, moved `dx` across, and
+/// what that changed drawn.
+pub fn fingers(window: AnyWindowHandle, phase: TouchPhase, dx: f32, cx: &mut TestAppContext) {
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let sidebar = vcx.debug_bounds("sidebar").expect("the sidebar");
+    vcx.simulate_event(ScrollEvent {
+        position: sidebar.center(),
+        delta: ScrollDelta::Pixels(point(px(dx), px(0.))),
+        modifiers: Modifiers::none(),
+        touch_phase: phase,
+        ..ScrollEvent::default()
+    });
+    draw(window, cx);
 }

@@ -1,8 +1,8 @@
-//! Moving tabs and panes on a checkout: a tab dropped on a side of a pane splits with it,
-//! a pane dragged out of its split goes to another pane or a tab of its own, a tab dropped
-//! on another joins it side by side, and tabs reorder in the strip. And a tab dragged from
-//! one checkout's list in the Arc sidebar to another's, and a project's worktrees put in the
-//! order the person drags them into there (`docs/arc-sidebar.md` 5), which Orca lists too.
+//! Moving tabs and panes on a checkout: a tab dropped on a side of a pane splits with it, a pane
+//! dragged out of its split goes to another pane or a tab of its own, a tab dropped on another
+//! joins it side by side, and tabs reorder in the strip. And a tab dragged from one checkout's list
+//! in the sidebar to another's, and a project's worktrees put in the order the person drags them
+//! into there (`docs/sidebar.md` 5).
 
 use std::path::PathBuf;
 

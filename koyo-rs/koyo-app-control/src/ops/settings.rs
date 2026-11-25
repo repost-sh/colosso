@@ -6,7 +6,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::shared::{Layout, NoInput};
+use super::shared::NoInput;
 use crate::{Hints, Operation, Scope};
 
 /// Light or dark.
@@ -29,8 +29,7 @@ pub enum SaveScope {
     All,
 }
 
-/// Which loose pages the Arc sidebar lists, the pages under the pinned ones that are no
-/// worktree's.
+/// Whose the unpinned pages are, the pages after the pinned ones that are no worktree's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LoosePages {
@@ -38,6 +37,38 @@ pub enum LoosePages {
     PerSpace,
     /// Every space lists them all.
     Shared,
+}
+
+/// Where every tab is (`docs/layout.md`, Tabs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Tabs {
+    /// Across the top rail.
+    TopRail,
+    /// Down the sidebar.
+    Sidebar,
+}
+
+/// Where the address of the page shown is, with back, forward and reload (`docs/layout.md`,
+/// Address bar).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AddressBar {
+    /// In each page's own toolbar.
+    Page,
+    /// In a field at the top of the sidebar.
+    Sidebar,
+}
+
+/// Where the selected worktree's Changes and Files buttons go (`docs/layout.md`, Changes and
+/// Files).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangesAndFiles {
+    /// On the worktree's row in the sidebar.
+    Worktree,
+    /// At the top rail's right end, while the tabs are on the top rail.
+    TopRail,
 }
 
 /// What new worktrees' branches are named under: `"githubUser"`, `"none"`, or
@@ -101,9 +132,15 @@ pub struct DevtoolsChange {
 pub struct SettingsValues {
     /// `system`, `light` or `dark`.
     pub appearance: Appearance,
-    /// The window's layout: `orca` or `arc`.
-    pub layout: Layout,
-    /// Which loose pages the Arc sidebar lists: `per_space` or `shared`.
+    /// Where every tab is: `top_rail` or `sidebar`.
+    pub tabs: Tabs,
+    /// Where the address bar is: `page` or `sidebar`.
+    pub address_bar: AddressBar,
+    /// Where the Changes and Files buttons are put: `worktree` or `top_rail`. While the tabs are
+    /// in the sidebar the buttons are on the worktree's row, and `top_rail` is kept for the
+    /// tabs' return to the top rail.
+    pub changes_and_files: ChangesAndFiles,
+    /// Whose the unpinned pages are: each space's (`per_space`) or every space's (`shared`).
     pub loose_pages: LoosePages,
     /// Whether a file picked in the tree opens in a preview tab the next one takes over.
     pub preview_files: bool,
@@ -137,7 +174,7 @@ impl Operation for SettingsGet {
     const NAME: &'static str = "settings_get";
     const TITLE: &'static str = "Read settings";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "The settings an agent may read and change: appearance, layout, whether the Arc sidebar's loose pages are each space's or shared, editor behaviour, worktree naming and folder, language server limits, sidebar width, DevTools placement.";
+    const DESCRIPTION: &'static str = "The settings an agent may read and change: appearance, where the tabs, the address bar and the Changes and Files buttons go, whether the unpinned pages are each space's or shared, editor behaviour, worktree naming and folder, language server limits, sidebar width, DevTools placement.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = SettingsValues;
@@ -154,10 +191,17 @@ pub struct SettingsSetInput {
     /// `system`, `light` or `dark`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub appearance: Option<Appearance>,
-    /// The window's layout: `orca` or `arc`.
+    /// Where every tab is: `top_rail` or `sidebar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layout: Option<Layout>,
-    /// Which loose pages the Arc sidebar lists: `per_space` or `shared`.
+    pub tabs: Option<Tabs>,
+    /// Where the address bar is: `page` or `sidebar`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address_bar: Option<AddressBar>,
+    /// Where the Changes and Files buttons are put: `worktree` or `top_rail`, which takes effect
+    /// while the tabs are on the top rail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes_and_files: Option<ChangesAndFiles>,
+    /// Whose the unpinned pages are: each space's (`per_space`) or every space's (`shared`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loose_pages: Option<LoosePages>,
     /// Whether a file picked in the tree opens in a preview tab.
@@ -245,12 +289,8 @@ fn summary(output: &SettingsValues) -> String {
         Appearance::Light => "light",
         Appearance::Dark => "dark",
     };
-    let layout = match output.layout {
-        Layout::Orca => "orca",
-        Layout::Arc => "arc",
-    };
     format!(
-        "{appearance} appearance, {layout} layout, worktrees in {}",
+        "{appearance} appearance, worktrees in {}",
         output
             .worktrees_dir
             .as_deref()

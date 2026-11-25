@@ -1,7 +1,7 @@
-//! The shell's side of the Settings tab (`docs/arc-sidebar.md` 11.9): opened by ⌘,, the menus and
+//! The shell's side of the Settings tab (`docs/sidebar.md` 11.9): opened by ⌘,, the menus and
 //! app control, or picked again if it's open; its pages shown from its own list, Back and Forward
 //! walking them; closed by its ×, a middle click, ⌘W or Escape, and by showing anything else
-//! (`model/settings_tab.rs`). Its row comes after the space's loose pages, in either layout.
+//! (`model/settings_tab.rs`). Its row or tab comes after the space's loose pages.
 
 use gpui_kit::{
     Context, Div, InteractiveElement as _, MouseButton, Stateful,

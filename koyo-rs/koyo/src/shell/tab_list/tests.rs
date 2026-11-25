@@ -4,7 +4,7 @@ use gpui_kit::{
 };
 
 use crate::model::{Pane, PaneKind, SplitAxis, Tab};
-use crate::settings::{self, Layout};
+use crate::settings::{self, Tabs};
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
@@ -42,13 +42,13 @@ fn drag(window: AnyWindowHandle, from: usize, to: Point<Pixels>, cx: &mut TestAp
     draw(window, cx);
 }
 
-/// In `layout`, a tab held over the middle of another joins it on the side the pointer's
-/// on, and one held past the edge of another moves past it.
-fn tabs_join_and_reorder(layout: Layout, cx: &mut TestAppContext) {
-    let root = repo(&format!("tab-list-{layout:?}"), &[("README.md", "hi\n")]);
+/// With the tabs where `tabs` puts them, a tab held over the middle of another joins it on the
+/// side the pointer's on, and one held past the edge of another moves past it.
+fn tabs_join_and_reorder(tabs_in: Tabs, cx: &mut TestAppContext) {
+    let root = repo(&format!("tab-list-{tabs_in:?}"), &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     cx.update(|cx| {
-        settings::update(cx, |settings| settings.layout = layout);
+        settings::update(cx, |settings| settings.tabs = tabs_in);
         cx.set_reduce_motion(true);
     });
     select(&shell, &root, cx);
@@ -68,7 +68,7 @@ fn tabs_join_and_reorder(layout: Layout, cx: &mut TestAppContext) {
     assert_eq!(
         tabs(&shell, cx),
         (vec![vec![b, a], vec![c]], 0),
-        "{layout:?}"
+        "{tabs_in:?}"
     );
     shell.read_with(cx, |shell, _| {
         let tab = &shell.workspace.branch().unwrap().tabs[0];
@@ -80,28 +80,27 @@ fn tabs_join_and_reorder(layout: Layout, cx: &mut TestAppContext) {
     assert_eq!(
         tabs(&shell, cx),
         (vec![vec![c], vec![b, a]], 0),
-        "{layout:?}"
+        "{tabs_in:?}"
     );
 }
 
 #[gpui_kit::test]
-fn orca_strip_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
-    tabs_join_and_reorder(Layout::Orca, cx);
+fn top_rail_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
+    tabs_join_and_reorder(Tabs::TopRail, cx);
 }
 
 #[gpui_kit::test]
-fn arc_sidebar_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
-    tabs_join_and_reorder(Layout::Arc, cx);
+fn sidebar_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
+    tabs_join_and_reorder(Tabs::Sidebar, cx);
 }
 
-/// However many tabs a checkout has, the Orca layout's top rail narrows them to fit beside its +
-/// button: each stays on screen to pick, none runs over the button or what's beside them, and
-/// the rail keeps empty glass to move the window by.
+/// However many tabs a checkout has, the top rail narrows them to fit beside its + button: each
+/// stays on screen to pick, none runs over the button or what's beside them, and the rail keeps
+/// empty glass to move the window by.
 #[gpui_kit::test]
-fn orca_rail_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestAppContext) {
+fn the_rail_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestAppContext) {
     let root = repo("tab-list-narrowing", &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
-    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
     select(&shell, &root, cx);
     for count in [8, 40] {
         shell.update(cx, |shell, cx| {

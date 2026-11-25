@@ -1,7 +1,8 @@
 # The import edges between the koyo crate's top-level modules that lie on a cycle in the
 # shipped build, one `from to` line each; `main` is the crate root's own code. This is the
 # cycle's debt, and it only shrinks. koyo-hygiene, which script/hygiene runs, fails on an
-# import that closes a cycle and has no line here, and on a line the last commit's list lacks.
+# import that closes a cycle and has no line here, and on a line the last commit's list lacks;
+# an import in a file git finds renamed, or of one, keeps its line by its modules' new names.
 # When an edge no longer closes a cycle, `script/cargo run -q -p koyo-hygiene -- --prune`
 # takes its line off.
 accounts control
@@ -17,26 +18,9 @@ agent_desktop held
 agent_desktop modal
 agent_desktop settings
 agent_desktop theme
-arc accounts
-arc browser
-arc chat
-arc history
-arc launcher
-arc modal
-arc model
-arc pane
-arc picker
-arc popup
-arc projects
-arc settings
-arc settings_view
-arc shell
-arc spaces
-arc theme
 backdrop gradient
 bottom language
 bottom theme
-browser arc
 browser control
 browser gradient
 browser held
@@ -50,7 +34,6 @@ browser popup
 browser responsive
 browser settings
 browser shell
-browser spaces
 browser theme
 changes checkout
 changes modal
@@ -71,7 +54,6 @@ chat modal
 chat model
 chat native
 chat pane
-chat projects
 chat right_panel
 chat settings
 chat settings_view
@@ -164,7 +146,6 @@ launcher shell
 launcher theme
 main accounts
 main agent_desktop
-main arc
 main browser
 main chat
 main chat_backdrop
@@ -202,7 +183,6 @@ model browser
 model changes
 model devices
 model files
-model spaces
 native popup
 native theme
 new_worktree modal
@@ -211,12 +191,6 @@ new_worktree settings
 new_worktree shell
 new_worktree theme
 new_worktree toggle
-orca model
-orca pane
-orca projects
-orca shell
-orca terminals
-orca theme
 pane model
 pane shell
 pane theme
@@ -263,7 +237,6 @@ settings spaces
 settings theme
 settings_view accounts
 settings_view agent_desktop
-settings_view arc
 settings_view browser
 settings_view chat
 settings_view chat_backdrop
@@ -285,7 +258,6 @@ settings_view toggle
 settings_view viewer
 shell accounts
 shell agent_desktop
-shell arc
 shell backdrop
 shell bottom
 shell browser
@@ -299,9 +271,9 @@ shell key_repeat
 shell keyboard
 shell language
 shell launcher
+shell modal
 shell model
 shell native
-shell orca
 shell pane
 shell picker
 shell popup
@@ -309,12 +281,9 @@ shell projects
 shell right_panel
 shell settings
 shell settings_view
-shell sidebar
+shell spaces
 shell terminals
 shell theme
-sidebar settings
-sidebar theme
-spaces gradient
 spaces settings
 symbols files
 symbols language
@@ -328,7 +297,6 @@ terminals pane
 terminals responsive
 terminals settings
 terminals shell
-terminals sidebar
 terminals theme
 theme gradient
 theme settings

@@ -76,8 +76,8 @@ terminal core (libghostty-vt).
 
 ### 1.2 Relationship to Orca and monocode
 
-- Koyo is the native successor of the Orca app's layout ("Orca layout: projects and their
-  branch units in the sidebar", `koyo-rs/koyo/src/orca.rs`). The Orca CLI
+- Koyo is the native successor of the Orca app's layout: projects and their branch units in
+  the sidebar (`koyo-rs/koyo/src/shell/sidebar/projects.rs`). The Orca CLI
   (`/Applications/Orca.app/Contents/Resources/bin/orca`) already exposes worktree-scoped
   terminals to agents (`orca terminal list|show|read|send|wait|create|...`). Its vocabulary
   is the one agents on this machine already know; the MCP here keeps it (section 8.9).
@@ -1024,7 +1024,7 @@ sees the shell back from its screen, idle at its prompt.
   one button: "Take control" or "Give back", sent to the daemon from the click. The toast of
   an implicit takeover is a notice in that bar, "You took over from claude-code", for 12 s
   or until control changes again; the chip's "Give back" undoes it. The sidebar shows beside
-  each branch how many of its terminals need input, in both layouts. A chip menu and "Show
+  each branch how many of its terminals need input. A chip menu and "Show
   activity" come with the panel below.
 - The log history is a **toggleable side panel** beside the terminal (owner's requirement,
   2026-10-30): a header button and a shortcut (⌘⇧L proposed) show or hide it; the state is

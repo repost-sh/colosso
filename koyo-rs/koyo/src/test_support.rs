@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use gpui_kit::{
-    Action, AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, Pixels, Point,
+    AnyWindowHandle, App, AppContext as _, Bounds, CursorStyle, Entity, Modifiers, Pixels, Point,
     Render, Size, TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions,
     WindowVisibility, point, px, size,
 };
@@ -20,14 +20,16 @@ use koyo_term_control::{
 #[cfg(test)]
 use crate::browser::BrowserView;
 #[cfg(test)]
+use crate::model::PaneKind;
+#[cfg(test)]
 use crate::projects::read_worktrees;
 #[cfg(test)]
 use crate::right_panel::{ToggleChanges, View};
 #[cfg(test)]
-use crate::settings::{self, Layout};
-#[cfg(test)]
 use crate::shell::{KeptWindow, Shell};
 
+#[cfg(test)]
+mod keys;
 #[cfg(test)]
 mod panes;
 #[cfg(test)]
@@ -36,11 +38,15 @@ mod pinned;
 mod pointer;
 mod started;
 #[cfg(test)]
-pub use panes::{iphone, orca_on_chat, terminals_listed};
+pub use keys::{act, frames, press, pressed};
+#[cfg(test)]
+pub use panes::{iphone, terminals_listed};
 #[cfg(test)]
 pub use pinned::{loose, pin, pinned};
 #[cfg(test)]
-pub use pointer::{GRAB, carry, drag, hold, hover, let_go, let_go_on, move_held, take_up};
+pub use pointer::{
+    GRAB, carry, drag, fingers, hold, hover, let_go, let_go_on, move_held, take_up,
+};
 #[cfg(test)]
 pub use started::init_settings;
 pub use started::init;
@@ -114,13 +120,6 @@ pub fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
     cx.run_until_parked();
     (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
     cx.run_until_parked();
-}
-
-/// Does `action` in `window`, as the person does, and draws what it changed.
-#[cfg(test)]
-pub fn act(window: AnyWindowHandle, action: impl Action, cx: &mut TestAppContext) {
-    cx.dispatch_action(window, action);
-    draw(window, cx);
 }
 
 /// Brings `window` in front, the app's active window, or puts it behind another app's, as a
@@ -199,22 +198,29 @@ pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle,
     (window, shell)
 }
 
-/// The shell in `layout` over a checkout of its own with a README, selected and drawn: the
-/// window, the shell and the checkout. The layout is set before the first draw.
+/// The shell over a checkout of its own with a README, selected and drawn: the window, the shell
+/// and the checkout.
 #[cfg(test)]
-pub fn shell_on(
-    name: &str,
-    layout: Layout,
-    cx: &mut TestAppContext,
-) -> (AnyWindowHandle, Entity<Shell>, PathBuf) {
+pub fn shell_on(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>, PathBuf) {
     let root = repo(name, &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
-    if layout != Layout::default() {
-        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
-    }
     select(&shell, &root, cx);
     draw(window, cx);
     (window, shell, root)
+}
+
+/// The shell over a checkout of its own whose one tab, a chat, is shown, motion reduced so what
+/// moves is where it goes at once: the window and the shell.
+#[cfg(test)]
+pub fn shell_on_chat(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
+    let (window, shell, _) = shell_on(name, cx);
+    cx.update(|cx| cx.set_reduce_motion(true));
+    shell.update(cx, |shell, cx| {
+        shell.workspace.new_tab(PaneKind::Chat);
+        cx.notify();
+    });
+    draw(window, cx);
+    (window, shell)
 }
 
 /// The shell in a laptop-sized window of its own, as the app opens it.

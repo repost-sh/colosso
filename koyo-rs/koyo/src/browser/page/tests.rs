@@ -6,19 +6,18 @@ use koyo_browser_ipc::Cursor;
 
 use crate::browser::BrowserView;
 use crate::budget::built_after;
-use crate::settings::Layout;
 use crate::test_support::{draw, open_page_view, shell_on};
 
 fn rounded(view: &Entity<BrowserView>, cx: &mut TestAppContext) -> Corners<bool> {
     view.read_with(cx, |view, _| view.rounded)
 }
 
-/// In the Arc layout a page fills its pane's island to its foot, so its view rounds the island's
+/// A page fills its pane's island to its foot, so its view rounds the island's
 /// bottom corners. A frame that builds only the page, as the cursor over a link changes it,
 /// draws the island around it as it was last frame, and the page keeps its corners.
 #[gpui_kit::test]
 fn a_page_built_alone_keeps_the_corners_it_shares_with_its_island(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("page-corners-alone", Layout::Arc, cx);
+    let (window, shell, _) = shell_on("page-corners-alone", cx);
     let view = open_page_view(window, &shell, "https://example.com/", cx);
     let placed = rounded(&view, cx);
     assert!(placed.bottom_left && placed.bottom_right, "the island's foot is rounded: {placed:?}");
@@ -38,7 +37,7 @@ fn a_page_built_alone_keeps_the_corners_it_shares_with_its_island(cx: &mut TestA
 /// shares with the pane's island again.
 #[gpui_kit::test]
 fn a_page_full_screen_is_square_and_rounded_again_back_in_its_pane(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("page-corners-full-screen", Layout::Arc, cx);
+    let (window, shell, _) = shell_on("page-corners-full-screen", cx);
     let view = open_page_view(window, &shell, "https://example.com/", cx);
     let placed = rounded(&view, cx);
     assert!(placed.bottom_left && placed.bottom_right, "the island's foot is rounded: {placed:?}");

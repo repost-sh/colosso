@@ -73,7 +73,7 @@ fn a_refused_hello_fails_with_the_apps_error() {
 fn a_call_gets_its_output_and_a_typed_call_its_type() {
     let status = json!({
         "version": "0.1.0", "windowOpen": true, "focused": false, "route": "workspace",
-        "layout": "orca", "sidebarOpen": true, "rightPanel": null, "bottomPanelOpen": false,
+        "sidebarOpen": true, "rightPanel": null, "bottomPanelOpen": false,
         "selected": { "project": "/p" }, "mcp": { "http": false }, "dataDir": "/d",
     });
     let answer = status.clone();

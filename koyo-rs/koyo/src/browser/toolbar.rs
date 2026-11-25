@@ -1,7 +1,7 @@
 //! The toolbar over a page: history, reload, the address, responsive mode and the inspector;
-//! none in the Arc layout, whose sidebar has them. And what's shown over the page itself: the
-//! start page, a notice when the engine or the page failed, and the bar that says who has the
-//! page when it's contested.
+//! none while the address bar is in the sidebar, which has them with the window's top row
+//! (`docs/layout.md`). And what's shown over the page itself: the start page, a notice when the
+//! engine or the page failed, and the bar that says who has the page when it's contested.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -13,8 +13,8 @@ use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Bounds, ClickEvent, Context, Div, ElementId, Focusable as _,
-    InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
-    Styled as _, Window, div, point, px, relative, size,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _,
+    StatefulInteractiveElement as _, Styled as _, Window, div, point, px, relative, size,
 };
 use koyo_browser_ipc::Go;
 
@@ -24,7 +24,7 @@ use super::lightness::glass_dark;
 use super::view::{BrowserView, Notice};
 use crate::held::{self, Held};
 use crate::responsive::bar::toggle_button;
-use crate::shell::{icon, icon_button};
+use crate::shell::{address_bar_menu, icon, icon_button};
 use crate::theme::{self, Palette};
 
 /// Back, or forward: a click goes a step; held, or pressed with the right button, it lists
@@ -54,7 +54,6 @@ fn history_button(back: bool, enabled: bool, cx: &mut Context<BrowserView>) -> D
 /// The icons of the extensions pinned to the toolbar (`docs/extensions.md` 5), right of the
 /// address: a press runs one's action, a right press opens its menu.
 fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserView>) -> Vec<AnyElement> {
-    use gpui_kit::MouseButton;
     use gpui_kit::component::tooltip::Tooltip;
 
     use super::extensions::icon;
@@ -82,7 +81,7 @@ fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserVie
             .child(icon::face(&shown, p.text, p.selected).on_prepaint(move |bounds, _, _| measured.set(bounds)))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |this, _: &gpui_kit::MouseDownEvent, _, cx| {
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                     this.extension_pointer_down(&held, cx);
                 }),
             )
@@ -91,7 +90,7 @@ fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserVie
             }))
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(move |this, event: &gpui_kit::MouseDownEvent, window, cx| {
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                     this.extension_menu(&asked, event.position, window, cx);
                 }),
             )
@@ -187,7 +186,9 @@ fn progress(loading: bool, percent: u8, p: Palette) -> Option<Div> {
     })
 }
 
-/// The address field, with a lock while a secure page shows in it.
+/// The address field, with a lock while a secure page shows in it. Right-clicked while it isn't
+/// being typed in, it opens the address bar's menu (`shell::address_bar_menu`), the field not
+/// taking the keyboard for it; being typed in, its text's own menu.
 fn address(
     view: &BrowserView,
     editing: bool,
@@ -203,6 +204,14 @@ fn address(
         .id(id)
         .debug_selector(|| "browser-address".to_owned())
         .on_hover(hover)
+        .when(!editing, |field| {
+            field.capture_any_mouse_down(|event, window, cx| {
+                if event.button == MouseButton::Right {
+                    cx.stop_propagation();
+                    address_bar_menu(cx).show(event.position, window, cx);
+                }
+            })
+        })
         .key_context("BrowserAddress")
         .relative()
         .children(crate::marks::mark("browser-address"))
@@ -375,19 +384,4 @@ pub fn display_url(url: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_strip_shows_addresses_without_scheme_or_trailing_slash() {
-        assert_eq!(display_url("https://www.example.com/"), "example.com");
-        assert_eq!(
-            display_url("http://localhost:3000/app"),
-            "localhost:3000/app"
-        );
-        assert_eq!(display_url("about:blank"), "about:blank");
-        assert_eq!(tab_title("", ""), "New tab");
-        assert_eq!(tab_title("Docs", "https://docs.rs"), "Docs");
-        assert_eq!(tab_title("", "https://docs.rs/"), "docs.rs");
-    }
-}
+mod tests;

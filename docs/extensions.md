@@ -22,7 +22,7 @@ are another format, so from Zen comes only where things sit.
 | --- | --- | --- | --- | --- |
 | Install from the Chrome Web Store | "Add to Chrome", Chrome's dialog | the same store, the same dialog | its own store | the store's own page and Chrome's own dialog, section 4 |
 | Content scripts, service workers, storage, alarms, `declarativeNetRequest`, messaging | yes | yes | yes | the engine's own, untouched |
-| Toolbar icon, with its badge, title and icon as the extension sets them, for a tab or for all | toolbar, behind the puzzle piece unless pinned | in the site control center; on the toolbar when it's shown | toolbar and the unified panel | the site controls' row in both layouts; pinned ones on the page's toolbar in the Orca layout, section 5 |
+| Toolbar icon, with its badge, title and icon as the extension sets them, for a tab or for all | toolbar, behind the puzzle piece unless pinned | in the site control center; on the toolbar when it's shown | toolbar and the unified panel | the site controls' row wherever the address bar is; pinned ones on the page's toolbar or in the sidebar's address field, section 5 |
 | A click on the icon: the popup, or `action.onClicked` with `activeTab` | yes | yes | yes | Chrome's own popup, hung from the icon, section 6 |
 | Pin and unpin | puzzle menu | "Pin to toolbar" | drag | the icon's menu; `action.getUserSettings()` says the same |
 | The icon's menu: options, remove, manage | yes | yes | yes | Options, Pin, Remove, Manage Extensions, section 5 |
@@ -202,17 +202,17 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
 - **The site controls' popover** (`docs/browser.md` 12) gets the row Arc has: between the
   actions and the settings, the icons of the profile's enabled extensions, pinned ones
   first, then **"+"**. An icon carries its badge. A press runs the action and closes the
-  popover; the popup, if the extension has one, hangs from the sliders button. In both
-  layouts.
-- **On the page's toolbar**, in the Orca layout, the pinned extensions' icons sit between
+  popover; the popup, if the extension has one, hangs from the sliders button. Wherever the
+  address bar is.
+- **On the page's toolbar**, with the address bar in the page, the pinned extensions' icons sit between
   the address field and the responsive button, as Chrome's sit right of its address.
-- **In the sidebar's address field**, in the Arc layout, which has no toolbar: the pinned
+- **In the sidebar's address field**, with the address bar in the sidebar, where the page has no toolbar: the pinned
   icons are inside the field at its right, before the link and the sliders buttons, side
   by side in the order they were pinned in, each with its badge, as Arc has them. They come and go with those
   two buttons, while the pointer is over the field: away from it the field shows the
   address alone. A press runs the action, the popup hanging from under the icon; a right
   press opens the icon's menu (`extensions/pinned.rs`). Until 2026-11-17 a pinned icon
-  showed nowhere in this layout, and Pin did nothing a person could see: the owner's
+  showed nowhere with the address bar in the sidebar, and Pin did nothing a person could see: the owner's
   finding, and his choice of where they go. `[decided]`
 - **An icon is** the extension's own: what it set for the tab, else what it set for all,
   else its manifest's, drawn at 16 points; with none, the first letter of its name on a
@@ -383,8 +383,8 @@ sees and told what to do. Where a row says an extension did something, that is h
 | A page is a `normal` window with one active tab | checked: `windows.getAll` |
 | The current window and its active tab are the page shown | checked from a worker, `windows.getCurrent`, `windows.getLastFocused`, `tabs.query({active, currentWindow})`: after a tab was chosen, after an agent opened one in front, and with a tab an extension opened behind. The last two were wrong before two fixes (section 3) |
 | The popover's row: icons and "+" | checked, by eye: an extension's own icon, a letter for one with none, "+" opens the store in front |
-| The toolbar's pinned icons (Orca layout) | checked, by eye |
-| The pinned icons in the sidebar's address field (Arc layout) | checked 2026-11-17, by eye: two pinned icons at the field's right, before the link and the sliders buttons, the badge on its icon; there with the pointer over the field and gone without it; a press opens the popup with its top left under the icon, and a second press closes it. That time their order was by name; it's now the order they were pinned in, as Chrome keeps it (the engine lists the pinned ones first in that order, and the host keeps it: a unit test), **not seen since**. The right press, which opens a native menu, wasn't made |
+| The toolbar's pinned icons (address bar in the page) | checked, by eye |
+| The pinned icons in the sidebar's address field (address bar in the sidebar) | checked 2026-11-17, by eye: two pinned icons at the field's right, before the link and the sliders buttons, the badge on its icon; there with the pointer over the field and gone without it; a press opens the popup with its top left under the icon, and a second press closes it. That time their order was by name; it's now the order they were pinned in, as Chrome keeps it (the engine lists the pinned ones first in that order, and the host keeps it: a unit test), **not seen since**. The right press, which opens a native menu, wasn't made |
 | In the installed build, on the owner's own desktop, 2026-11-17 | the popup opened **behind Koyo's window** and kept the keyboard, and an icon's menu opened behind the popover: neither shows on the agent desktop, where Chrome gives a popup no parent window. Read off the window server's list of his Koyo's windows as he pressed (section 6) |
 | A popup closes once it loses the keyboard | **not seen**: it needs Koyo in front on a real desktop |
 | A press on an icon opens Chrome's own popup under it | checked: from the sidebar's site controls it hangs by its top left and from the toolbar's end by its top right, over Koyo's window both times. It hung out to the left of the window before `Corner` (section 6) |
@@ -426,8 +426,8 @@ Decisions made while the owner was away, each the nearest to Arc:
    kept for other Macs is still open (`docs/browser.md` 11.3).
 3. One window per page, `normal` (section 3).
 4. Windows an extension opens stay Chrome's own windows (section 3).
-5. Icons in the site controls in both layouts; pinned ones on the Orca toolbar, and in the
-   Arc sidebar's address field on hover, where the owner put them (section 5).
+5. Icons in the site controls wherever the address bar is; pinned ones on the page's toolbar, and
+   in the sidebar's address field on hover, where the owner put them (section 5).
 6. No side panels, no Manifest V2 (section 9).
 7. "Clear browsing data" takes the extensions too (section 8).
 8. Koyo doesn't pass for Google's Chrome to the Web Store, so the store's "Switch to

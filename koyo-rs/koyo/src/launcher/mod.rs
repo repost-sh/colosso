@@ -1,6 +1,6 @@
 //! The new-tab launcher (`docs/new-tab.md`): ⌘T, or a tab strip's +, opens a floating bar over the
 //! window instead of a tab. A pill in it says what kind of tab Enter opens, a browser tab, a chat
-//! or a terminal, or a new worktree (`docs/arc-sidebar.md` 8), and Tab goes through them in that
+//! or a terminal, or a new worktree (`docs/sidebar.md` 8), and Tab goes through them in that
 //! order. What's typed is an address or a search,
 //! a message for a new chat, or a command for a new terminal; with nothing typed, Enter opens an
 //! empty tab of the kind. Under the field, what the history holds for it, filtered as it's typed,
@@ -42,7 +42,7 @@ actions!(
         /// the person is: the + after the unpinned pages.
         NewUnpinnedPage,
         /// The address of the page the person is in, to change: in the launcher opened on the
-        /// page, or, in the Orca layout, in the page's own field.
+        /// page, or, with the address bar in the page, in the page's own field.
         OpenAddress,
         NextKind,
         PreviousKind,
@@ -193,17 +193,18 @@ impl Shell {
         self.open_launcher_on((Opens::Tab, None), window, cx);
     }
 
-    /// ⌘L, or a click on the Arc sidebar's address: the address of the page shown, to change
-    /// (`Shell::shown_page`). In Arc, where a page has no toolbar, the launcher opens on the
-    /// page; in Orca the keyboard goes to the page's own field, all of it selected. With no
-    /// page in the tab shown there's no address to change, and nothing opens: the key goes on
-    /// to whatever has the keyboard, as one the window doesn't take.
+    /// ⌘L, or a click on the sidebar's address bar: the address of the page shown, to change
+    /// (`Shell::shown_page`). With the address bar in the sidebar, where a page has no toolbar,
+    /// the launcher opens on the page; with it in the page, the keyboard goes to the page's own
+    /// field, all of it selected (`docs/layout.md`). With no page in the tab shown there's no
+    /// address to change, and nothing opens: the key goes on to whatever has the keyboard, as
+    /// one the window doesn't take.
     pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let shown = (self.shown_page()).and_then(|view| Some((self.pane_showing(&view)?, view)));
         let Some((pane, view)) = shown else {
             return cx.propagate();
         };
-        if crate::settings::get(cx).layout == crate::settings::Layout::Orca {
+        if !crate::settings::get(cx).address_in_sidebar() {
             self.enter_pane(pane, cx);
             let intent = crate::keyboard::Intent::Address;
             view.update(cx, |view, cx| view.focus_address(intent, window, cx));

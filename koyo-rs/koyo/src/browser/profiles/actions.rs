@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, Div, InteractiveElement as _, Window};
 
-use crate::arc::rename;
-use crate::modal::{self, Confirm, Tone};
+use crate::modal::{self, Confirm, Tone, rename};
 use crate::settings::{self, checked_menu};
 
 /// Puts the project whose main checkout is at the path on the profile of this id.
@@ -37,8 +36,7 @@ pub struct RenameProfile(pub String);
 pub struct DeleteProfile(pub String);
 
 /// The profiles to put the project at `project` on, the one it's on checked, then New
-/// Profile…: a project tile's Set Profile, a project row's in the Orca layout, and the pick of
-/// the project in Settings → Browser.
+/// Profile…: a project row's, and the pick of the project in Settings → Browser.
 pub fn menu(project: &Path, cx: &App) -> NativeMenu {
     let profiles = super::get(cx);
     let owned = || project.to_owned();

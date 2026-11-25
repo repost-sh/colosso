@@ -2,7 +2,8 @@
 //! it, like the menus and the theme picker, so the desktop shows through it, tinted with the
 //! palette so it follows light and dark; it floats as the app's floating windows do
 //! (`popup.rs`). One is open at a time; Escape closes it, and so do a press in the window behind
-//! it and focus leaving them both. Also the pieces dialogs are made of.
+//! it and focus leaving them both. Also the pieces dialogs are made of, and the dialog that asks
+//! for a name (`rename`).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
@@ -20,6 +21,7 @@ use crate::wrapped::wrapped_lines;
 
 mod button;
 mod confirm;
+pub mod rename;
 mod step;
 
 pub use button::{Button, Tone, spinner, wheel};

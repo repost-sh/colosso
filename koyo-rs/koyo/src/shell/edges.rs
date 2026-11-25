@@ -8,8 +8,8 @@ use gpui_kit::{
 };
 
 use super::Shell;
+use super::sidebar::SidebarResize;
 use crate::settings;
-use crate::sidebar::SidebarResize;
 use crate::theme;
 
 impl Shell {

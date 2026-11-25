@@ -1,15 +1,12 @@
-//! The islands the window's content sits on in the Arc layout: each pane of the tab shown, the
-//! panel beside them, what's listed under them, each a rounded card of its own, the window's
-//! glass between them as a thin margin (`docs/arc-sidebar.md` 10). The Orca layout has one card,
-//! an island holding them all, hairlines between them, whose parts paint their own colour: the
-//! sidebar as much of the card's as Settings → Appearance → Sidebar glass says, the rest the
-//! card's own.
+//! The islands the window's content sits on: each pane of the tab shown, the panel beside them,
+//! what's listed under them, each a rounded card of its own, the window's glass between them as a
+//! thin margin (`docs/sidebar.md` 10).
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, BoxShadow, Corners, Div, ElementId, EmptyView, Hsla,
-    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled as _, canvas, deferred, div, px,
+    AppContext as _, Bounds, BoxShadow, Corners, Div, ElementId, EmptyView, Hsla,
+    InteractiveElement as _, ParentElement as _, Pixels, Point, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled as _, canvas, div, px,
 };
 
 use super::{CARD_RADIUS, Palette};
@@ -38,12 +35,8 @@ const SHADOW: BoxShadow = BoxShadow {
 /// ([`prepainted`]), which is when such a view is placed, and the view rounds the corners
 /// it shares with it.
 pub fn island(p: Palette) -> Div {
-    clear_island().bg(p.card)
-}
-
-/// An [`island`] with no colour of its own, for one whose parts paint theirs, as Orca's card does.
-pub fn clear_island() -> Div {
     div()
+        .bg(p.card)
         .relative()
         .min_w_0()
         .min_h_0()
@@ -83,63 +76,15 @@ pub fn shared_corners(bounds: Bounds<Pixels>, island: Bounds<Pixels>) -> Corners
     }
 }
 
-/// Whether the layout puts each part on an island of its own: Arc's does; Orca's has one card.
-pub fn islands(cx: &App) -> bool {
-    crate::settings::get(cx).layout == crate::settings::Layout::Arc
-}
-
-/// A part of the window: an island of its own when the layout has `islands`, otherwise plain,
-/// on the one card the layout has.
-pub fn part(p: Palette, islands: bool) -> Div {
-    if islands {
-        island(p)
-    } else {
-        div().relative().min_w_0().min_h_0()
-    }
-}
-
-/// How far the handle of a seam on the one card reaches over the part either side of its line, in
-/// points: a point that far from the line's middle is on the handle.
-pub const HANDLE_REACH: f32 = 6.;
-const LINE: f32 = 1.;
-
-/// What lies between two parts, `row` when they sit side by side, which picking it up drags
-/// `payload` to resize them, then `after`, the part after it. With islands it's the glass between
-/// them, a gutter wide. On the one card it's a hairline, picked up a few pixels either side by a
-/// handle drawn last in `after`, so over both parts. A page beside it (`next_to_page`) is a native
-/// view over all the window draws but its overlays, so the handle is among those then
-/// (`deferred`), and the window builds the shell that draws it whenever a view in it changes.
-/// The handle drawn in place holds only while no native glass reaches within [`HANDLE_REACH`] of a
-/// pane edge.
+/// What lies between two islands, `row` when they sit side by side, which picking it up drags
+/// `payload` to resize them: the glass between them, a gutter wide.
 pub fn seam<T: Clone + 'static>(
     id: impl Into<SharedString>,
     row: bool,
     payload: T,
-    next_to_page: bool,
-    after: Div,
-    cx: &App,
-) -> [AnyElement; 2] {
+) -> Stateful<Div> {
     let id = id.into();
-    if islands(cx) {
-        let band = band(id.clone(), id, row, payload, super::GUTTER);
-        return [band.into_any_element(), after.into_any_element()];
-    }
-    let line = div().flex_shrink_0().bg(super::palette(cx).hairline);
-    let line = if row {
-        line.w(px(LINE)).h_full()
-    } else {
-        line.h(px(LINE)).w_full()
-    };
-    let handle = handle(id, row, payload);
-    let handle = if next_to_page {
-        deferred(handle).into_any_element()
-    } else {
-        handle.into_any_element()
-    };
-    [
-        line.into_any_element(),
-        after.child(handle).into_any_element(),
-    ]
+    band(id.clone(), id, row, payload, super::GUTTER)
 }
 
 /// How thick the divider between two parts is, and its grip: how long, how thick.
@@ -192,34 +137,6 @@ fn band<T: Clone + 'static>(
                 band.w(px(thickness)).h_full().cursor_col_resize()
             } else {
                 band.h(px(thickness)).w_full().cursor_row_resize()
-            }
-        })
-        .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
-}
-
-/// What picks up a seam's line, in the part after it, reaching [`HANDLE_REACH`] over each part.
-fn handle<T: Clone + 'static>(id: SharedString, row: bool, payload: T) -> Stateful<Div> {
-    let (start, thickness) = (-(HANDLE_REACH + LINE), 2. * HANDLE_REACH + LINE);
-    div()
-        .id(id.clone())
-        .debug_selector(move || id.to_string())
-        .absolute()
-        .occlude()
-        .map(|handle| {
-            if row {
-                handle
-                    .top_0()
-                    .bottom_0()
-                    .left(px(start))
-                    .w(px(thickness))
-                    .cursor_col_resize()
-            } else {
-                handle
-                    .left_0()
-                    .right_0()
-                    .top(px(start))
-                    .h(px(thickness))
-                    .cursor_row_resize()
             }
         })
         .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))

@@ -1,7 +1,7 @@
 use gpui_kit::{Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 
 use crate::budget::{Built, built_after, built_during, ratchet, settle};
-use crate::settings::{self, Layout};
+use crate::settings;
 use crate::test_support::{GRAB, center_of, move_held, scratch, shell_on};
 
 /// How many moves the drag is measured over, each 10 points further right.
@@ -20,7 +20,7 @@ fn set_width(cx: &TestAppContext) -> f32 {
 fn a_dragged_sidebar_edge_follows_the_pointer_and_writes_the_settings_once(
     cx: &mut TestAppContext,
 ) {
-    let (window, _, _) = shell_on("sidebar-drag", Layout::Orca, cx);
+    let (window, _, _) = shell_on("sidebar-drag", cx);
     let file = cx.update(|cx| settings::tests::saved_in(&scratch("sidebar-drag-settings"), cx));
     settle(cx);
     let (heard, _observing) = settings::tests::hearing(cx);

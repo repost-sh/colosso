@@ -1,6 +1,6 @@
 //! What the files' tests start from and look at: a checkout to list, the tree alone in a
 //! window or in a shell, files opened in tabs and typed into, the tabs as they're shown,
-//! keys pressed and the question about unsaved edits answered.
+//! modifier keys let go and the question about unsaved edits answered.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -18,7 +18,7 @@ use crate::checkout::{Checkout, Document};
 use crate::modal;
 use crate::right_panel;
 use crate::shell::Shell;
-use crate::test_support::{git, in_window, scratch, select, shell_with, write};
+use crate::test_support::{git, in_window, press, scratch, select, shell_with, write};
 
 /// A checkout with a change and a file git doesn't know, and an ignored build folder.
 pub(crate) fn checkout(name: &str) -> std::path::PathBuf {
@@ -234,12 +234,6 @@ pub(crate) fn shell_with_tree(
         .expect("the Files panel");
     settle(&files, cx, |files| files.scanned);
     (window, shell, files)
-}
-
-/// Presses `keys` in `window`, drawn first so the keyboard is where the last change left it.
-pub(crate) fn press(window: AnyWindowHandle, keys: &str, cx: &mut TestAppContext) {
-    (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
-    cx.simulate_keystrokes(window, keys);
 }
 
 /// Lets go, in `window`, of every modifier key held: ⌃ after ⌃⇥, say.

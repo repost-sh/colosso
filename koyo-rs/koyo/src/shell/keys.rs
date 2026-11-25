@@ -1,4 +1,4 @@
-//! Where the keyboard is among the panes, which only the person moves (`docs/arc-sidebar.md`
+//! Where the keyboard is among the panes, which only the person moves (`docs/sidebar.md`
 //! 9), and the pane they're in, which has the keyboard or had it last.
 //!
 //! It goes to a pane when they press in it, as its view takes it then, or when they ask for
@@ -185,7 +185,7 @@ impl Shell {
     }
 
     /// The person pressed in pane `id`, or gave it the keyboard: they're in it from now on, and
-    /// what follows the pane they're in, as the Arc sidebar's address does, is drawn again.
+    /// what follows the pane they're in, as the sidebar's address does, is drawn again.
     pub(crate) fn enter_pane(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.workspace.enter_pane(id) {
             cx.notify();

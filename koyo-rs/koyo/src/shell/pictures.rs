@@ -218,7 +218,6 @@ mod tests {
 
     use super::{framed, of};
     use crate::model::PaneKind;
-    use crate::settings::Layout;
     use crate::test_support::{close_shown, draw, shell_on};
 
     #[test]
@@ -232,7 +231,7 @@ mod tests {
 
     #[gpui_kit::test]
     fn a_closed_tabs_picture_is_let_go_at_once_and_the_others_are_kept(cx: &mut TestAppContext) {
-        let (window, shell, _) = shell_on("pictures-closed", Layout::Orca, cx);
+        let (window, shell, _) = shell_on("pictures-closed", cx);
         let mut keys = Vec::new();
         for _ in 0..2 {
             let key = shell.update(cx, |shell, cx| {

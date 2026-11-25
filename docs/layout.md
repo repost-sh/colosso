@@ -15,7 +15,6 @@ Settings → Appearance → Layout:
 | Changes and Files | Worktree / Top rail | Top rail | `changes_and_files` |
 | Unpinned pages | Per space / Shared | Shared | `loose_pages` |
 | Sidebar glass | Slider, Clear to Solid | Clear (left end) | `sidebar_glass` |
-| Sidebar blur | Slider, None to More | None (left end) | `sidebar_blur` |
 
 ```json
 {
@@ -29,7 +28,7 @@ Settings → Appearance → Layout:
 
 The Theme, Chat backdrop and Fonts sections are unchanged.
 
-Koyo writes every setting into `settings.json` on save, defaults included. A new default therefore reaches only a file without that key: an existing install keeps the `loose_pages` and `sidebar_blur` values it already stored.
+Koyo writes every setting into `settings.json` on save, defaults included. A new default therefore reaches only a file without that key: an existing install keeps the `loose_pages` value it already stored.
 
 ### Tabs
 

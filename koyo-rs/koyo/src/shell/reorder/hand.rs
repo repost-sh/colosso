@@ -23,7 +23,7 @@ pub struct TabHand {
     /// The list whose tabs still slide into place after one was let go.
     settling: Cell<Option<List>>,
     /// Where, outside the lists, a tab let go is taken, as last drawn: the pinned pages' region,
-    /// at the Arc sidebar's head or in the Orca layout's top rail (`docs/arc-sidebar.md` 11).
+    /// at the sidebar's head or on the top rail (`docs/sidebar.md` 11).
     /// Over it, a tab is off its list.
     elsewhere: Cell<Option<Bounds<Pixels>>>,
     /// Where the lists that take the tabs of the others are, as last drawn, each by the list it
@@ -202,7 +202,7 @@ impl TabHand {
         let (axis, bounds) = (list.axis, list.bounds);
         let outside = outside(axis, bounds, at);
         let tabs = matches!(list.holds, Holds::Tabs { .. });
-        let leaves = !matches!(list.holds, Holds::Rows);
+        let leaves = !matches!(list.holds, Holds::Rows { leaves: false });
         let taken = self.taken(drag.list, at);
         drag.off = leaves
             && (taken
@@ -259,13 +259,15 @@ pub(super) enum Holds {
     /// taken off the list is a chip for a pane's side or, down the sidebar, another checkout's
     /// list.
     Tabs { accent: Hsla },
-    /// Rows that only move: a project's worktrees in either layout's sidebar
-    /// (`docs/arc-sidebar.md` 5), the Orca layout's projects.
-    Rows,
-    /// A space's loose pages, down the Arc sidebar or along the Orca layout's top rail
-    /// (`docs/arc-sidebar.md` 11): they move, and one taken off the list is a chip for a
-    /// checkout's list or the pinned pages, but none joins another, as each is a page. They take
-    /// the tabs of the other lists: one held over them is off its own.
+    /// Rows that only move: a project's worktrees in the sidebar (`docs/sidebar.md` 5) and the
+    /// space's projects, which stay on their list; and, as `leaves` says, the spaces' marks along
+    /// the sidebar's foot (`docs/layout.md`), one pulled well off the row sliding back into its
+    /// slot, to change nothing let go there.
+    Rows { leaves: bool },
+    /// A space's loose pages, down the sidebar or along the top rail (`docs/sidebar.md` 11): they
+    /// move, and one taken off the list is a chip for a checkout's list or the pinned pages, but
+    /// none joins another, as each is a page. They take the tabs of the other lists: one held over
+    /// them is off its own.
     Pages,
 }
 
@@ -406,7 +408,7 @@ mod tests {
         });
         let list = Laid {
             id: List::Worktrees(0),
-            holds: Holds::Rows,
+            holds: Holds::Rows { leaves: false },
             axis: Axis::Vertical,
             keys: vec![1, 2, 3],
             bounds: Bounds {

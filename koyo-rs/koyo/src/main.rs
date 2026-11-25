@@ -1,7 +1,6 @@
 mod accounts;
 mod agent_desktop;
 mod ago;
-mod arc;
 mod backdrop;
 mod beat;
 mod blocking;
@@ -41,7 +40,6 @@ mod model;
 mod native;
 mod navigation;
 mod new_worktree;
-mod orca;
 mod pane;
 mod picker;
 mod popup;
@@ -53,7 +51,6 @@ mod ring;
 mod settings;
 mod settings_view;
 mod shell;
-mod sidebar;
 mod sight;
 mod spaces;
 #[cfg(target_os = "macos")]
@@ -102,7 +99,7 @@ fn init(cx: &mut App, may: Blocking<'_>) {
     files::init(cx);
     viewer::init(cx);
     navigation::bind_keys(cx);
-    arc::bind_keys(cx);
+    shell::spaces::bind_keys(cx);
     go_to_file::init(cx);
     chat::init(cx, may);
     chat_backdrop::init(cx);
@@ -219,8 +216,8 @@ fn main() -> ExitCode {
         return browser::check_downloads();
     }
     #[cfg(feature = "visual-check")]
-    if std::env::args().any(|arg| arg == "--visual-check-arc") {
-        return arc::visual::run();
+    if std::env::args().any(|arg| arg == "--visual-check-sidebar") {
+        return shell::sidebar::visual::run();
     }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-devices-serve") {

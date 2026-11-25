@@ -15,8 +15,7 @@ use gpui_kit::{
 use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
 
-use super::Switcher;
-use crate::arc::avatar;
+use super::{Switcher, avatar};
 use crate::model::{Spot, Visited, Workspace};
 use crate::pane::unsaved_dot;
 use crate::shell::elements::ellipsized;
@@ -64,7 +63,7 @@ pub(super) struct Card {
     project: Option<Badge>,
 }
 
-/// A project as its badge shows it: its tile's picture, or its initials until it has one.
+/// A project as its badge shows it: its git host's avatar, or its initials until it has one.
 struct Badge {
     picture: Option<Arc<Path>>,
     initials: SharedString,

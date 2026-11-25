@@ -23,8 +23,8 @@ pub fn section(cx: &App) -> SettingsSection {
             WHAT.to_owned()
         } else {
             format!(
-                "{WHAT} Turn it on to choose what it shows behind (chats, explorers, the sidebar, \
-                 files, diffs, terminals, simulators and agent desktop), and set its opacity, the \
+                "{WHAT} Turn it on to choose what it shows behind (chats, explorers, files, \
+                 diffs, terminals, simulators and agent desktop), and set its opacity, the \
                  cell size and density, the fade, where it starts and ends, and the quality."
             )
         })
@@ -162,7 +162,6 @@ mod tests {
         let all = [
             "chats",
             "explorers",
-            "sidebar",
             "files",
             "diffs",
             "terminals",
@@ -177,6 +176,7 @@ mod tests {
         ];
         assert!(finds(&all, cx) && shows(cx), "on, as it starts");
         assert!(finds(&["is gone"], cx), "the fade's rows with it");
+        assert!(!finds(&["sidebar"], cx), "it's on the window's glass alone");
         cx.update(|cx| settings::update(cx, |settings| settings.chat_backdrop.fade = false));
         assert!(finds(&all, cx), "the fade off, its switch names its rows");
         assert!(

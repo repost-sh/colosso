@@ -1,12 +1,12 @@
-//! Pages pinned at the head of the Arc sidebar (`docs/arc-sidebar.md` 11): tabs of no checkout,
-//! common to every space, in the order of their tiles. One of them can be the tab shown, in place
-//! of the space's own, whichever space or project the sidebar lists meanwhile: it stays shown
-//! until a tab of a checkout or a loose page of the space is, or it's left. Only a tab whose
-//! single pane is a page is pinned; its page's `DevTools`, detached, split it as they split any
-//! page's tab. Each keeps the address it's pinned at, wherever its page goes from there. Closed,
-//! it stays pinned: its page goes, and opens again at that address once its tile is picked.
-//! Unpinning takes it out, onto a checkout's tabs or among the space's loose pages
-//! (`loose.rs`); removing it, out altogether.
+//! Pages pinned at the head of the sidebar (`docs/sidebar.md` 11): tabs of no checkout, common to
+//! every space, in the order of their tiles. One of them can be the tab shown, in place of the
+//! space's own, whichever space or project the sidebar lists meanwhile: it stays shown until a tab
+//! of a checkout or a loose page of the space is, or it's left. Only a tab whose single pane is a
+//! page is pinned; its page's `DevTools`, detached, split it as they split any page's tab. Each
+//! keeps the address it's pinned at, wherever its page goes from there. Closed, it stays pinned:
+//! its page goes, and opens again at that address once its tile is picked. Unpinning takes it out,
+//! onto a checkout's tabs or among the space's loose pages (`loose.rs`); removing it, out
+//! altogether.
 
 use std::path::PathBuf;
 

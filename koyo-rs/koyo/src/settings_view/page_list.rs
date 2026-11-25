@@ -1,4 +1,4 @@
-//! The Settings tab's content (`docs/arc-sidebar.md` 11.9): Settings' own pages listed at its
+//! The Settings tab's content (`docs/sidebar.md` 11.9): Settings' own pages listed at its
 //! left, a search field over them, grouped under headings, and the page picked beside them.
 //! Picking a page shows it in the tab, which keeps the page before for Back. It's content, drawn
 //! on the card as a tab's is, not the sidebar's glass.

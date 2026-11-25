@@ -14,7 +14,6 @@ pub mod liquid;
 pub mod menus;
 pub mod notifications;
 pub mod slider;
-pub mod sidebar_blur;
 pub(crate) mod surface;
 pub mod switch;
 mod target;

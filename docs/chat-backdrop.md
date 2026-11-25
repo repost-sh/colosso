@@ -62,11 +62,11 @@ default (sections 2 and 6). The name stays `chat_backdrop`, in the code and the 
 ## 2. Where it shows
 
 - **Behind chats, and the rest but pages**: a chat and a subagent's chat; the right panel's
-  file tree and list of changed files; the Orca layout's sidebar (Sidebar, 2026-11-23,
-  drawn by the sidebar's frame in `shell.rs` as its first child); an open file; a checkout's diffs; a terminal; round a
+  file tree and list of changed files; an open file; a checkout's diffs; a terminal; round a
   simulator's screen and the agent desktop. Each has a switch of its own, all on by default
-  (section 6). A page keeps the card, which its native view covers anyway. **[asked: chats,
-  2026-11-16 the rest, each a switch, on by default]**
+  (section 6). A page keeps the card, which its native view covers anyway. The sidebar and the top
+  rail are on the window's glass alone. **[asked: chats, 2026-11-16 the rest, each a switch, on by
+  default; 2026-11-24 the sidebar, which had it for a day, without]**
 - **Where each draws it.** Every tab's pane, a chat's included, draws it as the first child of
   its part (`shell/splits.rs`, `pane_part`, by way of `chat_backdrop::behind`, which names the
   pane's surface and keys the backdrop by the pane's id), so it lies under a split pane's
@@ -307,7 +307,7 @@ on by default, customizable, in Appearance]**
 | Row | Control | Default | Shown |
 |---|---|---|---|
 | Wallpaper background | switch | on | always |
-| Chats, Explorers, Sidebar, Files, Diffs, Terminals, Simulators and agent desktop | a switch each: what it shows behind | on | when on |
+| Chats, Explorers, Files, Diffs, Terminals, Simulators and agent desktop | a switch each: what it shows behind | on | when on |
 | Opacity | slider, Less to More | 24 %, as Monodrive's | when on |
 | Cell size | slider, Fine to Coarse: how many screen pixels a cell is a side | 2, as Monodrive's | when on |
 | Density | slider, Sparse to Dense: how many cells are lit | as Monodrive's | when on |
@@ -332,8 +332,8 @@ Quality its three stops (3.1). They're still to be tuned by eye (section 9).
 - **Search still finds it.** Settings search looks at the rows shown, so with the switch off
   "opacity" or "fade" would find nothing. The switch's description names what it reveals:
   off, "Your wallpaper behind chats, files, diffs, terminals and devices, dithered in its own
-  colours. Turn it on to choose what it shows behind (chats, explorers, the sidebar, files,
-  diffs, terminals, simulators and agent desktop), and set its opacity, the cell size and density,
+  colours. Turn it on to choose what it shows behind (chats, explorers, files, diffs,
+  terminals, simulators and agent desktop), and set its opacity, the cell size and density,
   the fade, where it starts and ends, and the quality."; on, its first sentence alone. The Fade switch does the same for its two rows while it's
   off ("Turn it on to set where it starts and ends."). A test searches the section on, with
   the fade off, and off, for each row's word. **[proposed]**

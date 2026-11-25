@@ -5,7 +5,7 @@ use gpui_kit::TestAppContext;
 use serde_json::json;
 
 use super::super::agent::Answer;
-use super::{BrowserView, finish, open, run, serve, wait_for_title};
+use super::{BrowserView, address_in_page, finish, open, open_with, run, serve, wait_for_title};
 
 /// Two pages, served locally.
 fn site(name: &str) -> Option<String> {
@@ -43,7 +43,8 @@ fn the_keys_take_the_page_back_and_forward(cx: &mut TestAppContext) {
 #[ignore = "needs the engine script/browser-engine packages"]
 fn an_address_typed_into_the_bar_opens_and_the_page_takes_the_keys(cx: &mut TestAppContext) {
     let port = serve(site);
-    let (view, cx, scratch) = open("address", &format!("http://127.0.0.1:{port}/one"), cx);
+    let one = format!("http://127.0.0.1:{port}/one");
+    let (view, cx, scratch) = open_with("address", &one, address_in_page, cx);
     wait_for_title(cx, &view, "one");
     cx.update(|window, cx| {
         let intent = crate::keyboard::Intent::Address;

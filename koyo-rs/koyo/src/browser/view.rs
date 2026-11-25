@@ -430,7 +430,7 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// The address field, which the page's toolbar shows, or the Arc sidebar in its place.
+    /// The address field, which the page's toolbar shows, or the sidebar in its place.
     pub fn address_field(&self) -> &Entity<InputState> {
         &self.address
     }

@@ -36,7 +36,7 @@ impl Shell {
     }
 
     /// Opens a page at `url`, or the start page, and shows it: when `loose`, a loose page of the
-    /// space shown (`docs/arc-sidebar.md` 11), after the loose page shown or after them all, of
+    /// space shown (`docs/sidebar.md` 11), after the loose page shown or after them all, of
     /// the person's own profile, taking the keyboard, whatever tab was shown; else a tab of the
     /// selected checkout, as `open_browser_tab` says. Its pane.
     pub(super) fn open_page(
@@ -340,7 +340,6 @@ mod tests {
 
     use crate::menu::{self, MenuItem};
     use crate::model::{PaneKind, Tab};
-    use crate::settings::Layout;
     use crate::shell::{Face, NewChat};
     use crate::test_support::{open_page_view, repo, select, shell_on, shell_with};
 
@@ -371,7 +370,7 @@ mod tests {
     /// The page's tab shows its icon once it's fetched, and the address it's at once it moves.
     #[gpui_kit::test]
     fn a_pages_tab_shows_its_icon_and_address_as_they_change(cx: &mut TestAppContext) {
-        let (window, shell, _) = shell_on("tab-follows-page", Layout::Orca, cx);
+        let (window, shell, _) = shell_on("tab-follows-page", cx);
         let view = open_page_view(window, &shell, "https://example.com/", cx);
         let tab = |cx: &mut TestAppContext| {
             cx.read(|cx| {

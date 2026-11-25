@@ -7,7 +7,6 @@ use std::time::Duration;
 use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 
 use super::{ActivityPanel, PanelTab};
-use crate::settings::Layout;
 use crate::navigation::SettingsPage;
 use crate::shell::Shell;
 use crate::terminals::budget::terminal_shown;
@@ -47,7 +46,7 @@ fn reads_after(time: Duration, panel: &Entity<ActivityPanel>, cx: &mut TestAppCo
 fn the_output_tab_reads_only_while_its_terminal_is_seen_and_at_once_when_it_is_again(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, root) = shell_on("panel-sight", Layout::Orca, cx);
+    let (window, shell, root) = shell_on("panel-sight", cx);
     let (panel, pane) = reading_output(window, &shell, &root, cx);
     let second = Duration::from_secs(1);
     let shown = reads_after(Duration::ZERO, &panel, cx);
@@ -72,7 +71,7 @@ fn the_output_tab_reads_only_while_its_terminal_is_seen_and_at_once_when_it_is_a
 fn the_output_tab_reads_nothing_behind_settings_and_at_once_back_on_the_workspace(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, root) = shell_on("panel-settings", Layout::Orca, cx);
+    let (window, shell, root) = shell_on("panel-settings", cx);
     let (panel, _) = reading_output(window, &shell, &root, cx);
     shell.update(cx, |shell, cx| shell.open_settings_page(Some(SettingsPage::General), cx));
     draw(window, cx);
@@ -88,7 +87,7 @@ fn the_output_tab_reads_nothing_behind_settings_and_at_once_back_on_the_workspac
 /// there counts as seen, so the panel reads on as if a person watched.
 #[gpui_kit::test]
 fn the_output_tab_reads_on_in_a_window_the_harness_counts_as_seen(cx: &mut TestAppContext) {
-    let (window, shell, root) = shell_on("panel-unseen-counts", Layout::Orca, cx);
+    let (window, shell, root) = shell_on("panel-unseen-counts", cx);
     let (panel, _) = reading_output(window, &shell, &root, cx);
     crate::sight::count_unseen(true);
     on_screen(window, false, cx);

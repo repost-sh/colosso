@@ -1,6 +1,7 @@
-//! ⌘L opens the launcher on the page the person is in: its address in the field, all of it
-//! selected, and a page or a search picked loads in that page. With no page in the tab it
-//! opens nothing, and in the Orca layout the keyboard goes to the page's own field.
+//! ⌘L, with the address bar in the sidebar, opens the launcher on the page the person is in:
+//! its address in the field, all of it selected, and a page or a search picked loads in that
+//! page. With the address bar in the page the keyboard goes to the page's own field instead.
+//! With no page in the tab it opens nothing.
 
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Entity, Focusable as _, TestAppContext, Window,
@@ -8,12 +9,12 @@ use gpui_kit::{
 
 use super::{Kind, Launcher, kind, launch, launch_with, shell};
 use crate::browser::BrowserView;
-use crate::files::tests::{dialog, press, tabs};
+use crate::files::tests::{dialog, tabs};
 use crate::history;
 use crate::model::{Edge, Pane, PaneKind};
-use crate::settings::{self, Layout};
+use crate::settings::{self, AddressBar};
 use crate::shell::Shell;
-use crate::test_support::{click_pane, draw, open_page};
+use crate::test_support::{click_pane, draw, open_page, press};
 
 const DOCS: &str = "https://www.example.com/docs?page=2";
 
@@ -33,15 +34,15 @@ fn open(
     (pane, view.expect("its page"))
 }
 
-/// A shell in `layout` over a checkout of its own, a browser tab at [`DOCS`] shown: the window,
-/// the shell, and the tab's pane and page.
+/// A shell with the address bar at `address_bar` over a checkout of its own, a browser tab at
+/// [`DOCS`] shown: the window, the shell, and the tab's pane and page.
 fn on_page(
     name: &str,
-    layout: Layout,
+    address_bar: AddressBar,
     cx: &mut TestAppContext,
 ) -> (AnyWindowHandle, Entity<Shell>, u64, Entity<BrowserView>) {
     let (window, shell, _) = shell(name, cx);
-    cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    cx.update(|cx| settings::update(cx, |settings| settings.address_bar = address_bar));
     let (pane, view) = open(window, &shell, DOCS, cx);
     (window, shell, pane, view)
 }
@@ -58,7 +59,7 @@ fn open_address(
 /// search row says, in the page.
 #[gpui_kit::test]
 fn words_typed_on_a_page_are_searched_for_with_the_engine_picked(cx: &mut TestAppContext) {
-    let (window, _, _, view) = on_page("launcher-search-engine", Layout::Arc, cx);
+    let (window, _, _, view) = on_page("launcher-search-engine", AddressBar::Sidebar, cx);
     let kagi = crate::browser::SearchEngine::Kagi;
     cx.update(|cx| settings::update(cx, |settings| settings.search_engine = kagi));
     let (launcher_window, launcher) = open_address(window, cx);
@@ -91,7 +92,7 @@ fn in_window<T>(
 
 #[gpui_kit::test]
 fn cmd_l_opens_the_launcher_on_the_page_and_what_is_typed_loads_in_it(cx: &mut TestAppContext) {
-    let (window, shell, pane, view) = on_page("launcher-address", Layout::Arc, cx);
+    let (window, shell, pane, view) = on_page("launcher-address", AddressBar::Sidebar, cx);
     let (launcher_window, launcher) = open_address(window, cx);
     assert_eq!(kind(&launcher, cx), Kind::Browser);
     assert_eq!(
@@ -153,7 +154,7 @@ fn offered(window: AnyWindowHandle, cx: &mut TestAppContext) -> (String, Kind) {
 
 #[gpui_kit::test]
 fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext) {
-    let (window, _, _, _) = on_page("launcher-address-dismissed", Layout::Arc, cx);
+    let (window, _, _, _) = on_page("launcher-address-dismissed", AddressBar::Sidebar, cx);
     let (launcher_window, _) = open_address(window, cx);
     press(launcher_window, "escape", cx);
     cx.run_until_parked();
@@ -193,10 +194,10 @@ fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext)
 
 #[gpui_kit::test]
 fn with_no_page_in_the_tab_cmd_l_opens_nothing(cx: &mut TestAppContext) {
-    let (window, shell, _, view) = on_page("launcher-address-none", Layout::Arc, cx);
+    let (window, shell, _, view) = on_page("launcher-address-none", AddressBar::Sidebar, cx);
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
-    for layout in [Layout::Arc, Layout::Orca] {
-        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    for address_bar in [AddressBar::Sidebar, AddressBar::Page] {
+        cx.update(|cx| settings::update(cx, |settings| settings.address_bar = address_bar));
         draw(window, cx);
         draw(window, cx);
         press(window, "cmd-l", cx);
@@ -213,7 +214,7 @@ fn with_no_page_in_the_tab_cmd_l_opens_nothing(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) {
-    let (window, shell, first, _) = on_page("launcher-address-split", Layout::Arc, cx);
+    let (window, shell, first, _) = on_page("launcher-address-split", AddressBar::Sidebar, cx);
     let (second, _) = open(window, &shell, "https://second.example/", cx);
     shell.update(cx, |shell, cx| {
         let unit = shell.workspace.branch_mut().expect("a checkout");
@@ -252,9 +253,13 @@ fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) 
     );
 }
 
+/// With the address bar in the page, ⌘L from anywhere in the tab puts the
+/// keyboard in the page's own field, its whole address there, and opens no launcher.
 #[gpui_kit::test]
-fn in_the_orca_layout_cmd_l_puts_the_keyboard_in_the_pages_own_field(cx: &mut TestAppContext) {
-    let (window, shell, _, view) = on_page("launcher-address-orca", Layout::Orca, cx);
+fn with_the_address_bar_in_the_page_cmd_l_puts_the_keyboard_in_the_pages_own_field(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell, _, view) = on_page("launcher-address-in-page", AddressBar::Page, cx);
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
     draw(window, cx);
     let chat = cx.read(|cx| {
@@ -270,12 +275,13 @@ fn in_the_orca_layout_cmd_l_puts_the_keyboard_in_the_pages_own_field(cx: &mut Te
         assert!(unit.drop_tab(1, beside, Edge::Left));
         cx.notify();
     });
+    draw(window, cx);
     click_pane(window, chat.expect("the chat's pane"), cx);
     press(window, "cmd-l", cx);
     cx.run_until_parked();
     assert!(
         dialog::<Launcher>(cx).is_none(),
-        "no launcher: the page has a field"
+        "no launcher, the page has a field"
     );
     let (editing, value) = in_window(window, cx, |window, cx| {
         let field = view.read(cx).address_field().read(cx);

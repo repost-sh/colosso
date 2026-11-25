@@ -12,7 +12,6 @@ use super::extensions::{extension, set};
 use super::host::Browsers;
 use crate::budget::{Built, built_after, built_during, ratchet, settle, within};
 use crate::model::Edge;
-use crate::settings::Layout;
 use crate::test_support::{center_of, draw, hover, open_page, open_page_view, shell_on};
 
 /// What a change to one page builds: its view, and one view more that draws from it.
@@ -47,14 +46,14 @@ fn acted(profile: &str, pane: Option<PaneId>, badge: &str) -> HostEvent {
     }
 }
 
-/// In the Arc layout the extensions' icons are in the sidebar's address bar, and a page's view
+/// With the address bar in the sidebar the extensions' icons are in it, and a page's view
 /// reads the engine's state. Two pages of a profile side by side: what the host says of the
 /// profile's extensions builds those two and the bar again when it changes them, and nothing
 /// when it says again what it said, as it does of every page; what it sets for one page builds
 /// that page's view and the bar, never the other page's.
 #[gpui_kit::test]
 fn what_the_host_says_of_extensions_builds_what_shows_them(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-extensions", Layout::Arc, cx);
+    let (window, shell, _) = shell_on("budget-extensions", cx);
     let first = open_page(window, &shell, Some("https://example.com/"), cx);
     let second = open_page(window, &shell, Some("https://example.org/"), cx);
     shell.update(cx, |shell, cx| {
@@ -88,7 +87,7 @@ fn what_the_host_says_of_extensions_builds_what_shows_them(cx: &mut TestAppConte
 /// twice, as GPUI draws it all again as a button with a click of its own is pressed and let go.
 #[gpui_kit::test]
 fn the_address_copied_builds_the_page_again_as_it_lights_and_goes_out(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell_on("budget-copy-link", Layout::Orca, cx);
+    let (window, shell, _) = shell_on("budget-copy-link", cx);
     open_page_view(window, &shell, "https://example.com/", cx);
     let button = center_of(window, "site-copy-link", cx);
     hover(window, button + point(px(1.), px(0.)), cx);
@@ -96,7 +95,7 @@ fn the_address_copied_builds_the_page_again_as_it_lights_and_goes_out(cx: &mut T
 
     let pressed = Built {
         shell: 2,
-        views: 24,
+        views: 22,
         frames: 2,
     };
     let press = |cx: &mut TestAppContext| {

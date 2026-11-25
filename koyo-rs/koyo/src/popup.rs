@@ -1,5 +1,5 @@
 //! The app's floating windows: menus and their panels (`menu.rs`), dialogs (`modal.rs`), the
-//! theme picker (`picker.rs`), the sidebar's hover cards (`arc/card.rs`) and the tab switcher's
+//! theme picker (`picker.rs`), the sidebar's hover cards (`shell/sidebar/card.rs`) and the tab switcher's
 //! panel (`shell/switcher.rs`). Each is a glass window over the window it belongs to, opened
 //! here, one of each kind up at a time, and they all float and go the same way:
 //!

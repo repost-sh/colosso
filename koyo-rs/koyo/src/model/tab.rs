@@ -5,7 +5,7 @@
 use gpui_kit::{App, Entity};
 use serde::{Deserialize, Serialize};
 
-use super::{Content, Pane};
+use super::Pane;
 use crate::files::{FileEditor, FilePane};
 
 /// How a split lays its two sides out. The window's file keeps it by these names
@@ -183,12 +183,6 @@ impl Tab {
     /// Whether a pane of it shows terminal `id`.
     pub fn shows_terminal(&self, id: u64) -> bool {
         self.any_pane(&|pane| pane.terminal() == Some(id))
-    }
-
-    /// Whether a pane of it is a page, which the window shows in a native view over all it
-    /// draws itself but its overlays.
-    pub fn shows_page(&self) -> bool {
-        self.any_pane(&|pane| matches!(pane.content, Content::Browser(_)))
     }
 
     pub fn has_pane(&self, id: u64) -> bool {

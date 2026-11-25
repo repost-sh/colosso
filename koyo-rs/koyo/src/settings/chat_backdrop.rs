@@ -78,8 +78,6 @@ pub enum Surface {
     Chat,
     /// The right panel's file tree and its list of changed files.
     Explorer,
-    /// The Orca layout's sidebar.
-    Sidebar,
     Files,
     Diff,
     Terminal,
@@ -97,7 +95,6 @@ pub enum Surface {
 pub struct Surfaces {
     pub chat: bool,
     pub explorer: bool,
-    pub sidebar: bool,
     pub files: bool,
     pub diff: bool,
     pub terminal: bool,
@@ -109,7 +106,6 @@ impl Default for Surfaces {
         Surfaces {
             chat: true,
             explorer: true,
-            sidebar: true,
             files: true,
             diff: true,
             terminal: true,
@@ -120,10 +116,9 @@ impl Default for Surfaces {
 
 impl Surface {
     /// In the order Settings shows their switches.
-    pub const ALL: [Surface; 7] = [
+    pub const ALL: [Surface; 6] = [
         Surface::Chat,
         Surface::Explorer,
-        Surface::Sidebar,
         Surface::Files,
         Surface::Diff,
         Surface::Terminal,
@@ -142,11 +137,6 @@ impl Surface {
                 "chat-backdrop-explorer",
                 "Explorers",
                 "Behind the file tree and the list of changed files.",
-            ),
-            Surface::Sidebar => (
-                "chat-backdrop-sidebar",
-                "Sidebar",
-                "Behind the Orca layout's sidebar.",
             ),
             Surface::Files => ("chat-backdrop-files", "Files", "Behind an open file."),
             Surface::Diff => ("chat-backdrop-diff", "Diffs", "Behind a checkout's diffs."),
@@ -170,7 +160,6 @@ impl Surfaces {
         match surface {
             Surface::Chat => &mut self.chat,
             Surface::Explorer => &mut self.explorer,
-            Surface::Sidebar => &mut self.sidebar,
             Surface::Files => &mut self.files,
             Surface::Diff => &mut self.diff,
             Surface::Terminal => &mut self.terminal,

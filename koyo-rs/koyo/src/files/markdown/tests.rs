@@ -7,11 +7,11 @@ use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, SharedString, Test
 use super::diagram::{self, Card, Diagram, Look};
 use super::mermaid::is_mermaid;
 use super::{MarkdownPreview, Mode, SetMarkdownOpensAs, is_markdown};
-use crate::files::tests::{checkout, editing, press, shell_showing, typed, with_shell};
+use crate::files::tests::{checkout, editing, shell_showing, typed, with_shell};
 use crate::files::{At, Place};
 use crate::settings;
 use crate::shell::Shell;
-use crate::test_support::{draw, write};
+use crate::test_support::{draw, press, write};
 use crate::theme;
 
 const FLOW: &str = "flowchart LR\n    Code --> Preview\n";

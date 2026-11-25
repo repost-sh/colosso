@@ -1,4 +1,4 @@
-//! The loose pages as the window keeps them (`docs/arc-sidebar.md` 11, `docs/browser.md` 2): in
+//! The loose pages as the window keeps them (`docs/sidebar.md` 11, `docs/browser.md` 2): in
 //! the order of their rows, by the id of the space each is filed under, each page by the address
 //! it showed, its title and the project whose profile it keeps, with the one each space showed.
 //! They're open tabs like a checkout's, so they're in the window's file, and come back as it's

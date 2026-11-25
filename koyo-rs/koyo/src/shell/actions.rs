@@ -1,19 +1,21 @@
 //! The window's actions: those the shell answers itself, their keys, and the handlers on
 //! the window's root that hear them wherever the keyboard is.
 
+use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, Div, InteractiveElement as _, KeyBinding, KeyContext, ModifiersChangedEvent,
-    MouseButton, NavigationDirection, ParentElement as _, Window, actions,
+    MouseButton, MouseDownEvent, NavigationDirection, ParentElement as _, Window, actions,
 };
 
-use super::{Shell, switcher};
+use super::layout_menus::layout_items;
+use super::{Shell, shown_page, spaces, switcher, with_menu};
 use crate::files;
 use crate::model::PaneKind;
 use crate::model::SettingsTab;
 use crate::navigation::{CloseSettings, GoBack, GoForward};
 use crate::projects::{self, NewWorktree};
-use crate::settings::{self, Layout};
+use crate::settings;
 use crate::settings_view::{
     self, ClearClaudePath, EditBranchPrefix, EditClaudePath, EditPagesOpenAt, ShowPage,
 };
@@ -23,7 +25,6 @@ actions!(
     koyo,
     [
         ToggleSidebar,
-        ToggleSidebarMode,
         ToggleRightPanel,
         ToggleBottomPanel,
         NewChat,
@@ -43,28 +44,20 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-alt-b", ToggleRightPanel, None),
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
-        KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
         KeyBinding::new("alt-cmd-l", browser::ToggleDownloads, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
         KeyBinding::new("cmd-w", CloseTab, None),
         KeyBinding::new("ctrl-tab", SwitchTab, None),
         KeyBinding::new("ctrl-shift-tab", SwitchTabBack, None),
     ]);
-    cx.on_action(|_: &ToggleSidebarMode, cx| {
-        settings::update(cx, |settings| settings.layout = settings.layout.other());
-    });
 }
 
 impl Shell {
     /// The key context of the window's root: the settings' while the Settings tab is shown, else
-    /// the spaces' where the Arc sidebar shows them (`arc::bind_keys`).
-    pub(super) fn root_keys(settings: bool, layout: Layout) -> KeyContext {
+    /// the spaces' (`spaces::bind_keys`).
+    pub(super) fn root_keys(settings: bool) -> KeyContext {
         let mut keys = KeyContext::default();
-        match (settings, layout) {
-            (true, _) => keys.add("Settings"),
-            (false, Layout::Arc) => keys.add(crate::arc::SPACES),
-            (false, Layout::Orca) => {}
-        }
+        keys.add(if settings { "Settings" } else { spaces::SPACES });
         keys
     }
 
@@ -127,7 +120,8 @@ impl Shell {
             }))
             .map(|root| Self::handle_launcher(root, cx))
             .map(|root| projects::handle_actions(root, cx))
-            .map(|root| crate::arc::handle_actions(root, cx))
+            .map(|root| spaces::handle_actions(root, cx))
+            .map(|root| shown_page::handle_actions(root, cx))
             .map(|root| Self::handle_pinned(root, cx))
             .map(|root| crate::chat::heard_at_window(root, cx))
             .map(browser::handle_actions)
@@ -148,9 +142,14 @@ impl Shell {
             .child(Self::hearing_let_go(cx))
             .child(crate::popup::listener())
             .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
-                picker::open(this.rails_menu_at, window, cx);
+                picker::open(this.right_clicked_at, window, cx);
             }))
-            .on_mouse_down(MouseButton::Right, cx.listener(Self::show_rails_menu))
+            .capture_any_mouse_down(cx.listener(|this, event: &MouseDownEvent, _, _| {
+                if event.button == MouseButton::Right {
+                    this.right_clicked_at = event.position;
+                }
+            }))
+            .map(|root| with_menu(root, |_, cx| layout_items(NativeMenu::new(), cx)))
     }
 }
 

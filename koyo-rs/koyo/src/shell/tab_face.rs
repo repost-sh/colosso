@@ -22,8 +22,8 @@ use crate::theme::Palette;
 
 /// The widest a chip of a split gets in the strip.
 const CHIP_MAX: f32 = 180.;
-/// How round the corners of a page's own icon are, wherever a tab shows it: a row down the Arc
-/// sidebar, a tab along Orca's strip, a pinned page's tile.
+/// How round the corners of a page's own icon are, wherever a tab shows it: a row down the
+/// sidebar, a tab along the top rail, a pinned page's tile.
 pub const FAVICON_CORNERS: f32 = 2.;
 
 /// What a pane shows as in a tab: its icon, or its page's own, and its title.
@@ -127,7 +127,7 @@ pub fn split_chips(faces: &[Face], axis: Axis, p: Palette, cx: &mut Context<Shel
         .children(chips)
 }
 
-/// A split tab's panes down the sidebar, as Arc has them (`docs/arc-sidebar.md` 5).
+/// A split tab's panes down the sidebar, as Arc has them (`docs/sidebar.md` 5).
 fn split_halves(faces: &[Face], p: Palette, cx: &mut Context<Shell>) -> Div {
     let mut parts: Vec<AnyElement> = Vec::new();
     for (at, face) in faces.iter().enumerate() {

@@ -391,8 +391,8 @@ start on the divider and then up to forty jumps of 1 to 400 points on whole poin
 points and anywhere between, a move every 1 to 33 ms, and after each the views' frames, the
 picture's layer and the size the page itself reports checked against the pane (`pages`,
 `fit.sh`), 485 drags in all: the tools' divider docked at the bottom (210), right (90, 25 of
-them in the Orca layout) and left (40), and a split's divider between two pages side by side
-(85, 25 of them on Orca's hairline) and one above the other (60); and 30 bursts of odd split
+them with the tabs on the top rail) and left (40), and a split's divider between two pages side by side
+(85, 25 of them on the top rail's hairline) and one above the other (60); and 30 bursts of odd split
 ratios and window sizes. No page was off its pane. The tools opened, closed and moved between
 every side and a pane of their own, from their own controls and from Koyo's setting, fitted
 each time. Before the fix the first drag onto a half point failed the
@@ -430,6 +430,15 @@ after: fourteen on a split's gap, twelve on the tools' divider docked at the rig
 on the build without the tracing, first moves of 12 to 60 points both ways, each landing on
 the point expected.
 
+*Where there's no page any more.* A page's view goes from the window once the frame that stopped
+drawing it is drawn, and nothing draws the window again for that. The frame had noted the page all
+the same, and what it noted stood until the next: back on a chat from a page's tab, the chat was
+drawn and the pointer found nothing of it where the page had been. The first press there did
+nothing, whatever it had drawn again made the second work, and anything else that drew the window
+in between hid it. GPUI keeps of a frame how its surfaces are stacked and what hitboxes each has;
+where a native view is, and whether it's there, it asks the composition at each of the pointer's
+events, as at the end of a prepaint (`vendor/gpui-fast`, `fast/composition.rs`, `hit_test`).
+
 Before these, a hit region over the whole window was put up on a seam's press, drawn at once
 (commit 455480ba2). It raced the pointer's first move and treated neither cause; it's gone.
 
@@ -453,8 +462,8 @@ frame in `native::place`):
   that run only, not placement's.
 
 So placing stays in prepaint. Its work on a moved frame is the resize Chromium needs in that
-frame wherever it's asked from, and moved to paint it would only note the page where it was
-a frame before. The window was resized rather than a divider dragged because a window on the
+frame wherever it's asked from, and moved to paint it would only have the frame painted by where
+the page was a frame before. The window was resized rather than a divider dragged because a window on the
 agent desktop is drawn only on the probe's tick: drags of a split's divider of 121 and 31
 moves drew one and two frames.
 

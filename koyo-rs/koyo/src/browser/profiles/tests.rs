@@ -5,7 +5,6 @@ use gpui_kit::TestAppContext;
 use super::*;
 use crate::blocking::in_test;
 use crate::browser::NO_PROJECT;
-use crate::spaces::ProjectLook;
 use crate::test_support::scratch;
 
 fn paths(projects: &[&str]) -> Vec<PathBuf> {
@@ -97,29 +96,22 @@ fn a_profile_deleted_puts_its_projects_on_default() {
 #[test]
 fn each_projects_own_profile_is_brought_over_with_its_sign_ins() {
     let projects = paths(&["/work/colosso", "/work/agents", "/work/named"]);
-    let looks = ProjectLooks::from([(
-        PathBuf::from("/work/named"),
-        ProjectLook {
-            name: Some("Client site".into()),
-            ..ProjectLook::default()
-        },
-    )]);
     let colosso = own(Path::new("/work/colosso"));
     let named = own(Path::new("/work/named"));
     let kept = [colosso.clone(), named.clone(), DEFAULT.into()];
     let mut profiles = Profiles::default();
-    profiles.bring_over(&projects, &looks, |id| kept.iter().any(|kept| kept == id));
+    profiles.bring_over(&projects, |id| kept.iter().any(|kept| kept == id));
     assert_eq!(profiles.of(Path::new("/work/colosso")), colosso);
     assert_eq!(profiles.name(&colosso), "colosso");
     assert_eq!(profiles.of(Path::new("/work/named")), named);
-    assert_eq!(profiles.name(&named), "Client site");
+    assert_eq!(profiles.name(&named), "named");
     assert_eq!(profiles.of(Path::new("/work/agents")), DEFAULT);
     assert_eq!(profiles.made.len(), 2);
     profiles.set(Path::new("/work/colosso"), DEFAULT);
     profiles
         .projects
         .insert("/work/colosso".into(), named.clone());
-    profiles.bring_over(&projects, &looks, |_| true);
+    profiles.bring_over(&projects, |_| true);
     assert_eq!(profiles.of(Path::new("/work/colosso")), named);
 }
 

@@ -7,8 +7,8 @@ at once and is saved to `settings.json`, and an edit of that file applies within
 ## Sub-features
 
 - `settings-open`: each page opens, and the Settings tab shows it.
-- `settings-change`: a change on a page (appearance, layout, preview files…) applies to the
-  window and lands in `settings.json`.
+- `settings-change`: a change on a page (appearance, Tabs and Address bar, preview files…)
+  applies to the window and lands in `settings.json`.
 - `settings-agent`: `settings_get` / `settings_set` read and change the settings agents may
   change.
 - `settings-file`: an edit of `settings.json` from outside applies while the app runs.
@@ -40,9 +40,10 @@ Preconditions: the baseline. The test settings are `.superpowers/v/c/settings.js
 
 ## Gotchas
 
-- On disk the keys are Rust's snake_case names (`agent_desktop`, `on_quit`, `worktrees_dir`),
-  with camelCase inside `externalControl` and `accounts`. `settings_set` takes camelCase
-  (`sidebarWidth`, `previewFiles`).
+- On disk the keys are Rust's snake_case names (`agent_desktop`, `on_quit`, `worktrees_dir`,
+  `address_bar`), with camelCase inside `externalControl` and `accounts`. The layout's values are
+  `"TopRail"` / `"Sidebar"` for `tabs`, `"Sidebar"` / `"Page"` for `address_bar`. `settings_set`
+  takes camelCase (`sidebarWidth`, `previewFiles`).
 - A file that doesn't parse is dropped whole, and the app runs on defaults (external control
   off, accounts managed, the agent desktop's switch at its default). Never break the test
   file by hand: check every edit with `jq . file` before you save it.

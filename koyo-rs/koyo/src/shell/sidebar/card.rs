@@ -1,0 +1,254 @@
+//! What the sidebar shows of something hovered (`docs/sidebar.md` 4, 11): a pinned
+//! page's card by its tile, its icon, title and host; or a space's name over its dot. A tile's
+//! card is under it, or over it where there's no room under. It's
+//! on glass, a blurred window of its own tinted as the launcher's is, so it reads as the launcher
+//! and the menus do over whatever the window shows. It never takes the keyboard, fades in as it
+//! comes, and goes when the pointer leaves what it's about, the window goes to the back, or
+//! another opens.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use gpui_kit::assets::IconName;
+use gpui_kit::{
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Div, FontWeight, Image,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled, TextStyle, Window, div,
+    ease_out_quint, img, point, px, size,
+};
+
+use crate::popup::{self, Kind, Opening};
+use crate::theme::{self, Palette};
+
+/// How long a card takes to fade in.
+const FADE: Duration = Duration::from_millis(160);
+/// A card's width, and the room round what it says.
+const CARD_WIDTH: f32 = 272.;
+const PADDING: f32 = 14.;
+/// The picture at a card's head, which its title and host sit beside.
+const PICTURE: f32 = 32.;
+/// A pinned page's card: its head alone.
+const PAGE_HEIGHT: f32 = 2. * PADDING + PICTURE;
+/// A space's name over its dot: its height, the room either side of the name, and its text's
+/// size.
+const LABEL_HEIGHT: f32 = 28.;
+const LABEL_PADDING: f32 = 12.;
+const LABEL_TEXT: f32 = 12.;
+/// Between what a card is about and the card.
+const OFFSET: f32 = 6.;
+
+/// What a card shows.
+#[derive(Clone, PartialEq)]
+pub enum Card {
+    /// A pinned page, by its tile at the sidebar's head.
+    Page(PageCard),
+    /// A space's name, by a dot in the text's colour, as its mark is.
+    Space(SharedString),
+}
+
+/// A pinned page as its card says it.
+#[derive(Clone)]
+pub struct PageCard {
+    pub title: SharedString,
+    /// Its address's host, or the whole of an address that has none.
+    pub host: SharedString,
+    /// Its site's icon, or a globe while it has none.
+    pub icon: Option<Arc<Image>>,
+}
+
+impl PartialEq for PageCard {
+    /// The same card while it says the same of the same icon.
+    fn eq(&self, other: &Self) -> bool {
+        let icon = |card: &PageCard| card.icon.as_ref().map(Arc::as_ptr);
+        (&self.title, &self.host, icon(self)) == (&other.title, &other.host, icon(other))
+    }
+}
+
+/// Shows `card` about what's at `anchor` in `parent`: a pinned page's under it, a space's name
+/// over it, both kept on the window. One that shows the same already stays.
+pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut App) {
+    if popup::root::<Surface>(Kind::Card, cx).is_some_and(|shown| shown.card == card) {
+        return;
+    }
+    let (width, height) = match &card {
+        Card::Page(_) => (CARD_WIDTH, PAGE_HEIGHT),
+        Card::Space(name) => (label_width(name_width(name, parent)), LABEL_HEIGHT),
+    };
+    let within = parent.bounds();
+    let under = anchor.bottom() + px(OFFSET);
+    let fits = under + px(height) <= within.size.height;
+    let beside = if fits {
+        under
+    } else {
+        anchor.top() - px(height + OFFSET)
+    };
+    let at = match &card {
+        Card::Page(_) => point(anchor.left(), beside),
+        Card::Space(_) => point(
+            anchor.center().x - px(width / 2.),
+            anchor.top() - px(height + OFFSET),
+        ),
+    };
+    let at = point(
+        at.x.clamp(px(0.), (within.size.width - px(width)).max(px(0.))),
+        at.y.clamp(px(0.), (within.size.height - px(height)).max(px(0.))),
+    );
+    let bounds = Bounds::new(within.origin + at, size(px(width), px(height)));
+    let opening = Opening {
+        kind: Kind::Card,
+        bounds,
+        kept: false,
+        source: None,
+    };
+    popup::open(opening, parent, cx, |_, _| Surface { card });
+}
+
+/// Puts the card away, if one's up.
+pub fn hide(cx: &mut App) {
+    popup::close(Kind::Card, cx);
+}
+
+/// The card that's up, if one is.
+#[cfg(test)]
+pub fn shown(cx: &App) -> Option<Card> {
+    let surface = popup::root::<Surface>(Kind::Card, cx)?;
+    Some(surface.card.clone())
+}
+
+/// Whether a card's up, so the next one shows at once rather than after a wait.
+pub fn is_shown(cx: &App) -> bool {
+    popup::window(Kind::Card, cx).is_some()
+}
+
+/// How wide a space's name is drawn on its label, measured as the label is sized, before it's
+/// drawn, in the window's own text.
+fn name_width(name: &SharedString, window: &Window) -> Pixels {
+    let style = TextStyle {
+        font_weight: FontWeight::MEDIUM,
+        ..TextStyle::default()
+    };
+    let run = style.to_run(name.len());
+    (window.text_system())
+        .shape_line(name.clone(), px(LABEL_TEXT), &[run], None)
+        .width
+}
+
+/// How wide a label is for a name `name` wide: the name, its dot and the room round them,
+/// within reason.
+fn label_width(name: Pixels) -> f32 {
+    (name.as_f32() + 2. * LABEL_PADDING + 14.).clamp(64., 240.)
+}
+
+/// The glass a card sits on, and what it shows.
+struct Surface {
+    card: Card,
+}
+
+impl Render for Surface {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::palette(cx);
+        let content = match &self.card {
+            Card::Page(page) => page_card(page, p).into_any_element(),
+            Card::Space(name) => space_label(name, p).into_any_element(),
+        };
+        div()
+            .size_full()
+            .bg(p.menu)
+            .text_color(p.text)
+            .child(content)
+            .with_animation(
+                "sidebar-card-in",
+                Animation::new(FADE).with_easing(ease_out_quint()),
+                Styled::opacity,
+            )
+    }
+}
+
+/// A card's head: `picture`, and beside it `name` over `under`, which is cut short with an
+/// ellipsis.
+fn head(picture: AnyElement, (name, under): (SharedString, SharedString), p: Palette) -> Div {
+    let line = div()
+        .text_xs()
+        .text_color(p.muted)
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_ellipsis();
+    div()
+        .h(px(PICTURE))
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .child(div().flex_shrink_0().child(picture))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .truncate()
+                        .child(name),
+                )
+                .child(line.child(under)),
+        )
+}
+
+/// A pinned page's card: its site's icon, or while it has none a globe on a tinted square, and
+/// beside it its title over its host.
+fn page_card(page: &PageCard, p: Palette) -> Div {
+    let picture = match &page.icon {
+        Some(icon) => img(icon.clone())
+            .size(px(PICTURE))
+            .rounded(px(8.))
+            .into_any_element(),
+        None => div()
+            .size(px(PICTURE))
+            .rounded(px(8.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(p.hover)
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(p.muted)
+            .child(crate::shell::icon(IconName::Globe, 16.))
+            .into_any_element(),
+    };
+    let says = (page.title.clone(), page.host.clone());
+    div()
+        .size_full()
+        .overflow_hidden()
+        .p(px(PADDING))
+        .child(head(picture, says, p))
+}
+
+fn space_label(name: &SharedString, p: Palette) -> Div {
+    div()
+        .size_full()
+        .px(px(LABEL_PADDING))
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap(px(7.))
+        .text_size(px(LABEL_TEXT))
+        .font_weight(FontWeight::MEDIUM)
+        .child(crate::pane::dot(p.text))
+        .child(div().truncate().text_color(p.text).child(name.clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::px;
+
+    use super::label_width;
+
+    #[test]
+    fn a_label_fits_its_name_within_reason() {
+        assert!(label_width(px(10.)) >= 64.);
+        assert!(label_width(px(1000.)) <= 240.);
+        assert!(label_width(px(80.)) > label_width(px(20.)));
+    }
+}

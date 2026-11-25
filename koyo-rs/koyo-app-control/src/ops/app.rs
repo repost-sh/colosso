@@ -1,10 +1,10 @@
-//! The app and its window: status, focus, layout and panels, the settings pages; and the
+//! The app and its window: status, focus, the panels, the settings pages; and the
 //! relay's own `app_launch`, which answers without the app.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::shared::{Layout, NoInput, PaneId};
+use super::shared::{NoInput, PaneId};
 use crate::{Hints, Operation, Scope};
 
 /// The stdio relay's own tool, answered without the app and so not in the
@@ -78,12 +78,10 @@ pub struct McpStatus {
     pub url: Option<String>,
 }
 
-/// The window's layout and panels.
+/// The window's panels.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutState {
-    /// `orca` or `arc`.
-    pub layout: Layout,
     /// Whether the sidebar is open.
     pub sidebar_open: bool,
     /// The panel open on the right, or null.
@@ -112,8 +110,6 @@ pub struct AppStatusOutput {
     pub on_screen: bool,
     /// What the window shows: `workspace`, or `settings:<page>`.
     pub route: String,
-    /// `orca` or `arc`.
-    pub layout: Layout,
     /// Whether the sidebar is open.
     pub sidebar_open: bool,
     /// The panel open on the right, or null.
@@ -154,7 +150,7 @@ impl Operation for AppStatus {
     const NAME: &'static str = "app_status";
     const TITLE: &'static str = "Read app status";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "What Koyo's window shows: its version, whether the window is open, focused and on screen (not minimized or on another desktop), the route (workspace or a settings page), layout and panels, the selected project, worktree and pane, the MCP server's address and the data folder. Start here.";
+    const DESCRIPTION: &'static str = "What Koyo's window shows: its version, whether the window is open, focused and on screen (not minimized or on another desktop), the route (workspace or a settings page), the panels, the selected project, worktree and pane, the MCP server's address and the data folder. Start here.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = AppStatusOutput;
@@ -195,21 +191,18 @@ pub struct LayoutSetInput {
     /// Open (true) or close (false) the bottom panel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bottom_panel: Option<bool>,
-    /// The window's layout: `orca` or `arc`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layout: Option<Layout>,
 }
 
-/// `layout_set`: the layout and panels.
+/// `layout_set`: the panels.
 #[derive(Debug)]
 pub struct LayoutSet;
 
 impl Operation for LayoutSet {
     const NAME: &'static str = "layout_set";
     const TITLE: &'static str = "Set the layout";
-    const SUBJECT: &'static [&'static str] = &["layout", "rightPanel"];
+    const SUBJECT: &'static [&'static str] = &["rightPanel"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Opens or closes the sidebar, the selected worktree's right panel (changes or files; each worktree keeps its own, and with no worktree selected there is none) and the bottom panel, and switches the layout between orca and arc. Fields left out stay as they are.";
+    const DESCRIPTION: &'static str = "Opens or closes the sidebar, the selected worktree's right panel (changes or files; each worktree keeps its own, and with no worktree selected there is none) and the bottom panel. Fields left out stay as they are.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = LayoutSetInput;
     type Output = LayoutState;
@@ -221,11 +214,7 @@ impl Operation for LayoutSet {
             None => "no",
         };
         format!(
-            "Layout {}: sidebar {}, {right} right panel, bottom panel {}",
-            match output.layout {
-                Layout::Orca => "orca",
-                Layout::Arc => "arc",
-            },
+            "Sidebar {}, {right} right panel, bottom panel {}",
             if output.sidebar_open {
                 "open"
             } else {

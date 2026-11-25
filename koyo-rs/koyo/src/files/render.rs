@@ -23,13 +23,13 @@ use super::panel::FilesPanel;
 use super::{file_label, icons};
 use crate::changes::{Mark, Marks};
 use crate::modal::spinner;
-use crate::projects::{CopyPath, RevealInFinder, with_menu};
+use crate::projects::{CopyPath, RevealInFinder};
 use crate::right_panel::{
     Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
     SelectNext, SelectPrevious, note, panel_header, title,
 };
 use crate::settings::{self, SetPreviewFiles};
-use crate::shell::{ellipsized, icon, icon_button, row};
+use crate::shell::{ellipsized, icon, icon_button, row, with_menu};
 use crate::theme::{self, Palette};
 
 /// A row's height: tighter than the sidebar's, as a tree shows many.

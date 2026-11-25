@@ -472,12 +472,12 @@ Global `Popups { up: HashMap<Kind, Up>, showing: HashMap<AnyWindowHandle, u64> }
 
 | API | Callers (files) |
 | --- | --- |
-| `pub fn open<V: Render>(opening: Opening, parent: &mut Window, cx, build) -> Option<WindowHandle<V>>` | picker.rs:101, modal.rs:171, menu.rs:326, shell/switcher.rs:126, arc/card.rs:135 |
+| `pub fn open<V: Render>(opening: Opening, parent: &mut Window, cx, build) -> Option<WindowHandle<V>>` | picker.rs:101, modal.rs:171, menu.rs:326, shell/switcher.rs:126, shell/sidebar/card.rs:135 |
 | `pub fn show(window: &mut Window, cx)` | shell/switcher.rs:210 |
-| `pub fn window(kind, cx) -> Option<AnyWindowHandle>` | modal.rs:201, menu.rs:345, 347, shell/switcher.rs:81, arc/card.rs:152 (and tests, visual checks) |
-| `pub fn root<V>(kind, cx) -> Option<&V>` | modal.rs:194, shell/switcher.rs:255, arc/card.rs:100, 146 |
+| `pub fn window(kind, cx) -> Option<AnyWindowHandle>` | modal.rs:201, menu.rs:345, 347, shell/switcher.rs:81, shell/sidebar/card.rs:152 (and tests, visual checks) |
+| `pub fn root<V>(kind, cx) -> Option<&V>` | modal.rs:194, shell/switcher.rs:255, shell/sidebar/card.rs:100, 146 |
 | `pub fn opened_from(kind, cx) -> Option<ElementId>` | menu.rs:156 |
-| `pub fn close(kind, cx)` | picker.rs:116, modal.rs:189, menu.rs:242, shell/switcher.rs:134, 217, accounts/panel.rs:299, arc/card.rs:140 |
+| `pub fn close(kind, cx)` | picker.rs:116, modal.rs:189, menu.rs:242, shell/switcher.rs:134, 217, accounts/panel.rs:299, shell/sidebar/card.rs:140 |
 | `pub fn close_from_inside(window, cx)` | modal.rs:206, browser/site/prompt.rs:98 |
 | `pub fn listener() -> impl IntoElement` | shell/actions.rs:155 |
 | `pub fn pressed(over, position, cx)` | menu.rs:136 (and `listener`) |

@@ -1,24 +1,26 @@
-//! The Settings tab (`docs/arc-sidebar.md` 11.9): ⌘, opens it among the loose tabs, or picks
-//! it again; the workspace sidebar stays beside it in either layout, its own pages listed inside
-//! it at its left, with no arrow back; its pages switch inside it, Back and Forward walking
-//! them; and going to another tab or a worktree closes it, as its × does.
+//! The Settings tab (`docs/sidebar.md` 11.9): ⌘, opens it among the loose tabs, or picks
+//! it again; the workspace sidebar stays beside it wherever the tabs are, its own pages listed
+//! inside it at its left, with no arrow back; its pages switch inside it, Back and Forward
+//! walking them; and going to another tab or a worktree closes it, as its × does.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{AnyWindowHandle, Bounds, Entity, Pixels, TestAppContext, px};
 
-use crate::files::tests::press;
 use crate::model::{PaneKind, SettingsTab};
 use crate::navigation::SettingsPage;
-use crate::settings::Layout;
+use crate::settings::{self, Tabs};
 use crate::shell::Shell;
-use crate::test_support::{click, draw, drawn, open_page, shell_on};
+use crate::test_support::{click, draw, drawn, open_page, press, shell_on};
 use crate::theme::TITLE_BAR_HEIGHT;
 
-/// The shell in `layout` on a checkout whose one tab is a chat, motion reduced so what moves is
-/// where it goes at once.
-fn chat_shell(name: &str, layout: Layout, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
-    let (window, shell, _) = shell_on(name, layout, cx);
-    cx.update(|cx| cx.set_reduce_motion(true));
+/// The shell with the tabs where `tabs` puts them, on a checkout whose one tab is a chat, motion
+/// reduced so what moves is where it goes at once.
+fn chat_shell(name: &str, tabs: Tabs, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
+    let (window, shell, _) = shell_on(name, cx);
+    cx.update(|cx| {
+        settings::update(cx, |settings| settings.tabs = tabs);
+        cx.set_reduce_motion(true);
+    });
     shell.update(cx, |shell, cx| {
         shell.workspace.new_tab(PaneKind::Chat);
         cx.notify();
@@ -27,17 +29,18 @@ fn chat_shell(name: &str, layout: Layout, cx: &mut TestAppContext) -> (AnyWindow
     (window, shell)
 }
 
-/// The Settings tab's row in `layout`'s list of loose tabs, and its ×.
-fn tab_of(layout: Layout) -> (&'static str, &'static str) {
-    match layout {
-        Layout::Orca => ("orca-settings-tab", "orca-settings-tab-close"),
-        Layout::Arc => ("arc-settings-tab", "arc-settings-tab-close"),
+/// The Settings tab's row among the loose tabs where `tabs` puts them, and its ×.
+fn tab_of(tabs: Tabs) -> (&'static str, &'static str) {
+    match tabs {
+        Tabs::TopRail => ("rail-settings-tab", "rail-settings-tab-close"),
+        Tabs::Sidebar => ("sidebar-settings-tab", "sidebar-settings-tab-close"),
     }
 }
 
-/// Where the Settings tab's row is drawn in `window`, if it is.
-fn settings_tab(window: AnyWindowHandle, layout: Layout, cx: &mut TestAppContext) -> Option<Bounds<Pixels>> {
-    drawn(window, tab_of(layout).0, cx)
+/// Where the Settings tab's row is drawn in `window`, if it is, with the tabs where `tabs` puts
+/// them.
+fn settings_tab(window: AnyWindowHandle, tabs: Tabs, cx: &mut TestAppContext) -> Option<Bounds<Pixels>> {
+    drawn(window, tab_of(tabs).0, cx)
 }
 
 /// Opens Settings as ⌘, does.
@@ -55,13 +58,13 @@ fn on_general(window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
 const APPEARANCE: &str = "settings-page-link-5";
 
 #[gpui_kit::test]
-fn settings_opens_as_one_loose_tab_in_the_orca_rail_and_opening_it_again_picks_it(
+fn settings_opens_as_one_loose_tab_in_the_top_rail_and_opening_it_again_picks_it(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell) = chat_shell("settings-tab-orca-open", Layout::Orca, cx);
-    assert!(settings_tab(window, Layout::Orca, cx).is_none());
+    let (window, shell) = chat_shell("settings-tab-rail-open", Tabs::TopRail, cx);
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_none());
     open_settings(window, cx);
-    let tab = settings_tab(window, Layout::Orca, cx).expect("the Settings tab in the rail");
+    let tab = settings_tab(window, Tabs::TopRail, cx).expect("the Settings tab in the rail");
     let page = |cx: &TestAppContext| {
         cx.read(|cx| shell.read(cx).workspace.settings().map(SettingsTab::page))
     };
@@ -71,7 +74,7 @@ fn settings_opens_as_one_loose_tab_in_the_orca_rail_and_opening_it_again_picks_i
         (IconName::Settings, "Settings"),
         "the icon pack's gear, where a page's own icon goes"
     );
-    let hairline = drawn(window, "orca-rail-separator", cx).expect("the rail's hairline");
+    let hairline = drawn(window, "rail-separator", cx).expect("the rail's hairline");
     let chat = drawn(window, "tab-0-0-0", cx).expect("the chat's tab");
     assert!(tab.top() >= px(0.) && tab.bottom() <= px(TITLE_BAR_HEIGHT));
     assert!(tab.right() <= hairline.left() && hairline.right() <= chat.left(), "{tab:?} {hairline:?} {chat:?}");
@@ -79,37 +82,39 @@ fn settings_opens_as_one_loose_tab_in_the_orca_rail_and_opening_it_again_picks_i
     click(window, APPEARANCE, cx);
     assert!(!on_general(window, cx), "Appearance shows");
     open_settings(window, cx);
-    assert!(settings_tab(window, Layout::Orca, cx).is_some());
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some());
     assert!(!on_general(window, cx), "the tab open is picked, on the page it showed");
     assert_eq!(page(cx), Some(SettingsPage::Appearance), "still the one tab");
 }
 
 #[gpui_kit::test]
-fn settings_opens_as_one_loose_tab_in_the_arc_sidebar(cx: &mut TestAppContext) {
-    let (window, _shell) = chat_shell("settings-tab-arc-open", Layout::Arc, cx);
+fn settings_opens_as_one_loose_tab_in_the_sidebar(cx: &mut TestAppContext) {
+    let (window, _shell) = chat_shell("settings-tab-sidebar-open", Tabs::Sidebar, cx);
     open_settings(window, cx);
-    let tab = settings_tab(window, Layout::Arc, cx).expect("the Settings tab in the sidebar");
-    let sidebar = drawn(window, "arc-sidebar", cx).expect("the Arc sidebar");
+    let tab = settings_tab(window, Tabs::Sidebar, cx).expect("the Settings tab in the sidebar");
+    let sidebar = drawn(window, "sidebar", cx).expect("the sidebar");
     assert!(sidebar.contains(&tab.center()), "{tab:?} in {sidebar:?}");
-    let project = drawn(window, "arc-project-name", cx).expect("the project's name");
-    assert!(tab.bottom() <= project.top(), "over the open project, as loose tabs are");
+    let project = drawn(window, "sidebar-project-0", cx).expect("the project's row");
+    assert!(tab.bottom() <= project.top(), "over the projects, as loose tabs are");
 }
 
 #[gpui_kit::test]
-fn the_workspace_sidebar_stays_beside_settings_in_the_orca_layout(cx: &mut TestAppContext) {
-    let (window, _shell) = chat_shell("settings-tab-orca-sidebar", Layout::Orca, cx);
+fn the_workspace_sidebar_stays_beside_settings_with_the_tabs_on_the_top_rail(
+    cx: &mut TestAppContext,
+) {
+    let (window, _shell) = chat_shell("settings-tab-rail-sidebar", Tabs::TopRail, cx);
     open_settings(window, cx);
-    let search = drawn(window, "sidebar-search", cx).expect("the workspace sidebar's search");
-    let branch = drawn(window, "orca-branch-0-0", cx).expect("the worktree's row");
+    let sidebar = drawn(window, "sidebar", cx).expect("the workspace sidebar");
+    let branch = drawn(window, "sidebar-branch-0-0", cx).expect("the worktree's row");
     let pages = drawn(window, "settings-page-link-0", cx).expect("Settings' own pages");
-    assert!(pages.left() >= search.right().max(branch.right()), "{pages:?} right of the sidebar");
+    assert!(pages.left() >= sidebar.right().max(branch.right()), "{pages:?} right of the sidebar");
 }
 
 #[gpui_kit::test]
-fn the_workspace_sidebar_stays_beside_settings_in_the_arc_layout(cx: &mut TestAppContext) {
-    let (window, _shell) = chat_shell("settings-tab-arc-sidebar", Layout::Arc, cx);
+fn the_workspace_sidebar_stays_beside_settings_with_the_tabs_in_it(cx: &mut TestAppContext) {
+    let (window, _shell) = chat_shell("settings-tab-sidebar-sidebar", Tabs::Sidebar, cx);
     open_settings(window, cx);
-    let sidebar = drawn(window, "arc-sidebar", cx).expect("the Arc sidebar");
+    let sidebar = drawn(window, "sidebar", cx).expect("the sidebar");
     assert!(drawn(window, "tab-0-0-0", cx).is_some(), "the worktree's tabs are listed");
     let pages = drawn(window, "settings-page-link-0", cx).expect("Settings' own pages");
     assert!(pages.left() >= sidebar.right(), "{pages:?} right of {sidebar:?}");
@@ -117,55 +122,55 @@ fn the_workspace_sidebar_stays_beside_settings_in_the_arc_layout(cx: &mut TestAp
 
 #[gpui_kit::test]
 fn settings_has_no_arrow_back(cx: &mut TestAppContext) {
-    for (name, layout) in [("settings-tab-no-back-orca", Layout::Orca), ("settings-tab-no-back-arc", Layout::Arc)] {
-        let (window, _shell) = chat_shell(name, layout, cx);
+    for (name, tabs) in [("settings-tab-no-back-rail", Tabs::TopRail), ("settings-tab-no-back-sidebar", Tabs::Sidebar)] {
+        let (window, _shell) = chat_shell(name, tabs, cx);
         open_settings(window, cx);
-        assert!(settings_tab(window, layout, cx).is_some(), "{layout:?}");
-        assert!(drawn(window, "settings-back", cx).is_none(), "{layout:?}");
+        assert!(settings_tab(window, tabs, cx).is_some(), "{tabs:?}");
+        assert!(drawn(window, "settings-back", cx).is_none(), "{tabs:?}");
     }
 }
 
 #[gpui_kit::test]
 fn going_to_another_tab_or_a_worktree_closes_settings(cx: &mut TestAppContext) {
-    let (window, _shell) = chat_shell("settings-tab-leave-orca", Layout::Orca, cx);
+    let (window, _shell) = chat_shell("settings-tab-leave-rail", Tabs::TopRail, cx);
     open_settings(window, cx);
-    assert!(settings_tab(window, Layout::Orca, cx).is_some());
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some());
     click(window, "tab-0-0-0", cx);
-    assert!(settings_tab(window, Layout::Orca, cx).is_none(), "the chat's tab picked");
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_none(), "the chat's tab picked");
     assert!(drawn(window, "settings-page-link-0", cx).is_none());
 
     open_settings(window, cx);
-    assert!(settings_tab(window, Layout::Orca, cx).is_some());
-    click(window, "orca-branch-0-0", cx);
-    assert!(settings_tab(window, Layout::Orca, cx).is_none(), "the worktree picked");
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some());
+    click(window, "sidebar-branch-0-0", cx);
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_none(), "the worktree picked");
 
-    let (window, _shell) = chat_shell("settings-tab-leave-arc", Layout::Arc, cx);
+    let (window, _shell) = chat_shell("settings-tab-leave-sidebar", Tabs::Sidebar, cx);
     open_settings(window, cx);
-    assert!(settings_tab(window, Layout::Arc, cx).is_some());
+    assert!(settings_tab(window, Tabs::Sidebar, cx).is_some());
     click(window, "tab-0-0-0", cx);
-    assert!(settings_tab(window, Layout::Arc, cx).is_none(), "the chat's row picked");
+    assert!(settings_tab(window, Tabs::Sidebar, cx).is_none(), "the chat's row picked");
 }
 
 #[gpui_kit::test]
 fn the_close_button_closes_settings_and_what_it_covered_shows(cx: &mut TestAppContext) {
-    for (name, layout) in [("settings-tab-close-orca", Layout::Orca), ("settings-tab-close-arc", Layout::Arc)] {
-        let (window, shell) = chat_shell(name, layout, cx);
+    for (name, tabs) in [("settings-tab-close-rail", Tabs::TopRail), ("settings-tab-close-sidebar", Tabs::Sidebar)] {
+        let (window, shell) = chat_shell(name, tabs, cx);
         open_settings(window, cx);
-        assert!(settings_tab(window, layout, cx).is_some(), "{layout:?}");
-        click(window, tab_of(layout).1, cx);
-        assert!(settings_tab(window, layout, cx).is_none(), "{layout:?}");
-        assert!(drawn(window, "settings-page-link-0", cx).is_none(), "{layout:?}");
+        assert!(settings_tab(window, tabs, cx).is_some(), "{tabs:?}");
+        click(window, tab_of(tabs).1, cx);
+        assert!(settings_tab(window, tabs, cx).is_none(), "{tabs:?}");
+        assert!(drawn(window, "settings-page-link-0", cx).is_none(), "{tabs:?}");
         let chat = cx.read(|cx| {
             let tab = shell.read(cx).workspace.tab_shown();
             tab.map(|tab| tab.first().kind())
         });
-        assert_eq!(chat, Some(PaneKind::Chat), "{layout:?}: the chat shows again");
+        assert_eq!(chat, Some(PaneKind::Chat), "{tabs:?}: the chat shows again");
     }
 }
 
 #[gpui_kit::test]
 fn a_page_opened_while_settings_covers_a_loose_page_opens_as_a_loose_page(cx: &mut TestAppContext) {
-    let (window, shell) = chat_shell("settings-tab-opens-loose", Layout::Orca, cx);
+    let (window, shell) = chat_shell("settings-tab-opens-loose", Tabs::TopRail, cx);
     open_page(window, &shell, Some("https://example.com/a"), cx);
     shell.update(cx, |shell, cx| {
         let at = shell.workspace.shown_tab().expect("the page's tab");
@@ -186,18 +191,18 @@ fn a_page_opened_while_settings_covers_a_loose_page_opens_as_a_loose_page(cx: &m
 
 #[gpui_kit::test]
 fn pages_switch_inside_the_settings_tab_and_back_and_forward_walk_them(cx: &mut TestAppContext) {
-    let (window, _shell) = chat_shell("settings-tab-pages", Layout::Orca, cx);
+    let (window, _shell) = chat_shell("settings-tab-pages", Tabs::TopRail, cx);
     open_settings(window, cx);
     assert!(on_general(window, cx));
-    let search = drawn(window, "sidebar-search", cx).expect("the workspace sidebar's search");
+    let sidebar = drawn(window, "sidebar", cx).expect("the workspace sidebar");
     let link = drawn(window, APPEARANCE, cx).expect("the link to Appearance");
-    assert!(link.left() >= search.right(), "the link is inside the tab, right of the sidebar");
+    assert!(link.left() >= sidebar.right(), "the link is inside the tab, right of the sidebar");
     click(window, APPEARANCE, cx);
     assert!(!on_general(window, cx), "Appearance shows");
-    assert!(settings_tab(window, Layout::Orca, cx).is_some(), "in the same tab");
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some(), "in the same tab");
     press(window, "cmd-[", cx);
     assert!(on_general(window, cx), "Back to General");
     press(window, "cmd-]", cx);
     assert!(!on_general(window, cx), "Forward to Appearance");
-    assert!(settings_tab(window, Layout::Orca, cx).is_some());
+    assert!(settings_tab(window, Tabs::TopRail, cx).is_some());
 }

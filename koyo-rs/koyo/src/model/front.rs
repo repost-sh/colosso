@@ -1,4 +1,4 @@
-//! What the window shows where a tab goes, from the top down (`docs/arc-sidebar.md` 11, 11.9):
+//! What the window shows where a tab goes, from the top down (`docs/sidebar.md` 11, 11.9):
 //! the Settings tab while it's open; else the pinned page shown, whichever project is; else the
 //! loose page the space shows; else the selected checkout's tab. What's under the one in front
 //! stays where it is, and shows once what's over it goes: `pinned_shown`, `loose_shown` and
@@ -20,6 +20,24 @@ pub enum Front<'a> {
     Loose(usize),
     /// The selected checkout's tab, as `(project, branch, tab)`.
     Checkout((usize, usize, usize)),
+}
+
+impl Front<'_> {
+    /// The selected checkout's tab in front, as `(project, branch, tab)`, while one is.
+    pub fn checkout(self) -> Option<(usize, usize, usize)> {
+        match self {
+            Front::Checkout(at) => Some(at),
+            Front::Settings(_) | Front::Pinned(_) | Front::Loose(_) => None,
+        }
+    }
+
+    /// The place of the loose page in front among those the space shown lists, while one is.
+    pub fn loose(self) -> Option<usize> {
+        match self {
+            Front::Loose(at) => Some(at),
+            Front::Settings(_) | Front::Pinned(_) | Front::Checkout(_) => None,
+        }
+    }
 }
 
 impl Workspace {

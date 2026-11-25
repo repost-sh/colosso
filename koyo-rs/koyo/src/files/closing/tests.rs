@@ -8,9 +8,10 @@ use gpui_kit::{AppContext as _, FocusHandle, TestAppContext, VisualTestContext};
 use super::SaveDialog;
 use crate::files::At;
 use crate::files::tests::{
-    answer, checkout, dialog, editing, new_chat, press, shell_showing, tabs, typed, with_shell,
+    answer, checkout, dialog, editing, new_chat, shell_showing, tabs, typed, with_shell,
 };
 use crate::modal;
+use crate::test_support::press;
 
 #[gpui_kit::test]
 fn cmd_w_closes_what_is_looked_at_never_the_window(cx: &mut TestAppContext) {

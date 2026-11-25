@@ -82,7 +82,7 @@ fn back_and_forward_retrace_the_pages_the_tab_showed() {
     let mut workspace = with_pages(&[]);
     workspace.open_settings(Some(SettingsPage::General));
     let tab = workspace.settings_mut().expect("open");
-    assert!(!tab.can_back());
+    assert!(!tab.back(), "no page behind the first");
     assert!(tab.go(SettingsPage::Appearance));
     assert!(tab.go(SettingsPage::About));
     assert!(tab.back());
@@ -93,7 +93,7 @@ fn back_and_forward_retrace_the_pages_the_tab_showed() {
     assert!(tab.forward());
     assert!(tab.forward());
     assert_eq!(tab.page(), SettingsPage::About);
-    assert!(!tab.can_forward());
+    assert!(!tab.forward(), "no page past the last");
 }
 
 #[test]
@@ -102,12 +102,11 @@ fn going_to_a_page_forgets_the_forward_pages_and_the_page_shown_records_nothing(
     workspace.open_settings(Some(SettingsPage::About));
     let tab = workspace.settings_mut().expect("open");
     assert!(!tab.go(SettingsPage::About));
-    assert!(!tab.can_back());
+    assert!(!tab.back(), "the page shown recorded nothing");
     assert!(tab.go(SettingsPage::Chat));
-    tab.back();
-    assert!(tab.can_forward());
+    assert!(tab.back(), "Chat is a page forward now");
     tab.go(SettingsPage::General);
-    assert!(!tab.can_forward());
+    assert!(!tab.forward(), "forgotten");
 }
 
 #[test]
@@ -117,6 +116,6 @@ fn settings_opens_again_on_the_page_it_showed_last() {
     workspace.close_settings();
     workspace.open_settings(None);
     assert_eq!(page(&workspace), Some(SettingsPage::KeyboardShortcuts));
-    let tab = workspace.settings().expect("open");
-    assert!(!tab.can_back(), "a new tab, with no pages behind it");
+    let tab = workspace.settings_mut().expect("open");
+    assert!(!tab.back(), "a new tab, with no pages behind it");
 }

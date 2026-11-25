@@ -7,7 +7,6 @@ use koyo_term::{TermClient, TerminalView};
 use koyo_term_control::{Status, TermDir};
 
 use crate::budget::{Built, built_after, built_again, frame_of, ratchet, within};
-use crate::settings::Layout;
 use crate::shell::Shell;
 use crate::test_support::{
     draw, open_changes, repo, scratch, select, shell_on, shell_with, status_event, terminal_record,
@@ -49,7 +48,7 @@ pub(crate) fn no_daemon(shell: &Entity<Shell>, cx: &mut TestAppContext) {
 fn a_frame_of_a_terminals_output_leaves_the_shell_alone_beside_the_right_panel_too(
     cx: &mut TestAppContext,
 ) {
-    let (window, shell, root) = shell_on("budget-terminal", Layout::Orca, cx);
+    let (window, shell, root) = shell_on("budget-terminal", cx);
     let view = terminal_shown(window, &shell, &root, cx);
 
     let budget = Built {

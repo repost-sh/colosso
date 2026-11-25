@@ -9,8 +9,7 @@ use gpui_kit::{
 };
 
 use super::panel::ActivityPanel;
-use crate::shell::Shell;
-use crate::sidebar::resize_handle;
+use crate::shell::{Shell, resize_handle};
 use crate::theme::Palette;
 
 actions!(terminal_panel, [ToggleActivity]);

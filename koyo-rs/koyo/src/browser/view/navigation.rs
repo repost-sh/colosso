@@ -22,8 +22,8 @@ pub struct Visit {
     pub how: Option<How>,
 }
 
-/// What the back, forward and reload buttons can do for the page: the toolbar's, and the Arc
-/// sidebar's (`docs/arc-sidebar.md` 1).
+/// What the back, forward and reload buttons can do for the page: the toolbar's, and the
+/// sidebar's (`docs/sidebar.md` 1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[expect(
     clippy::struct_excessive_bools,
@@ -161,9 +161,9 @@ impl BrowserView {
     }
 
     /// The person moves through the page's history, reloads or stops it: from the page's toolbar,
-    /// the Arc sidebar's buttons, or the notice over a page whose renderer went away. The host
-    /// still has that page's browser, which Chromium gives a new renderer as it loads a page,
-    /// told again what responsive mode emulates.
+    /// the sidebar's buttons, or the notice over a page whose renderer went away. The host still
+    /// has that page's browser, which Chromium gives a new renderer as it loads a page, told again
+    /// what responsive mode emulates.
     pub(crate) fn go(&mut self, to: Go, cx: &mut Context<Self>) {
         self.person_acts(Mode::Implicit, cx);
         if matches!(to, Go::Back | Go::Forward) {

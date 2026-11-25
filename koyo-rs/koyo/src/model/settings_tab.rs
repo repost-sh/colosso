@@ -1,4 +1,4 @@
-//! The Settings tab (`docs/arc-sidebar.md` 11.9): Koyo's settings in a tab of their own among
+//! The Settings tab (`docs/sidebar.md` 11.9): Koyo's settings in a tab of their own among
 //! the loose pages, one at most. Open, it's shown over whatever tab was, the selected checkout's,
 //! a pinned or a loose page, and that one shows again once it closes. It's open only while it's
 //! shown: showing anything else closes it. It keeps the pages it showed for Back and Forward, as
@@ -72,14 +72,6 @@ impl SettingsTab {
         };
         self.back.push(std::mem::replace(&mut self.page, page));
         true
-    }
-
-    pub fn can_back(&self) -> bool {
-        !self.back.is_empty()
-    }
-
-    pub fn can_forward(&self) -> bool {
-        !self.forward.is_empty()
     }
 }
 

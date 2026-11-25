@@ -22,7 +22,7 @@ use super::tab_face::Face;
 use super::{Shell, icon};
 use crate::model::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
 use crate::pane::{CLOSE, tab_button};
-use crate::theme::card::part;
+use crate::theme::card::island;
 use crate::theme::{self, Palette};
 
 /// What's in hand, to split a pane with or to put in the strip.
@@ -32,7 +32,7 @@ pub enum Dragged {
     Tab(usize, usize, usize),
     /// A pane of a split.
     Pane(u64),
-    /// A loose page of the space shown (`docs/arc-sidebar.md` 11), known by its pane, which is
+    /// A loose page of the space shown (`docs/sidebar.md` 11), known by its pane, which is
     /// its only face.
     Loose,
 }
@@ -148,7 +148,6 @@ impl Shell {
         let first = self.part(&split.first, side(&path, false), p, in_hand, cx);
         let second = self.part(&split.second, side(&path, true), p, in_hand, cx);
         let id = SharedString::from(format!("split-{path:?}"));
-        let next_to_page = split.first.shows_page() || split.second.shows_page();
         let dragged = path.clone();
         div()
             .size_full()
@@ -184,14 +183,8 @@ impl Shell {
                     })
                     .child(first),
             )
-            .children(theme::card::seam(
-                id,
-                row,
-                SplitDivider(path),
-                next_to_page,
-                div().flex_1().min_w_0().min_h_0().flex().child(second),
-                cx,
-            ))
+            .child(theme::card::seam(id, row, SplitDivider(path)))
+            .child(div().flex_1().min_w_0().min_h_0().flex().child(second))
             .into_any_element()
     }
 
@@ -217,7 +210,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (id, bar) = (pane.id, pane.bar(cx));
-        part(p, theme::card::islands(cx))
+        island(p)
             .debug_selector(move || format!("pane-{id}"))
             .size_full()
             .flex()
@@ -345,9 +338,9 @@ impl Shell {
         }
     }
 
-    /// A tab from another checkout's list in the Arc sidebar, let go over the checkout `to`,
+    /// A tab from another checkout's list in the sidebar, let go over the checkout `to`,
     /// as `(project, branch)`: it moves there, at `at` among its tabs, and shows
-    /// (`docs/arc-sidebar.md` 5). It's found by its pane, as its place may have changed since it
+    /// (`docs/sidebar.md` 5). It's found by its pane, as its place may have changed since it
     /// was taken up; one from the checkout itself is its list's to place.
     pub(crate) fn drop_tab_on_checkout(
         &mut self,

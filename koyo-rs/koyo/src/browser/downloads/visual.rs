@@ -1,5 +1,5 @@
-//! The downloads button in the top bar and the list it opens, as the app draws them, in the Arc
-//! and the Orca layout, light and dark: a page shown, its address field with no downloads
+//! The downloads button in the top bar and the list it opens, as the app draws them, with the
+//! tabs in the sidebar and on the top rail, light and dark: a page shown, its address field with no downloads
 //! button; the button with a download coming in, its ring part full; and the list open under
 //! it, with a download of each state. Saved as PNGs in `.artifacts/qa/downloads/`: the top
 //! of the window, then the same with the list laid over it where it opens. The list's glass is
@@ -23,7 +23,7 @@ use super::{Downloads, Entry, Key, Stage};
 use crate::browser::profiles::By;
 use crate::model::{Browser, Content, Pane, Tab, Unloaded};
 use crate::popup::{self, Kind};
-use crate::settings::{self, Layout};
+use crate::settings::{self, Tabs};
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result};
 
@@ -102,13 +102,13 @@ fn draw() -> Result<Vec<String>> {
         });
     });
     let mut said = Vec::new();
-    for layout in [Layout::Arc, Layout::Orca] {
-        drawn.cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    for (tabs, place) in [(Tabs::Sidebar, "sidebar"), (Tabs::TopRail, "rail")] {
+        drawn.cx.update(|cx| settings::update(cx, |settings| settings.tabs = tabs));
         let themes: [(&dyn Action, &str); 2] = [(&UseLightTheme, "light"), (&UseDarkTheme, "dark")];
         for (theme, shade) in themes {
             drawn.cx.update(|cx| cx.dispatch_action(theme));
             drawn.draw()?;
-            let name = format!("{}-{shade}", layout.label().to_lowercase());
+            let name = format!("{place}-{shade}");
             said.push(open_and_save(&mut drawn, &name)?);
         }
     }
@@ -116,10 +116,10 @@ fn draw() -> Result<Vec<String>> {
     Ok(said)
 }
 
-/// The button once every download has ended, in the Arc layout, light and dark.
+/// The button once every download has ended, with the tabs in the sidebar, light and dark.
 fn at_rest(drawn: &mut Drawn) -> Result<Vec<String>> {
     drawn.cx.update(|cx| {
-        settings::update(cx, |settings| settings.layout = Layout::Arc);
+        settings::update(cx, |settings| settings.tabs = Tabs::Sidebar);
         Downloads::global(cx).update(cx, |downloads, cx| {
             for entry in &mut downloads.list {
                 if entry.stage == Stage::Going {
@@ -138,7 +138,7 @@ fn at_rest(drawn: &mut Drawn) -> Result<Vec<String>> {
         let window = picture(drawn)?;
         let scale = window.width() / 1600;
         let bar = imageops::crop_imm(&window, 0, 0, ACROSS * scale, 160 * scale).to_image();
-        let path = drawn.save_image(&bar, &format!("arc-{shade}-done-bar.png"))?;
+        let path = drawn.save_image(&bar, &format!("sidebar-{shade}-done-bar.png"))?;
         said.push(format!("saved {}", path.display()));
     }
     Ok(said)

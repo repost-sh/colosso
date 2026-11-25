@@ -11,9 +11,9 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
 
 ## 1. Behaviour
 
-- **⌘T**, or the **+** in a tab strip (Orca and Arc layouts), opens the launcher over the
-  window, for a tab on the selected checkout. ⌘T again, Escape, or a click outside it
-  closes it.
+- **⌘T**, or the **+** after a branch's tabs, on the top rail or in the sidebar, opens the
+  launcher over the window, for a tab on the selected checkout. ⌘T again, Escape, or a click
+  outside it closes it.
 - **For an unpinned page only** (`docs/layout.md`, `launcher::Opens`): the **+** after the
   unpinned pages on the top rail (`NewUnpinnedPage`) opens it whatever tab is shown, and ⌘T
   does wherever the person is in no branch: a space with no project, or a pinned or an
@@ -21,11 +21,11 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   nothing: the field is alone, "Search or enter address". Enter opens an unpinned page in the
   space shown, after the one shown or after them all, and shows it, even while a branch's tab
   was shown; its place in the history is no project's. ⌘T on a branch's tab offers every kind.
-- **⌘L**, from anywhere in the window, or a click on the Arc sidebar's address bar, opens it
-  **on the page shown** (`launcher::OpenAddress`, `Shell::open_address`), as Arc's ⌘L does.
-  It changes a page's address, so it needs a page:
+- With **Address bar** in the sidebar, **⌘L**, from anywhere in the window, or a click on the
+  bar, opens it **on the page shown** (`launcher::OpenAddress`, `Shell::open_address`), as Arc's
+  ⌘L does. It changes a page's address, so it needs a page:
   - The page is the one of the pane the person is in, or the shown tab's first page when
-    they're in a pane of another kind (`docs/arc-sidebar.md` 2).
+    they're in a pane of another kind (`docs/sidebar.md` 2).
   - It opens on Browser, the page's whole address in the field, all of it selected, the rows
     for that address under it.
   - Enter on a Visit or a Search row loads in that page, as an address typed in its own field
@@ -38,14 +38,14 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   - With no page in the tab shown, a chat's, a terminal's, a file's, or no tab at all, ⌘L
     opens nothing and no tab: the key goes on to whatever has the keyboard, as one the
     window doesn't take, and a click on the bar does nothing. A new tab is ⌘T's.
-  - In the Orca layout a page has its own toolbar, so ⌘L puts the keyboard in that page's
-    address field instead, from anywhere in the tab.
+  - With **Address bar** set to the page, a page has its own toolbar, so ⌘L puts the keyboard in
+    that page's address field instead, from anywhere in the tab.
 - A pill on the left of the field names the **kind** of tab Enter opens, while there's another
   kind to go to: **Browser**, **Chat**
   or **Terminal**, in that order on purpose, then **Desktop**, the agent desktop's one tab
   (`docs/agent-desktop.md` 9), **Device**, the tab of an iPhone or iPad simulator, or of the
   person's own iPhone or iPad plugged in (`docs/devices.md` 8), and last **Worktree**, which opens no tab
-  (`docs/arc-sidebar.md` 8). Each kind has its own colour (blue, violet, green, teal, pink,
+  (`docs/sidebar.md` 8). Each kind has its own colour (blue, violet, green, teal, pink,
   orange),
   so a glance tells them apart. **Tab** goes to the next kind and **⇧Tab** to
   the one before. Clicking the pill, or the hint on the right, also moves to the next kind.
