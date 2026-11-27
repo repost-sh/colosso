@@ -30,7 +30,7 @@ Koyo updates itself. A released Koyo looks for a newer release at launch and eve
 
 | Requirement | Value |
 |---|---|
-| macOS | 13.0 or later |
+| macOS | 14.0 or later |
 | Processor | Apple silicon |
 
 ## Features

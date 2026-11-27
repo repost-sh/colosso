@@ -1,3 +1,3 @@
 # Written by script/daemon-version: each daemon's version and its sources' fingerprint.
-termd 5 39931644aa01608680ba7e0cd89bb2128ea5c6bc1bdbaf00504f9beb50a38cdd
+termd 5 7aed4889d4552734a8a5d7362010e4f8e088e0b13da45b5a1e8be18b158df694
 host 26 b88dcffba7ca295a8401b9da515fe77686e9fb235c2f4fabdffb6724dea680d9

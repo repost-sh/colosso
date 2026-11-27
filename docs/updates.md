@@ -40,7 +40,7 @@ The image's name is `Koyo-<version>.dmg`, beside the feed. Both the app and the 
 ```json
 {
   "version": "0.2.0",
-  "minimum_macos": "13.0",
+  "minimum_macos": "14.0",
   "bytes": 199876543
 }
 ```

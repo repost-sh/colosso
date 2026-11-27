@@ -12,6 +12,12 @@ ZIG_GLOBAL_CACHE_DIR = { value = "../.tools/zig-cache", relative = true }
 # fetches on first use.
 CEF_PATH = { value = "../.tools/cef", relative = true }
 CMAKE = { value = "../script/cmake", relative = true }
+# The oldest macOS Koyo's own code is built for, and so the oldest a bundle says it starts on
+# (script/bundle reads it back from the executable): a window's layers over a browser page
+# each take their drawables from a `CAMetalDisplayLink`, which macOS 14 brought, so no frame
+# waits on the main thread for one (koyo-rs/vendor/README.md). Linkers and the C compilers
+# build scripts run read it too.
+MACOSX_DEPLOYMENT_TARGET = "14.0"
 # Where the checkout is, and the workspace's build output, for code that keeps fixtures, test
 # scratch or a debug build's packaged helpers there (`env!("KOYO_TARGET_DIR")`), so how deep a
 # crate sits in the workspace is nobody's assumption.
