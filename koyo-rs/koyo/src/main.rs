@@ -313,37 +313,20 @@ fn launch(links: links::Links, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use gpui_kit::{Entity, TestAppContext};
+    use gpui_kit::TestAppContext;
 
     use super::open_handed_pages;
-    use crate::shell::Shell;
-    use crate::test_support::shell_window;
-
-    fn unpinned(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
-        cx.read(|cx| {
-            let pages = shell.read(cx).workspace.loose();
-            let address = |page: &&crate::model::Loose| page.tab.first().address().map(str::to_owned);
-            pages.iter().filter_map(address).collect()
-        })
-    }
-
-    fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
-        cx.read(|cx| {
-            let workspace = &shell.read(cx).workspace;
-            let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
-            (address.map(str::to_owned), workspace.loose_shown().is_some())
-        })
-    }
+    use crate::test_support::{loose, shell_window, shown};
 
     #[gpui_kit::test]
     fn a_page_macos_hands_over_opens_unpinned_and_the_last_is_shown(cx: &mut TestAppContext) {
         cx.update(crate::test_support::init);
         let (_window, shell) = shell_window(cx);
-        assert_eq!(unpinned(&shell, cx), Vec::<String>::new());
+        assert_eq!(loose(&shell, cx), Vec::<String>::new());
 
         cx.update(|cx| open_handed_pages(vec!["https://example.com/a".into()], cx));
         cx.run_until_parked();
-        assert_eq!(unpinned(&shell, cx), ["https://example.com/a"]);
+        assert_eq!(loose(&shell, cx), ["https://example.com/a"]);
         assert_eq!(shown(&shell, cx), (Some("https://example.com/a".into()), true));
 
         cx.update(|cx| {
@@ -352,7 +335,7 @@ mod tests {
         });
         cx.run_until_parked();
         assert_eq!(
-            unpinned(&shell, cx),
+            loose(&shell, cx),
             ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
             "each page handed over is an unpinned page of its own"
         );

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use futures::FutureExt as _;
 use gpui_kit::TestAppContext;
 
-use super::fixtures::{self, Koyo, Made, koyo, says, until_it_says};
+use super::fixtures::{self, Koyo, koyo, recorded, says, until_it_says};
 use super::installed::Unreleased;
 use super::{TheUpdates, act, hand_over_to_reopen};
 
@@ -50,8 +50,7 @@ fn the_feed_is_read_at_launch_and_again_every_hour(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn one_click_installs_and_asks_for_the_restart_once(cx: &mut TestAppContext) {
     let koyo = koyo("updates-click", true, cx);
-    fixtures::publish(&koyo.bucket, &Made::release("9.0.0"));
-    cx.run_until_parked();
+    koyo.publish(cx);
 
     cx.update(act);
     assert_eq!(says(cx), ("working", "Downloading Koyo 9.0.0: 0 of 1 MB.".into()));
@@ -80,15 +79,13 @@ fn one_click_installs_and_asks_for_the_restart_once(cx: &mut TestAppContext) {
 fn one_click_ends_in_a_restart_through_the_quit_path(cx: &mut TestAppContext) {
     cx.update(crate::quitting::init);
     let koyo = koyo("updates-through-quit", true, cx);
-    fixtures::publish(&koyo.bucket, &Made::release("9.0.0"));
-    cx.run_until_parked();
+    koyo.publish(cx);
 
     cx.update(act);
     let told = koyo.handed_over(cx);
 
     let attempt = fixtures::attempts(&koyo.bundle).remove(0);
-    let expected = format!("install-update\n--attempt\n{}\n--reopen\n", attempt.display());
-    assert_eq!(told, expected);
+    assert_eq!(told, recorded(&attempt, true));
     assert_eq!(says(cx), ("working", "Restarting into Koyo 9.0.0.".into()));
     assert_eq!(koyo.restarts.get(), 1);
 }
@@ -101,8 +98,7 @@ fn a_staged_release_is_handed_over_at_a_plain_quit_and_nothing_is_reopened(cx: &
 
     koyo.quit(cx);
 
-    let expected = format!("install-update\n--attempt\n{}\n", attempt.display());
-    assert_eq!(koyo.told(), expected);
+    assert_eq!(koyo.told(), recorded(&attempt, false));
     assert!(attempt.is_dir());
 }
 
@@ -117,8 +113,7 @@ fn a_restart_hands_the_release_over_to_be_reopened(cx: &mut TestAppContext) {
     cx.run_until_parked();
 
     assert_eq!(handed.now_or_never(), Some(true));
-    let expected = format!("install-update\n--attempt\n{}\n--reopen\n", attempt.display());
-    assert_eq!(koyo.told(), expected);
+    assert_eq!(koyo.told(), recorded(&attempt, true));
 
     let again = cx.update(hand_over_to_reopen);
     cx.run_until_parked();
@@ -150,11 +145,10 @@ fn an_installer_that_does_not_start_leaves_koyo_open_and_the_update_failed(cx: &
 #[gpui_kit::test]
 fn a_failed_install_offers_to_try_again_and_the_retry_installs(cx: &mut TestAppContext) {
     let koyo = koyo("updates-retry", true, cx);
-    let release = fixtures::publish(&koyo.bucket, &Made::release("9.0.0"));
+    let release = koyo.publish(cx);
     let image = koyo.bucket.join("Koyo-9.0.0.dmg");
     let kept = koyo.bucket.join("kept.dmg");
     std::fs::rename(&image, &kept).unwrap();
-    cx.run_until_parked();
 
     cx.update(act);
     until_it_says("Retry Update", cx);

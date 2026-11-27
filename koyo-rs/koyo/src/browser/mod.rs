@@ -102,8 +102,7 @@ pub fn close_page(pane: koyo_browser_ipc::PaneId, cx: &mut App) {
 /// The Chromium the packaged engine is, once it runs.
 pub fn chromium(cx: &App) -> Option<String> {
     let browsers = cx.try_global::<host::GlobalBrowsers>()?;
-    let (_, chromium) = browsers.0.read(cx).versions()?;
-    Some(chromium)
+    browsers.0.read(cx).chromium().map(str::to_owned)
 }
 
 actions!(

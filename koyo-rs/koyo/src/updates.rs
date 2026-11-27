@@ -74,8 +74,6 @@ pub struct Updates {
     installed: Installed,
     /// Where the update stands. Every surface draws from this alone, through `words::shown`.
     stage: Stage,
-    /// When the feed last answered, or why it didn't. About alone says it.
-    checked: Checked,
     fetch: Arc<dyn Fetch>,
     /// Removes what an earlier run left, then reads the feed now and every [`EVERY`].
     _looking: Task<()>,
@@ -95,7 +93,7 @@ pub fn init(cx: &mut App, may: Blocking<'_>) {
     let updates = match installed::find(may) {
         Ok(installed) => TheUpdates::Released(released(installed, Arc::new(Curl), cx)),
         Err(why) => {
-            log::info!("updates: {}", words::unreleased(&why).said().line);
+            log::info!("updates: {}", words::unreleased(&why).said());
             TheUpdates::Unreleased(why)
         }
     };
@@ -127,14 +125,13 @@ pub fn act(cx: &mut App) {
     }
 }
 
-/// What the top bar and About say, from the stage and the last look at the feed.
+/// What the top bar and About say, from the stage.
 pub fn shown(cx: &App) -> Shown {
     match cx.global::<TheUpdates>() {
         TheUpdates::Unreleased(why) => words::unreleased(why),
         TheUpdates::Released(updates) => {
             let updates = updates.read(cx);
-            let (stage, checked) = (&updates.stage, &updates.checked);
-            words::shown(stage, checked, SystemTime::now(), updates.installed.macos)
+            words::shown(&updates.stage, SystemTime::now(), updates.installed.macos)
         }
     }
 }
@@ -181,8 +178,7 @@ impl Updates {
         });
         Updates {
             installed,
-            stage: Stage::Current,
-            checked: Checked::Not,
+            stage: Stage::Current(Checked::Not),
             fetch,
             _looking: looking,
         }
@@ -190,32 +186,25 @@ impl Updates {
 
     /// The feed answered, or didn't.
     fn heard(&mut self, answer: Result<Answer, String>, now: SystemTime, cx: &mut Context<Self>) {
-        match answer {
-            Ok(answer) => {
-                match &answer {
-                    Answer::Newer(release) => {
-                        log::info!("updates: the feed offers Koyo {}", release.version);
-                    }
-                    Answer::NeedsMacos(release) => log::info!(
-                        "updates: the feed offers Koyo {}, which needs macOS {}",
-                        release.version,
-                        release.minimum_macos.as_macos()
-                    ),
-                    Answer::Current => log::info!("updates: the feed has nothing newer"),
-                }
-                self.checked = Checked::At(now);
-                self.stage = stage::heard(mem::replace(&mut self.stage, Stage::Current), answer);
+        match &answer {
+            Ok(Answer::Newer(release)) => {
+                log::info!("updates: the feed offers Koyo {}", release.version);
             }
-            Err(why) => {
-                log::warn!("updates: the feed didn't answer: {why}");
-                self.checked = Checked::Failed { why };
-            }
+            Ok(Answer::NeedsMacos(release)) => log::info!(
+                "updates: the feed offers Koyo {}, which needs macOS {}",
+                release.version,
+                release.minimum_macos.as_macos()
+            ),
+            Ok(Answer::Current) => log::info!("updates: the feed has nothing newer"),
+            Err(why) => log::warn!("updates: the feed didn't answer: {why}"),
         }
+        let was = mem::replace(&mut self.stage, Stage::Current(Checked::Not));
+        self.stage = stage::heard(was, answer, now);
         cx.notify();
     }
 
     fn act(&mut self, cx: &mut Context<Self>) {
-        match mem::replace(&mut self.stage, Stage::Current) {
+        match mem::replace(&mut self.stage, Stage::Current(Checked::Not)) {
             Stage::Available(release) | Stage::Failed { release, .. } => {
                 let job = Job::start(release.clone(), &self.installed, self.fetch.clone(), cx);
                 self.stage = match job {
@@ -258,7 +247,7 @@ impl Updates {
     }
 
     fn hand_over_to_reopen(&mut self, cx: &mut Context<Self>) -> Task<bool> {
-        let staged = match mem::replace(&mut self.stage, Stage::Current) {
+        let staged = match mem::replace(&mut self.stage, Stage::Current(Checked::Not)) {
             Stage::Ready(staged) => staged,
             other => {
                 self.stage = other;
@@ -292,7 +281,7 @@ impl Updates {
     /// with the app, and the next launch removes the folder nobody holds. Runs on the main
     /// thread as the app quits.
     fn quitting(&mut self, may: Blocking<'_>) {
-        match mem::replace(&mut self.stage, Stage::Current) {
+        match mem::replace(&mut self.stage, Stage::Current(Checked::Not)) {
             Stage::Ready(staged) => {
                 let handed = hand_over::hand_over(staged, &self.installed.exe, false, may);
                 if let Err((_, why)) = handed {

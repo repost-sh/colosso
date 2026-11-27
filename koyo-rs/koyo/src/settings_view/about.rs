@@ -35,17 +35,16 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 /// what `updates::shown` does.
 fn version_row(cx: &App) -> SettingRow {
     let shown = updates::shown(cx);
-    let said = format!("{} · {}", env!("CARGO_PKG_VERSION"), shown.said().whole());
+    let said = format!("{} · {}", env!("CARGO_PKG_VERSION"), shown.said());
     let row = SettingRow::new("Version").description(said);
     match shown {
         Shown::Quiet(_) => row,
         Shown::Offer { act, .. } => {
             row.control(PillButton::new("update-act", act).on_click(|_, _, cx| updates::act(cx)))
         }
-        Shown::Working { done, .. } => {
-            let percent = done.map_or(0, |done| (done * 100.).round() as u8);
+        Shown::Working { percent, .. } => {
             let accent = theme::palette(cx).accent;
-            row.control(ring(percent).size(px(18.)).text_color(accent))
+            row.control(ring(percent.unwrap_or(0)).size(px(18.)).text_color(accent))
         }
     }
 }

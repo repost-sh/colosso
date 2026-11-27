@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use gpui_kit::{Entity, TestAppContext};
@@ -18,7 +18,7 @@ use gpui_kit::{Entity, TestAppContext};
 use super::attempt::Attempt;
 use super::feed::{Feed, Release};
 use super::fetch::{AtMost, Fetch};
-use super::installed::Installed;
+use super::installed::{Installed, info};
 use super::signature::Requirement;
 use super::staged::Staged;
 use super::{EVERY, RestartToUpdate, Shown, TheUpdates, Updates, act, released, shown};
@@ -134,37 +134,57 @@ pub(super) fn image(work: &Path, image: &Path, made: &Made, signed: Option<&str>
     }
 }
 
-/// Publishes a release into `bucket` as the pipeline does: `Koyo-<version>.dmg`, signed under
-/// Koyo's identifier, and a `feed.json` that names it. The release, as the feed says it.
-pub(super) fn publish(bucket: &Path, made: &Made) -> Release {
-    std::fs::create_dir_all(bucket).unwrap();
-    let file = bucket.join(format!("Koyo-{}.dmg", made.version));
-    image(bucket, &file, made, Some(IDENTIFIER));
-    let bytes = std::fs::metadata(&file).unwrap().len();
-    let feed = format!(
-        r#"{{ "version": "{}", "minimum_macos": "{}", "bytes": {bytes} }}"#,
-        made.version, made.minimum_macos
-    );
-    std::fs::write(bucket.join("feed.json"), feed).unwrap();
-    Release {
-        version: made.version.parse().unwrap(),
-        bytes,
-        minimum_macos: made.minimum_macos.parse().unwrap(),
-    }
+/// Release 9.0.0's image as the pipeline makes one, signed under Koyo's identifier. Made once
+/// for all the tests a process runs, each of which publishes a copy of its own.
+fn release_image() -> &'static Path {
+    static IMAGE: OnceLock<PathBuf> = OnceLock::new();
+    IMAGE.get_or_init(|| {
+        let work = scratch("update-release-image");
+        let at = work.join("Koyo-9.0.0.dmg");
+        image(&work, &at, &Made::release("9.0.0"), Some(IDENTIFIER));
+        at
+    })
 }
 
-/// This copy of Koyo, for a test: a bundle at `<beside>/Koyo.app` that reads [`FEED`], trusts
-/// what's signed under Koyo's identifier, and whose installer is the program at `exe`.
-pub(super) fn installed(beside: &Path, exe: &Path) -> Installed {
-    let bundle = beside.join("Koyo.app");
-    self::bundle(&bundle, &Made::release(env!("CARGO_PKG_VERSION")));
+/// Publishes release 9.0.0 into `bucket` as the pipeline does: `Koyo-9.0.0.dmg`, signed under
+/// Koyo's identifier, and a `feed.json` that names it. The release, as the feed says it.
+pub(super) fn publish(bucket: &Path) -> Release {
+    std::fs::create_dir_all(bucket).unwrap();
+    let bytes = std::fs::copy(release_image(), bucket.join("Koyo-9.0.0.dmg")).unwrap();
+    let feed = format!(r#"{{ "version": "9.0.0", "minimum_macos": "11.0", "bytes": {bytes} }}"#);
+    std::fs::write(bucket.join("feed.json"), feed).unwrap();
+    release("9.0.0", bytes)
+}
+
+/// A folder of a test's own: the path of a Koyo in its `Applications`, made, and its
+/// `bucket`, made, where releases are published. The folder, the bundle's path and the bucket.
+pub(super) fn place(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let root = scratch(name);
+    let (beside, bucket) = (root.join("Applications"), root.join("bucket"));
+    std::fs::create_dir_all(&beside).unwrap();
+    std::fs::create_dir_all(&bucket).unwrap();
+    (root, beside.join("Koyo.app"), bucket)
+}
+
+/// This copy of Koyo, for a test: a bundle at `bundle`, unsigned, since nothing here checks
+/// it, that reads [`FEED`], trusts what's signed under Koyo's identifier, and whose installer
+/// is the program at `exe`.
+pub(super) fn installed(bundle: &Path, exe: &Path) -> Installed {
+    let made = Made { identifier: None, ..Made::release(env!("CARGO_PKG_VERSION")) };
+    self::bundle(bundle, &made);
     Installed {
         feed: Feed::at(FEED).unwrap(),
-        bundle,
+        bundle: bundle.to_owned(),
         exe: exe.to_owned(),
         trust: trust(),
         macos: "14.0".parse().unwrap(),
     }
+}
+
+/// The version the bundle at `bundle` says it is.
+pub(super) fn version_of(bundle: &Path) -> String {
+    let info = in_test(|may| info(bundle, may)).unwrap();
+    info["CFBundleShortVersionString"].as_string().unwrap().to_owned()
 }
 
 /// A program at `<folder>/installer` that stands in for `koyo install-update`: it writes the
@@ -180,6 +200,13 @@ pub(super) fn recorder(folder: &Path) -> (PathBuf, PathBuf) {
     std::fs::write(&program, script).unwrap();
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
     (program, told)
+}
+
+/// What the installer's stand-in writes when it's handed the attempt `attempt`, to open Koyo
+/// again or not.
+pub(super) fn recorded(attempt: &Path, reopen: bool) -> String {
+    let told = format!("install-update\n--attempt\n{}\n", attempt.display());
+    if reopen { told + "--reopen\n" } else { told }
 }
 
 /// A bucket that is a folder: an address's last part names a file in it.
@@ -241,7 +268,7 @@ impl Fetch for Folder {
 /// Attaches `image` at `at`, as an install does while it copies the app out.
 pub(super) fn attach(image: &Path, at: &Path) {
     std::fs::create_dir_all(at).unwrap();
-    let args = ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint"];
+    let args = ["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint"];
     let args = args.map(std::ffi::OsStr::new);
     run("/usr/bin/hdiutil", &[&args[..], &[at.as_os_str(), image.as_os_str()]].concat());
 }
@@ -314,14 +341,10 @@ pub struct Koyo {
 /// Starts a released Koyo whose installer starts, or doesn't.
 pub fn koyo(name: &str, installer_starts: bool, cx: &mut TestAppContext) -> Koyo {
     cx.executor().allow_parking();
-    let root = scratch(name);
-    let (beside, bucket) = (root.join("Applications"), root.join("bucket"));
-    std::fs::create_dir_all(&beside).unwrap();
-    std::fs::create_dir_all(&bucket).unwrap();
+    let (root, bundle, bucket) = place(name);
     let (program, told) = recorder(&root);
     let exe = if installer_starts { program } else { root.join("no-such-koyo") };
-    let installed = installed(&beside, &exe);
-    let bundle = installed.bundle.clone();
+    let installed = installed(&bundle, &exe);
     let restarts = Rc::new(Cell::new(0));
     let counted = restarts.clone();
     let fetch = Arc::new(Folder::at(&bucket));
@@ -355,10 +378,12 @@ impl Koyo {
         cx.run_until_parked();
     }
 
-    /// Publishes 9.0.0, as the pipeline does, and lets the feed be read.
-    pub fn publish(&self, cx: &mut TestAppContext) {
-        publish(&self.bucket, &Made::release("9.0.0"));
+    /// Publishes 9.0.0, as the pipeline does, and lets the feed be read: the release, as the
+    /// feed says it.
+    pub fn publish(&self, cx: &mut TestAppContext) -> Release {
+        let release = publish(&self.bucket);
         cx.run_until_parked();
+        release
     }
 
     /// Publishes 9.0.0, clicks, and waits until it's staged.
@@ -388,17 +413,19 @@ impl Koyo {
     }
 }
 
-/// What's shown: the label of its click, or "quiet" or "working", and all it says.
+/// What `shown` is: the label of its click, or "quiet" or "working", and all it says.
+pub(super) fn read(shown: &Shown) -> (&'static str, String) {
+    let label = match shown {
+        Shown::Quiet(_) => "quiet",
+        Shown::Offer { act, .. } => act,
+        Shown::Working { .. } => "working",
+    };
+    (label, shown.said().to_string())
+}
+
+/// What's shown now: the label of its click, or "quiet" or "working", and all it says.
 pub fn says(cx: &mut TestAppContext) -> (&'static str, String) {
-    cx.read(|cx| {
-        let shown = shown(cx);
-        let label = match &shown {
-            Shown::Quiet(_) => "quiet",
-            Shown::Offer { act, .. } => act,
-            Shown::Working { .. } => "working",
-        };
-        (label, shown.said().whole().to_string())
-    })
+    cx.read(|cx| read(&shown(cx)))
 }
 
 /// Waits for the install's thread to bring the update to where it says `label`.

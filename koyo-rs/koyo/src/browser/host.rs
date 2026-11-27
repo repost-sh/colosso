@@ -395,20 +395,17 @@ impl Browsers {
         }
     }
 
-    /// The running engine's version and its Chromium's.
-    pub fn versions(&self) -> Option<(String, String)> {
+    /// The running engine's Chromium version.
+    pub fn chromium(&self) -> Option<&str> {
         match &self.host {
-            Host::Running { connection, .. } => {
-                Some((connection.engine.clone(), connection.chromium.clone()))
-            }
+            Host::Running { connection, .. } => Some(&connection.chromium),
             _ => None,
         }
     }
 
     /// The running engine's Chromium major version.
     pub fn chromium_major(&self) -> Option<String> {
-        let (_, chromium) = self.versions()?;
-        chromium.split('.').next().map(str::to_owned)
+        self.chromium()?.split('.').next().map(str::to_owned)
     }
 
     /// Forgets what every profile's pages keep (cookies, sign-ins, caches, site storage). The

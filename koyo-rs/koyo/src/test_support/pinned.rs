@@ -1,5 +1,6 @@
 //! The pinned pages as a test makes and reads them: pages opened on the selected checkout and
-//! pinned, and the pinned pages by the addresses they show; and the loose pages by theirs.
+//! pinned, and the pinned pages by the addresses they show; the loose pages by theirs; and the
+//! page the panes show.
 
 use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 
@@ -41,5 +42,14 @@ pub fn loose(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
         (shell.read(cx).workspace.loose().iter())
             .map(|page| page.tab.first().address().unwrap_or_default().to_owned())
             .collect()
+    })
+}
+
+/// The address of the page the panes show, and whether it's a loose one.
+pub fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
+    cx.read(|cx| {
+        let workspace = &shell.read(cx).workspace;
+        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
+        (address.map(str::to_owned), workspace.loose_shown().is_some())
     })
 }

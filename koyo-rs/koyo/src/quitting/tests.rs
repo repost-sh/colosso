@@ -194,5 +194,5 @@ fn a_restart_into_an_update_with_nothing_unsaved_hands_the_release_over_to_reope
     assert!(told.starts_with("install-update\n--attempt\n"), "{told}");
     assert!(told.ends_with("\n--reopen\n"), "the installer wasn't told to open Koyo again: {told}");
     assert_eq!(offers(cx), None, "a release handed over still offers a click");
-    assert_eq!(cx.read(updates::shown).said().line.as_ref(), "Restarting into Koyo 9.0.0.");
+    assert_eq!(cx.read(updates::shown).said().as_ref(), "Restarting into Koyo 9.0.0.");
 }

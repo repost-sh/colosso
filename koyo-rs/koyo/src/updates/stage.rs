@@ -10,8 +10,9 @@ use super::version::Version;
 
 /// Where the update stands. One value, owned by `Updates`.
 pub(super) enum Stage {
-    /// Nothing newer: not asked yet, or the feed names this version or an older one.
-    Current,
+    /// Nothing newer: not asked yet, or the feed names this version or an older one. Says
+    /// when the feed last answered, which About alone says.
+    Current(Checked),
     /// A newer release this Mac can run.
     Available(Release),
     /// A newer release that needs a newer macOS than this Mac has. Not offered; About says why.
@@ -67,21 +68,29 @@ pub enum Failure {
     Broken(String),
 }
 
-/// The stage once the feed has answered `answer`. An install under way, staged or handed over
-/// is never disturbed by a check; a failure gives way only to a newer release than the one
-/// that failed.
-pub(super) fn heard(stage: Stage, answer: Answer) -> Stage {
+/// The stage once the feed has answered `answer` at `now`, or didn't, with why. An install
+/// under way, staged or handed over is never disturbed by a check; a failure gives way only to
+/// a newer release than the one that failed; a feed that didn't answer changes only when it
+/// last answered.
+pub(super) fn heard(stage: Stage, answer: Result<Answer, String>, now: SystemTime) -> Stage {
     match (stage, answer) {
-        (Stage::Current | Stage::Available(_) | Stage::NeedsMacos(_), answer) => match answer {
-            Answer::Newer(release) => Stage::Available(release),
-            Answer::NeedsMacos(release) => Stage::NeedsMacos(release),
-            Answer::Current => Stage::Current,
-        },
-        (Stage::Failed { release, .. }, Answer::Newer(newer)) if newer.version > release.version => {
+        (Stage::Current(_), Err(why)) => Stage::Current(Checked::Failed { why }),
+        (Stage::Current(_) | Stage::Available(_) | Stage::NeedsMacos(_), Ok(answer)) => {
+            match answer {
+                Answer::Newer(release) => Stage::Available(release),
+                Answer::NeedsMacos(release) => Stage::NeedsMacos(release),
+                Answer::Current => Stage::Current(Checked::At(now)),
+            }
+        }
+        (Stage::Failed { release, .. }, Ok(Answer::Newer(newer)))
+            if newer.version > release.version =>
+        {
             Stage::Available(newer)
         }
         (
-            stage @ (Stage::Failed { .. }
+            stage @ (Stage::Available(_)
+            | Stage::NeedsMacos(_)
+            | Stage::Failed { .. }
             | Stage::Installing { .. }
             | Stage::Ready(_)
             | Stage::Restarting(_)),
@@ -92,7 +101,9 @@ pub(super) fn heard(stage: Stage, answer: Answer) -> Stage {
 
 #[cfg(test)]
 mod tests {
-    use super::{Failure, Stage, heard};
+    use std::time::SystemTime;
+
+    use super::{Checked, Failure, Stage, heard};
     use crate::updates::feed::{Answer, Release};
 
     fn release(version: &str) -> Release {
@@ -110,10 +121,15 @@ mod tests {
         }
     }
 
+    /// The stage once the feed has answered `answer`.
+    fn answered(stage: Stage, answer: Answer) -> Stage {
+        heard(stage, Ok(answer), SystemTime::UNIX_EPOCH)
+    }
+
     /// What a stage is, for the stages a check can reach.
     fn named(stage: &Stage) -> String {
         match stage {
-            Stage::Current => "current".into(),
+            Stage::Current(_) => "current".into(),
             Stage::Available(release) => format!("available {}", release.version),
             Stage::NeedsMacos(release) => format!("needs macos {}", release.version),
             Stage::Failed { release, .. } => format!("failed {}", release.version),
@@ -125,27 +141,39 @@ mod tests {
     #[test]
     fn a_check_moves_the_stages_with_nothing_under_way() {
         for stage in [
-            || Stage::Current,
+            || Stage::Current(Checked::Not),
             || Stage::Available(release("0.2.0")),
             || Stage::NeedsMacos(release("0.2.0")),
         ] {
-            let after = heard(stage(), Answer::Newer(release("0.3.0")));
+            let after = answered(stage(), Answer::Newer(release("0.3.0")));
             assert_eq!(named(&after), "available 0.3.0");
-            let after = heard(stage(), Answer::NeedsMacos(release("0.3.0")));
+            let after = answered(stage(), Answer::NeedsMacos(release("0.3.0")));
             assert_eq!(named(&after), "needs macos 0.3.0");
-            assert_eq!(named(&heard(stage(), Answer::Current)), "current");
+            assert_eq!(named(&answered(stage(), Answer::Current)), "current");
         }
     }
 
     #[test]
     fn a_failure_gives_way_only_to_a_newer_release() {
-        let after = heard(failed("0.2.0"), Answer::Newer(release("0.3.0")));
+        let after = answered(failed("0.2.0"), Answer::Newer(release("0.3.0")));
         assert_eq!(named(&after), "available 0.3.0");
-        let after = heard(failed("0.2.0"), Answer::Newer(release("0.2.0")));
+        let after = answered(failed("0.2.0"), Answer::Newer(release("0.2.0")));
         assert_eq!(named(&after), "failed 0.2.0");
-        let after = heard(failed("0.2.0"), Answer::NeedsMacos(release("0.3.0")));
+        let after = answered(failed("0.2.0"), Answer::NeedsMacos(release("0.3.0")));
         assert_eq!(named(&after), "failed 0.2.0");
-        assert_eq!(named(&heard(failed("0.2.0"), Answer::Current)), "failed 0.2.0");
+        assert_eq!(named(&answered(failed("0.2.0"), Answer::Current)), "failed 0.2.0");
+    }
+
+    #[test]
+    fn a_feed_that_did_not_answer_changes_only_when_it_last_answered() {
+        let unanswered = |stage| heard(stage, Err("no route".into()), SystemTime::UNIX_EPOCH);
+        let Stage::Current(checked) = unanswered(Stage::Current(Checked::Not)) else {
+            panic!("a failed check moved the stage");
+        };
+        assert_eq!(checked, Checked::Failed { why: "no route".into() });
+        let after = unanswered(Stage::Available(release("0.2.0")));
+        assert_eq!(named(&after), "available 0.2.0");
+        assert_eq!(named(&unanswered(failed("0.2.0"))), "failed 0.2.0");
     }
 
     #[test]
@@ -156,7 +184,7 @@ mod tests {
             Answer::NeedsMacos(release("0.3.0")),
             Answer::Current,
         ] {
-            assert_eq!(named(&heard(restarting(), answer)), "restarting 0.2.0");
+            assert_eq!(named(&answered(restarting(), answer)), "restarting 0.2.0");
         }
     }
 }

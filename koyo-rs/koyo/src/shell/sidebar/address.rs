@@ -45,8 +45,8 @@ struct Shown {
     said: (SharedString, bool),
     /// The page the bar's click and buttons act on: the shell's `shown_page`.
     page: Option<Entity<BrowserView>>,
-    /// Whether a click on the bar gives an address to type: a page is shown, whose address
-    /// it changes, or no tab is open, and a new page opens for one (`Shell::open_address`).
+    /// Whether a click on the bar gives an address to type: it acts on something
+    /// (`Shell::address_target`).
     takes_address: bool,
     /// The pages of the tab shown, whose address field the bar is while one has the keyboard.
     pages: Vec<Entity<BrowserView>>,
@@ -81,12 +81,6 @@ impl Top {
 }
 
 impl Shell {
-    /// Whether no tab is open where the person is: no tab is shown, and Settings isn't either.
-    pub(crate) fn no_tab_open(&self) -> bool {
-        let settings = matches!(self.workspace.front(), Some(Front::Settings(_)));
-        !settings && self.workspace.tab_shown().is_none()
-    }
-
     /// Tells the top of the sidebar what's shown while the address bar is in the sidebar; with
     /// it in the page, that nothing is, so it holds no page the page's own toolbar shows.
     pub(crate) fn tell_sidebar_top(&self, cx: &mut App) {
@@ -94,7 +88,7 @@ impl Shell {
             let page = self.shown_page();
             Shown {
                 said: said(self, page.as_ref()),
-                takes_address: page.is_some() || self.no_tab_open(),
+                takes_address: self.address_target().is_some(),
                 page,
                 pages: self.pages_shown(),
             }

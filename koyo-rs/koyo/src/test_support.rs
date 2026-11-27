@@ -42,7 +42,7 @@ pub use keys::{act, frames, press, pressed};
 #[cfg(test)]
 pub use panes::{iphone, terminals_listed};
 #[cfg(test)]
-pub use pinned::{loose, pin, pinned};
+pub use pinned::{loose, pin, pinned, shown};
 #[cfg(test)]
 pub use pointer::{
     GRAB, carry, drag, fingers, hold, hover, let_go, let_go_on, move_held, take_up,

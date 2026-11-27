@@ -90,12 +90,12 @@ pub fn connect_or_start(
 
 /// Runs `spawn` with no signal blocked on this thread, and puts its blocked signals back. A
 /// child starts with the blocked signals of the thread that spawns it, and the app's
-/// background threads are GCD's, with nearly all of them blocked: a daemon started from one
-/// could never be told SIGTERM. Unblocked here rather than in the child before it becomes the
-/// daemon (`pre_exec`), which has the standard library fork the app to run it: the app holds
-/// the browser engine, and a fork of it can wait for good on a lock one of the engine's
-/// threads held (`docs/native-pages.md` 11).
-fn with_no_signal_blocked<R>(spawn: impl FnOnce() -> R) -> R {
+/// background threads are GCD's, with nearly all of them blocked: a daemon or any other
+/// detached child started from one could never be told SIGTERM. Unblocked here rather than in
+/// the child before it becomes its program (`pre_exec`), which has the standard library fork
+/// the app to run it: the app holds the browser engine, and a fork of it can wait for good on
+/// a lock one of the engine's threads held (`docs/native-pages.md` 11).
+pub fn with_no_signal_blocked<R>(spawn: impl FnOnce() -> R) -> R {
     // SAFETY: the sets are this function's own, initialised before they're read, and the
     // calls change this thread's blocked signals only.
     unsafe {

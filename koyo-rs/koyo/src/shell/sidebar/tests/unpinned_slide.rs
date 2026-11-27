@@ -14,7 +14,7 @@ use crate::shell::spaces::NextSpace;
 use crate::projects::MoveProjectToNewSpace;
 use crate::settings::{self, LoosePages};
 use crate::shell::Shell;
-use crate::test_support::{click, draw, frames, open_page};
+use crate::test_support::{click, draw, frames, open_page, shown};
 
 const PAGES: [&str; 2] = ["https://one.example/", "https://two.example/"];
 
@@ -58,15 +58,6 @@ fn offset(shell: &Entity<Shell>, cx: &TestAppContext) -> f32 {
 
 fn space(cx: &TestAppContext) -> usize {
     cx.read(|cx| settings::get(cx).space)
-}
-
-/// The address of the page the panes show, and whether it's a loose one.
-fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
-    cx.read(|cx| {
-        let workspace = &shell.read(cx).workspace;
-        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
-        (address.map(str::to_owned), workspace.loose_shown().is_some())
-    })
 }
 
 /// Two fingers on the trackpad over the sidebar, in `phase`, moved `dx` across.

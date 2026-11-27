@@ -120,8 +120,8 @@ The installer does this:
 2. It waits for the folder's lock, which it gets once the Koyo that staged the release has ended.
 3. It checks the staged bundle itself, as the app did (section 4). The bundle must satisfy the installer's own designated requirement, be newer than the installer, and start on this macOS.
 4. It exchanges the staged bundle and the installed one in one step, with `renamex_np` and `RENAME_SWAP`. At every instant the installed path holds one whole bundle or the other.
-5. After a restart, it opens Koyo with `open -n`, and passes on every `KOYO_*` variable that it inherited.
-6. It removes the attempt folder, which now holds the replaced bundle.
+5. It removes the attempt folder, which now holds the replaced bundle.
+6. After a restart, it opens Koyo with `open -n`, and passes on every `KOYO_*` variable that it inherited.
 
 The installer replaces only the bundle that its own executable runs from. It takes no path to another one. Any process can start `koyo install-update`, so the installer trusts nothing that it is told: a staged bundle that fails a check stays where it is, the installed bundle is as it was, and the log says why. After a restart, Koyo opens again on every path out of the installer.
 
@@ -152,7 +152,7 @@ Two Koyos started from one bundle keep their attempts apart, since each has its 
 
 `may_replace` decides whether a bundle may replace this Koyo. The app calls it when it stages a release, and the installer calls it again before the exchange. The app also checks that the copy is the release that it offered.
 
-Before the copy is checked, every file and folder in it is flushed to disk. A power loss just after the exchange therefore cannot leave the installed path with files whose contents never arrived. The flush took 1.3 to 1.5 s on a 607 MB bundle.
+Before the copy is checked, it is flushed to disk: each file and folder is synced, and the drive is then asked once to write out its cache. A power loss just after the exchange therefore cannot leave the installed path with files whose contents never arrived.
 
 The requirement is the running process's own, read from the system with `SecCodeCopySelf` and `SecCodeCopyDesignatedRequirement`. A Developer ID build's names its team. A build signed with this Mac's identity names its certificate. No other key exists.
 
@@ -296,7 +296,7 @@ Two debug bundles, 0.1.0 and 0.1.1, were given a test identifier and this instan
 ### 7.3 What did not run
 
 - **Pictures of the pill.** The Mac's screen was locked during the run, so no window drew. The steps above were read from the log, the files, and app control.
-- **A restart that opens Koyo again.** The installer's `open -n` would put a window on the owner's desktop, which the verify skill forbids. The unit tests cover it with the opening injected.
+- **A restart that opens Koyo again.** The installer's `open -n` would put a window on the owner's desktop, which the verify skill forbids, and no test starts an app. The exchange before it is tested and was run for real; the opening is three lines in the installer's `main`.
 - **A Developer ID signature, notarization, and macOS's App Management protection** in `/Applications`. This Mac has no Developer ID identity.
 - **`script/publish`, and the workflows.** There is no bucket and no runner yet, and no release has been published on GitHub. The workflows pass `actionlint`.
 - **`script/cef` starting clean for a new CEF.** It is `automate-git.py --force-clean`, CEF's own, and a run is hours.

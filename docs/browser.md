@@ -829,9 +829,8 @@ the running engine now checks the one before.
   doesn't know that API, or was built at another commit than the headers', fails the start,
   saying so. It reads the manifest then, off the main thread, and `HostEvent::Ready` carries
   what it says (`framework`): whether H.264 and AAC play, and the patches by name.
-- **The app.** It logs that once as the engine starts: "with H.264 and AAC and 13 of Koyo's
-  patches", or what the engine is without and what that costs, a warning in a release build
-  without either. Settings › Browser › Engine says the Chromium version alone, and opens
+- **The app.** It logs that once as the engine starts, the framework's codecs and patches as
+  the host told them, a warning in a release build without either. Settings › Browser › Engine says the Chromium version alone, and opens
   Chrome's own settings (`chrome://settings`) in a tab.
 - **The framework in place here** had only the old list of names. Its manifest was written
   once, on 2026-11-19, from the shared folder's `args.gn` and `script/cef-patches`, since

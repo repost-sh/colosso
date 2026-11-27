@@ -6,7 +6,7 @@
 //! page's menu copies it into the selected worktree.
 
 use gpui_kit::{
-    AppContext as _, Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px,
+    AppContext as _, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px,
 };
 
 use super::{act, chat, drag, drag_onto, drawn, let_go_on, listed, sidebar_shell, take_up};
@@ -14,21 +14,12 @@ use crate::shell::spaces::{NewSpace, NextSpace, PreviousSpace};
 use crate::files::tests::dialog;
 use crate::launcher::{Launcher, NewTab};
 use crate::settings::{self, LoosePages};
-use crate::shell::{CloseTab, CopyToWorktree, PinnedMenu, ReopenClosedTab, Shell};
-use crate::test_support::{click, draw, loose, open_page, press};
+use crate::shell::{CloseTab, CopyToWorktree, PinnedMenu, ReopenClosedTab};
+use crate::test_support::{click, draw, loose, open_page, press, shown};
 
 /// Each space lists its own loose pages, as these tests ask, not the shared ones of the default.
 fn per_space(cx: &mut TestAppContext) {
     cx.update(|cx| settings::update(cx, |settings| settings.loose_pages = LoosePages::PerSpace));
-}
-
-/// The address of the page the panes show, and whether it's a loose one.
-fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
-    cx.read(|cx| {
-        let workspace = &shell.read(cx).workspace;
-        let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
-        (address.map(str::to_owned), workspace.loose_shown().is_some())
-    })
 }
 
 #[gpui_kit::test]

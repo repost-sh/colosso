@@ -1,15 +1,13 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use super::{HandOver, INSTALL_UPDATE, Itself, exchange, hand_over, install};
-use crate::blocking::{Blocking, in_test};
+use crate::blocking::in_test;
 use crate::test_support::{scratch, write};
 use crate::updates::attempt::{Attempt, sweep};
-use crate::updates::fixtures::{self, Made};
-use crate::updates::installed::info;
+use crate::updates::fixtures::{self, Made, version_of};
+use crate::updates::version::Version;
 
 fn told(reopen: bool) -> HandOver {
     HandOver {
@@ -52,11 +50,6 @@ fn arguments_that_are_not_a_hand_over_are_refused() {
     assert!(parse(&["--reopen", "--attempt", "/a"]).is_some());
 }
 
-fn version_of(bundle: &Path) -> String {
-    let info = in_test(|may| info(bundle, may)).unwrap();
-    info["CFBundleShortVersionString"].as_string().unwrap().to_owned()
-}
-
 #[test]
 fn two_bundles_are_exchanged_in_one_step() {
     let root = scratch("update-exchange");
@@ -73,41 +66,35 @@ fn two_bundles_are_exchanged_in_one_step() {
     assert_eq!(version_of(&installed), "9.0.0", "a failed exchange changed the bundle");
 }
 
-/// A Koyo at `<root>/Koyo.app`, which says 8.0.0 of itself so a test can tell it from what
-/// replaces it, with a bundle made as `staged` says beside it in an attempt this test holds:
-/// the bundle, and the attempt.
-fn staged_beside(root: &Path, staged: &Made) -> (PathBuf, Attempt) {
+/// An installed Koyo, unsigned since the installer checks only what's staged, that says
+/// 8.0.0 of itself so a test can tell it from what replaces it: at `<root>/Koyo.app`.
+fn installed_at(root: &Path) -> PathBuf {
     let installed = root.join("Koyo.app");
-    fixtures::bundle(&installed, &Made::release("8.0.0"));
+    fixtures::bundle(&installed, &Made { identifier: None, ..Made::release("8.0.0") });
+    installed
+}
+
+/// A Koyo at `<root>/Koyo.app` (`installed_at`), with a bundle made as `staged` says beside
+/// it in an attempt this test holds: the bundle, and the attempt.
+fn staged_beside(root: &Path, staged: &Made) -> (PathBuf, Attempt) {
+    let installed = installed_at(root);
     let attempt = in_test(|may| Attempt::begin(&installed, may)).unwrap();
     fixtures::bundle(&attempt.staged(), staged);
     (installed, attempt)
 }
 
-/// Runs the installer of the Koyo at `bundle` on a thread of its own, as a process of its own
-/// would run, trusting what the tests' releases are signed as and opening nothing: what it
-/// ended with, and each bundle it would have opened.
-fn installing(told: HandOver, bundle: &Path) -> std::thread::JoinHandle<(ExitCode, Vec<PathBuf>)> {
-    let bundle = bundle.to_owned();
-    std::thread::spawn(move || {
-        let opened = Mutex::new(Vec::new());
-        let reopen = |bundle: &Path, _: Blocking<'_>| {
-            opened.lock().unwrap().push(bundle.to_owned());
-            Ok(())
-        };
-        let itself = Itself {
-            bundle,
-            trust: &|_| Ok(fixtures::trust()),
-            reopen: &reopen,
-        };
-        let ended = in_test(|may| install(&told, &itself, may));
-        (ended, opened.into_inner().unwrap())
-    })
+/// Runs the installer of the Koyo at `bundle` on the attempt `folder`, on a thread of its own
+/// as a process of its own would run, trusting what the tests' releases are signed as: the
+/// release it put in place, or why not.
+fn installing(folder: &Path, bundle: &Path) -> std::thread::JoinHandle<Result<Version, String>> {
+    let folder = folder.to_owned();
+    let itself = Itself { bundle: bundle.to_owned(), trust: fixtures::trust() };
+    std::thread::spawn(move || in_test(|may| install(&folder, &itself, may)))
 }
 
 /// Restarts into the bundle made as `staged` says, its attempt let go as the Koyo that held
-/// it ends: the installer must refuse it, leave the installed bundle as it was, open that
-/// one again, and remove the attempt.
+/// it ends: the installer must refuse it, leave the installed bundle as it was, and remove the
+/// attempt.
 fn refuses(name: &str, staged: &Made, change: impl FnOnce(&Path)) {
     let root = scratch(name);
     let (installed, attempt) = staged_beside(&root, staged);
@@ -115,23 +102,20 @@ fn refuses(name: &str, staged: &Made, change: impl FnOnce(&Path)) {
     let folder = attempt.folder().to_owned();
     drop(attempt);
 
-    let told = HandOver { attempt: folder.clone(), reopen: true };
-    let (ended, opened) = installing(told, &installed).join().unwrap();
+    let ended = installing(&folder, &installed).join().unwrap();
 
-    assert_eq!(ended, ExitCode::FAILURE, "{name}");
+    assert!(ended.is_err(), "{name}: the staged bundle was taken: {ended:?}");
     assert_eq!(version_of(&installed), "8.0.0", "{name}: the bundle was replaced");
-    assert_eq!(opened, [installed], "{name}: a restart ended with no Koyo");
     assert!(!folder.exists(), "{name}: the refused attempt stayed");
 }
 
 #[test]
-fn the_installer_waits_for_the_attempt_to_be_let_go_then_replaces_and_reopens() {
+fn the_installer_waits_for_the_attempt_to_be_let_go_then_replaces_the_bundle() {
     let root = scratch("update-installer");
     let (installed, attempt) = staged_beside(&root, &Made::release("9.0.0"));
     let folder = attempt.folder().to_owned();
-    let told = HandOver { attempt: folder.clone(), reopen: true };
 
-    let at_work = installing(told, &installed);
+    let at_work = installing(&folder, &installed);
     #[expect(
         clippy::disallowed_methods,
         reason = "the installer is given time to do what it must not do yet"
@@ -141,28 +125,13 @@ fn the_installer_waits_for_the_attempt_to_be_let_go_then_replaces_and_reopens() 
     assert_eq!(version_of(&installed), "8.0.0", "the bundle was replaced under a living Koyo");
 
     drop(attempt);
-    let (ended, opened) = at_work.join().unwrap();
+    let ended = at_work.join().unwrap();
 
-    assert_eq!(ended, ExitCode::SUCCESS);
+    assert_eq!(ended, Ok("9.0.0".parse().unwrap()));
     assert_eq!(version_of(&installed), "9.0.0");
-    assert_eq!(opened, std::slice::from_ref(&installed));
     assert!(!folder.exists(), "the attempt, and the replaced bundle in it, stayed");
     let left: Vec<_> = std::fs::read_dir(&root).unwrap().map(|entry| entry.unwrap().path()).collect();
     assert_eq!(left, [installed]);
-}
-
-#[test]
-fn a_quit_s_installer_replaces_the_bundle_and_opens_nothing() {
-    let root = scratch("update-installer-quit");
-    let (installed, attempt) = staged_beside(&root, &Made::release("9.0.0"));
-    let told = HandOver { attempt: attempt.folder().to_owned(), reopen: false };
-    drop(attempt);
-
-    let (ended, opened) = installing(told, &installed).join().unwrap();
-
-    assert_eq!(ended, ExitCode::SUCCESS);
-    assert_eq!(version_of(&installed), "9.0.0");
-    assert_eq!(opened, Vec::<PathBuf>::new());
 }
 
 #[test]
@@ -184,7 +153,7 @@ fn a_staged_bundle_that_is_not_newer_than_the_installer_is_refused() {
 }
 
 #[test]
-fn an_attempt_with_nothing_staged_leaves_the_bundle_and_still_reopens_it() {
+fn an_attempt_with_nothing_staged_leaves_the_bundle_as_it_was() {
     refuses("update-installer-empty", &Made::release("9.0.0"), |staged| {
         std::fs::remove_dir_all(staged).unwrap();
     });
@@ -193,21 +162,18 @@ fn an_attempt_with_nothing_staged_leaves_the_bundle_and_still_reopens_it() {
 #[test]
 fn a_folder_that_is_not_an_attempt_beside_the_installer_s_bundle_is_refused_and_left() {
     let root = scratch("update-installer-elsewhere");
-    let installed = root.join("Koyo.app");
-    fixtures::bundle(&installed, &Made::release("8.0.0"));
+    let installed = installed_at(&root);
     let elsewhere = root.join("elsewhere/.Koyo.app.update-1-1");
     let unnamed = root.join("staging");
     let another_s = root.join(".Other.app.update-1-1");
     for folder in [&elsewhere, &unnamed, &another_s] {
         fixtures::bundle(&folder.join("Koyo.app"), &Made::release("9.0.0"));
 
-        let told = HandOver { attempt: folder.clone(), reopen: true };
-        let (ended, opened) = installing(told, &installed).join().unwrap();
+        let ended = installing(folder, &installed).join().unwrap();
 
         let folder = folder.display();
-        assert_eq!(ended, ExitCode::FAILURE, "{folder}");
+        assert!(ended.is_err(), "{folder} was taken: {ended:?}");
         assert_eq!(version_of(&installed), "8.0.0", "{folder} replaced the bundle");
-        assert_eq!(opened, std::slice::from_ref(&installed), "{folder}");
     }
     for folder in [elsewhere, unnamed, another_s] {
         assert_eq!(version_of(&folder.join("Koyo.app")), "9.0.0", "what isn't the installer's went");
@@ -215,17 +181,15 @@ fn a_folder_that_is_not_an_attempt_beside_the_installer_s_bundle_is_refused_and_
 }
 
 #[test]
-fn an_attempt_that_cannot_be_taken_still_reopens_koyo() {
+fn an_attempt_that_cannot_be_taken_leaves_the_bundle_as_it_was() {
     let root = scratch("update-installer-gone");
-    let installed = root.join("Koyo.app");
-    fixtures::bundle(&installed, &Made::release("8.0.0"));
-    let told = HandOver { attempt: root.join(".Koyo.app.update-1-1"), reopen: true };
+    let installed = installed_at(&root);
+    let folder = root.join(".Koyo.app.update-1-1");
 
-    let (ended, opened) = installing(told, &installed).join().unwrap();
+    let ended = installing(&folder, &installed).join().unwrap();
 
-    assert_eq!(ended, ExitCode::FAILURE);
+    assert!(ended.is_err(), "{ended:?}");
     assert_eq!(version_of(&installed), "8.0.0");
-    assert_eq!(opened, [installed]);
 }
 
 #[test]
@@ -241,11 +205,7 @@ fn a_staged_release_is_handed_to_the_installer_with_where_it_is_and_stays_held()
         in_test(|may| hand_over(staged, &program, reopen, may)).unwrap();
 
         fixtures::until("the installer to start", || told.exists());
-        let mut expected = format!("install-update\n--attempt\n{}\n", attempt.display());
-        if reopen {
-            expected.push_str("--reopen\n");
-        }
-        assert_eq!(std::fs::read_to_string(&told).unwrap(), expected);
+        assert_eq!(std::fs::read_to_string(&told).unwrap(), fixtures::recorded(&attempt, reopen));
 
         let taken = File::open(&attempt).unwrap().try_lock();
         assert!(

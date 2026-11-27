@@ -103,27 +103,26 @@ pub(super) fn hand_over(
     }
 }
 
-/// Starts the installer and doesn't wait for it: spawned as it is, with no fork of the app,
-/// with nothing to read or write, and in a process group of its own, so a hangup sent to
-/// the app's doesn't reach it.
+/// Starts the installer and doesn't wait for it: spawned as it is, with no fork of the app
+/// and no signal blocked, with nothing to read or write, and in a process group of its own,
+/// so a hangup sent to the app's doesn't reach it.
 fn start(exe: &Path, told: &HandOver, _: Blocking<'_>) -> io::Result<()> {
-    Command::new(exe)
+    let mut installer = Command::new(exe);
+    installer
         .args(told.args())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map(drop)
+        .process_group(0);
+    koyo_daemon::with_no_signal_blocked(|| installer.spawn()).map(drop)
 }
 
 /// `koyo install-update`: waits for the Koyo that staged a release to end, checks the staged
-/// bundle may replace the one this executable runs from, exchanges the two, opens Koyo again
-/// if asked, and removes the attempt, the replaced bundle with it. Logs to Koyo's log. A
+/// bundle may replace the one this executable runs from, exchanges the two, removes the
+/// attempt, the replaced bundle with it, and opens Koyo again if asked. Logs to Koyo's log. A
 /// bundle that isn't replaced is as it was, and Koyo still opens again for a restart, so a
 /// restart always brings a Koyo back.
 pub fn main(args: impl Iterator<Item = String>, may: Blocking<'_>) -> ExitCode {
-    hear_signals();
     let Some(told) = HandOver::parse(args) else {
         log::error!("updates: {INSTALL_UPDATE} takes --attempt <folder> [--reopen]");
         return ExitCode::FAILURE;
@@ -134,76 +133,66 @@ pub fn main(args: impl Iterator<Item = String>, may: Blocking<'_>) -> ExitCode {
         );
         return ExitCode::FAILURE;
     };
-    let itself = Itself {
-        bundle,
-        trust: &Requirement::of_self,
-        reopen: &open,
-    };
-    install(&told, &itself, may)
-}
-
-/// The Koyo an installer is, which a test stands in for.
-struct Itself<'a> {
-    /// The bundle its executable runs from: the one thing it ever replaces.
-    bundle: PathBuf,
-    /// Reads its own designated requirement, which a staged bundle must satisfy.
-    trust: &'a dyn Fn(Blocking<'_>) -> Result<Requirement, String>,
-    /// Opens the Koyo at a bundle.
-    reopen: &'a dyn Fn(&Path, Blocking<'_>) -> io::Result<()>,
-}
-
-/// The installer, from its arguments on. Whatever keeps it from replacing its bundle, it
-/// says why in the log, and for a restart opens the Koyo that's there.
-fn install(told: &HandOver, itself: &Itself<'_>, may: Blocking<'_>) -> ExitCode {
-    let (folder, installed) = (told.attempt.display(), itself.bundle.display());
-    log::info!("updates: the installer waits for the Koyo that holds {folder} to end");
-    let attempt = Attempt::once_let_go(&itself.bundle, &told.attempt, may);
-    let replaced = match &attempt {
-        Ok(attempt) => replace(attempt, itself, may),
-        Err(error) => Err(format!("the installer couldn't take {folder}: {error}")),
-    };
-    match &replaced {
-        Ok(version) => {
-            log::info!("updates: {installed} is replaced with Koyo {version}, staged in {folder}");
+    let installed = bundle.display();
+    let replaced = match Requirement::of_self(may) {
+        Ok(trust) => {
+            let itself = Itself { bundle: bundle.clone(), trust };
+            install(&told.attempt, &itself, may).is_ok()
         }
-        Err(why) => log::error!("updates: {installed} wasn't replaced and is as it was: {why}"),
-    }
+        Err(why) => {
+            log::error!("updates: {installed} wasn't replaced: its signature can't be read: {why}");
+            false
+        }
+    };
     if told.reopen {
-        match (itself.reopen)(&itself.bundle, may) {
+        match open(&bundle, may) {
             Ok(()) => log::info!("updates: opened {installed}"),
             Err(error) => log::error!("updates: couldn't open {installed}: {error}"),
         }
     }
+    if replaced { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
+/// The Koyo an installer is.
+struct Itself {
+    /// The bundle its executable runs from: the one thing it ever replaces.
+    bundle: PathBuf,
+    /// Its own designated requirement, which a staged bundle must satisfy.
+    trust: Requirement,
+}
+
+/// Puts the release staged in the attempt `folder` in place, once the Koyo that holds it has
+/// ended: the release now installed, or why the bundle is as it was, which it also says in
+/// the log. The attempt is removed either way.
+fn install(folder: &Path, itself: &Itself, may: Blocking<'_>) -> Result<Version, String> {
+    let (shown, installed) = (folder.display(), itself.bundle.display());
+    log::info!("updates: the installer waits for the Koyo that holds {shown} to end");
+    let attempt = Attempt::once_let_go(&itself.bundle, folder, may);
+    let replaced = match &attempt {
+        Ok(attempt) => replace(attempt, itself, may),
+        Err(error) => Err(format!("the installer couldn't take {shown}: {error}")),
+    };
+    match &replaced {
+        Ok(version) => {
+            log::info!("updates: {installed} is replaced with Koyo {version}, staged in {shown}");
+        }
+        Err(why) => log::error!("updates: {installed} wasn't replaced and is as it was: {why}"),
+    }
     if let Ok(attempt) = attempt {
         attempt.discard(may);
     }
-    if replaced.is_ok() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    replaced
 }
 
 /// Puts the bundle `attempt` holds in place of the installer's own, if it may replace it:
 /// the release now installed, or why the installed bundle is as it was.
-fn replace(attempt: &Attempt, itself: &Itself<'_>, may: Blocking<'_>) -> Result<Version, String> {
-    let trust = (itself.trust)(may)
-        .map_err(|why| format!("the installer's own signature can't be read: {why}"))?;
+fn replace(attempt: &Attempt, itself: &Itself, may: Blocking<'_>) -> Result<Version, String> {
     let staged = attempt.staged();
-    let holds = may_replace(&staged, &trust, Version::macos(), may)
+    let holds = may_replace(&staged, &itself.trust, Version::macos(), may)
         .map_err(|failure| format!("the staged bundle may not replace it: {failure:?}"))?;
     exchange(&staged, &itself.bundle, may)
         .map_err(|error| format!("the two bundles couldn't be exchanged: {error}"))?;
     Ok(holds)
-}
-
-/// Lets every signal through to this process. A child starts with the blocked signals of the
-/// thread that spawned it, and the app's background threads, which start the installer for a
-/// restart, block nearly all of them: left so, the installer could never be told to end.
-fn hear_signals() {
-    // SAFETY: the set is this function's own, initialised before it's read, and the call
-    // changes this thread's blocked signals only.
-    unsafe {
-        let mut none = std::mem::zeroed::<libc::sigset_t>();
-        libc::sigemptyset(&raw mut none);
-        libc::pthread_sigmask(libc::SIG_SETMASK, &raw const none, std::ptr::null_mut());
-    }
 }
 
 /// Exchanges the bundles at `staged` and `installed` in one step: at every instant each path

@@ -1,8 +1,10 @@
 //! The update pill in the window's top bar, beside the downloads button (`docs/updates.md` 1):
 //! there while a newer Koyo is offered, comes in or waits staged, and after an install failed;
 //! gone while there's nothing to do. One click takes what it offers. It draws only what
-//! `updates::shown` says, and owns no state but whether it's there. A view of its own, so a
-//! download's progress redraws it and not the shell, which hears only that it came or went.
+//! `updates::shown` says, and owns no state but whether it's there. A view of its own, which
+//! the shell hears of only when it came or went; a download's progress still draws the shell
+//! again with it, up to once a percent, as a view's notify marks the views above it to draw.
+//! It isn't cached: its width follows its label.
 
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
@@ -85,19 +87,18 @@ impl Render for UpdateButton {
         let p = theme::palette(cx);
         match updates::shown(cx) {
             Shown::Quiet(_) => div().into_any_element(),
-            Shown::Offer { said, act } => {
-                let color = if said.failed { p.danger } else { p.accent };
-                pill(color, gpui_kit::white(), said.whole())
+            Shown::Offer { said, act, failed } => {
+                let color = if failed { p.danger } else { p.accent };
+                pill(color, gpui_kit::white(), said)
                     .cursor_pointer()
                     .hover(move |pill| pill.bg(color.opacity(0.85)))
                     .on_click(|_, _, cx| updates::act(cx))
                     .child(act)
                     .into_any_element()
             }
-            Shown::Working { said, done } => {
-                let percent = done.map_or(0, |done| (done * 100.).round() as u8);
-                pill(p.hover, p.text, said.whole())
-                    .child(ring(percent).size(px(14.)).text_color(p.accent))
+            Shown::Working { said, percent } => {
+                pill(p.hover, p.text, said)
+                    .child(ring(percent.unwrap_or(0)).size(px(14.)).text_color(p.accent))
                     .child("Updating…")
                     .into_any_element()
             }

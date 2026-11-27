@@ -11,57 +11,33 @@ use super::stage::{Checked, Failure, Stage, Step};
 use super::version::Version;
 use crate::ago::ago;
 
-/// What to show. The top bar shows `Offer` and `Working`; About shows all three.
+/// What to show. The top bar shows `Offer` and `Working`; About shows all three. Each says
+/// all there is to know in one text: a line, then what a click does, the failure, or when it
+/// last checked, as a tooltip and About say it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shown {
     /// Nothing to do: up to date, checking, a failed check, a macOS too old, or a build that
     /// doesn't update itself.
-    Quiet(Said),
+    Quiet(SharedString),
     /// One click to make, whose label is `act`: "Update Koyo", "Restart to Update", "Retry
-    /// Update".
-    Offer { said: Said, act: &'static str },
-    /// Under way. `done` is the download's share, or none while it's checked, copied or
-    /// handed over.
-    Working { said: Said, done: Option<f32> },
+    /// Update". `failed` when the install went wrong, which the views colour.
+    Offer {
+        said: SharedString,
+        act: &'static str,
+        failed: bool,
+    },
+    /// Under way. `percent` is how much of the download has come, as its ring shows it, or
+    /// none while it's checked, copied or handed over.
+    Working {
+        said: SharedString,
+        percent: Option<u8>,
+    },
 }
 
 impl Shown {
-    pub fn said(&self) -> &Said {
+    pub fn said(&self) -> &SharedString {
         match self {
             Shown::Quiet(said) | Shown::Offer { said, .. } | Shown::Working { said, .. } => said,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Said {
-    /// One line: "Koyo 0.2.0 is available."
-    pub line: SharedString,
-    /// What else to know: what a click does, the failure, when it last checked.
-    pub detail: Option<SharedString>,
-    /// Whether it went wrong, which the views colour.
-    pub failed: bool,
-}
-
-impl Said {
-    fn line(line: impl Into<SharedString>) -> Said {
-        Said {
-            line: line.into(),
-            detail: None,
-            failed: false,
-        }
-    }
-
-    fn detail(mut self, detail: impl Into<SharedString>) -> Said {
-        self.detail = Some(detail.into());
-        self
-    }
-
-    /// The line and what else there is to know, as a tooltip and About say them.
-    pub fn whole(&self) -> SharedString {
-        match &self.detail {
-            Some(detail) => format!("{} {detail}", self.line).into(),
-            None => self.line.clone(),
         }
     }
 }
@@ -69,46 +45,53 @@ impl Said {
 /// What a megabyte is where sizes are said: as Finder counts them.
 const MB: u64 = 1_000_000;
 
-/// What `stage` has to say, `checked` saying when the feed last answered, at `now` on macOS
-/// `macos`. Pure.
-pub(super) fn shown(stage: &Stage, checked: &Checked, now: SystemTime, macos: Version) -> Shown {
+/// What `stage` has to say at `now` on macOS `macos`. Pure.
+pub(super) fn shown(stage: &Stage, now: SystemTime, macos: Version) -> Shown {
     match stage {
-        Stage::Current => Shown::Quiet(current(checked, now)),
-        Stage::NeedsMacos(release) => Shown::Quiet(Said::line(format!(
-            "Koyo {} needs macOS {} or later; this Mac has {}.",
-            release.version,
-            release.minimum_macos.as_macos(),
-            macos.as_macos()
-        ))),
+        Stage::Current(checked) => Shown::Quiet(current(checked, now)),
+        Stage::NeedsMacos(release) => Shown::Quiet(
+            format!(
+                "Koyo {} needs macOS {} or later; this Mac has {}.",
+                release.version,
+                release.minimum_macos.as_macos(),
+                macos.as_macos()
+            )
+            .into(),
+        ),
         Stage::Available(release) => Shown::Offer {
-            said: Said::line(format!("Koyo {} is available.", release.version))
-                .detail("Koyo downloads it, then restarts to install it."),
+            said: format!(
+                "Koyo {} is available. Koyo downloads it, then restarts to install it.",
+                release.version
+            )
+            .into(),
             act: "Update Koyo",
+            failed: false,
         },
         Stage::Installing { release, step, .. } => working(release, *step),
         Stage::Ready(staged) => Shown::Offer {
-            said: Said::line(format!("Koyo {} is ready.", staged.release().version))
-                .detail("It installs when Koyo restarts or quits."),
+            said: format!(
+                "Koyo {} is ready. It installs when Koyo restarts or quits.",
+                staged.release().version
+            )
+            .into(),
             act: "Restart to Update",
+            failed: false,
         },
         Stage::Restarting(version) => Shown::Working {
-            said: Said::line(format!("Restarting into Koyo {version}.")),
-            done: None,
+            said: format!("Restarting into Koyo {version}.").into(),
+            percent: None,
         },
         Stage::Failed { release, failure } => Shown::Offer {
-            said: Said {
-                failed: true,
-                ..Said::line(format!("Couldn't update to Koyo {}.", release.version))
-                    .detail(why(failure))
-            },
+            said: format!("Couldn't update to Koyo {}. {}", release.version, why(failure)).into(),
             act: "Retry Update",
+            failed: true,
         },
     }
 }
 
 /// What a build that doesn't update itself says of that.
 pub(super) fn unreleased(why: &Unreleased) -> Shown {
-    Shown::Quiet(Said::line(match why {
+    Shown::Quiet(SharedString::from(match why {
         Unreleased::NoFeed => {
             "This build doesn't update itself: it was built here, not released.".to_owned()
         }
@@ -121,18 +104,18 @@ pub(super) fn unreleased(why: &Unreleased) -> Shown {
     }))
 }
 
-fn current(checked: &Checked, now: SystemTime) -> Said {
+fn current(checked: &Checked, now: SystemTime) -> SharedString {
     match checked {
-        Checked::Not => Said::line("Checking for updates…"),
+        Checked::Not => "Checking for updates…".into(),
         Checked::At(at) => {
             let seconds = now.duration_since(*at).map_or(0, |since| since.as_secs());
-            Said::line("Koyo is up to date.").detail(format!("Checked {}.", ago(seconds)))
+            format!("Koyo is up to date. Checked {}.", ago(seconds)).into()
         }
-        Checked::Failed { why } => Said {
-            failed: true,
-            ..Said::line(sentence(&format!("Couldn't check for updates: {why}")))
-                .detail("Koyo tries again within the hour.")
-        },
+        Checked::Failed { why } => format!(
+            "{} Koyo tries again within the hour.",
+            sentence(&format!("Couldn't check for updates: {why}"))
+        )
+        .into(),
     }
 }
 
@@ -140,22 +123,21 @@ fn working(release: &Release, step: Step) -> Shown {
     let version = release.version;
     match step {
         Step::Downloading { received } => Shown::Working {
-            said: Said::line(format!(
+            said: format!(
                 "Downloading Koyo {version}: {} of {} MB.",
                 received / MB,
                 release.bytes.div_ceil(MB)
-            )),
-            done: Some(if release.bytes == 0 {
-                0.
+            )
+            .into(),
+            percent: Some(if release.bytes == 0 {
+                0
             } else {
-                (received as f32 / release.bytes as f32).clamp(0., 1.)
+                ((received as f32 / release.bytes as f32).clamp(0., 1.) * 100.).round() as u8
             }),
         },
         Step::Preparing => Shown::Working {
-            said: Said::line(format!(
-                "Checking Koyo {version} and copying it beside this one."
-            )),
-            done: None,
+            said: format!("Checking Koyo {version} and copying it beside this one.").into(),
+            percent: None,
         },
     }
 }
@@ -203,6 +185,7 @@ mod tests {
 
     use super::{Shown, shown, unreleased};
     use crate::updates::feed::Release;
+    use crate::updates::fixtures::read;
     use crate::updates::installed::Unreleased;
     use crate::updates::stage::{Checked, Failure, Stage, Step};
     use crate::updates::version::Version;
@@ -219,24 +202,14 @@ mod tests {
         }
     }
 
-    fn says(stage: &Stage, checked: &Checked) -> Shown {
+    fn says(stage: &Stage) -> Shown {
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1000);
-        shown(stage, checked, now, version("12.7"))
-    }
-
-    /// What's shown, as the label of its click or "quiet", then all it says.
-    fn read(shown: &Shown) -> (&'static str, String) {
-        let act = match shown {
-            Shown::Quiet(_) => "quiet",
-            Shown::Offer { act, .. } => act,
-            Shown::Working { .. } => "working",
-        };
-        (act, shown.said().whole().to_string())
+        shown(stage, now, version("12.7"))
     }
 
     #[test]
     fn a_release_found_is_offered_with_what_the_click_does() {
-        let shown = says(&Stage::Available(release()), &Checked::Not);
+        let shown = says(&Stage::Available(release()));
         assert_eq!(
             read(&shown),
             (
@@ -244,25 +217,25 @@ mod tests {
                 "Koyo 0.2.0 is available. Koyo downloads it, then restarts to install it.".into()
             )
         );
-        assert!(!shown.said().failed);
+        assert!(matches!(shown, Shown::Offer { failed: false, .. }));
     }
 
     #[test]
     fn nothing_newer_says_when_the_feed_last_answered() {
         let at = SystemTime::UNIX_EPOCH + Duration::from_secs(700);
         assert_eq!(
-            read(&says(&Stage::Current, &Checked::At(at))),
+            read(&says(&Stage::Current(Checked::At(at)))),
             ("quiet", "Koyo is up to date. Checked 5 min ago.".into())
         );
         assert_eq!(
-            read(&says(&Stage::Current, &Checked::Not)),
+            read(&says(&Stage::Current(Checked::Not))),
             ("quiet", "Checking for updates…".into())
         );
         let failed = Checked::Failed {
             why: "curl: (6) Could not resolve host: dl.koyo.codes".into(),
         };
         assert_eq!(
-            read(&says(&Stage::Current, &failed)),
+            read(&says(&Stage::Current(failed))),
             (
                 "quiet",
                 "Couldn't check for updates: curl: (6) Could not resolve host: dl.koyo.codes. \
@@ -276,16 +249,13 @@ mod tests {
     fn a_download_says_how_far_it_has_come() {
         let shown = super::working(&release(), Step::Downloading { received: 120_400_000 });
         assert_eq!(read(&shown), ("working", "Downloading Koyo 0.2.0: 120 of 254 MB.".into()));
-        let Shown::Working { done: Some(done), .. } = shown else {
-            panic!("a download has a share");
-        };
-        assert!((done - 0.4748).abs() < 0.001, "{done}");
+        assert!(matches!(shown, Shown::Working { percent: Some(47), .. }), "{shown:?}");
         let shown = super::working(&release(), Step::Preparing);
         assert_eq!(
             read(&shown),
             ("working", "Checking Koyo 0.2.0 and copying it beside this one.".into())
         );
-        assert!(matches!(shown, Shown::Working { done: None, .. }));
+        assert!(matches!(shown, Shown::Working { percent: None, .. }));
     }
 
     #[test]
@@ -295,7 +265,7 @@ mod tests {
             ..release()
         };
         assert_eq!(
-            read(&says(&Stage::NeedsMacos(release), &Checked::Not)),
+            read(&says(&Stage::NeedsMacos(release))),
             (
                 "quiet",
                 "Koyo 0.2.0 needs macOS 13.0 or later; this Mac has 12.7.".into()
@@ -305,17 +275,17 @@ mod tests {
 
     #[test]
     fn a_handed_over_release_says_koyo_is_restarting() {
-        let shown = says(&Stage::Restarting(version("0.2.0")), &Checked::Not);
+        let shown = says(&Stage::Restarting(version("0.2.0")));
         assert_eq!(read(&shown), ("working", "Restarting into Koyo 0.2.0.".into()));
-        assert_eq!(shown, Shown::Working { said: shown.said().clone(), done: None });
+        assert_eq!(shown, Shown::Working { said: shown.said().clone(), percent: None });
     }
 
     #[test]
     fn a_failure_says_what_to_do_about_it_and_offers_to_try_again() {
         let failed = |failure| {
             let stage = Stage::Failed { release: release(), failure };
-            let shown = says(&stage, &Checked::Not);
-            assert!(shown.said().failed);
+            let shown = says(&stage);
+            assert!(matches!(shown, Shown::Offer { failed: true, .. }));
             read(&shown)
         };
         assert_eq!(

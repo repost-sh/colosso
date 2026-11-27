@@ -69,8 +69,10 @@ impl OnQuit {
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-    cx.on_action(|_: &Quit, cx| cx.defer(quit));
-    cx.on_action(|_: &updates::RestartToUpdate, cx| cx.defer(restart));
+    cx.on_action(|_: &Quit, cx| cx.defer(|cx| ask_all_then(deal_with_what_runs, cx)));
+    cx.on_action(|_: &updates::RestartToUpdate, cx| {
+        cx.defer(|cx| ask_all_then(end_into_update, cx));
+    });
     cx.on_action(|SetOnQuit(choice): &SetOnQuit, cx| {
         settings::update(cx, |settings| settings.on_quit = *choice);
     });
@@ -112,25 +114,13 @@ fn next(choice: OnQuit, running: usize) -> Next {
 }
 
 /// Asks about unsaved edits, and the pages whether the person may leave them, then goes on to
-/// what runs.
-fn quit(cx: &mut App) {
+/// `then`: what runs, for a quit; handing the staged release over, for a restart into it.
+fn ask_all_then(then: fn(&mut App), cx: &mut App) {
     let Some((window, shell)) = crate::control::main_shell(cx) else {
-        return deal_with_what_runs(cx);
+        return then(cx);
     };
     (window.update(cx, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.ask_all_then(deal_with_what_runs, window, cx));
-    }))
-    .ok();
-}
-
-/// Restarts Koyo into the release staged beside it: asks about unsaved edits and pages as a
-/// quit does, then hands the release over and ends the app.
-fn restart(cx: &mut App) {
-    let Some((window, shell)) = crate::control::main_shell(cx) else {
-        return end_into_update(cx);
-    };
-    (window.update(cx, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.ask_all_then(end_into_update, window, cx));
+        shell.update(cx, |shell, cx| shell.ask_all_then(then, window, cx));
     }))
     .ok();
 }

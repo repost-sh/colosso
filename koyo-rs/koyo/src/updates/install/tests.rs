@@ -1,16 +1,14 @@
 use std::cell::RefCell;
 use std::os::unix::fs::PermissionsExt as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use super::{Halt, Progress, Work, copy_in, run};
 use crate::blocking::in_test;
-use crate::test_support::scratch;
 use crate::updates::attempt::{Attempt, sweep};
 use crate::updates::feed::{Feed, Release};
-use crate::updates::fixtures::{self, FEED, Folder, IDENTIFIER, Made};
-use crate::updates::installed::info;
+use crate::updates::fixtures::{self, FEED, Folder, IDENTIFIER, Made, version_of};
 use crate::updates::stage::Failure;
 use crate::updates::staged::Staged;
 
@@ -22,14 +20,8 @@ struct Place {
 
 impl Place {
     fn new(name: &str) -> Place {
-        let root = scratch(name);
-        let (beside, bucket) = (root.join("Applications"), root.join("bucket"));
-        std::fs::create_dir_all(&beside).unwrap();
-        std::fs::create_dir_all(&bucket).unwrap();
-        Place {
-            bundle: beside.join("Koyo.app"),
-            bucket,
-        }
+        let (_, bundle, bucket) = fixtures::place(name);
+        Place { bundle, bucket }
     }
 
     /// Puts an image of 9.0.0 in the bucket whose app is made as `made` says, signed under
@@ -78,15 +70,10 @@ impl Place {
     }
 }
 
-fn version_of(bundle: &Path) -> String {
-    let info = in_test(|may| info(bundle, may)).unwrap();
-    info["CFBundleShortVersionString"].as_string().unwrap().to_owned()
-}
-
 #[test]
 fn a_release_is_downloaded_checked_and_staged_beside_the_bundle() {
     let place = Place::new("update-install");
-    let release = place.holds(&Made::release("9.0.0"), Some(IDENTIFIER));
+    let release = fixtures::publish(&place.bucket);
     let bytes = release.bytes;
 
     let (ended, said) = place.installs(release.clone());
@@ -140,7 +127,7 @@ fn an_image_signed_under_another_identifier_is_refused() {
 #[test]
 fn an_image_changed_after_it_was_signed_is_refused() {
     let place = Place::new("update-install-flipped");
-    let release = place.holds(&Made::release("9.0.0"), Some(IDENTIFIER));
+    let release = fixtures::publish(&place.bucket);
     let mut bytes = std::fs::read(place.image()).unwrap();
     let middle = bytes.len() / 2;
     bytes[middle] ^= 0xff;
@@ -187,7 +174,7 @@ fn a_release_that_is_not_in_the_bucket_says_the_download_failed() {
 #[test]
 fn an_image_larger_than_the_feed_said_is_not_taken() {
     let place = Place::new("update-install-larger");
-    let release = place.holds(&Made::release("9.0.0"), Some(IDENTIFIER));
+    let release = fixtures::publish(&place.bucket);
     let smaller = Release { bytes: release.bytes - 1, ..release };
     assert!(matches!(place.refused(smaller), Failure::Download(_)));
 }
@@ -195,7 +182,7 @@ fn an_image_larger_than_the_feed_said_is_not_taken() {
 #[test]
 fn a_job_dropped_mid_download_stops_and_leaves_nothing() {
     let place = Place::new("update-install-stopped");
-    let release = place.holds(&Made::release("9.0.0"), Some(IDENTIFIER));
+    let release = fixtures::publish(&place.bucket);
     let (stop, stopped): (Sender<()>, _) = channel();
     let fetch = Folder::at(&place.bucket);
     *fetch.midway.lock().unwrap() = Some(Box::new(move || drop(stop)));
@@ -210,7 +197,7 @@ fn a_job_dropped_mid_download_stops_and_leaves_nothing() {
 #[test]
 fn a_sweep_unmounts_the_image_a_crash_left_open_and_removes_its_attempt() {
     let place = Place::new("update-install-crashed");
-    place.holds(&Made::release("9.0.0"), Some(IDENTIFIER));
+    fixtures::publish(&place.bucket);
     in_test(|may| {
         let attempt = Attempt::begin(&place.bundle, may).unwrap();
         std::fs::copy(place.image(), attempt.image()).unwrap();

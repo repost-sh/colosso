@@ -113,12 +113,18 @@ impl Browsers {
             let _ = requests.send(request);
         }
         let asked = self.asked_at.map_or(0, |(since, _)| since.elapsed().as_millis());
-        let described = super::super::engine::described(&connection);
-        if connection.framework.is_koyos() || cfg!(debug_assertions) {
-            log::info!("browser engine serving, {asked} ms after it was asked for: {described}");
+        let level = if connection.framework.is_koyos() || cfg!(debug_assertions) {
+            log::Level::Info
         } else {
-            log::warn!("browser engine serving, {asked} ms after it was asked for: {described}");
-        }
+            log::Level::Warn
+        };
+        log::log!(
+            level,
+            "browser engine serving, {asked} ms after it was asked for: Chromium {}, in engine {}, {:?}",
+            connection.chromium,
+            connection.engine,
+            connection.framework
+        );
         self.host = Host::Running {
             connection,
             requests,

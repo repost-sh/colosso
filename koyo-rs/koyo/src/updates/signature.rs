@@ -57,24 +57,31 @@ impl Requirement {
     }
 
     /// Checks the downloaded `image` before anything reads what's in it: its signature
-    /// satisfies this requirement, and it is whole. The only way to get a [`Vouched`].
+    /// satisfies this requirement, and it is whole, validated strictly. An image is one file,
+    /// which its signature seals whole. The only way to get a [`Vouched`].
     pub(super) fn vouch(&self, image: PathBuf, may: Blocking<'_>) -> Result<Vouched, Failure> {
-        self.check(Code::Image(&image), may).map_err(Failure::NotKoyos)?;
+        let strictly = SecCSFlags(kSecCSStrictValidate);
+        self.check(&image, strictly, may).map_err(Failure::NotKoyos)?;
         Ok(Vouched(image))
     }
 
     /// Checks that the bundle at `bundle`, a copy taken out of an image, satisfies this
     /// requirement, and that it and all the code nested in it are whole, so what is put in
-    /// place is exactly what Koyo's identity signed.
+    /// place is exactly what Koyo's identity signed. A bundle's seal holds the code nested in
+    /// it, the engine's framework and helper apps, only by what each is signed as, so each of
+    /// those is validated in turn: every file of every one is hashed, where its signature
+    /// alone would otherwise be compared.
     pub(super) fn holds_for(&self, bundle: &Path, may: Blocking<'_>) -> Result<(), Failure> {
-        self.check(Code::Bundle(bundle), may).map_err(Failure::NotKoyos)
+        let nested = SecCSFlags(kSecCSStrictValidate | kSecCSCheckNestedCode);
+        self.check(bundle, nested, may).map_err(Failure::NotKoyos)
     }
 
-    /// Reads all of `code`, a whole bundle's files among them, to hash it: the system's
-    /// words for why it doesn't satisfy this requirement, if it doesn't.
-    fn check(&self, code: Code<'_>, _: Blocking<'_>) -> Result<(), String> {
+    /// Reads all of the code at `path`, a whole bundle's files among them, to hash it,
+    /// validated as `validated` says: the system's words for why it doesn't satisfy this
+    /// requirement, if it doesn't.
+    fn check(&self, path: &Path, validated: SecCSFlags, _: Blocking<'_>) -> Result<(), String> {
         let flags = SecCSFlags::DefaultFlags;
-        let url = CFURL::from_file_path(code.path()).ok_or("its path isn't one the system takes")?;
+        let url = CFURL::from_file_path(path).ok_or("its path isn't one the system takes")?;
         let on_disk = copied::<SecStaticCode>(|out| {
             // SAFETY: `url` is a valid URL, and `out` a valid place for the reference.
             unsafe { SecStaticCode::create_with_path(&url, flags, out) }
@@ -85,35 +92,8 @@ impl Requirement {
             unsafe { SecRequirement::create_with_string(&text, flags, out.cast()) }
         })?;
         // SAFETY: the code and the requirement are the ones just made.
-        let status = unsafe { on_disk.check_validity(code.validated(), Some(&requirement)) };
+        let status = unsafe { on_disk.check_validity(validated, Some(&requirement)) };
         if status == 0 { Ok(()) } else { Err(words(status)) }
-    }
-}
-
-/// What a requirement is checked against, which says how far the check reads.
-#[derive(Clone, Copy)]
-enum Code<'a> {
-    /// A disk image: one file, which its signature seals whole.
-    Image(&'a Path),
-    /// A bundle. Its seal holds the code nested in it, the engine's framework and helper
-    /// apps, only by what each is signed as, so each of those is validated in turn: every
-    /// file of every one is hashed, where its signature alone would otherwise be compared.
-    Bundle(&'a Path),
-}
-
-impl<'a> Code<'a> {
-    fn path(self) -> &'a Path {
-        match self {
-            Code::Image(path) | Code::Bundle(path) => path,
-        }
-    }
-
-    /// How it's validated: strictly, and a bundle's nested code with it.
-    fn validated(self) -> SecCSFlags {
-        match self {
-            Code::Image(_) => SecCSFlags(kSecCSStrictValidate),
-            Code::Bundle(_) => SecCSFlags(kSecCSStrictValidate | kSecCSCheckNestedCode),
-        }
     }
 }
 

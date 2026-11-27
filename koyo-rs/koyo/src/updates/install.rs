@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::io::{self, Write};
+use std::os::fd::AsRawFd as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -249,13 +250,14 @@ impl<W: Write> Write for Counting<'_, W> {
 
 /// Copies the app at the root of the `vouched` image into `attempt`, the image mounted in
 /// the attempt's folder meanwhile, out of Finder's sight, and unmounted after, however the
-/// copy went.
+/// copy went. Mounted without hdiutil checking its checksums again: vouching for it read it
+/// whole.
 fn copy_out(vouched: &Vouched, attempt: &Attempt, may: Blocking<'_>) -> Result<(), String> {
     let mount = attempt.mount();
     std::fs::create_dir(&mount).map_err(|error| format!("The image has nowhere to open: {error}"))?;
     let mut attach = Command::new("/usr/bin/hdiutil");
     attach
-        .args(["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint"])
+        .args(["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint"])
         .arg(&mount)
         .arg(vouched.image());
     run_tool(&mut attach, "hdiutil", may)?;
@@ -271,8 +273,11 @@ fn copy_out(vouched: &Vouched, attempt: &Attempt, may: Blocking<'_>) -> Result<(
 /// those in it, so a folder's entries name what is already written. `ditto` ends before what
 /// it copied is on the disk, and a restart exchanges the bundle seconds later: a power loss
 /// just after would leave the installed path holding files with nothing in them. A link is
-/// its folder's entry and holds nothing of its own.
-fn flush(copy: &Path, _: Blocking<'_>) -> io::Result<()> {
+/// its folder's entry and holds nothing of its own. Each is handed to the drive with `fsync`,
+/// which on macOS reaches only the drive's cache, and the drive then writes its whole cache
+/// once, at the copy's own folder: a full flush of each of the hundreds of files a release
+/// holds would write that cache as often.
+fn flush(copy: &Path, may: Blocking<'_>) -> io::Result<()> {
     let mut folders = vec![copy.to_owned()];
     let mut listed = 0;
     while let Some(folder) = folders.get(listed).cloned() {
@@ -283,14 +288,29 @@ fn flush(copy: &Path, _: Blocking<'_>) -> io::Result<()> {
             if kind.is_dir() {
                 folders.push(entry.path());
             } else if kind.is_file() {
-                File::open(entry.path())?.sync_all()?;
+                to_the_drive(&File::open(entry.path())?, may)?;
             }
         }
     }
-    for folder in folders.iter().rev() {
-        File::open(folder)?.sync_all()?;
+    for folder in folders[1..].iter().rev() {
+        to_the_drive(&File::open(folder)?, may)?;
     }
-    Ok(())
+    onto_the_disk(&File::open(copy)?, may)
+}
+
+/// Hands what `file` holds to the drive, as far as its cache.
+fn to_the_drive(file: &File, _: Blocking<'_>) -> io::Result<()> {
+    // SAFETY: the descriptor is `file`'s own and stays open for the call.
+    let synced = unsafe { libc::fsync(file.as_raw_fd()) };
+    if synced == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+/// Hands what `file` holds to the drive and has the drive write all its cache onto the disk,
+/// what other files handed it before among it.
+fn onto_the_disk(file: &File, _: Blocking<'_>) -> io::Result<()> {
+    // SAFETY: the descriptor is `file`'s own and stays open for the call.
+    let synced = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_FULLFSYNC) };
+    if synced == -1 { Err(io::Error::last_os_error()) } else { Ok(()) }
 }
 
 #[cfg(test)]

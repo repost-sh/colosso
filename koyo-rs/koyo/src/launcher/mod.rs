@@ -25,12 +25,13 @@ mod view;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, Context, Div, Hsla, InteractiveElement as _, KeyBinding, Window, actions, hsla,
+    App, Context, Div, Entity, Hsla, InteractiveElement as _, KeyBinding, Window, actions, hsla,
 };
 
 #[cfg(test)]
 pub use self::view::Launcher;
-use crate::model::PaneKind;
+use crate::browser::BrowserView;
+use crate::model::{Front, PaneKind};
 use crate::shell::Shell;
 
 actions!(
@@ -173,6 +174,14 @@ impl Opens {
     }
 }
 
+/// What ⌘L, or a click on the sidebar's address bar, acts on (`Shell::address_target`).
+pub(crate) enum AddressTarget {
+    /// The page shown, in `pane`: its address, to change.
+    Page { pane: u64, view: Entity<BrowserView> },
+    /// No tab open: a new page, its address ready to type in.
+    NewPage,
+}
+
 impl Shell {
     /// What the window does with the launcher's actions, wherever the keyboard is: opens it over
     /// the window, for a new tab where the person is or an unpinned page, or, with a page shown,
@@ -193,31 +202,43 @@ impl Shell {
         self.open_launcher_on((Opens::Tab, None), window, cx);
     }
 
-    /// ⌘L, or a click on the sidebar's address bar: the address of the page shown, to change
-    /// (`Shell::shown_page`). With the address bar in the sidebar, where a page has no toolbar,
-    /// the launcher opens on the page; with it in the page, the keyboard goes to the page's own
-    /// field, all of it selected (`docs/layout.md`). With no tab open at all, a new page opens
-    /// where the person is, its address ready to type in, as a browser's address bar always
-    /// takes one (`docs/new-tab.md`). With a tab shown that has no page, a chat's, a terminal's
-    /// or a file's, there's no address to change, and nothing opens: the key goes on to
-    /// whatever has the keyboard, as one the window doesn't take.
-    pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let shown = (self.shown_page()).and_then(|view| Some((self.pane_showing(&view)?, view)));
-        let Some((pane, view)) = shown else {
-            if self.no_tab_open() {
-                self.open_browser_tab(None, (false, false), None, window, cx);
-                return;
-            }
-            return cx.propagate();
-        };
-        if !crate::settings::get(cx).address_in_sidebar() {
-            self.enter_pane(pane, cx);
-            let intent = crate::keyboard::Intent::Address;
-            view.update(cx, |view, cx| view.focus_address(intent, window, cx));
-            return;
+    /// What ⌘L, or a click on the sidebar's address bar, acts on: the page shown, whose
+    /// address it changes (`Shell::shown_page`), or, with no tab open at all and Settings not
+    /// shown either, a new page, as a browser's address bar always takes an address
+    /// (`docs/new-tab.md`). With a tab shown that has no page, a chat's, a terminal's or a
+    /// file's, there's no address to change, and it acts on nothing.
+    pub(crate) fn address_target(&self) -> Option<AddressTarget> {
+        if let Some(view) = self.shown_page() {
+            return Some(AddressTarget::Page { pane: self.pane_showing(&view)?, view });
         }
-        let address = view.read(cx).address();
-        self.open_launcher_on((Opens::Tab, Some(view::Page { pane, address })), window, cx);
+        let settings = matches!(self.workspace.front(), Some(Front::Settings(_)));
+        (!settings && self.workspace.tab_shown().is_none()).then_some(AddressTarget::NewPage)
+    }
+
+    /// ⌘L, or a click on the sidebar's address bar, on what it acts on (`address_target`). On
+    /// the page shown, with the address bar in the sidebar, where a page has no toolbar, the
+    /// launcher opens on the page; with it in the page, the keyboard goes to the page's own
+    /// field, all of it selected (`docs/layout.md`). With no tab open, a new page opens where
+    /// the person is, its address ready to type in. On nothing, nothing opens: the key goes on
+    /// to whatever has the keyboard, as one the window doesn't take.
+    pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.address_target() {
+            None => cx.propagate(),
+            Some(AddressTarget::NewPage) => {
+                self.open_browser_tab(None, (false, false), None, window, cx);
+            }
+            Some(AddressTarget::Page { pane, view }) => {
+                if crate::settings::get(cx).address_in_sidebar() {
+                    let address = view.read(cx).address();
+                    let page = view::Page { pane, address };
+                    self.open_launcher_on((Opens::Tab, Some(page)), window, cx);
+                } else {
+                    self.enter_pane(pane, cx);
+                    let intent = crate::keyboard::Intent::Address;
+                    view.update(cx, |view, cx| view.focus_address(intent, window, cx));
+                }
+            }
+        }
     }
 
     /// Opens the launcher over the window for what's `asked` for where the person is, on `page`
