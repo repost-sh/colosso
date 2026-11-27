@@ -2,8 +2,9 @@
 //! `docs/sidebar.md` 1, 2): back, forward and reload for the page shown, in the window's
 //! top row, and the address bar, which says what the pane the person is in shows: a page's
 //! address, a terminal's program, a chat's name, "File" or "Settings". Clicked with a page
-//! shown, it opens the launcher on the page, as ⌘L does; right-clicked, the menu of where the
-//! address bar is. With the address bar in the page, each page's toolbar has them instead
+//! shown, it opens the launcher on the page, as ⌘L does; with no tab open it asks for an
+//! address, and a click opens a new page with its address ready to type in; right-clicked, the
+//! menu of where the address bar is. With the address bar in the page, each page's toolbar has them instead
 //! (`Settings::address_in_sidebar`).
 //!
 //! Both are views of their own, which the shell tells what's shown (`Shell::tell_sidebar_top`).
@@ -27,6 +28,10 @@ use crate::model::{Content, Front, Pane, SettingsTab};
 use crate::settings;
 use crate::shell::{Shell, action_button, address_bar_menu, with_menu};
 
+/// What the bar says while it has no address to say: with no tab open, where a click opens a
+/// page to type one in, and on a new page's start page.
+const ASKS_FOR_ADDRESS: &str = "Search or enter address";
+
 /// The views at the top of the sidebar.
 pub struct Top {
     controls: Entity<PageControls>,
@@ -40,6 +45,9 @@ struct Shown {
     said: (SharedString, bool),
     /// The page the bar's click and buttons act on: the shell's `shown_page`.
     page: Option<Entity<BrowserView>>,
+    /// Whether a click on the bar gives an address to type: a page is shown, whose address
+    /// it changes, or no tab is open, and a new page opens for one (`Shell::open_address`).
+    takes_address: bool,
     /// The pages of the tab shown, whose address field the bar is while one has the keyboard.
     pages: Vec<Entity<BrowserView>>,
 }
@@ -73,6 +81,12 @@ impl Top {
 }
 
 impl Shell {
+    /// Whether no tab is open where the person is: no tab is shown, and Settings isn't either.
+    pub(crate) fn no_tab_open(&self) -> bool {
+        let settings = matches!(self.workspace.front(), Some(Front::Settings(_)));
+        !settings && self.workspace.tab_shown().is_none()
+    }
+
     /// Tells the top of the sidebar what's shown while the address bar is in the sidebar; with
     /// it in the page, that nothing is, so it holds no page the page's own toolbar shows.
     pub(crate) fn tell_sidebar_top(&self, cx: &mut App) {
@@ -80,6 +94,7 @@ impl Shell {
             let page = self.shown_page();
             Shown {
                 said: said(self, page.as_ref()),
+                takes_address: page.is_some() || self.no_tab_open(),
                 page,
                 pages: self.pages_shown(),
             }
@@ -167,7 +182,7 @@ pub(super) fn said(shell: &Shell, shown: Option<&Entity<BrowserView>>) -> (Share
         return (SettingsTab::TITLE.into(), false);
     }
     let Some(tab) = shell.workspace.tab_shown() else {
-        return ("No tab open".into(), true);
+        return (ASKS_FOR_ADDRESS.into(), true);
     };
     let pane = tab.current();
     match &pane.content {
@@ -185,7 +200,7 @@ pub(super) fn said(shell: &Shell, shown: Option<&Entity<BrowserView>>) -> (Share
 /// What the address bar says of a page at `address`.
 fn address_said(address: &str) -> (SharedString, bool) {
     if address.is_empty() {
-        ("Search or enter address".into(), true)
+        (ASKS_FOR_ADDRESS.into(), true)
     } else {
         (host_of(address).into(), false)
     }
@@ -198,7 +213,8 @@ pub(super) fn host_of(address: &str) -> String {
 
 /// The address bar. It says what's shown, and with a page shown a click on it is ⌘L: the
 /// launcher opens on the page, its address in the field to change (`Shell::open_address`). With
-/// no page there's no address, and a click does nothing. While a page's own address field has
+/// no tab open a click is ⌘L too, and opens a new page with its address ready to type in. With
+/// a tab of another kind shown there's no address, and a click does nothing. While a page's own address field has
 /// the keyboard, as a new tab's start page gives it, the bar is that field, the page having no
 /// toolbar while the address bar is in the sidebar. Right-clicked while it isn't that field, it
 /// opens the menu of where the address bar is.
@@ -221,7 +237,12 @@ impl AddressBar {
 
 impl Render for AddressBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Shown { said, page, pages } = &self.shown;
+        let Shown {
+            said,
+            page,
+            takes_address,
+            pages,
+        } = &self.shown;
         let look = Look::of(cx);
         let p = look.p;
         let (text, placeholder) = said.clone();
@@ -267,7 +288,7 @@ impl Render for AddressBar {
                     )
                 } else {
                     let bar = (bar.child(div().min_w_0().flex_1().truncate().child(text)))
-                        .when(page.is_some(), |bar| {
+                        .when(*takes_address, |bar| {
                             bar.cursor_text().on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(OpenAddress), cx);
                             })

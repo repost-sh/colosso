@@ -196,12 +196,18 @@ impl Shell {
     /// ⌘L, or a click on the sidebar's address bar: the address of the page shown, to change
     /// (`Shell::shown_page`). With the address bar in the sidebar, where a page has no toolbar,
     /// the launcher opens on the page; with it in the page, the keyboard goes to the page's own
-    /// field, all of it selected (`docs/layout.md`). With no page in the tab shown there's no
-    /// address to change, and nothing opens: the key goes on to whatever has the keyboard, as
-    /// one the window doesn't take.
+    /// field, all of it selected (`docs/layout.md`). With no tab open at all, a new page opens
+    /// where the person is, its address ready to type in, as a browser's address bar always
+    /// takes one (`docs/new-tab.md`). With a tab shown that has no page, a chat's, a terminal's
+    /// or a file's, there's no address to change, and nothing opens: the key goes on to
+    /// whatever has the keyboard, as one the window doesn't take.
     pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let shown = (self.shown_page()).and_then(|view| Some((self.pane_showing(&view)?, view)));
         let Some((pane, view)) = shown else {
+            if self.no_tab_open() {
+                self.open_browser_tab(None, (false, false), None, window, cx);
+                return;
+            }
             return cx.propagate();
         };
         if !crate::settings::get(cx).address_in_sidebar() {

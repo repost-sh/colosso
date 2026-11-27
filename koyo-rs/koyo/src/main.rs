@@ -30,6 +30,7 @@ mod key_repeat;
 mod keyboard;
 mod language;
 mod launcher;
+mod links;
 mod list;
 mod logs;
 mod marks;
@@ -123,6 +124,35 @@ pub fn reopen_main_window(
 ) {
     let open = |kept, cx: &mut App| open_main_window(cx, kept);
     shell::reopen(shell::KeptWindow::path(), open, opened, cx);
+}
+
+/// Opens `pages`, web pages macOS handed Koyo (`links.rs`), each as an unpinned page, the
+/// last one shown, as a page opened from the launcher with no project is: a link from outside
+/// belongs to no project. The window is opened again first if it was closed.
+fn open_handed_pages(pages: Vec<String>, cx: &mut App) {
+    if control::main_shell(cx).is_some() {
+        return show_handed_pages(pages, cx);
+    }
+    reopen_main_window(cx, move |opened, cx| match opened {
+        Ok(()) => show_handed_pages(pages, cx),
+        Err(error) => log::error!("couldn't open the window for a link: {error:#}"),
+    });
+}
+
+fn show_handed_pages(pages: Vec<String>, cx: &mut App) {
+    let Some((window, shell)) = control::main_shell(cx) else {
+        return;
+    };
+    let shown = window.update(cx, |_, window, cx| {
+        shell.update(cx, |shell, cx| {
+            for page in pages {
+                shell.open_browser_tab(Some(page), (true, false), None, window, cx);
+            }
+        });
+    });
+    if let Err(error) = shown {
+        log::error!("couldn't open a link in the window: {error:#}");
+    }
 }
 
 /// The app's window, bringing back what `kept` holds: most of the screen, so the chat, the
@@ -256,13 +286,16 @@ fn main() -> ExitCode {
             });
         }
     });
-    app.run(launch);
+    let (handed, links) = links::handed();
+    app.on_open_urls(move |urls| handed.take(urls));
+    app.run(move |cx| launch(links, cx));
     ExitCode::SUCCESS
 }
 
 /// What the app does once it runs: it sets itself up and opens its window, reading what it
-/// kept on the main thread, timed (`blocking::at_launch`).
-fn launch(cx: &mut App) {
+/// kept on the main thread, timed (`blocking::at_launch`), and then opens the links macOS
+/// handed it, the one it was started for among them.
+fn launch(links: links::Links, cx: &mut App) {
     blocking::at_launch("the launch", |may| {
         init(cx, may);
         quitting::set_menu(cx);
@@ -273,6 +306,56 @@ fn launch(cx: &mut App) {
         #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
         open_main_window(cx, kept).expect("failed to open window");
     });
+    links::open_as_they_come(links, open_handed_pages, cx);
     #[cfg(all(target_os = "macos", debug_assertions, not(test)))]
     browser::native::probe::start(cx);
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::{Entity, TestAppContext};
+
+    use super::open_handed_pages;
+    use crate::shell::Shell;
+    use crate::test_support::shell_window;
+
+    fn unpinned(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
+        cx.read(|cx| {
+            let pages = shell.read(cx).workspace.loose();
+            let address = |page: &&crate::model::Loose| page.tab.first().address().map(str::to_owned);
+            pages.iter().filter_map(address).collect()
+        })
+    }
+
+    fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (Option<String>, bool) {
+        cx.read(|cx| {
+            let workspace = &shell.read(cx).workspace;
+            let address = (workspace.tab_shown()).and_then(|tab| tab.first().address());
+            (address.map(str::to_owned), workspace.loose_shown().is_some())
+        })
+    }
+
+    #[gpui_kit::test]
+    fn a_page_macos_hands_over_opens_unpinned_and_the_last_is_shown(cx: &mut TestAppContext) {
+        cx.update(crate::test_support::init);
+        let (_window, shell) = shell_window(cx);
+        assert_eq!(unpinned(&shell, cx), Vec::<String>::new());
+
+        cx.update(|cx| open_handed_pages(vec!["https://example.com/a".into()], cx));
+        cx.run_until_parked();
+        assert_eq!(unpinned(&shell, cx), ["https://example.com/a"]);
+        assert_eq!(shown(&shell, cx), (Some("https://example.com/a".into()), true));
+
+        cx.update(|cx| {
+            let pages = ["https://example.com/b", "https://example.com/c"];
+            open_handed_pages(pages.map(str::to_owned).to_vec(), cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            unpinned(&shell, cx),
+            ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
+            "each page handed over is an unpinned page of its own"
+        );
+        assert_eq!(shown(&shell, cx), (Some("https://example.com/c".into()), true));
+    }
 }

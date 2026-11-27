@@ -35,9 +35,13 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
     branch's page Tab goes on to a chat, a terminal or a worktree, which open as usual; on a
     pinned or an unpinned page, as after ⌘T there, it goes to no other kind.
   - ⌘L in the open launcher selects the field's text again.
-  - With no page in the tab shown, a chat's, a terminal's, a file's, or no tab at all, ⌘L
-    opens nothing and no tab: the key goes on to whatever has the keyboard, as one the
-    window doesn't take, and a click on the bar does nothing. A new tab is ⌘T's.
+  - With no tab open at all, the bar reads "Search or enter address", and ⌘L or a click on
+    it opens a new page where the person is, on its start page, its address ready to type in:
+    a browser's address bar always takes an address (Apple asks it of one,
+    `docs/browser.md` 9.4).
+  - With a tab shown that has no page, a chat's, a terminal's or a file's, ⌘L opens nothing
+    and no tab: the key goes on to whatever has the keyboard, as one the window doesn't
+    take, and a click on the bar does nothing. A new tab is ⌘T's.
   - With **Address bar** set to the page, a page has its own toolbar, so ⌘L puts the keyboard in
     that page's address field instead, from anywhere in the tab.
 - A pill on the left of the field names the **kind** of tab Enter opens, while there's another

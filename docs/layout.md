@@ -43,7 +43,7 @@ Koyo writes every setting into `settings.json` on save, defaults included. A new
 
 **Address bar** is chosen independently of **Tabs**.
 
-- **In the sidebar**: a rounded field at the top of the sidebar, under its top row when it has one. Pages have no toolbar. ⌘L, or a click on the field, opens the launcher on the page shown.
+- **In the sidebar**: a rounded field at the top of the sidebar, under its top row when it has one. Pages have no toolbar. ⌘L, or a click on the field, opens the launcher on the page shown. With no tab open the field reads "Search or enter address", and ⌘L or a click opens a new page with its address ready to type in.
 - **In the page**: each page keeps its own toolbar with its address, back, forward and reload.
 
 Back, forward and reload go wherever the address goes, so they are never shown twice. With the address bar in the page they live only in the page's toolbar, and the window has none. With the address bar in the sidebar they sit together, reload right after forward, in the window's top row: packed into the top rail after the sidebar toggle when **Tabs** is on the top rail, on the right of the sidebar's top row when **Tabs** is on the sidebar.

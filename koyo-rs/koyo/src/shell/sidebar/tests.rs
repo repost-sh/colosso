@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Background, Edges, Entity, Hsla, Modifiers, Pixels, Point,
-    TestAppContext, VisualTestContext,
+    AnyWindowHandle, AppContext as _, Background, Edges, Entity, Focusable as _, Hsla, Modifiers,
+    Pixels, Point, TestAppContext, VisualTestContext,
 };
 
 use crate::browser::profiles::By;
@@ -193,7 +193,7 @@ pub(super) fn said(shell: &Entity<Shell>, cx: &TestAppContext) -> String {
 #[gpui_kit::test]
 fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
     let (window, shell, _) = sidebar_shell(&["sidebar-address"], cx);
-    assert_eq!(said(&shell, cx), "No tab open");
+    assert_eq!(said(&shell, cx), "Search or enter address", "with no tab open");
     let unloaded = Unloaded {
         address: "https://www.example.com/docs?page=2".into(),
         favicon: None,
@@ -239,18 +239,58 @@ fn click_address(window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
     true
 }
 
+/// The page shown's address, and whether its address field has the keyboard.
+fn address_shown(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    cx: &mut TestAppContext,
+) -> Option<(String, bool)> {
+    draw(window, cx);
+    cx.update_window(window, |_, window, cx| {
+        let page = shell.read(cx).shown_page()?;
+        let page = page.read(cx);
+        let typing = page.address_field().read(cx).focus_handle(cx).is_focused(window);
+        Some((page.address(), typing))
+    })
+    .unwrap()
+}
+
 #[gpui_kit::test]
-fn a_click_on_the_address_bar_opens_the_launcher_only_on_a_page(cx: &mut TestAppContext) {
+fn with_no_tab_open_a_click_on_the_address_bar_opens_a_page_to_type_an_address_in(
+    cx: &mut TestAppContext,
+) {
     let (window, shell, _) = sidebar_shell(&["sidebar-address-click"], cx);
-    assert!(!click_address(window, cx), "no tab, no address");
+    assert_eq!(tabs(&shell, cx).len(), 0);
+    assert_eq!(address_shown(window, &shell, cx), None);
+
+    assert!(!click_address(window, cx), "the launcher opened where a page was asked for");
+    assert_eq!(tabs(&shell, cx).len(), 1, "a click with no tab open opened no page");
+    assert_eq!(
+        address_shown(window, &shell, cx),
+        Some((String::new(), true)),
+        "the new page isn't on its start page with its address ready to type in"
+    );
+
     shell.update(cx, |shell, cx| {
         shell.workspace.push_tab(chat("Plan the release"));
         cx.notify();
     });
     assert!(!click_address(window, cx), "a chat has no address");
-    assert_eq!(tabs(&shell, cx).len(), 1);
+    assert_eq!(tabs(&shell, cx).len(), 2, "a click on a chat's bar opened a tab");
     open_page(window, &shell, Some("https://example.com/"), cx);
     assert!(click_address(window, cx), "a page's address, to change");
+    assert_eq!(tabs(&shell, cx).len(), 3);
+}
+
+#[gpui_kit::test]
+fn with_no_tab_open_cmd_l_opens_a_page_to_type_an_address_in(cx: &mut TestAppContext) {
+    let (window, shell, _) = sidebar_shell(&["sidebar-address-cmd-l"], cx);
+    assert_eq!(tabs(&shell, cx).len(), 0);
+    crate::test_support::press(window, "cmd-l", cx);
+    cx.run_until_parked();
+    assert!(dialog::<Launcher>(cx).is_none(), "the launcher opened where a page was asked for");
+    assert_eq!(tabs(&shell, cx).len(), 1, "⌘L with no tab open opened no page");
+    assert_eq!(address_shown(window, &shell, cx), Some((String::new(), true)));
 }
 
 #[gpui_kit::test]

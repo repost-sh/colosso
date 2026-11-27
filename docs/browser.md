@@ -417,6 +417,18 @@ What the person who owns Koyo's Apple developer account does, once:
    by its Account Holder, at
    <https://developer.apple.com/contact/request/macos-browsers-passkeys/>, for the App ID
    `codes.koyo.desktop`; Apple reviews the request.
+   **[checked 2026-11-26]** Apple's criteria for it
+   (<https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.web-browser.public-key-credential>),
+   and where Koyo stands on each:
+
+   | Apple asks | Koyo |
+   |---|---|
+   | The account is an organization's, and its Account Holder asks | The account is an individual's (team `U228HB4SSR`). The owner's to change. |
+   | The app's `Info.plist` declares the `http` and `https` schemes | `script/bundle` declares both (`CFBundleURLTypes`), so macOS lists Koyo among the web browsers. |
+   | An address opened in it loads that page, with no detour and nothing added | A link macOS hands Koyo opens as an unpinned page and is shown (`links.rs`): on a start, while it runs, and with its window closed, which opens again. Run with the debug bundle on the agent desktop (`.superpowers/v/evidence/*links-from-macos`). |
+   | On launch it offers a field for an address, search tools, or bookmarks | With no tab open the address bar reads "Search or enter address", and a click on it or ⌘L opens a new page with its address ready to type in, which also searches (`docs/new-tab.md`). The + and ⌘T open the launcher, and the pinned pages stand where bookmarks do. |
+
+   The App ID `codes.koyo.desktop` is registered. The request has not been sent.
 2. Once granted: in Certificates, Identifiers & Profiles, the explicit App ID
    `codes.koyo.desktop` with the granted capability turned on; a Developer ID Application
    certificate in the keychain of the Mac that builds; and a Developer ID provisioning profile
@@ -445,12 +457,37 @@ What the person who owns Koyo's Apple developer account does, once:
    entitlement; Koyo's log no longer says "passkeys are turned down"; on
    <https://webauthn.io> Register brings up the sheet over the window.
 
-None of this has been run: there's no Developer ID identity or profile on the machine it was
-written on. Only the checks before the build were tried (with a stand-in for `security`), and
-the ad-hoc path. Still unknown until it runs: whether the agent host and the engine's helper
-apps need entitlements of their own under the hardened runtime (JIT for the renderer helper,
-as Chrome's has); and the `-67030 errSecCSInfoPlistFailed` signature check the host's log
-has shown.
+None of this has been run with a Developer ID: there's no such identity or profile on the
+machine it was written on. Releases are made by the release workflow, which signs, notarizes
+and carries the profile itself (`docs/releasing.md`).
+
+**Under the hardened runtime [checked 2026-11-26].** A Developer ID signature needs the
+hardened runtime, and what it withholds was found by signing the debug bundle with it under
+this Mac's own identity and loading a page (`.superpowers/v/evidence/*hardened*`):
+
+- Signed as the scripts signed until then, with no entitlements, a page's process ended as
+  it started (`renderer went away: TS_PROCESS_CRASHED`, a breakpoint trap in the framework)
+  and every page stayed blank.
+- Chromium starts its page, GPU and service processes all from the plain helper
+  (`Koyo Browser Host Helper --type=renderer`, `--type=gpu-process`, `--type=utility`), not
+  from the `(Renderer)` and `(GPU)` ones. `com.apple.security.cs.allow-jit` on those two alone
+  changed nothing.
+- With `com.apple.security.cs.allow-jit` on every helper a page loaded and ran JavaScript and
+  WebAssembly, with no process lost. `script/browser-engine --sign` signs each helper with it.
+- The agent host, hardened without it, ended at its start (`SharedArrayBuffer is not
+  defined`: the engine it's compiled with turns that off when it can't compile as it runs).
+  With it, it ran as the unsigned one does. `script/bundle --sign` signs it with it.
+- The app asks for the camera, the microphone and the location
+  (`com.apple.security.device.camera`, `…device.audio-input`,
+  `…personal-information.location`), which the hardened runtime withholds otherwise. A
+  bundle signed with them started and loaded a page. **[not run]** A page using the camera or
+  the microphone in such a build: macOS would ask the owner on their screen.
+
+This Mac's identity names no team, and the hardened runtime loads a library only of the
+process's own team, so the check added `com.apple.security.cs.disable-library-validation`
+to every piece as a stand-in. A Developer ID build's pieces share a team and don't claim it.
+Still unknown until a Developer ID build runs: the `-67030 errSecCSInfoPlistFailed` signature
+check the host's log has shown.
 
 ### 9.5 What Koyo does once signed [decided]
 
@@ -723,8 +760,11 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   hasn't run, it stops before it builds the app, naming `script/cef`. A debug engine
   (`script/dev`) is packaged from CEF's own all the same, with a warning, as every test
   instance runs on it.
-- A later CEF version is built from scratch, from an emptied folder (the script's header
-  says why), so keeping up with Chromium's security updates costs those hours each time.
+- A later CEF version is built from scratch: `script/cef` finds the folder's sources at
+  another CEF commit than the pin's and has CEF's tool start clean (the script's header says
+  why), so keeping up with Chromium's security updates costs those hours each time.
+  **[not run]** The clean start itself: it's `automate-git.py --force-clean`, CEF's own, and
+  was read, not run, as a run is those hours.
 - **[not decided]** Where a built framework is kept for other Macs and for CI.
   `download-cef` fetches from `CEF_DOWNLOAD_URL` when it's set, an address that serves an
   `index.json` shaped as CEF's and an archive under CEF's name for it; then `cef-dll-sys`
@@ -789,9 +829,10 @@ the running engine now checks the one before.
   doesn't know that API, or was built at another commit than the headers', fails the start,
   saying so. It reads the manifest then, off the main thread, and `HostEvent::Ready` carries
   what it says (`framework`): whether H.264 and AAC play, and the patches by name.
-- **The app.** It logs that once as the engine starts, a warning in a release build without
-  either, and Settings › Browser › Engine says it: "with H.264 and AAC and 13 of Koyo's
-  patches", or what the engine is without and what that costs.
+- **The app.** It logs that once as the engine starts: "with H.264 and AAC and 13 of Koyo's
+  patches", or what the engine is without and what that costs, a warning in a release build
+  without either. Settings › Browser › Engine says the Chromium version alone, and opens
+  Chrome's own settings (`chrome://settings`) in a tab.
 - **The framework in place here** had only the old list of names. Its manifest was written
   once, on 2026-11-19, from the shared folder's `args.gn` and `script/cef-patches`, since
   its binary is the one that folder built that morning from sources carrying exactly those
