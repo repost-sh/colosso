@@ -1,7 +1,7 @@
 //! The Browser settings page: the browsing profiles and the one each project's pages use,
 //! where a page's `DevTools` open, where a page goes full screen, the search engine and whether
 //! the new-tab launcher asks it for suggestions, whether a download asks where it goes, the data
-//! every profile keeps, and the engine pages run in.
+//! every profile keeps, the engine pages run in, and Chrome's own settings.
 
 use gpui_kit::{App, AsyncApp, ParentElement as _, PromptLevel, Styled as _, div, px};
 
@@ -10,10 +10,14 @@ use super::native_switch::NativeSwitch;
 use crate::browser::profiles::{
     self, AgentPages, DeleteProfile, NewProfile, RenameProfile, SetAgentPages,
 };
+use crate::files::open_linked_page;
 use crate::model::project_name;
 use crate::projects::{display_path, pick_folder};
 use crate::settings::checked_menu;
 use crate::{browser, settings};
+
+/// Chrome's settings page, the engine's own.
+const CHROME_SETTINGS: &str = "chrome://settings/";
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
     vec![
@@ -233,10 +237,24 @@ fn data() -> SettingsSection {
     )
 }
 
+/// The Chromium the pages run on, and Chrome's own settings for them, which open in a tab as
+/// any of its pages does.
 fn engine(cx: &App) -> SettingsSection {
-    let description = match browser::described(cx) {
-        Some(engine) => format!("{engine}."),
+    let version = match browser::chromium(cx) {
+        Some(chromium) => format!("Chromium {chromium}"),
         None => "Packaged with the app; it starts with the first page.".to_owned(),
     };
-    SettingsSection::new("Engine").row(SettingRow::new("Browser engine").description(description))
+    let chrome = SettingRow::new("Chrome settings")
+        .description(
+            "Chrome's own settings for pages: privacy and security, site permissions, autofill \
+             and languages.",
+        )
+        .control(
+            PillButton::new("chrome-settings", "Open").on_click(|_, window, cx| {
+                open_linked_page(CHROME_SETTINGS, window, cx);
+            }),
+        );
+    SettingsSection::new("Engine")
+        .row(SettingRow::new("Browser engine").description(version))
+        .row(chrome)
 }

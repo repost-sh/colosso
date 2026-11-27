@@ -395,15 +395,6 @@ impl Browsers {
         }
     }
 
-    /// The running engine, said for a person: its versions and what its framework was built
-    /// with.
-    pub fn described(&self) -> Option<String> {
-        match &self.host {
-            Host::Running { connection, .. } => Some(super::engine::described(connection)),
-            _ => None,
-        }
-    }
-
     /// The running engine's version and its Chromium's.
     pub fn versions(&self) -> Option<(String, String)> {
         match &self.host {

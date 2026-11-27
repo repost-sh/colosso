@@ -53,8 +53,8 @@ pub fn launch() -> Result<Launch, String> {
     })
 }
 
-/// The running engine, said for a person as Settings and the log say it: its versions, and
-/// what its framework was built with.
+/// The running engine, as the log says it once it serves: its versions, and what its
+/// framework was built with.
 pub fn described(connection: &Connection) -> String {
     format!(
         "Chromium {}, in engine {}, {}",

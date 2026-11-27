@@ -99,11 +99,11 @@ pub fn close_page(pane: koyo_browser_ipc::PaneId, cx: &mut App) {
     browsers.update(cx, |browsers, _| browsers.send(koyo_browser_ipc::AppRequest::Close { pane }));
 }
 
-/// The packaged engine, said for a person once it runs: its versions and what its framework was
-/// built with.
-pub fn described(cx: &App) -> Option<String> {
+/// The Chromium the packaged engine is, once it runs.
+pub fn chromium(cx: &App) -> Option<String> {
     let browsers = cx.try_global::<host::GlobalBrowsers>()?;
-    browsers.0.read(cx).described()
+    let (_, chromium) = browsers.0.read(cx).versions()?;
+    Some(chromium)
 }
 
 actions!(
