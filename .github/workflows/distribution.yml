@@ -1,0 +1,76 @@
+# Provisions what Koyo's releases are served from (distribution/README.md): the koyo.codes
+# zone, the releases bucket and its host name, and the release workflow's own key to that
+# bucket, with Terraform. A pull request that touches distribution/ is planned; main is
+# applied.
+#
+# What it reads, each set once by hand (distribution/README.md):
+#
+#   secrets  DISTRIBUTION_CLOUDFLARE_API_TOKEN       a Cloudflare token that provisions
+#            DISTRIBUTION_STATE_ACCESS_KEY_ID        a key to the bucket Terraform's state is in
+#            DISTRIBUTION_STATE_SECRET_ACCESS_KEY
+#            DISTRIBUTION_GITHUB_TOKEN               a token that writes this repository's
+#                                                    Actions secrets and variables
+name: Distribution
+
+on:
+  pull_request:
+    paths:
+      - distribution/**
+      - .github/workflows/distribution.yml
+  push:
+    branches:
+      - main
+    paths:
+      - distribution/**
+      - .github/workflows/distribution.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One at a time: two runs would write the one state.
+concurrency:
+  group: distribution
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    name: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'Apply' || 'Plan' }}
+    # A pull request from a fork is given no secrets, and has nothing to plan with.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: distribution
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.DISTRIBUTION_CLOUDFLARE_API_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.DISTRIBUTION_GITHUB_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.DISTRIBUTION_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.DISTRIBUTION_STATE_SECRET_ACCESS_KEY }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Format
+        run: terraform fmt -check -recursive
+
+      - name: Initialise
+        run: terraform init
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        run: terraform plan -out=plan.tfplan
+
+      # Exactly what was planned above, on main alone.
+      - name: Apply
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: terraform apply plan.tfplan
