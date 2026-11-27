@@ -254,9 +254,9 @@
 +    ToolbarActionViewModel** out_action) {
    BrowserWindowInterface* browser =
        extensions::browser_window_util::GetBrowserForTabContents(*web_contents);
-   // Koyo: answer with an error instead of crashing. A disabled or uninstalled
-@@ -808,9 +887,7 @@
-         "No enabled extension with the provided id.");
+   if (browser == nullptr) {
+@@ -805,9 +884,7 @@
+         "No action found for the provided extension id.");
    }
  
 -  extension_model->ExecuteUserAction(
@@ -399,10 +399,11 @@
    // It's possible that the popup should be closed before it finishes opening
    // (since it can open asynchronously). Check before proceeding.
    if (!popup_host_) {
-@@ -89,10 +91,19 @@
+@@ -89,10 +91,20 @@
    views::BubbleBorder::Arrow arrow =
        extensions_container_views_ ? extensions_container_views_->GetPopupArrow()
                                    : views::BubbleBorder::TOP_RIGHT;
+-  ExtensionPopup::ShowPopup(
 +  // Koyo: a popup that a press on an embedder's button opened hangs from that
 +  // button, by the top corner the embedder names.
 +  std::optional<gfx::Rect> embedder_button_bounds;
@@ -412,23 +413,16 @@
 +                ? views::BubbleBorder::TOP_LEFT
 +                : views::BubbleBorder::TOP_RIGHT;
 +  }
-   ExtensionPopup::ShowPopup(
++  views::Widget* popup = ExtensionPopup::ShowPopup(
        browser_, std::move(host),
        extensions_container_views_->GetReferenceButtonForPopup(model_->GetId()),
 -      arrow, show_action, std::move(callback));
 +      arrow, show_action, std::move(callback), embedder_button_bounds);
++  embedder_button_reopen_suppressor_.Observe(popup);
  
    extensions_container_views_->OnPopupShown(model_->GetId(), by_user);
  }
-@@ -102,6 +113,7 @@
-   popup_host_observation_.Reset();
-   popup_host_ = nullptr;
-   has_opened_popup_ = false;
-+  embedder_button_reopen_suppressor_.RecordBubbleClosed();
-   extensions_container_views_->SetPopupOwner(nullptr);
-   if (extensions_container_views_->GetPoppedOutActionId() == model_->GetId()) {
-     extensions_container_views_->UndoPopOut();
-@@ -205,6 +217,36 @@
+@@ -206,6 +218,36 @@
    return extensions_container_->GetActiveWebContents();
  }
  
@@ -489,7 +483,7 @@
  #include "ui/views/bubble/bubble_dialog_delegate_view.h"
  #include "ui/views/widget/widget_observer.h"
  
-@@ -60,12 +65,17 @@
+@@ -60,12 +65,18 @@
    // BOTTOM_*, then the popup 'pops up', otherwise the popup 'drops down'.
    // The actual display of the popup is delayed until the page contents
    // finish loading in order to minimize UI flashing and resizing.
@@ -501,8 +495,9 @@
 -                        ShowPopupCallback callback);
 +  // Koyo: given `embedder_button_bounds`, the rectangle of the screen where an
 +  // embedder draws the action's button, the popup hangs from that instead of
-+  // |anchor|, which then gives only the widget it belongs to.
-+  static void ShowPopup(
++  // |anchor|, which then gives only the widget it belongs to. Returns the
++  // popup's widget.
++  static views::Widget* ShowPopup(
 +      BrowserWindowInterface* browser,
 +      std::unique_ptr<extensions::ExtensionViewHost> host,
 +      views::BubbleAnchor anchor,
@@ -513,7 +508,7 @@
  
    ExtensionPopup(const ExtensionPopup&) = delete;
    ExtensionPopup& operator=(const ExtensionPopup&) = delete;
-@@ -87,6 +97,8 @@
+@@ -87,6 +98,8 @@
    // ExtensionViewViews::Container:
    gfx::Size GetMinBounds() override;
    gfx::Size GetMaxBounds() override;
@@ -522,7 +517,7 @@
  
    // extensions::ExtensionRegistryObserver:
    void OnExtensionUnloaded(content::BrowserContext* browser_context,
-@@ -120,7 +132,8 @@
+@@ -120,7 +133,8 @@
                   views::BubbleAnchor anchor,
                   views::BubbleBorder::Arrow arrow,
                   PopupShowAction show_action,
@@ -532,7 +527,7 @@
  
    // Shows the bubble, focuses its content, and registers listeners.
    void ShowBubble();
-@@ -137,8 +150,26 @@
+@@ -137,8 +151,26 @@
    // Handles a signal from the extension host to close.
    void HandleCloseExtensionHost(extensions::ExtensionHost* host);
  
@@ -559,7 +554,7 @@
    // The contained host for the view.
    std::unique_ptr<extensions::ExtensionViewHost> host_;
  
-@@ -165,6 +196,15 @@
+@@ -165,6 +197,15 @@
    base::ScopedObservation<views::Widget, views::WidgetObserver>
        anchor_widget_observation_{this};
  
@@ -595,7 +590,7 @@
  #include "ui/base/metadata/metadata_impl_macros.h"
  #include "ui/base/mojom/dialog_button.mojom.h"
  #include "ui/gfx/geometry/insets.h"
-@@ -41,15 +44,33 @@
+@@ -41,30 +44,50 @@
  
  #if BUILDFLAG(IS_MAC)
  #include "base/message_loop/message_pump_apple.h"
@@ -629,7 +624,13 @@
  // static
  ExtensionPopup* ExtensionPopup::last_popup_for_testing() {
    return g_last_popup_for_testing;
-@@ -62,9 +83,11 @@
+ }
+ 
+ // static
+-void ExtensionPopup::ShowPopup(
++views::Widget* ExtensionPopup::ShowPopup(
+     BrowserWindowInterface* browser,
+     std::unique_ptr<extensions::ExtensionViewHost> host,
      views::BubbleAnchor anchor,
      views::BubbleBorder::Arrow arrow,
      PopupShowAction show_action,
@@ -643,7 +644,15 @@
    views::BubbleDialogDelegateView::CreateBubble(popup);
  
    // Check that the preferred adjustment is set to mirror to match
-@@ -112,15 +135,30 @@
+@@ -79,6 +102,7 @@
+       native_view, wm::WINDOW_VISIBILITY_ANIMATION_TYPE_VERTICAL);
+   wm::SetWindowVisibilityAnimationVerticalPosition(native_view, -3.0f);
+ #endif
++  return popup->GetWidget();
+ }
+ 
+ ExtensionPopup::~ExtensionPopup() {
+@@ -113,15 +137,30 @@
          ui::Accelerator(ui::VKEY_ESCAPE, ui::EF_NONE));
    }
  
@@ -675,7 +684,7 @@
  }
  
  views::View* ExtensionPopup::GetInitiallyFocusedView() {
-@@ -130,6 +168,9 @@
+@@ -131,6 +170,9 @@
  void ExtensionPopup::OnWidgetDestroying(views::Widget* widget) {
    BubbleDialogDelegateView::OnWidgetDestroying(widget);
    anchor_widget_observation_.Reset();
@@ -685,7 +694,7 @@
    extension_registry_observation_.Reset();
    security_dialog_tracker_observation_.Reset();
    extension_view_ = nullptr;
-@@ -194,13 +235,29 @@
+@@ -195,13 +237,29 @@
    gfx::Size max_size = kMaxSize;
    max_size.SetToMin(
        BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
@@ -716,7 +725,7 @@
  void ExtensionPopup::OnExtensionUnloaded(
      content::BrowserContext* browser_context,
      const extensions::Extension* extension,
-@@ -256,12 +313,14 @@
+@@ -258,12 +316,14 @@
      views::BubbleAnchor anchor,
      views::BubbleBorder::Arrow arrow,
      PopupShowAction show_action,
@@ -732,7 +741,7 @@
        host_(std::move(host)),
        show_action_(show_action),
        shown_callback_(std::move(callback)),
-@@ -277,6 +336,30 @@
+@@ -279,6 +339,31 @@
    // the correct value while calculating max bounds.
    set_adjust_if_offscreen(views::PlatformStyle::kAdjustBubbleIfOffscreen);
  
@@ -745,25 +754,26 @@
 +    SetShowTitle(true);
 +    SetShowCloseButton(true);
 +    set_use_round_corners(true);
-+    set_clamp_to_work_area(true);
++    set_adjust_if_offscreen(true);
 +  }
 +
 +  // Koyo: it hangs from the button the embedder draws for the action, not
-+  // from the toolbar's own, which an embedder's page carries hidden. The
-+  // toolbar's widget stays the anchor widget: the bubble's parent, whose
-+  // activation closes it (OnWidgetTreeActivated()). Set before
-+  // |extension_view_| is, which takes its largest size from the anchor.
++  // from the top of the page, where the page's extensions container hangs it
++  // (EmbedderExtensionsContainer). The page's widget stays the anchor widget:
++  // the bubble's parent, whose activation closes it (OnWidgetTreeActivated()).
++  // Set before |extension_view_| is, which takes its largest size from the
++  // anchor.
 +  if (embedder_button_bounds) {
-+    views::Widget* const toolbar_widget = anchor_widget();
++    views::Widget* const page_widget = anchor_widget();
 +    SetAnchor(views::BubbleAnchor());
-+    SetAnchorWidget(toolbar_widget);
++    SetAnchorWidget(page_widget);
 +    SetAnchorRect(*embedder_button_bounds);
 +  }
 +
    // The popup is not shown until the page finishes its first load (see the
    // has_loaded_once() branch below), so a user is waiting on a load that
    // PerformanceManager would otherwise treat as a background load. Taken
-@@ -317,8 +400,10 @@
+@@ -319,8 +404,10 @@
    // and not show.  This seems to happen in single-process mode.
    if (host_->has_loaded_once()) {
      ShowBubble();
@@ -775,7 +785,7 @@
      Observe(host_->host_contents());
    }
  }
-@@ -414,5 +499,41 @@
+@@ -416,5 +503,41 @@
    CloseDeferredIfNecessary();
  }
  
@@ -819,7 +829,7 @@
  END_METADATA
 --- a/chrome/browser/ui/views/extensions/extension_view_views.h
 +++ b/chrome/browser/ui/views/extensions/extension_view_views.h
-@@ -38,6 +38,13 @@
+@@ -37,6 +37,13 @@
  
      virtual gfx::Size GetMinBounds() = 0;
      virtual gfx::Size GetMaxBounds() = 0;
@@ -835,7 +845,7 @@
    class Observer : public base::CheckedObserver {
 --- a/chrome/browser/ui/views/extensions/extension_view_views.cc
 +++ b/chrome/browser/ui/views/extensions/extension_view_views.cc
-@@ -103,6 +103,21 @@
+@@ -104,6 +104,21 @@
  void ExtensionViewViews::ResizeDueToAutoResize(
      content::WebContents* web_contents,
      const gfx::Size& new_size) {
@@ -859,7 +869,7 @@
    if (!GetVisible()) {
 --- a/ui/views/bubble/bubble_dialog_delegate_view.h
 +++ b/ui/views/bubble/bubble_dialog_delegate_view.h
-@@ -552,6 +552,14 @@
+@@ -575,6 +575,14 @@
    // screen coordinates are not available.
    static gfx::Size GetMaxAvailableScreenSpaceToPlaceBubble(
        BubbleAnchor anchor,
@@ -876,7 +886,7 @@
        BubbleFrameView::PreferredArrowAdjustment arrow_adjustment);
 --- a/ui/views/bubble/bubble_dialog_delegate_view.cc
 +++ b/ui/views/bubble/bubble_dialog_delegate_view.cc
-@@ -875,6 +875,24 @@
+@@ -891,6 +891,24 @@
  // static
  gfx::Size BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
      BubbleAnchor anchor,
@@ -901,7 +911,7 @@
      BubbleBorder::Arrow arrow,
      bool adjust_if_offscreen,
      BubbleFrameView::PreferredArrowAdjustment arrow_adjustment) {
-@@ -893,14 +911,6 @@
+@@ -909,14 +927,6 @@
               .supports_global_screen_coordinates);
  #endif
  

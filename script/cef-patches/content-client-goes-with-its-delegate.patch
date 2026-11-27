@@ -1,0 +1,21 @@
+--- a/cef/libcef/browser/main_runner.cc
++++ b/cef/libcef/browser/main_runner.cc
+@@ -29,6 +29,7 @@
+ #include "content/browser/scheduler/browser_task_executor.h"
+ #include "content/public/app/content_main.h"
+ #include "content/public/browser/render_process_host.h"
++#include "content/public/common/content_client.h"
+ #include "content/public/common/content_switches.h"
+ 
+ #if BUILDFLAG(IS_WIN)
+@@ -122,6 +123,10 @@
+ 
+   std::move(finalize_shutdown).Run();
+ 
++  // Koyo: The content client is the delegate's (CreateContentClient) and goes with it, so the
++  // process, which runs on after the engine stops, has no client left to read: an occlusion
++  // update WebContentsOcclusionCheckerMac put off read the freed one.
++  content::SetContentClient(nullptr);
+   main_delegate_.reset();
+   keep_alive_.reset();
+   settings_ = nullptr;

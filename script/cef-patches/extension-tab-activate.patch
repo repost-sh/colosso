@@ -15,10 +15,10 @@ index e65325e..5b56d3a 100644
    // applicable for Browsers of type picture_in_picture and devtools.
    virtual bool HasViewsHostedOpener() const { return false; }
 diff --git a/cef/libcef/browser/chrome/chrome_browser_delegate.cc b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
-index 3c4eead..8df4ecf 100644
+index d1a4f47..3f47d7d 100644
 --- a/cef/libcef/browser/chrome/chrome_browser_delegate.cc
 +++ b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
-@@ -605,6 +605,23 @@ bool ChromeBrowserDelegate::IsViewsHosted() const {
+@@ -608,6 +608,23 @@ bool ChromeBrowserDelegate::IsViewsHosted() const {
           create_params_.popup_with_views_hosted_opener;
  }
  
@@ -55,10 +55,10 @@ index 639ecc8..ca311b4 100644
    Browser* browser() const { return browser_; }
  
 diff --git a/chrome/browser/extensions/api/tabs/tabs_api.cc b/chrome/browser/extensions/api/tabs/tabs_api.cc
-index bd5ca46..1c96b36 100644
+index fa19033..f1c2854 100644
 --- a/chrome/browser/extensions/api/tabs/tabs_api.cc
 +++ b/chrome/browser/extensions/api/tabs/tabs_api.cc
-@@ -63,6 +63,11 @@
+@@ -62,6 +62,11 @@
  #include "extensions/browser/extension_zoom_request_client.h"
  #include "extensions/browser/extensions_browser_client.h"
  #include "extensions/buildflags/buildflags.h"
@@ -70,9 +70,9 @@ index bd5ca46..1c96b36 100644
  #include "extensions/common/extension.h"
  #include "extensions/common/extension_features.h"
  #include "extensions/common/manifest_constants.h"
-@@ -2866,6 +2871,14 @@ bool TabsUpdateFunction::UpdateActiveTab(
+@@ -1598,6 +1603,14 @@ bool TabsUpdateFunction::UpdateActiveTab(
      tab_list.ActivateTab(tab_list.GetTab(tab_index)->GetHandle());
-     DCHECK_EQ(tab_index, tab_list.GetActiveIndex());
+     CHECK_EQ(tab_index, tab_list.GetActiveIndex(), base::NotFatalUntil::M161);
    }
 +#if BUILDFLAG(ENABLE_CEF)
 +  // Cra: each page is a Views-hosted Browser with one, always active tab, so

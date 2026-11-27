@@ -19,7 +19,7 @@ diff --git a/cef/libcef/browser/chrome/browser_delegate.h b/cef/libcef/browser/c
 diff --git a/cef/libcef/browser/chrome/chrome_browser_delegate.cc b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
 --- a/cef/libcef/browser/chrome/chrome_browser_delegate.cc
 +++ b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
-@@ -21,11 +21,13 @@
+@@ -21,12 +21,14 @@
  #include "cef/libcef/browser/views/window_impl.h"
  #include "cef/libcef/common/app_manager.h"
  #include "chrome/browser/profiles/profile.h"
@@ -27,13 +27,14 @@ diff --git a/cef/libcef/browser/chrome/chrome_browser_delegate.cc b/cef/libcef/b
  #include "chrome/browser/ui/browser.h"
  #include "chrome/browser/ui/browser_tabstrip.h"
  #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
+ #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
  #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
  #include "content/public/browser/global_routing_id.h"
 +#include "content/public/browser/navigation_controller.h"
  #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
  
  ChromeBrowserDelegate::ChromeBrowserDelegate(
-@@ -198,6 +200,84 @@
+@@ -201,6 +203,84 @@
    auto browser = browser_host->browser();
    CHECK(browser);
    return browser;
@@ -133,7 +134,7 @@ diff --git a/cef/libcef/browser/chrome/chrome_browser_delegate.h b/cef/libcef/br
 diff --git a/chrome/browser/extensions/api/tabs/tabs_api.cc b/chrome/browser/extensions/api/tabs/tabs_api.cc
 --- a/chrome/browser/extensions/api/tabs/tabs_api.cc
 +++ b/chrome/browser/extensions/api/tabs/tabs_api.cc
-@@ -2457,8 +2457,43 @@
+@@ -1131,8 +1131,43 @@
    options.index = index_;
    options.split_with_tab_id = split_with_tab_id_;
  

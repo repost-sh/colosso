@@ -26,8 +26,8 @@ index 35e0c91..c702702 100644
 +      BrowserWindow::FromBrowser(&browser)->IsToolbarVisible();
 +#if BUILDFLAG(ENABLE_CEF)
 +  // Cra: CEF hosts pages in popup-type Browsers, which never "have" a toolbar,
-+  // and Cra draws its own toolbar over Chrome's hidden one. The extensions
-+  // container still shows the popup, as it does for Cra's toolbar buttons.
++  // and the embedder draws the extensions' buttons in its own. Its pages'
++  // extensions container still shows the popup (EmbedderExtensionsContainer).
 +  has_toolbar = has_toolbar ||
 +                (browser.cef_delegate() && browser.cef_delegate()->IsViewsHosted());
 +#endif

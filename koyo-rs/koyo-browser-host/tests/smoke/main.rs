@@ -46,7 +46,8 @@ const FRAMES: &str = "new Promise(done => { let frames = 0; \
 fn a_page_opens_at_its_size_draws_while_on_screen_and_rests_out_of_sight() {
     let launch = launch("page");
     let mut session = Session::start(&launch);
-    assert!(session.host.chromium.starts_with("156."), "{}", session.host.chromium);
+    let major = format!("{}.", cef::sys::CHROME_VERSION_MAJOR);
+    assert!(session.host.chromium.starts_with(&major), "{}", session.host.chromium);
     open(&mut session, "data:text/html,<title>page</title><body>hi</body>", "page");
     let size = "JSON.stringify([innerWidth, innerHeight])";
     let is = |width: u64, height: u64| {
@@ -140,20 +141,24 @@ fn dev_tools_open_as_a_pane_of_their_own_and_close_with_their_page() {
     close(session, &launch);
 }
 
+/// Chromium turns down a full screen asked by a page without focus, which a page in a holder
+/// that never comes forward is, unless a frame with the person's gesture delegated it the
+/// right to (`SuppressFullscreenFromUnfocusedView`): so the page hands its frame that right.
 #[test]
 #[ignore = "Needs a packaged browser engine; see the module docs"]
 fn a_page_goes_full_screen_and_back_and_the_host_still_quits() {
     let launch = launch("fullscreen");
     let mut session = Session::start(&launch);
     let page = "data:text/html,<title>small</title><body style='margin:0'>\
-        <script>document.onfullscreenchange=()=>\
-        document.title=document.fullscreenElement?'full':'small'</script>";
+        <iframe allowfullscreen srcdoc='<script>onmessage=()=>\
+        document.body.requestFullscreen()</script>'></iframe>";
     open(&mut session, page, "small");
+    let delegate = "frames[0].postMessage('', {targetOrigin: '/', delegate: 'fullscreen'})";
     agents::cdp(
         &mut session,
         900,
         "Runtime.evaluate",
-        serde_json::json!({"expression": "document.body.requestFullscreen()", "userGesture": true}),
+        serde_json::json!({"expression": delegate, "userGesture": true}),
     );
     session.wait("the page to go full screen", |event| {
         matches!(event, HostEvent::Fullscreen { pane: 1, on: true })

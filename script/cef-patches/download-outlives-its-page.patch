@@ -373,7 +373,7 @@
    _struct->on_download_updated(_struct,
 --- a/chrome/browser/download/chrome_download_manager_delegate.cc
 +++ b/chrome/browser/download/chrome_download_manager_delegate.cc
-@@ -2610,7 +2610,15 @@
+@@ -2693,7 +2693,15 @@
    }
  
    std::move(check_download_allowed_cb).Run(allow);
@@ -469,7 +469,7 @@
    upload_callback_ = download_url_parameters->upload_callback();
    guid_ = download_url_parameters->guid();
    is_content_initiated_ = download_url_parameters->content_initiated();
-@@ -252,6 +255,7 @@
+@@ -254,6 +257,7 @@
    download_create_info->tab_referrer_url = tab_referrer_url_;
    download_create_info->render_process_id = render_process_id_;
    download_create_info->render_frame_id = render_frame_id_;
@@ -544,7 +544,7 @@
  #include "components/download/public/common/download_save_info.h"
  #include "components/download/public/common/download_source.h"
  #include "net/base/isolation_info.h"
-@@ -176,6 +178,11 @@
+@@ -182,6 +184,11 @@
      callback_ = std::move(callback);
    }
  
@@ -556,7 +556,7 @@
    // If not empty, specifies the full target path for the download. This value
    // overrides the filename suggested by a Content-Disposition headers. It
    // should only be set for programmatic downloads where the caller can verify
-@@ -318,6 +325,9 @@
+@@ -324,6 +331,9 @@
    }
  
    OnStartedCallback& callback() { return callback_; }
@@ -566,7 +566,7 @@
    bool content_initiated() const { return content_initiated_; }
    const std::string& last_modified() const { return last_modified_; }
    const std::string& etag() const { return etag_; }
-@@ -408,6 +418,7 @@
+@@ -417,6 +427,7 @@
        const net::NetworkTrafficAnnotationTag& traffic_annotation);
  
    OnStartedCallback callback_;
@@ -625,36 +625,37 @@
    if (delegate_) {
      delegate_->AttachExtraInfo(download);
  #if BUILDFLAG(IS_ANDROID)
-@@ -1213,6 +1216,11 @@
+@@ -1226,6 +1229,11 @@
  
    WebContents::Getter web_contents_getter =
        base::BindRepeating(WebContents::FromFrameTreeNodeId, frame_tree_node_id);
 +
 +  scoped_refptr<download::DownloadRequester> requester;
-+  if (auto* ftn = FrameTreeNode::GloballyFindByID(frame_tree_node_id)) {
++  if (ftn) {
 +    requester = delegate_->GetDownloadRequester(ftn->current_frame_host());
 +  }
  
    base::OnceCallback<void(bool /* download allowed */)>
        on_download_checks_done = base::BindOnce(
-@@ -1220,7 +1228,7 @@
+@@ -1233,7 +1241,8 @@
            weak_factory_.GetWeakPtr(), frame_tree_node_id,
            std::move(resource_request), std::move(url_chain), cert_status,
            std::move(response_head), std::move(response_body),
--          std::move(url_loader_client_endpoints));
-+          std::move(url_loader_client_endpoints), std::move(requester));
+-          std::move(url_loader_client_endpoints), storage_partition_config);
++          std::move(url_loader_client_endpoints), storage_partition_config,
++          std::move(requester));
  
    delegate_->CheckDownloadAllowed(
        std::move(web_contents_getter), url, method, std::move(request_initiator),
-@@ -1593,6 +1601,7 @@
-     network::mojom::URLResponseHeadPtr response_head,
+@@ -1607,6 +1616,7 @@
      mojo::ScopedDataPipeConsumerHandle response_body,
      network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
+     const StoragePartitionConfig& storage_partition_config,
 +    scoped_refptr<download::DownloadRequester> requester,
      bool is_download_allowed) {
    if (!is_download_allowed) {
      DropDownload();
-@@ -1647,7 +1656,7 @@
+@@ -1656,7 +1666,7 @@
        std::move(response_head), std::move(response_body),
        std::move(url_loader_client_endpoints),
        CreatePendingSharedURLLoaderFactory(storage_partition, render_frame_host),
@@ -663,7 +664,7 @@
  }
  
  void DownloadManagerImpl::BeginResourceDownloadOnChecksComplete(
-@@ -1888,6 +1897,9 @@
+@@ -1897,6 +1907,9 @@
  
    auto* rfh = RenderFrameHost::FromID(params->render_process_host_id(),
                                        params->render_frame_host_routing_id());
@@ -676,9 +677,9 @@
 --- a/content/browser/download/download_manager_impl.h
 +++ b/content/browser/download/download_manager_impl.h
 @@ -298,6 +298,7 @@
-       network::mojom::URLResponseHeadPtr response_head,
        mojo::ScopedDataPipeConsumerHandle response_body,
        network::mojom::URLLoaderClientEndpointsPtr url_loader_client_endpoints,
+       const StoragePartitionConfig& storage_partition_config,
 +      scoped_refptr<download::DownloadRequester> requester,
        bool is_download_allowed);
    void BeginResourceDownloadOnChecksComplete(

@@ -13,11 +13,11 @@ the old one out, rather than building it beside the new.
 
 | Patch | From | Touches |
 | --- | --- | --- |
+| `content-client-goes-with-its-delegate` | Koyo | `cef/libcef/browser/main_runner.cc`: content's client is cleared as CEF's main delegate, which owns it, is destroyed, so a process that runs on after the engine stops (Koyo, its engine's tests) has none left to read; an occlusion update `WebContentsOcclusionCheckerMac` put off read the freed one and crashed the process, on CEF 158 |
 | `devtools-pipe-descriptors` | Koyo | `content/browser/devtools/devtools_agent_host_impl.cc` |
 | `devtools-pipe-embedder` | Koyo | `chrome/browser/devtools/remote_debugging_server.cc` |
 | `dialog-without-parent-titlebar` | Koyo | `ui/views/widget/native_widget_mac.mm` |
 | `download-outlives-its-page` | Koyo | `components/download/` (`DownloadRequester`), `content/browser/download/download_manager_impl.{h,cc}`, `content/public/browser/download_manager_delegate.{h,cc}`, `content/browser/devtools/protocol/devtools_download_manager_delegate.{h,cc}`, `chrome/browser/download/chrome_download_manager_delegate.{h,cc}`, `cef/libcef/browser/download_manager_delegate_impl.{h,cc}`, `cef/include/cef_download_handler.h`, `cef/libcef_dll/{ctocpp/download_handler_ctocpp,cpptoc/download_handler_cpptoc}.cc`: who asked for a download travels with it, so the download handler of the browser that asked is told of it after that browser is gone, its browser then NULL, and its profile is kept until it ends (`docs/browser.md` 16.2) |
-| `external-pump-idle-work` | CEF upstream `b7f5636` (issue 4332), not yet in 156.0.14 | `cef/libcef/browser/browser_message_loop.cc`: an external pump runs idle work whenever no immediate work is left, which accepting an autofill suggestion waits on |
 | `external-pump-wake-ups` | Koyo | `cef/libcef/browser/browser_message_loop.cc`: a turn of an external pump ends by asking for the wakeup Chromium's last task left it, as Chromium's own pumps do, so work left when the turn ran out of time and work put off from within a task ask for their turn, and the host's pump runs CEF's work only when it's asked (`docs/native-pages.md` 3.1). Its turn ends at `Quit()` and rounds the wait up, as Chromium's own pumps do. CEF has no such change, to 2026-11-20; its own example pump runs the work every thirtieth of a second instead (CEF issue 2968) |
 | `extension-current-window-last-active` | Koyo | `chrome/browser/extensions/window_controller_list.cc` |
 | `extension-install-ui-null-tab` | Cra | `chrome/browser/ui/extensions/extension_install_ui_desktop.cc` |
@@ -33,17 +33,17 @@ the old one out, rather than building it beside the new.
 
 - **Order matters where two touch a file.** `koyo-extensions-protocol` goes over
   `extension-tab-activate` and `extension-tabs-create` in CEF's browser delegate,
-  `koyo-popup` over `koyo-extensions-protocol` in the `Extensions` domain's files, and
-  `external-pump-wake-ups` over `external-pump-idle-work` in CEF's message loop; the names
-  sort that way.
-- **Made against** CEF 156.0.14 (`4fa4ab5`) on Chromium 156.0.8078.48. On another version
+  and `koyo-popup` over `koyo-extensions-protocol` in the `Extensions` domain's files; the
+  names sort that way.
+- **Made against** CEF 158.0.6 (`23f1736`) on Chromium 158.0.8127.89. On another version
   each has to apply again: `script/cef` stops with the name of one that doesn't.
 - **Cra's** are from `github.com/VictorKildahl/cra` (`scripts/cef-patches`), a macOS browser
   that embeds Chrome-style CEF pages as Koyo does, under the MIT licence below; their comments
   say "Cra" where they tell why. Changed here: the marker of an extension's tab is
   `koyo_extension_tab`, and the message that asks for a tab in front is `Koyo.activate`.
-  Cra's `extension-trigger-action-null-checks` and the icon and badge part of its
-  `extensions-action-updates` are inside `koyo-extensions-protocol`, reworked.
+  The icon and badge part of Cra's `extensions-action-updates` is inside
+  `koyo-extensions-protocol`, reworked. Its `extension-trigger-action-null-checks` is
+  Chromium's own since 158: `triggerAction` answers with an error there.
 
 ## Cra's licence
 

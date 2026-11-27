@@ -63,19 +63,23 @@ fn an_address_typed_into_the_bar_opens_and_the_page_takes_the_keys(cx: &mut Test
 
 /// A page's full screen: the page asks for it, as a click on its button would, the app gives
 /// the page the whole screen, and taking the window out of it takes the page out too, the
-/// page hearing it leave.
+/// page hearing it leave. A test's window never comes forward, so its page hasn't the
+/// keyboard, and Chromium turns down a full screen asked by a page without it unless a frame
+/// with the person's gesture delegated it the right (`SuppressFullscreenFromUnfocusedView`):
+/// the page hands its frame that right.
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
 fn a_page_full_screen_takes_the_screen_until_it_is_left(cx: &mut TestAppContext) {
     let page = "data:text/html,<title>small</title><body style='margin:0'>\
         <script>document.onfullscreenchange=()=>\
-        document.title=document.fullscreenElement?'full':'small'</script>";
+        document.title=document.fullscreenElement?'full':'small'</script>\
+        <iframe allowfullscreen srcdoc='<script>onmessage=()=>\
+        document.body.requestFullscreen()</script>'></iframe>";
     let (view, cx, scratch) = open("fullscreen", page, cx);
     wait_for_title(cx, &view, "small");
     let ask = json!({
-        "expression": "document.body.requestFullscreen()",
+        "expression": "frames[0].postMessage('', {targetOrigin: '/', delegate: 'fullscreen'})",
         "userGesture": true,
-        "awaitPromise": true,
     });
     let asked = run(cx, &view, None, "Runtime.evaluate", ask);
     assert!(matches!(asked, Answer::Answered(Ok(_))), "{asked:?}");

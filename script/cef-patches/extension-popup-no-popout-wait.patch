@@ -1,16 +1,8 @@
 diff --git a/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc b/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc
-index db2447a0db..f714ad282b 100644
+index dce94a0eb7..dbbcfce343 100644
 --- a/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc
 +++ b/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc
-@@ -12,6 +12,7 @@
- #include "base/functional/callback_helpers.h"
- #include "base/no_destructor.h"
- #include "base/scoped_observation.h"
-+#include "base/task/sequenced_task_runner.h"
- #include "base/time/time.h"
- #include "build/build_config.h"
- #include "chrome/app/vector_icons/vector_icons.h"
-@@ -68,6 +69,10 @@
+@@ -69,6 +69,10 @@
  #include "ui/views/widget/widget.h"
  #include "ui/views/widget/widget_observer.h"
  
@@ -21,8 +13,8 @@ index db2447a0db..f714ad282b 100644
  namespace {
  
  class IphWidgetActivationObserver : public views::WidgetObserver {
-@@ -633,6 +638,18 @@ void ExtensionsToolbarDesktop::PopOutAction(
-   DCHECK(!popped_out_action_.has_value());
+@@ -636,6 +640,18 @@ void ExtensionsToolbarDesktop::PopOutAction(
+   CHECK(!popped_out_action_.has_value(), base::NotFatalUntil::M162);
    popped_out_action_ = action_id;
    UpdateIconVisibility(action_id);
 +#if BUILDFLAG(ENABLE_CEF)

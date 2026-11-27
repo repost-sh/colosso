@@ -218,7 +218,7 @@
 +      toolbar_.Observe(toolbar);
 +    }
 +  }
- 
++
 +  const std::string& profile() const { return profile_; }
 +
 +  // extensions::ExtensionActionDispatcher::Observer:
@@ -500,7 +500,7 @@
 +  *out_extensions = std::move(result);
 +  return protocol::Response::Success();
 +}
-+
+ 
 +protocol::DispatchResponse ExtensionsHandler::KoyoSetEnabled(
 +    const protocol::String& id,
 +    const protocol::String& profile_name,
@@ -644,7 +644,7 @@
  protocol::DispatchResponse ExtensionsHandler::TriggerAction(
      const std::string& extension_id,
      const std::string& target_id) {
-@@ -184,15 +778,35 @@
+@@ -184,7 +778,12 @@
    if (web_contents == nullptr) {
      return protocol::Response::ServerError("Tab target has no WebContents.");
    }
@@ -656,31 +656,8 @@
 +    content::WebContents* web_contents) {
    BrowserWindowInterface* browser =
        extensions::browser_window_util::GetBrowserForTabContents(*web_contents);
-+  // Koyo: answer with an error instead of crashing. A disabled or uninstalled
-+  // extension has no toolbar action, and a tab need not be in a browser with
-+  // an extensions container. (From Cra's
-+  // extension-trigger-action-null-checks.patch, MIT.)
-+  if (browser == nullptr) {
-+    return protocol::Response::ServerError("Tab target has no browser.");
-+  }
- 
-   ExtensionsContainer* extension_container =
-       ExtensionsContainer::From(*browser);
-+  if (extension_container == nullptr) {
-+    return protocol::Response::ServerError(
-+        "Browser has no extensions toolbar.");
-+  }
- 
-   ToolbarActionViewModel* extension_model =
-       extension_container->GetActionForId(extension_id);
-+  if (extension_model == nullptr) {
-+    return protocol::Response::ServerError(
-+        "No enabled extension with the provided id.");
-+  }
- 
-   extension_model->ExecuteUserAction(
-       ExtensionActionViewModel::InvocationSource::kCdp);
-@@ -206,6 +820,9 @@
+   if (browser == nullptr) {
+@@ -218,6 +817,9 @@
      : target_id_(target_id),
        allow_loading_extensions_(allow_loading_extensions) {
    protocol::Extensions::Dispatcher::wire(dispatcher, this);
@@ -931,7 +908,7 @@
  #endif  // CEF_LIBCEF_BROWSER_CHROME_BROWSER_DELEGATE_H_
 --- a/cef/libcef/browser/chrome/chrome_browser_delegate.cc
 +++ b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
-@@ -757,6 +757,16 @@
+@@ -760,6 +760,16 @@
      std::unique_ptr<content::WebContents>& devtools_contents) {
    return ChromeBrowserDelegate::CreateDevToolsBrowser(
        profile, opener, inspected_web_contents, devtools_contents);

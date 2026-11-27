@@ -1,8 +1,8 @@
 diff --git a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
-index c9e2a59c3e..3c0cbafce0 100644
+index ec7bb0a0c8..a786a7c9ec 100644
 --- a/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
 +++ b/chrome/browser/ui/extensions/extension_install_ui_desktop.cc
-@@ -130,6 +130,16 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
+@@ -127,6 +127,16 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
      return;
    }
  
@@ -19,7 +19,7 @@ index c9e2a59c3e..3c0cbafce0 100644
    // Extensions aren't enabled by default in incognito so we confirm
    // the install in a normal window.
    Profile* current_profile = profile()->GetOriginalProfile();
-@@ -141,11 +151,19 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
+@@ -138,11 +148,19 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
      SkBitmap icon_to_use = icon ? *icon : SkBitmap();
      extensions::TriggerPostInstallDialog(
          profile(), extension, icon_to_use,
@@ -42,12 +42,3 @@ index c9e2a59c3e..3c0cbafce0 100644
          base::BindOnce(
              [](const extensions::ExtensionId& extension_id,
                 base::WeakPtr<content::WebContents> web_contents) {
-@@ -160,7 +178,7 @@ void ExtensionInstallUIDesktop::OnInstallSuccess(
-               }
-               BrowserView* browser_view =
-                   BrowserView::GetBrowserViewForBrowser(browser_interface);
--              if (!browser_view->toolbar()) {
-+              if (!browser_view || !browser_view->toolbar()) {
-                 return;
-               }
-               ExtensionsToolbarDesktop* extensions_toolbar =
