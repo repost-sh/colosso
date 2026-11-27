@@ -75,6 +75,15 @@ const AUTOFILL_SERVER_OFF: [&str; 1] = ["AutofillServerCommunication"];
 /// 150 of 400 MB in three days, 13 GB on disk once their shared blocks are counted once.
 const BUNDLE_CLONE_OFF: [&str; 1] = ["MacAppCodeSignClone"];
 
+/// Chromium's separate key for a profile outside Chrome's own data directory
+/// (`browser_process_impl.cc`, since Chromium 158): it marks the key the profiles' cookies and
+/// passwords were saved under, "v10", unavailable and saves new ones under a key of its own,
+/// so Chromium deletes every cookie saved before, as it can't decrypt them. It keeps a second
+/// data directory of Chrome's from reading the first one's secrets with the same key. Koyo's
+/// engine has one data directory, its root (`host/start.rs`), and a Keychain item of its own
+/// ("Koyo Browser Engine"): that root is its default, and what it saved stays readable.
+const ONE_DATA_DIRECTORY: [&str; 1] = ["KeychainKeyProviderUserDataDirProtection"];
+
 /// Every feature the browser process turns off. What stays on, and why, is in the tests:
 /// the components and requests that check certificates, warn of dangerous sites and
 /// downloads, play protected video and keep extensions current.
@@ -87,6 +96,7 @@ fn features_off() -> impl Iterator<Item = &'static str> {
         .chain(TRANSLATE_OFF)
         .chain(AUTOFILL_SERVER_OFF)
         .chain(BUNDLE_CLONE_OFF)
+        .chain(ONE_DATA_DIRECTORY)
 }
 
 /// Every switch the browser process starts with.
@@ -172,6 +182,14 @@ mod tests {
         for switch in NEVER_SWITCHED {
             assert!(!given.contains(&switch), "no --{switch}");
         }
+    }
+
+    /// Chromium 158 deleted every cookie the profiles had saved, as Koyo's root isn't Chrome's
+    /// own data directory: the key they were saved under stays theirs.
+    #[test]
+    fn what_a_profile_saved_stays_readable_under_its_key() {
+        let off: Vec<&str> = features_off().collect();
+        assert!(off.contains(&"KeychainKeyProviderUserDataDirProtection"));
     }
 
     /// What Chrome does with a hidden page that Koyo keeps: its timers at once a second, and its
