@@ -74,8 +74,8 @@ use std::process::ExitCode;
 
 use gpui_kit::base::Root;
 use gpui_kit::{
-    App, AppContext as _, Styled as _, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions, point, px, size, transparent_black,
+    App, AppContext as _, Context, Styled as _, TitlebarOptions, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowOptions, point, px, size, transparent_black,
 };
 
 use blocking::Blocking;
@@ -130,28 +130,49 @@ pub fn reopen_main_window(
 /// last one shown, as a page opened from the launcher with no project is: a link from outside
 /// belongs to no project. The window is opened again first if it was closed.
 fn open_handed_pages(pages: Vec<String>, cx: &mut App) {
-    if control::main_shell(cx).is_some() {
-        return show_handed_pages(pages, cx);
-    }
-    reopen_main_window(cx, move |opened, cx| match opened {
-        Ok(()) => show_handed_pages(pages, cx),
-        Err(error) => log::error!("couldn't open the window for a link: {error:#}"),
+    in_main_window(cx, move |shell, window, cx| {
+        for page in pages {
+            shell.open_browser_tab(Some(page), (true, false), None, window, cx);
+        }
     });
 }
 
-fn show_handed_pages(pages: Vec<String>, cx: &mut App) {
+/// Check for Updates…, from the app's menu: the feed is read now, and Settings → About is
+/// shown, whose Version row says it's checking and then what the feed answered
+/// (`docs/updates.md` 1).
+fn check_for_updates(cx: &mut App) {
+    updates::check(cx);
+    in_main_window(cx, |shell, _, cx| {
+        shell.open_settings_page(Some(navigation::SettingsPage::About), cx);
+    });
+}
+
+/// Has `act` act on the app's window, which is opened again first if it was closed.
+fn in_main_window(
+    cx: &mut App,
+    act: impl FnOnce(&mut shell::Shell, &mut Window, &mut Context<shell::Shell>) + 'static,
+) {
+    if control::main_shell(cx).is_some() {
+        return in_open_window(act, cx);
+    }
+    reopen_main_window(cx, move |opened, cx| match opened {
+        Ok(()) => in_open_window(act, cx),
+        Err(error) => log::error!("couldn't open the window again: {error:#}"),
+    });
+}
+
+fn in_open_window(
+    act: impl FnOnce(&mut shell::Shell, &mut Window, &mut Context<shell::Shell>),
+    cx: &mut App,
+) {
     let Some((window, shell)) = control::main_shell(cx) else {
         return;
     };
-    let shown = window.update(cx, |_, window, cx| {
-        shell.update(cx, |shell, cx| {
-            for page in pages {
-                shell.open_browser_tab(Some(page), (true, false), None, window, cx);
-            }
-        });
+    let acted = window.update(cx, |_, window, cx| {
+        shell.update(cx, |shell, cx| act(shell, window, cx));
     });
-    if let Err(error) = shown {
-        log::error!("couldn't open a link in the window: {error:#}");
+    if let Err(error) = acted {
+        log::error!("couldn't reach the window: {error:#}");
     }
 }
 
@@ -299,6 +320,7 @@ fn launch(links: links::Links, cx: &mut App) {
     blocking::at_launch("the launch", |may| {
         init(cx, may);
         quitting::set_menu(cx);
+        cx.on_action(|_: &updates::CheckForUpdates, cx| cx.defer(check_for_updates));
         language::init(cx);
         control::start(cx);
         let kept = shell::KeptWindow::read(may);
@@ -315,7 +337,9 @@ fn launch(links: links::Links, cx: &mut App) {
 mod tests {
     use gpui_kit::TestAppContext;
 
-    use super::open_handed_pages;
+    use super::{check_for_updates, open_handed_pages};
+    use crate::model::SettingsTab;
+    use crate::navigation::SettingsPage;
     use crate::test_support::{loose, shell_window, shown};
 
     #[gpui_kit::test]
@@ -340,6 +364,20 @@ mod tests {
             "each page handed over is an unpinned page of its own"
         );
         assert_eq!(shown(&shell, cx), (Some("https://example.com/c".into()), true));
+    }
+
+    #[gpui_kit::test]
+    fn check_for_updates_shows_about_where_the_answer_is_said(cx: &mut TestAppContext) {
+        cx.update(crate::test_support::init);
+        let (_window, shell) = shell_window(cx);
+        let page = |cx: &mut TestAppContext| {
+            shell.read_with(cx, |shell, _| shell.workspace.settings_shown().map(SettingsTab::page))
+        };
+        assert_eq!(page(cx), None);
+
+        cx.update(check_for_updates);
+        cx.run_until_parked();
+        assert_eq!(page(cx), Some(SettingsPage::About));
     }
 
     #[gpui_kit::test]

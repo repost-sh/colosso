@@ -2,7 +2,7 @@
 title: "Updates"
 ---
 
-A released Koyo looks for a newer release at launch and every hour after. When one exists, a pill appears in the window's top bar, and one click downloads the release, checks it, and restarts Koyo into it. A scheduled job releases Koyo again whenever CEF carries a newer Chromium. This page says what the person sees, what a release consists of, what the app checks, and how releases are made. To set up what releases need, see [How to release Koyo](releasing.md).
+A released Koyo looks for a newer release at launch, every hour after, and when the person chooses **Check for Updates…** in the Koyo menu. When one exists, a pill appears in the window's top bar, and one click downloads the release, checks it, and restarts Koyo into it. A scheduled job releases Koyo again whenever CEF carries a newer Chromium. This page says what the person sees, what a release consists of, what the app checks, and how releases are made. To set up what releases need, see [How to release Koyo](releasing.md).
 
 ## 1. What the person sees
 
@@ -20,7 +20,7 @@ One click on **Update Koyo** runs everything through to the restart. Before Koyo
 
 Settings → About says where the update stands on its **Version** row, the quiet cases too: up to date and when it last looked, a look that failed and why, a release that needs a newer macOS, and a build that doesn't update itself. It has the same button as the pill and no other.
 
-There is no setting, no menu item, and no button that looks for an update on request.
+**Check for Updates…** in the Koyo menu looks now and shows Settings → About. The Version row reads "Checking for updates…" until the feed answers, then says the answer. A release already found, installing, or staged stands as it is. In a build that doesn't update itself the row says so. There is no setting for updates.
 
 ## 2. What is published
 

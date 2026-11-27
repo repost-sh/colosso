@@ -5,7 +5,7 @@ use gpui_kit::TestAppContext;
 
 use super::fixtures::{self, Koyo, koyo, recorded, says, until_it_says};
 use super::installed::Unreleased;
-use super::{TheUpdates, act, hand_over_to_reopen};
+use super::{TheUpdates, act, check, hand_over_to_reopen};
 
 #[gpui_kit::test]
 fn a_release_out_at_launch_is_offered(cx: &mut TestAppContext) {
@@ -45,6 +45,31 @@ fn the_feed_is_read_at_launch_and_again_every_hour(cx: &mut TestAppContext) {
     koyo.announce(env!("CARGO_PKG_VERSION"));
     Koyo::an_hour_on(cx);
     assert_eq!(says(cx).0, "quiet", "a release withdrawn is still offered");
+}
+
+#[gpui_kit::test]
+fn a_check_the_person_asks_for_reads_the_feed_without_waiting_for_the_hour(
+    cx: &mut TestAppContext,
+) {
+    let koyo = koyo("updates-asked", true, cx);
+    koyo.announce(env!("CARGO_PKG_VERSION"));
+    cx.run_until_parked();
+    assert_eq!(says(cx), ("quiet", "Koyo is up to date. Checked just now.".into()));
+
+    koyo.announce("9.0.0");
+    cx.update(check);
+    assert_eq!(says(cx), ("quiet", "Checking for updates…".into()));
+    cx.run_until_parked();
+    assert_eq!(says(cx).0, "Update Koyo");
+
+    cx.update(check);
+    assert_eq!(says(cx).0, "Update Koyo", "a check withdrew the release it had found");
+    cx.run_until_parked();
+    assert_eq!(says(cx).0, "Update Koyo");
+
+    koyo.announce(env!("CARGO_PKG_VERSION"));
+    Koyo::an_hour_on(cx);
+    assert_eq!(says(cx).0, "quiet", "the feed is no longer read every hour after a check");
 }
 
 #[gpui_kit::test]

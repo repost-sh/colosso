@@ -1,6 +1,7 @@
 //! Koyo updating itself (`docs/updates.md`). A released bundle names its feed in its
-//! `Info.plist`; Koyo reads it at launch and hourly, and when a newer Koyo this Mac can run is
-//! out, the top bar offers it. One click downloads the release's disk image into a folder of
+//! `Info.plist`; Koyo reads it at launch, hourly, and when the person asks (Check for
+//! Updates… in the app's menu), and when a newer Koyo this Mac can run is out, the top bar
+//! offers it. One click downloads the release's disk image into a folder of
 //! the attempt's own beside the bundle, checks it's signed as this Koyo is, copies the app out,
 //! checks the copy, and restarts: unsaved edits and pages are asked about as at a quit, the
 //! staged release is handed to `koyo install-update`, and the app ends. The installer waits
@@ -9,7 +10,7 @@
 //! Koyo quits. A bundle made here names no feed and never checks.
 //!
 //! The views (`shell/update_button.rs`, `settings_view/about.rs`) ask one question, [`shown`],
-//! and call one verb, [`act`]. Nothing here draws, and the restart reaches `quitting` as an
+//! and call one verb, [`act`]; the menu's item calls [`check`]. Nothing here draws, and the restart reaches `quitting` as an
 //! action, so no import of this module closes a cycle.
 //!
 //! Two Koyos run from one bundle are not designed for: each stages in a folder of its own and
@@ -36,6 +37,9 @@ use std::mem;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use futures::StreamExt as _;
+use futures::channel::mpsc::{UnboundedSender, unbounded};
+use futures::future::select;
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, actions};
 
 use crate::blocking::{self, Blocking};
@@ -60,7 +64,10 @@ actions!(
     [
         /// Restarts Koyo into the release staged beside it. Dispatched here, once a release is
         /// staged and at a click on Restart to Update; `quitting` answers it.
-        RestartToUpdate
+        RestartToUpdate,
+        /// Reads the feed now and shows About, which says the answer: the app menu's Check
+        /// for Updates…. The crate root answers it.
+        CheckForUpdates
     ]
 );
 
@@ -75,7 +82,10 @@ pub struct Updates {
     /// Where the update stands. Every surface draws from this alone, through `words::shown`.
     stage: Stage,
     fetch: Arc<dyn Fetch>,
-    /// Removes what an earlier run left, then reads the feed now and every [`EVERY`].
+    /// Has the feed read now, without waiting for the hour to pass.
+    ask: UnboundedSender<()>,
+    /// Removes what an earlier run left, then reads the feed now, every [`EVERY`], and
+    /// whenever it's asked to.
     _looking: Task<()>,
 }
 
@@ -125,6 +135,14 @@ pub fn act(cx: &mut App) {
     }
 }
 
+/// Reads the feed now, on the person's say. A build that doesn't update itself has none to
+/// read, which About says.
+pub fn check(cx: &mut App) {
+    if let Some(updates) = observed(cx) {
+        updates.update(cx, Updates::check);
+    }
+}
+
 /// What the top bar and About say, from the stage.
 pub fn shown(cx: &App) -> Shown {
     match cx.global::<TheUpdates>() {
@@ -160,6 +178,7 @@ impl Updates {
     fn new(installed: Installed, fetch: Arc<dyn Fetch>, cx: &mut Context<Self>) -> Self {
         let (bundle, feed, macos) = (installed.bundle.clone(), installed.feed.clone(), installed.macos);
         let reading = fetch.clone();
+        let (ask, mut asked) = unbounded();
         let looking = cx.spawn(async move |updates, cx| {
             let executor = cx.background_executor().clone();
             blocking::spawn(&executor, move |may| attempt::sweep(&bundle, may)).await;
@@ -173,15 +192,26 @@ impl Updates {
                 if updates.update(cx, heard).is_err() {
                     return;
                 }
-                executor.timer(EVERY).await;
+                select(executor.timer(EVERY), asked.next()).await;
             }
         });
         Updates {
             installed,
             stage: Stage::Current(Checked::Not),
             fetch,
+            ask,
             _looking: looking,
         }
+    }
+
+    /// Has the feed read now. With nothing newer known, About says it's checking until the
+    /// feed answers; a release found, installing or staged stands as it is.
+    fn check(&mut self, cx: &mut Context<Self>) {
+        if let Stage::Current(checked) = &mut self.stage {
+            *checked = Checked::Not;
+            cx.notify();
+        }
+        self.ask.unbounded_send(()).ok();
     }
 
     /// The feed answered, or didn't.

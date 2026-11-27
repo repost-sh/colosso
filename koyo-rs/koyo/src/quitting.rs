@@ -82,6 +82,7 @@ pub fn init(cx: &mut App) {
 /// is left to hear ⌘Q but the menu.
 pub fn set_menu(cx: &App) {
     cx.set_menus(vec![Menu::new("Koyo").items([
+        MenuItem::action("Check for Updates…", updates::CheckForUpdates),
         MenuItem::action("Settings…", OpenSettings),
         MenuItem::separator(),
         MenuItem::action("Quit Koyo", Quit),
