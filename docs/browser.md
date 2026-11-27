@@ -486,8 +486,17 @@ this Mac's own identity and loading a page (`.superpowers/v/evidence/*hardened*`
 This Mac's identity names no team, and the hardened runtime loads a library only of the
 process's own team, so the check added `com.apple.security.cs.disable-library-validation`
 to every piece as a stand-in. A Developer ID build's pieces share a team and don't claim it.
-Still unknown until a Developer ID build runs: the `-67030 errSecCSInfoPlistFailed` signature
-check the host's log has shown.
+**With the Developer ID [checked 2026-11-27].** Koyo 0.1.0, signed by `Developer ID
+Application: Felipe Schulz (U228HB4SSR)` with the entitlements above and none for library
+validation, and notarized: in a copy with its own identifier and folders, on the agent
+desktop, a page loaded with no process lost, WebAssembly ran, and
+`canPlayType("video/mp4; codecs=avc1.42E01E")` answered "probably". Apple's notary refused
+the first image: the three libraries in the framework's `Libraries` folder kept their
+linker's ad hoc signatures, as signing a framework seals them without signing them.
+`script/browser-engine` signs them first. macOS then offered the copy for `https` links
+(`NSWorkspace.urlsForApplications(toOpen:)`), so a Koyo with the two schemes is listed among
+the web browsers. Still unknown: the `-67030 errSecCSInfoPlistFailed` signature check the
+host's log has shown.
 
 ### 9.5 What Koyo does once signed [decided]
 

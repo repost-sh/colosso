@@ -230,6 +230,11 @@ if [ -n "$sign" ]; then
 else
   set -- --force --timestamp=none --sign -
 fi
+# The framework's own libraries first: signing a framework seals them as its resources and
+# leaves each with the signature its linker gave it, which Apple's notary refuses.
+for library in "$frameworks/$FRAMEWORK/Libraries/"*.dylib; do
+  codesign "$@" "$library"
+done
 codesign "$@" "$frameworks/$FRAMEWORK"
 for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
   codesign "$@" ${helper_entitlements:+--entitlements "$helper_entitlements"} \
