@@ -74,7 +74,7 @@ use std::process::ExitCode;
 
 use gpui_kit::base::Root;
 use gpui_kit::{
-    App, AppContext as _, Context, Styled as _, TitlebarOptions, Window,
+    Action, App, AppContext as _, Context, Menu, MenuItem, Styled as _, TitlebarOptions, Window,
     WindowBackgroundAppearance, WindowBounds, WindowOptions, point, px, size, transparent_black,
 };
 
@@ -145,6 +145,96 @@ fn check_for_updates(cx: &mut App) {
     in_main_window(cx, |shell, _, cx| {
         shell.open_settings_page(Some(navigation::SettingsPage::About), cx);
     });
+}
+
+/// The menu bar (`docs/layout.md` Menu bar), set once every key is bound, so each item shows the
+/// key bound to it. macOS gives the first menu the app's name, and lists the window in the one
+/// titled Window. The bar adds no route for a key: `AppKit` offers a key to the window's views
+/// before the menu, so an item shows only a key the window takes wherever the item is enabled. A
+/// command of the window or the app is unbound, or bound with no context to a key with ⌘ or ⌃;
+/// a command of a page is heard by the page's own view alone and bound in its contexts, so it's
+/// disabled outside a page. Go to File is the one exception: its ⌘P is bound outside a page only
+/// (`!BrowserPage`), and in a page ⌘P is the page's Print, so some binding takes ⌘P wherever the
+/// keyboard is (`docs/native-layer.md` 7, `tests/menu_bar.rs`).
+fn bar() -> Vec<Menu> {
+    let named = |(name, action): (&'static str, Box<dyn Action>)| MenuItem::Action {
+        name: name.into(),
+        action,
+        os_action: None,
+        checked: false,
+        disabled: false,
+    };
+    let help = |name, url: &str| MenuItem::action(name, files::OpenLinkedPage { url: url.to_owned() });
+    let [worktree, project, space] = shell::sidebar::foot::new_commands().map(named);
+    let edit = edit_menu::items().into_iter().chain([
+        MenuItem::separator(),
+        MenuItem::action("Find in Page…", browser::FindInPage),
+        MenuItem::action("Find Next", browser::FindNext),
+        MenuItem::action("Find Previous", browser::FindPrevious),
+    ]);
+    vec![
+        Menu::new("Koyo").items([
+            MenuItem::action("Check for Updates…", updates::CheckForUpdates),
+            MenuItem::action("Settings…", navigation::OpenSettings),
+            MenuItem::separator(),
+            MenuItem::action("Quit Koyo", quitting::Quit),
+        ]),
+        Menu::new("File").items([
+            MenuItem::action("New Tab", launcher::NewTab),
+            MenuItem::action("New Chat", shell::NewChat),
+            MenuItem::action("New Terminal", shell::NewTerminal),
+            MenuItem::separator(),
+            worktree,
+            project,
+            space,
+            MenuItem::separator(),
+            MenuItem::action("Go to File…", go_to_file::GoToFile),
+            MenuItem::action("Go to Symbol in File…", symbols::DocumentSymbols),
+            MenuItem::action("Go to Symbol in Workspace…", symbols::WorkspaceSymbols),
+            MenuItem::action("Save", files::Save),
+            MenuItem::separator(),
+            MenuItem::action("Close Tab", shell::CloseTab),
+            MenuItem::action("Reopen Closed Tab", shell::ReopenClosedTab),
+            MenuItem::separator(),
+            MenuItem::action("Print…", browser::Print),
+        ]),
+        Menu::new("Edit").items(edit),
+        Menu::new("View").items([
+            MenuItem::action("Toggle Sidebar", shell::ToggleSidebar),
+            MenuItem::action("Toggle Right Panel", shell::ToggleRightPanel),
+            MenuItem::action("Toggle Bottom Panel", shell::ToggleBottomPanel),
+            MenuItem::separator(),
+            MenuItem::action("Files", right_panel::ShowFiles),
+            MenuItem::action("Changes", right_panel::ToggleChanges),
+            MenuItem::action("Downloads", browser::ToggleDownloads),
+            MenuItem::separator(),
+            MenuItem::action("Markdown Preview", files::TogglePreview),
+            MenuItem::separator(),
+            MenuItem::action("Edit Theme…", shell::EditTheme),
+        ]),
+        Menu::new("Page").items([
+            MenuItem::action("Open Address…", launcher::OpenAddress),
+            MenuItem::separator(),
+            MenuItem::action("Back", browser::Back),
+            MenuItem::action("Forward", browser::Forward),
+            MenuItem::action("Reload", browser::Reload),
+            MenuItem::separator(),
+            MenuItem::action("Zoom In", browser::ZoomIn),
+            MenuItem::action("Zoom Out", browser::ZoomOut),
+            MenuItem::action("Actual Size", browser::ActualSize),
+            MenuItem::separator(),
+            MenuItem::action("Responsive Mode", browser::ToggleResponsive),
+            MenuItem::action("DevTools", browser::ToggleDevTools),
+        ]),
+        Menu::new("Window").items([
+            MenuItem::action("Minimize", shell::Minimize),
+            MenuItem::action("Zoom", shell::Zoom),
+        ]),
+        Menu::new("Help").items([
+            help("Koyo Help", "https://github.com/repost-sh/koyo#readme"),
+            help("Release Notes", "https://github.com/repost-sh/koyo/releases"),
+        ]),
+    ]
 }
 
 /// Has `act` act on the app's window, which is opened again first if it was closed.
@@ -319,9 +409,9 @@ fn main() -> ExitCode {
 fn launch(links: links::Links, cx: &mut App) {
     blocking::at_launch("the launch", |may| {
         init(cx, may);
-        quitting::set_menu(cx);
         cx.on_action(|_: &updates::CheckForUpdates, cx| cx.defer(check_for_updates));
         language::init(cx);
+        cx.set_menus(bar());
         control::start(cx);
         let kept = shell::KeptWindow::read(may);
         history::read_icons(&kept.addresses(), may, cx);
@@ -334,61 +424,4 @@ fn launch(links: links::Links, cx: &mut App) {
 }
 
 #[cfg(test)]
-mod tests {
-    use gpui_kit::TestAppContext;
-
-    use super::{check_for_updates, open_handed_pages};
-    use crate::model::SettingsTab;
-    use crate::navigation::SettingsPage;
-    use crate::test_support::{loose, shell_window, shown};
-
-    #[gpui_kit::test]
-    fn a_page_macos_hands_over_opens_unpinned_and_the_last_is_shown(cx: &mut TestAppContext) {
-        cx.update(crate::test_support::init);
-        let (_window, shell) = shell_window(cx);
-        assert_eq!(loose(&shell, cx), Vec::<String>::new());
-
-        cx.update(|cx| open_handed_pages(vec!["https://example.com/a".into()], cx));
-        cx.run_until_parked();
-        assert_eq!(loose(&shell, cx), ["https://example.com/a"]);
-        assert_eq!(shown(&shell, cx), (Some("https://example.com/a".into()), true));
-
-        cx.update(|cx| {
-            let pages = ["https://example.com/b", "https://example.com/c"];
-            open_handed_pages(pages.map(str::to_owned).to_vec(), cx);
-        });
-        cx.run_until_parked();
-        assert_eq!(
-            loose(&shell, cx),
-            ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
-            "each page handed over is an unpinned page of its own"
-        );
-        assert_eq!(shown(&shell, cx), (Some("https://example.com/c".into()), true));
-    }
-
-    #[gpui_kit::test]
-    fn check_for_updates_shows_about_where_the_answer_is_said(cx: &mut TestAppContext) {
-        cx.update(crate::test_support::init);
-        let (_window, shell) = shell_window(cx);
-        let page = |cx: &mut TestAppContext| {
-            shell.read_with(cx, |shell, _| shell.workspace.settings_shown().map(SettingsTab::page))
-        };
-        assert_eq!(page(cx), None);
-
-        cx.update(check_for_updates);
-        cx.run_until_parked();
-        assert_eq!(page(cx), Some(SettingsPage::About));
-    }
-
-    #[gpui_kit::test]
-    fn a_document_macos_hands_over_opens_as_a_page_at_its_file_address(cx: &mut TestAppContext) {
-        cx.update(crate::test_support::init);
-        let (_window, shell) = shell_window(cx);
-
-        let document = "file:///Users/me/Sites/a%20page.html";
-        cx.update(|cx| open_handed_pages(vec![document.into()], cx));
-        cx.run_until_parked();
-        assert_eq!(loose(&shell, cx), [document]);
-        assert_eq!(shown(&shell, cx), (Some(document.into()), true));
-    }
-}
+mod tests;

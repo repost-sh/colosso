@@ -200,6 +200,22 @@ Right-clicking a space's mark, or empty space in the sidebar, offers **Rename Sp
 
 There is no per-space theme. Switching spaces never changes the window's colours, and Settings → Appearance → Glass edits the one theme, light and dark. Themes stored on spaces are dropped from `settings.json`.
 
+## Menu bar
+
+The menu bar lists Koyo's own commands. An item shows a key only where Koyo already takes that key wherever the item works (`docs/native-layer.md` 7). A page's commands work while the keyboard is in a page, and are greyed out elsewhere.
+
+| Menu | Items | Keys |
+|---|---|---|
+| Koyo | Check for Updates…, Settings…, Quit Koyo | Settings… ⌘, · Quit Koyo ⌘Q |
+| File | New Tab, New Chat, New Terminal · New Worktree…, New Project…, New Space… · Go to File…, Go to Symbol in File…, Go to Symbol in Workspace…, Save · Close Tab, Reopen Closed Tab · Print… (in a page) | ⌘T · New Worktree… ⌘N · ⌘P · ⌘⇧O · ⌘⌥O · ⌘S · ⌘W · ⌘⇧T · Print… ⌘P |
+| Edit | Undo, Redo, Cut, Copy, Paste, Select All · Find in Page…, Find Next, Find Previous (in a page) | None for the six · ⌘F · ⌘G · ⌘⇧G |
+| View | Toggle Sidebar, Toggle Right Panel, Toggle Bottom Panel · Files, Changes, Downloads · Markdown Preview · Edit Theme… | ⌘B · ⌘⌥B · ⌘J · Files ⌘⇧E · Downloads ⌘⌥L · Markdown Preview ⌘⇧V |
+| Page | Open Address… · Back, Forward, Reload · Zoom In, Zoom Out, Actual Size · Responsive Mode, DevTools (all but Open Address… in a page) | ⌘L · ⌘[ · ⌘] · ⌘R · ⌘= · ⌘- · ⌘0 · ⌘⌥R · ⌘⌥I |
+| Window | Minimize, Zoom, then what macOS adds | None |
+| Help | Koyo Help, Release Notes | None |
+
+A · separates the groups of a menu. Files shows the files panel, and Changes opens or closes the changes panel. Koyo Help and Release Notes open the README and the releases on GitHub as a page. With the window closed, the window's commands and a page's are greyed out. Check for Updates… and Quit Koyo still work.
+
 ## Pinned and unpinned pages
 
 Pinned pages belong to every space. Unpinned pages belong to no branch: per space, each space lists its own; shared, every space lists them all. Their rules for opening, closing, pinning, unpinning and reopening are unchanged by this page.

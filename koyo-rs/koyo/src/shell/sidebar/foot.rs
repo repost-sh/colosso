@@ -19,7 +19,7 @@ use gpui_kit::base::motion::{Spring, Transition, spring, transition};
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
-    AnyElement, App, Axis, Bounds, Context, Div, ElementId, InteractiveElement as _, IntoElement,
+    Action, AnyElement, App, Axis, Bounds, Context, Div, ElementId, InteractiveElement as _, IntoElement,
     MouseButton, MouseDownEvent, ParentElement as _, Pixels, Stateful,
     StatefulInteractiveElement as _, Styled as _, Window, div, px, relative,
 };
@@ -32,6 +32,16 @@ use crate::settings;
 use crate::shell::spaces::{NewSpace, space_menu};
 use crate::shell::{List, Shell, icon_button};
 use crate::theme;
+
+/// What the + makes, and the menu bar's File menu with it (`crate::bar`): a worktree, a
+/// project, a space, each as its command is named.
+pub fn new_commands() -> [(&'static str, Box<dyn Action>); 3] {
+    [
+        ("New Worktree…", Box::new(NewWorktree)),
+        ("New Project…", Box::new(AddProject)),
+        ("New Space…", Box::new(NewSpace)),
+    ]
+}
 
 /// The + button's width, which the accounts' button at the left of the foot keeps too, so the
 /// spaces sit in the middle.
@@ -88,10 +98,11 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
             MouseButton::Left,
             move |event: &MouseDownEvent, window, cx| {
                 cx.stop_propagation();
+                let [worktree, project, space] = new_commands();
                 NativeMenu::new()
-                    .menu_with_disabled("New Worktree…", no_project, Box::new(NewWorktree))
-                    .menu("New Project…", Box::new(AddProject))
-                    .menu("New Space…", Box::new(NewSpace))
+                    .menu_with_disabled(worktree.0, no_project, worktree.1)
+                    .menu(project.0, project.1)
+                    .menu(space.0, space.1)
                     .show(event.position, window, cx);
             },
         )

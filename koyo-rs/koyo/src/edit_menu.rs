@@ -1,13 +1,13 @@
-//! The menu bar's Edit menu (`docs/native-layer.md` 7). `AppKit` puts items of its own only in
-//! a menu titled Edit: Emoji & Symbols, Start Dictation, `AutoFill`. Its own six, Undo to Select
-//! All, each do what their key does wherever the keyboard is, by pressing that key: one way in
-//! for an edit, whether a hand or the menu asks for it.
+//! The menu bar's Edit menu's own six (`docs/native-layer.md` 7). `AppKit` puts items of its own
+//! only in a menu titled Edit: Emoji & Symbols, Start Dictation, `AutoFill`. The six, Undo to
+//! Select All, each do what their key does wherever the keyboard is, by pressing that key: one
+//! way in for an edit, whether a hand or the menu asks for it.
 //!
-//! None of the six has a key bound to it in the keymap, so the menu shows none and takes none:
+//! None of the six has a key bound to it in the keymap, so they show none and take none:
 //! `AppKit` asks the window's views for a key before the menu, and a key Koyo binds nothing to
 //! in a page goes on to the page as before.
 
-use gpui_kit::{Action, App, Keystroke, Menu, MenuItem, OsAction, actions};
+use gpui_kit::{Action, App, Keystroke, MenuItem, OsAction, actions};
 
 actions!(edit_menu, [Undo, Redo, Cut, Copy, Paste, SelectAll]);
 
@@ -39,9 +39,9 @@ fn action(os: OsAction) -> Box<dyn Action> {
     }
 }
 
-/// The menu, for the menu bar: Undo and Redo, then the rest, as macOS lists them. `AppKit`
-/// adds its own items after them.
-pub fn menu() -> Menu {
+/// The six, for the menu bar's Edit menu (`crate::bar`): Undo and Redo, then the rest, as macOS
+/// lists them.
+pub fn items() -> Vec<MenuItem> {
     let mut items = Vec::new();
     for (at, item) in ITEMS.iter().enumerate() {
         if at == 2 {
@@ -55,7 +55,7 @@ pub fn menu() -> Menu {
             disabled: false,
         });
     }
-    Menu::new("Edit").items(items)
+    items
 }
 
 /// An item picked presses its key in the window in front, once the menu's own pick is done

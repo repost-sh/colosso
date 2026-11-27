@@ -612,6 +612,55 @@ until the owner has seen the menu's own item open it, once.
   person's, as its key does. Accepted: a menu opens only on the person's own input.
 - The gate lets the menu bar's own menus through, as before.
 
+The rest of the menu bar is this step's too. Built 2026-11-27: the crate root's `bar`
+(`koyo/src/main.rs`) lists the items. Seven menus: Koyo, File, Edit, View, Page, Window and
+Help, each item one of Koyo's own commands. `docs/layout.md` (Menu bar) lists them with their
+keys.
+
+- **The bar adds no route for a key.** GPUI shows a key beside an item from a binding of the
+  item's action. `AppKit` offers the key to the window's views first, and the menu gets it only
+  when the window had no use for it, and takes it if the item is enabled there. So an item may
+  show only a key the window takes wherever the item is enabled. Each item is one of two kinds,
+  and its kind settles that. The keymap says which kind an item is.
+- **A command of the window or the app** is heard on the window's root or by the app. Its
+  action is unbound, or bound with no context to a key with ⌘ or ⌃. GPUI hears such a key
+  first wherever the keyboard is, a page's included (`koyo_seam::keys::route`).
+- **A command of a page** is heard by the page's own view alone, and bound in that view's
+  contexts (`BrowserPage`, `BrowserAddress`, `BrowserFind`). Outside a page the item is
+  disabled, and a disabled item takes no key.
+- **One reasoned exception.** Go to File is a command of the window bound in some contexts
+  only: ⌘P outside a page (`!BrowserPage`). In a page, ⌘P is the page's Print (`BrowserPage`).
+  Some binding takes ⌘P wherever the keyboard is.
+- **Held by tests over the real keymap** (`koyo/src/tests/menu_bar.rs`), which read each
+  item's kind from its bindings. A binding with no context has ⌘ or ⌃. An item bound in some
+  contexts only is a page's command unless the test lists it as an exception, and every
+  exception there is still needed. With the keyboard in the window and then in a page, each
+  enabled item's key is one the window takes there itself, and a page's commands are disabled
+  outside a page and enabled in one.
+- **New Worktree…, New Project… and New Space…** are the sidebar's + menu's three, from the
+  one list both menus are built from (`shell/sidebar/foot.rs`, `new_commands`). The + greys
+  out New Worktree… with no project; the bar can't, and the command does nothing then.
+- **Minimize and Zoom** are new commands of the window, heard on its root. With the window
+  closed they are greyed out, as its other commands are. They have no key: ⌘M would be a key
+  the window has never taken, and stays unbound until it is seen on screen. The menu is titled
+  Window, which has `AppKit` list the window in it.
+- **Koyo Help and Release Notes** open the README and the releases on GitHub as a page beside
+  the tab shown (`files::OpenLinkedPage`). They need the window, and are disabled while it is
+  closed.
+- **Left out, and why:**
+  - Previous and Next Space, Project and Tab, and the settings' Back and Forward. Their keys are
+    bound in some contexts only (`Spaces`, outside text, outside a page), so the menu would get
+    the key everywhere else.
+  - A checked choice, as Appearance. An item's check is set as the bar is built, and nothing
+    builds it again.
+  - About, Hide, Hide Others, Show All and Services. They were not asked for.
+  - What Koyo doesn't have: a history view, bookmarks, a new window. Koyo has one window.
+- **To check on screen** `[owner]`: what `AppKit` adds to View (Enter Full Screen), Window (the
+  window, Bring All to Front, tiling) and Help (its search field). Each item's key as shown, ⌘P
+  beside both Go to File… and Print…. ⌘P, ⌘F, ⌘R, ⌘W and ⌘T in a page, a terminal, a GPUI
+  input and the agent desktop each doing what they did before. A disabled item's key, as ⌘R in
+  a terminal, going on to the terminal. Edit Theme… opening the theme picker where it shows.
+
 **Windows and panels.** The layer registers each window as it is first seen, with a kind.
 `seam::windows::float(window, parent, kind)` is the one writer of a floating window's Space,
 level, parent and `hidesOnDeactivate`. A float becomes a child window of its parent as it

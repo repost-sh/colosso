@@ -13,7 +13,7 @@ fn key(source: &'static str) -> Keystroke {
 #[gpui_kit::test]
 fn the_menu_bar_has_an_edit_menu_with_the_systems_six_edits(cx: &mut TestAppContext) {
     cx.update(crate::test_support::init);
-    cx.update(|cx| crate::quitting::set_menu(cx));
+    cx.update(|cx| cx.set_menus(crate::bar()));
     let menus = cx.update(|cx| cx.get_menus()).unwrap();
     let edit = menus.iter().find(|menu| menu.name.as_ref() == "Edit").expect("an Edit menu");
     let named: Vec<(String, bool)> = edit
@@ -25,7 +25,9 @@ fn the_menu_bar_has_an_edit_menu_with_the_systems_six_edits(cx: &mut TestAppCont
         })
         .collect();
     let wanted: Vec<(String, bool)> = ITEMS.iter().map(|item| (item.name.to_owned(), true)).collect();
-    assert_eq!(named, wanted, "each of the system's six, by its own name, as the system knows it");
+    let (six, after) = named.split_at(ITEMS.len());
+    assert_eq!(six, wanted, "each of the system's six first, by its own name, as the system knows it");
+    assert!(after.iter().all(|(_, os)| !os), "and no other system edit after them: {after:?}");
 }
 
 /// The menu shows a key for an item only if the keymap binds one to the item's action, and a
@@ -51,7 +53,6 @@ fn an_edit_item_picked_with_the_keyboard_in_a_page_does_what_its_key_does(cx: &m
     for by_menu in [false, true] {
         let root = repo(if by_menu { "edit-menu-item" } else { "edit-menu-key" }, &[("README.md", "hi\n")]);
         let (window, shell) = shell_with(&[&root], cx);
-        cx.update(|cx| crate::quitting::set_menu(cx));
         select(&shell, &root, cx);
         let pane = open_page(window, &shell, Some("https://example.com/"), cx);
         click_pane(window, pane, cx);
@@ -86,7 +87,6 @@ fn an_edit_item_picked_with_the_keyboard_in_a_page_does_what_its_key_does(cx: &m
 fn a_key_koyo_binds_nothing_to_in_a_page_is_still_left_to_the_page(cx: &mut TestAppContext) {
     let root = repo("edit-menu-unbound", &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
-    cx.update(|cx| crate::quitting::set_menu(cx));
     select(&shell, &root, cx);
     let pane = open_page(window, &shell, Some("https://example.com/"), cx);
     click_pane(window, pane, cx);

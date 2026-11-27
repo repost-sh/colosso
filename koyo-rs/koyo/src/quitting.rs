@@ -1,8 +1,8 @@
-//! Quitting: ⌘Q and the app's menu, where macOS looks for it. Terminals outlive the app in their
-//! daemon and chats in the agent host, so a person quitting with some still running says whether
-//! they keep running or stop, or has said so for good in Settings → General. Unsaved edits are
-//! asked about first. Quitting from the Dock or by logging out can't be held up to ask, and leaves
-//! them running.
+//! Quitting: ⌘Q, and Quit Koyo in the app's menu (`crate::bar`), which hears ⌘Q with no window
+//! open, no view being left to. Terminals outlive the app in their daemon and chats in the agent
+//! host, so a person quitting with some still running says whether they keep running or stop, or
+//! has said so for good in Settings → General. Unsaved edits are asked about first. Quitting
+//! from the Dock or by logging out can't be held up to ask, and leaves them running.
 //!
 //! A restart into an update (`updates::RestartToUpdate`) is not a quit of what runs: it asks
 //! about unsaved edits and pages as a quit does, and then ends the app. Terminals and chats
@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::{
-    Action, App, AppContext as _, Context, FontWeight, IntoElement, KeyBinding, Menu, MenuItem,
-    ParentElement as _, Render, SharedString, Styled as _, Window, actions, div, px,
+    Action, App, AppContext as _, Context, FontWeight, IntoElement, KeyBinding, ParentElement as _,
+    Render, SharedString, Styled as _, Window, actions, div, px,
 };
 use koyo_agent::agent_client::AgentClient;
 use koyo_agent::protocol::methods::{Empty, ThreadsWatch};
@@ -27,7 +27,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::modal::{self, Button, FOOTER, HEADING_LINE, LINE, PADDING, SMALL_LINE, Tone};
 use crate::model::PaneKind;
-use crate::navigation::OpenSettings;
 use crate::settings::{self, checked_menu};
 use crate::terminals::{close_all, daemon_client};
 use crate::{theme, updates};
@@ -76,17 +75,6 @@ pub fn init(cx: &mut App) {
     cx.on_action(|SetOnQuit(choice): &SetOnQuit, cx| {
         settings::update(cx, |settings| settings.on_quit = *choice);
     });
-}
-
-/// The menu bar: macOS gives the first menu the app's name, and with no window open, no view
-/// is left to hear ⌘Q but the menu.
-pub fn set_menu(cx: &App) {
-    cx.set_menus(vec![Menu::new("Koyo").items([
-        MenuItem::action("Check for Updates…", updates::CheckForUpdates),
-        MenuItem::action("Settings…", OpenSettings),
-        MenuItem::separator(),
-        MenuItem::action("Quit Koyo", Quit),
-    ]), crate::edit_menu::menu()]);
 }
 
 /// What runs on without the app: the daemon's terminals, to end, with the names of those

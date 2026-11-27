@@ -63,11 +63,11 @@ mod update_button;
 mod visits;
 
 pub use actions::{
-    CloseTab, EditTheme, NewChat, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel,
-    ToggleSidebar, init,
+    CloseTab, EditTheme, Minimize, NewChat, NewTerminal, ReopenClosedTab, SwitchTab,
+    ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, Zoom, init,
 };
 #[cfg(feature = "visual-check")]
-pub use actions::{NewTerminal, StopTerminal};
+pub use actions::StopTerminal;
 #[cfg(all(target_os = "macos", feature = "visual-check"))]
 pub use switcher::visual::run as check_switcher;
 use elements::drag_area;

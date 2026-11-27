@@ -34,7 +34,12 @@ actions!(
         CloseTab,
         SwitchTab,
         SwitchTabBack,
-        EditTheme
+        EditTheme,
+        /// Minimizes the window to the Dock. No key: ⌘M would be a key the window has never
+        /// taken, and isn't bound until it's been seen on screen.
+        Minimize,
+        /// Zooms the window, or back. No key, as macOS gives none.
+        Zoom
     ]
 );
 
@@ -118,6 +123,8 @@ impl Shell {
             .on_action(cx.listener(|this, _: &ReopenClosedTab, window, cx| {
                 this.reopen_closed_tab(window, cx);
             }))
+            .on_action(|_: &Minimize, window, _| window.minimize_window())
+            .on_action(|_: &Zoom, window, _| window.zoom_window())
             .map(|root| Self::handle_launcher(root, cx))
             .map(|root| projects::handle_actions(root, cx))
             .map(|root| spaces::handle_actions(root, cx))
