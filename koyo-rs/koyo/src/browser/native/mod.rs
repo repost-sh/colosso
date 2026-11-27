@@ -51,6 +51,7 @@ pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Connection> {
         .ok_or_else(|| io::Error::other("the browser engine isn't in an app of its own"))?
         .to_path_buf();
     let profiles = launch.profiles.clone();
+    let data_folder = super::engine::data_folder(&profiles);
     let embedded = Embedded {
         start: Box::new(move |stream, token, clock| {
             koyo_browser_host::embedded::start(koyo_browser_host::embedded::Start {
@@ -58,6 +59,7 @@ pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Connection> {
                 token,
                 clock,
                 profiles,
+                data_folder,
                 engine,
             });
         }),

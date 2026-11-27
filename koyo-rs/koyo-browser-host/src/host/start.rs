@@ -222,6 +222,7 @@ pub(crate) fn ready_embedded(
         token,
         clock,
         profiles,
+        data_folder: _,
         engine,
     } = start;
     let mut steps = Steps(vec![("clear", cleared)]);

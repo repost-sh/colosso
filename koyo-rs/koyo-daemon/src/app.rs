@@ -10,13 +10,21 @@ pub const APP_ID: &str = "codes.koyo.desktop";
 /// under [`APP_ID`] moves it (the app's `former_name`).
 pub const FORMER_APP_ID: &str = "dev.koyo.desktop";
 
-/// The app's data folder: `KOYO_DATA_DIR` when set, else [`app_folder`] in the platform's
-/// data folder (Application Support on macOS); `None` when the platform has none for this
-/// user.
+/// The app's data folder: `KOYO_DATA_DIR` when set, else its own ([`own_data_dir`]); `None`
+/// when the platform has no data folder for this user.
 pub fn data_dir() -> Option<PathBuf> {
     std::env::var_os("KOYO_DATA_DIR")
         .map(PathBuf::from)
-        .or_else(|| dirs::data_dir().map(|dir| app_folder(&dir)))
+        .or_else(own_data_dir)
+}
+
+/// The app's own data folder: [`app_folder`] in the platform's data folder (Application Support
+/// on macOS), the [`data_dir`] of a run no `KOYO_DATA_DIR` points elsewhere. A folder
+/// `KOYO_DATA_DIR` names is the app's own only when it is this one, as Chromium's own data
+/// directory is the default one and no other (`chrome::IsUsingDefaultDataDirectory`). `None`
+/// when the platform has no data folder for this user.
+pub fn own_data_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|dir| app_folder(&dir))
 }
 
 /// The app's folder in the platform's data folder `base`: [`APP_ID`]'s, or [`FORMER_APP_ID`]'s

@@ -7,6 +7,8 @@
 
 use cef::{CefString, CommandLine, ImplCommandLine};
 
+use crate::embedded::DataFolder;
+
 /// Chrome's own windows, prompts and background life, which a page of Koyo's has no use for.
 const CHROME_UI: [&str; 7] = [
     "disable-background-mode",
@@ -76,18 +78,25 @@ const AUTOFILL_SERVER_OFF: [&str; 1] = ["AutofillServerCommunication"];
 const BUNDLE_CLONE_OFF: [&str; 1] = ["MacAppCodeSignClone"];
 
 /// Chromium's separate key for a profile outside Chrome's own data directory
-/// (`browser_process_impl.cc`, since Chromium 158): it marks the key the profiles' cookies and
-/// passwords were saved under, "v10", unavailable and saves new ones under a key of its own,
-/// so Chromium deletes every cookie saved before, as it can't decrypt them. It keeps a second
-/// data directory of Chrome's from reading the first one's secrets with the same key. Koyo's
-/// engine has one data directory, its root (`host/start.rs`), and a Keychain item of its own
-/// ("Koyo Browser Engine"): that root is its default, and what it saved stays readable.
-const ONE_DATA_DIRECTORY: [&str; 1] = ["KeychainKeyProviderUserDataDirProtection"];
+/// (`browser_process_impl.cc`, since Chromium 158), off for Koyo's own data folder alone. Outside
+/// its own directory Chromium marks the key the profiles' cookies and passwords were saved under,
+/// "v10", unavailable and saves new ones under a key of its own, "v11", so it deletes every cookie
+/// saved before, as it can't decrypt them. What stole a profile and copied it elsewhere can't have
+/// the real browser, started on the copy, read it with the browser's key. Koyo's engine has a
+/// Keychain item of its own ("Koyo Browser Engine"), and its root in Koyo's own data folder is its
+/// default: what it saved there stays readable. On any other folder the protection stays on, as
+/// Koyo can be started on one (`KOYO_DATA_DIR`) and driven from outside (its MCP server, `koyo
+/// app`, the engine's `DevTools` pipe).
+const OWN_DATA_FOLDER: [&str; 1] = ["KeychainKeyProviderUserDataDirProtection"];
 
-/// Every feature the browser process turns off. What stays on, and why, is in the tests:
-/// the components and requests that check certificates, warn of dangerous sites and
-/// downloads, play protected video and keep extensions current.
-fn features_off() -> impl Iterator<Item = &'static str> {
+/// Every feature the browser process turns off, its root in `data_folder`. What stays on, and
+/// why, is in the tests: the components and requests that check certificates, warn of dangerous
+/// sites and downloads, play protected video and keep extensions current.
+fn features_off(data_folder: DataFolder) -> impl Iterator<Item = &'static str> {
+    let own: &[&str] = match data_folder {
+        DataFolder::Own => &OWN_DATA_FOLDER,
+        DataFolder::Other => &[],
+    };
     METRICS_OFF
         .into_iter()
         .chain(WAKE_UPS_EACH_SECOND)
@@ -96,7 +105,7 @@ fn features_off() -> impl Iterator<Item = &'static str> {
         .chain(TRANSLATE_OFF)
         .chain(AUTOFILL_SERVER_OFF)
         .chain(BUNDLE_CLONE_OFF)
-        .chain(ONE_DATA_DIRECTORY)
+        .chain(own.iter().copied())
 }
 
 /// Every switch the browser process starts with.
@@ -106,14 +115,14 @@ fn switches() -> impl Iterator<Item = &'static str> {
         .chain([COVERED_IS_SHOWN, NO_STACK_SAMPLING])
 }
 
-/// Adds the browser process's switches to `command_line`.
-pub(super) fn browser(command_line: &mut CommandLine) {
+/// Adds the switches of a browser process whose root is in `data_folder` to `command_line`.
+pub(super) fn browser(command_line: &mut CommandLine, data_folder: DataFolder) {
     for switch in switches() {
         command_line.append_switch(Some(&switch.into()));
     }
     let name = CefString::from("disable-features");
     let had = CefString::from(&command_line.switch_value(Some(&name))).to_string();
-    let off: Vec<&str> = features_off().collect();
+    let off: Vec<&str> = features_off(data_folder).collect();
     let features = with_features(&had, &off);
     command_line.append_switch_with_value(Some(&name), Some(&features.as_str().into()));
 }
@@ -133,7 +142,7 @@ fn with_features(had: &str, more: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{features_off, switches, with_features};
+    use super::{DataFolder, features_off, switches, with_features};
 
     /// What a fresh profile fetched in its first minutes, and every launch asked Google, for
     /// nothing a page of Koyo's shows: each stays off.
@@ -171,12 +180,14 @@ mod tests {
 
     #[test]
     fn what_serves_no_page_of_koyos_is_off_and_what_keeps_pages_safe_stays_on() {
-        let off: Vec<&str> = features_off().collect();
-        for feature in OFF {
-            assert!(off.contains(&feature), "{feature} is off");
-        }
-        for feature in NEVER_OFF {
-            assert!(!off.contains(&feature), "{feature} stays on");
+        for data_folder in [DataFolder::Own, DataFolder::Other] {
+            let off: Vec<&str> = features_off(data_folder).collect();
+            for feature in OFF {
+                assert!(off.contains(&feature), "{feature} is off in {data_folder:?}");
+            }
+            for feature in NEVER_OFF {
+                assert!(!off.contains(&feature), "{feature} stays on in {data_folder:?}");
+            }
         }
         let given: Vec<&str> = switches().collect();
         for switch in NEVER_SWITCHED {
@@ -184,12 +195,23 @@ mod tests {
         }
     }
 
+    /// The protection Chromium 158 gives a profile outside Chrome's own data directory.
+    const OWN_KEY_PROTECTION: &str = "KeychainKeyProviderUserDataDirProtection";
+
     /// Chromium 158 deleted every cookie the profiles had saved, as Koyo's root isn't Chrome's
-    /// own data directory: the key they were saved under stays theirs.
+    /// own data directory: in Koyo's own data folder the key they were saved under stays theirs.
     #[test]
-    fn what_a_profile_saved_stays_readable_under_its_key() {
-        let off: Vec<&str> = features_off().collect();
-        assert!(off.contains(&"KeychainKeyProviderUserDataDirProtection"));
+    fn what_a_profile_saved_in_koyos_own_data_folder_stays_readable_under_its_key() {
+        let off: Vec<&str> = features_off(DataFolder::Own).collect();
+        assert!(off.contains(&OWN_KEY_PROTECTION));
+    }
+
+    /// A profile copied to another data folder, and read there by Koyo started on it, is kept
+    /// from the key Koyo's own folder saved it under.
+    #[test]
+    fn a_profile_in_another_data_folder_keeps_chromiums_protection() {
+        let off: Vec<&str> = features_off(DataFolder::Other).collect();
+        assert!(!off.contains(&OWN_KEY_PROTECTION));
     }
 
     /// What Chrome does with a hidden page that Koyo keeps: its timers at once a second, and its
@@ -198,8 +220,10 @@ mod tests {
 
     #[test]
     fn a_hidden_pages_timers_run_each_second_not_each_minute() {
-        let off: Vec<&str> = features_off().collect();
-        assert!(off.contains(&"IntensiveWakeUpThrottling"), "no timers once a minute");
+        for data_folder in [DataFolder::Own, DataFolder::Other] {
+            let off: Vec<&str> = features_off(data_folder).collect();
+            assert!(off.contains(&"IntensiveWakeUpThrottling"), "no timers once a minute");
+        }
         let given: Vec<&str> = switches().collect();
         for switch in HIDDEN_RESTS {
             assert!(!given.contains(&switch), "no --{switch}");

@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use koyo_browser_host::embedded;
+use koyo_browser_host::embedded::{self, DataFolder};
 use koyo_browser_ipc::client::{Connection, Embedded, Incoming, Launch};
 use koyo_browser_ipc::{AppRequest, HostEvent, PaneId, Viewport};
 use objc2::rc::Retained;
@@ -52,55 +52,78 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// What a test has the page do once it's open, from the thread that drives the engine.
 type Step = fn(&mut Connection, &Receiver<Incoming>) -> Result<(), String>;
 
-/// The tests, by name, each with what it has the page do.
-pub const TESTS: [(&str, Step); 12] = [
+/// The tests, by name, each with whose data folder the engine's root is in and what it has the
+/// page do.
+pub const TESTS: [(&str, DataFolder, Step); 14] = [
     (
         "a_page_loads_and_draws_in_the_engine_started_in_this_process",
+        DataFolder::Other,
         load_and_draw,
     ),
     (
         "an_idle_page_on_screen_leaves_the_main_thread_asleep",
+        DataFolder::Other,
         crate::pump::idle_on_screen,
     ),
     (
         "work_chromium_puts_off_runs_once_it_is_due",
+        DataFolder::Other,
         crate::pump::put_off,
     ),
     (
         "work_put_off_late_in_an_idle_turn_runs_once_it_is_due",
+        DataFolder::Other,
         crate::pump::put_off_late_in_a_turn,
     ),
     (
         "a_bubble_goes_with_its_page_out_of_the_app_window_and_back",
+        DataFolder::Other,
         crate::bubbles::leave_and_return,
     ),
     (
         "a_page_leaving_the_app_window_turns_hidden_once_and_put_back_visible_once",
+        DataFolder::Other,
         crate::sight::left,
     ),
     (
         "a_page_opened_out_of_sight_is_visible_once_shown",
+        DataFolder::Other,
         crate::sight::first_shown,
     ),
     (
         "an_agent_drives_a_page_whose_tab_was_left",
+        DataFolder::Other,
         crate::sight::driven,
     ),
     (
         "a_page_a_pane_draws_says_its_tone",
+        DataFolder::Other,
         crate::looking::tone,
     ),
     (
         "zooming_lays_the_page_a_pane_draws_out_afresh",
+        DataFolder::Other,
         crate::looking::zoom,
     ),
     (
         "a_download_ending_opens_no_window_of_chromes",
+        DataFolder::Other,
         crate::downloads::no_bubble,
     ),
     (
         "a_page_playing_and_hidden_says_each_change_once_in_the_log",
+        DataFolder::Other,
         crate::heard::each_change_once,
+    ),
+    (
+        "the_engine_on_koyos_own_data_folder_keeps_the_key_its_profiles_were_saved_under",
+        DataFolder::Own,
+        crate::keychain::own_folder,
+    ),
+    (
+        "the_engine_on_another_data_folder_keeps_chromiums_protection_of_that_key",
+        DataFolder::Other,
+        crate::keychain::another_folder,
     ),
 ];
 
@@ -110,7 +133,7 @@ pub fn run(scratch: &Path, test: &str) -> ExitCode {
         eprintln!("the engine test runs on the main thread");
         return ExitCode::FAILURE;
     }
-    let Some(&(_, step)) = TESTS.iter().find(|(name, _)| *name == test) else {
+    let Some(&(_, data_folder, step)) = TESTS.iter().find(|(name, ..)| *name == test) else {
         eprintln!("no engine test {test}");
         return ExitCode::FAILURE;
     };
@@ -123,7 +146,7 @@ pub fn run(scratch: &Path, test: &str) -> ExitCode {
     let driving = std::thread::Builder::new()
         .name("engine-test".into())
         .spawn(move || {
-            let _ = told.send(drive(&scratch, step));
+            let _ = told.send(drive(&scratch, data_folder, step));
             quit();
         });
     if let Err(error) = driving {
@@ -151,8 +174,9 @@ pub fn engine() -> Result<PathBuf, String> {
     Ok(contents.join("Frameworks/Koyo Browser Host.app"))
 }
 
-/// Starts the engine in this process, has its page do `step`, and stops it.
-fn drive(scratch: &Path, step: Step) -> Result<(), String> {
+/// Starts the engine in this process on a root in `data_folder`, has its page do `step`, and
+/// stops it.
+fn drive(scratch: &Path, data_folder: DataFolder, step: Step) -> Result<(), String> {
     let engine = engine()?;
     let launch = Launch {
         executable: engine.join("Contents/MacOS/Koyo Browser Host"),
@@ -169,6 +193,7 @@ fn drive(scratch: &Path, step: Step) -> Result<(), String> {
                 token,
                 clock,
                 profiles,
+                data_folder,
                 engine,
             });
         }),

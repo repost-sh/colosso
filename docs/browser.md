@@ -576,6 +576,17 @@ was run.
   `KoyoMockKeychain` in its `Info.plist`), so an ad-hoc build doesn't ask for the Keychain
   after every rebuild. A profile moved between the two loses what it saved: Chromium deletes
   the passwords it can't decrypt (`kClearUndecryptablePasswords`, on for the Mac).
+- **The key depends on the data folder.** Since Chromium 158, a data directory that isn't
+  Chrome's own gets a key of its own (`KeychainKeyProviderUserDataDirProtection`): Chromium
+  marks the key a profile was saved under, "v10", unavailable, saves under "v11" instead, and
+  deletes the cookies it can't decrypt. On Koyo's own data folder, the one it uses with no
+  `KOYO_DATA_DIR` or with one naming that same folder (`koyo_daemon::own_data_dir`), the engine
+  turns the protection off, so what its profiles saved stays readable under "v10". On any other
+  folder the protection stays on: a profile copied there from Koyo's own folder can't be read
+  with Koyo's key by Koyo started on the copy, which an agent could then drive. The app says
+  which it is as it starts the engine in its process (`embedded::Start`'s `data_folder`); a
+  host process of its own, which whoever runs its executable points at a folder, always keeps
+  the protection on (`app/switches.rs`).
 - **What's missing to use them.**
   - Their windows don't show. The save bubble and the suggestions under a field are
     windows Chromium ties to the page's holder, a level under Koyo's window, where an

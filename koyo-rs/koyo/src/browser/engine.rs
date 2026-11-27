@@ -15,6 +15,7 @@
 
 use std::path::{Path, PathBuf};
 
+use koyo_browser_host::embedded::DataFolder;
 use koyo_browser_ipc::client::Launch;
 
 use crate::settings;
@@ -35,7 +36,32 @@ fn host_beside(executable: &Path) -> Option<PathBuf> {
 
 /// The folder of the browsing profiles (cookies, storage, caches): the engine's root.
 pub fn profiles() -> Option<PathBuf> {
-    settings::data_dir().map(|data| data.join("browser").join("profiles"))
+    settings::data_dir().map(|data| profiles_in(&data))
+}
+
+/// The engine's root in the data folder `data`.
+fn profiles_in(data: &Path) -> PathBuf {
+    data.join("browser").join("profiles")
+}
+
+/// Whose data folder the engine's root `profiles` is in: Koyo's own when it's the root in
+/// Koyo's own data folder ([`koyo_daemon::own_data_dir`]), as Chromium's own data directory is
+/// its default one.
+#[cfg_attr(
+    test,
+    expect(dead_code, reason = "tests start a host process of their own, which keeps Chromium's protection on")
+)]
+pub fn data_folder(profiles: &Path) -> DataFolder {
+    data_folder_given(profiles, koyo_daemon::own_data_dir().as_deref())
+}
+
+/// Whose data folder `profiles` is in, Koyo's own data folder being `own`.
+fn data_folder_given(profiles: &Path, own: Option<&Path>) -> DataFolder {
+    if own.is_some_and(|own| profiles_in(own) == profiles) {
+        DataFolder::Own
+    } else {
+        DataFolder::Other
+    }
 }
 
 /// How to start the host, or why it can't be: Koyo isn't run from its bundle, or has nowhere
@@ -136,6 +162,20 @@ mod tests {
         );
         assert_eq!(host_in(&root.join("older")), None);
         assert_eq!(host_in(&root.join("missing")), None);
+    }
+
+    /// The root Koyo keeps in its own data folder is its own, whether `KOYO_DATA_DIR` is unset
+    /// or names that folder; one in a folder `KOYO_DATA_DIR` names elsewhere isn't.
+    #[test]
+    fn only_the_root_in_koyos_own_data_folder_is_its_own() {
+        let base = Path::new("/Users/someone/Library/Application Support");
+        let own = base.join(koyo_daemon::APP_ID);
+        let other = base.join("elsewhere");
+        let root = |data: &Path| data.join("browser/profiles");
+        assert_eq!(data_folder_given(&root(&own), Some(&own)), DataFolder::Own);
+        assert_eq!(data_folder_given(&root(&other), Some(&own)), DataFolder::Other);
+        assert_eq!(data_folder_given(&own, Some(&own)), DataFolder::Other, "the data folder itself");
+        assert_eq!(data_folder_given(&root(&own), None), DataFolder::Other, "no data folder");
     }
 
     #[test]

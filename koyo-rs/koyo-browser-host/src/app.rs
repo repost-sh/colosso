@@ -22,7 +22,7 @@ wrap_app! {
             let (None, Some(command_line)) = (process_type, command_line) else {
                 return;
             };
-            switches::browser(command_line);
+            switches::browser(command_line, crate::embedded::data_folder());
             if crate::mock_keychain() {
                 command_line.append_switch(Some(&"use-mock-keychain".into()));
             }

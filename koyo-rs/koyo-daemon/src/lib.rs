@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 mod app;
 mod socket;
 
-pub use app::{APP_ID, FORMER_APP_ID, app_folder, data_dir};
+pub use app::{APP_ID, FORMER_APP_ID, app_folder, data_dir, own_data_dir};
 pub use socket::{SOCKET_PATH_MAX, bind, connect, socket_address};
 
 /// A daemon's folder, and its files there, named after the daemon.

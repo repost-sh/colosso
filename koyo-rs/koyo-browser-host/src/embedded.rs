@@ -35,18 +35,37 @@ pub struct Start {
     pub clock: ipc::client::StartClock,
     /// CEF's root cache: one folder per profile inside it.
     pub profiles: PathBuf,
+    /// Whose data folder `profiles` is in.
+    pub data_folder: DataFolder,
     /// The engine's `Koyo Browser Host.app`, which carries CEF and its helpers. The app has
     /// to run from a bundle that holds it, or the helpers don't start.
     pub engine: PathBuf,
 }
 
-/// The engine the host runs from, once it was started in the app's process: set once, as CEF
-/// starts once in a process.
-static ENGINE: OnceLock<PathBuf> = OnceLock::new();
+/// Whose data folder the engine's root is in, which decides the key Chromium keeps its
+/// profiles' cookies and passwords under (`app/switches.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DataFolder {
+    /// Koyo's own, where it keeps its data unless `KOYO_DATA_DIR` points elsewhere.
+    Own,
+    /// Any other: one `KOYO_DATA_DIR` names, or a test's scratch folder.
+    Other,
+}
+
+/// The engine the host runs from, and whose data folder its root is in, once it was started in
+/// the app's process: set once, as CEF starts once in a process.
+static ENGINE: OnceLock<(PathBuf, DataFolder)> = OnceLock::new();
 
 /// The engine's bundle, when the host runs in the app's process.
 pub(crate) fn engine() -> Option<&'static Path> {
-    ENGINE.get().map(PathBuf::as_path)
+    ENGINE.get().map(|(engine, _)| engine.as_path())
+}
+
+/// Whose data folder the engine's root is in: in the app's process, the one the app said; in
+/// a host process of its own, another's, as whoever runs the host's executable names its root
+/// and says its hello.
+pub(crate) fn data_folder() -> DataFolder {
+    ENGINE.get().map_or(DataFolder::Other, |(_, data_folder)| *data_folder)
 }
 
 /// Starts the host in this process, the app's hello already on the socket: on a thread of the
@@ -67,7 +86,7 @@ fn begin(may: Blocking<'_>, start: Start) {
     crate::host::drop_cleared(&start.profiles);
     forget_sessions(may, &start.profiles);
     let cleared = began.elapsed();
-    if ENGINE.set(start.engine.clone()).is_err() {
+    if ENGINE.set((start.engine.clone(), start.data_folder)).is_err() {
         let mut stream = start.stream;
         let _ = ipc::write_frame(
             &mut stream,

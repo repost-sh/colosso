@@ -4,8 +4,9 @@
 //! (`inside.rs`): load and draw, sit idle on screen, have Chromium put work off, leave the
 //! app's window and come back with a bubble of Chromium's up, be hidden as it leaves that window
 //! and visible as it comes to it, be driven by an agent once its tab was left, say its tone, be
-//! zoomed, download a file with no bubble of Chromium's opening, or play and stop with a line in
-//! the log for each.
+//! zoomed, download a file with no bubble of Chromium's opening, play and stop with a line in
+//! the log for each, or say the key its profiles are saved under on Koyo's own data folder and
+//! on another.
 //!
 //! CEF starts once in a process, and on the main thread, so this is a test binary of its own
 //! that owns its main thread (`harness = false`), each test run in a process of its own. Its helpers stay up only for a
@@ -31,6 +32,7 @@ mod bubbles;
 mod downloads;
 mod heard;
 mod inside;
+mod keychain;
 mod looking;
 mod pump;
 mod sight;
@@ -73,7 +75,7 @@ impl Asked {
                 _ => filters.push(arg.clone()),
             }
         }
-        let chosen: Vec<&'static str> = (inside::TESTS.iter().map(|(name, _)| *name))
+        let chosen: Vec<&'static str> = (inside::TESTS.iter().map(|(name, ..)| *name))
             .filter(|name| {
                 let wanted = filters.is_empty() || filters.iter().any(|filter| name.contains(filter.as_str()));
                 wanted && !skips.iter().any(|skip| name.contains(skip.as_str()))
