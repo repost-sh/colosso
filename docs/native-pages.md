@@ -301,9 +301,32 @@ A hidden page's holder stays shown, parked or over its pane, with nothing in it.
 as well (CEF's `Window::Hide`, which suspends the holder's compositor), four hidden pages of
 1400 × 900 cost the same: the host and its helpers 0.13 s of CPU in 20 s against 0.12-0.17 s,
 the GPU process 152.8 MB against 144-157 MB, and the first frame back 14-42 ms against
-12-70 ms (`.superpowers/perf/r4/g7/`). `[proven]` So it isn't done: a holder with no views in
-it draws nothing already, and showing it again is one more thing to go wrong as a page comes
-back.
+12-70 ms (`.superpowers/perf/r4/g7/`, 2026-11-20). `[proven]` So it isn't done: a holder with
+nothing to draw draws nothing, and showing it again is one more thing to go wrong as a page
+comes back.
+
+**A holder that carried Chrome's toolbar always had something to draw** (2026-11-27). On the
+installed 0.1.1 (CEF 156), sampled on its main thread: the engine took 0.1% of it with no page
+open, 54% with one page that had been hidden for a minute, and 74-78% with seven or eight
+pages, leaving frames too little in Low Power Mode, where a space switch stuttered and chats
+scrolled slower (`.artifacts/lpm/`, `.artifacts/unlock/`). 89% of the engine's share was the
+holders' compositor frames, 69% the layout of the toolbar inside them, 63% of it
+`ToolbarView::Layout` (`.artifacts/lpm/sym/fire-incl.txt`). `[measured]` Why, read in
+Chromium 158's sources: a page carried a real toolbar (`ChromeToolbarType::NORMAL`, since
+2026-11-15) only for its extensions. A page is a popup-type browser to Chrome, whose layout
+gives a toolbar it doesn't show no size at all (`browser_view_popup_layout_impl.cc`); CEF's
+view that wraps the toolbar sizes a view left with no size to the size it prefers
+(`CefViewView::Layout`, `view_view.h`). Each pass of the holder's layout did both. The size
+coming and going restarted the toolbar's layout animations, and each step of an animation
+asked for the next frame (`gfx::LinearAnimation::Step` → `InvalidateLayout`, in the samples),
+so the holder laid the toolbar out on every frame, its page shown or hidden. `[read]` Why the
+run above didn't see it isn't in the checkout: the loop needs something in the toolbar to
+animate, an extension's icon among the guesses. Since 2026-11-27 a page has no toolbar of
+Chrome's, and the extensions of a page the host marks for them are kept without one
+(`docs/extensions.md` 2.3), so a hidden
+holder has nothing to draw again, and isn't ordered out. That the engine's share falls back
+to nearly nothing with pages open, shown or hidden, is `[not yet measured]`: the samples as
+above, taken with that build.
 
 The windows Chromium ties to a holder (autofill's lists and bubbles, the passkey dialog, an
 extension's popup) would open under Koyo's window, as the holder is a level down. While the

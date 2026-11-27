@@ -1,9 +1,11 @@
-//! A page's views moving, as the app's keyboard hears of it.
+//! A page's views moving, as the app's keyboard hears of it, and what its browser tells
+//! Chromium of it.
 
 use std::cell::Cell;
 
 use objc2_foundation::NSSize;
 
+use super::parts::mark;
 use super::settle::{Spot, spot};
 use super::{Entry, PAGES, PaneId, Views, closed, page};
 
@@ -53,4 +55,16 @@ fn a_page_no_pane_draws_and_no_agent_keeps_is_in_no_window() {
     assert_eq!(spot(true, false, true), Spot::Pane, "a tab the person sees");
     assert_eq!(spot(true, false, false), Spot::Nowhere, "its window covered or minimized");
     assert_eq!(spot(true, true, false), Spot::Pane, "an agent uses it, its window unseen");
+}
+
+/// Chromium keeps the extensions' actions, popups and shortcuts of a browser marked for them
+/// only: a page's, while the host talks to the engine about extensions. An extension's
+/// shortcut in a `DevTools` pane would run its action with the frontend for its tab, and one
+/// with no pipe would run where the app shows nothing of it.
+#[test]
+fn only_a_page_is_marked_for_its_extensions_and_only_with_the_pipe_open() {
+    assert_eq!(mark(false, true), Some("koyo_extensions"), "a page, the pipe open");
+    assert_eq!(mark(true, true), None, "a DevTools pane or window, the pipe open");
+    assert_eq!(mark(false, false), None, "a page, no pipe to the engine");
+    assert_eq!(mark(true, false), None, "a DevTools pane, no pipe to the engine");
 }

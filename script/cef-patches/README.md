@@ -22,19 +22,19 @@ the old one out, rather than building it beside the new.
 | `extension-current-window-last-active` | Koyo | `chrome/browser/extensions/window_controller_list.cc` |
 | `extension-install-ui-null-tab` | Cra | `chrome/browser/ui/extensions/extension_install_ui_desktop.cc` |
 | `extension-popup-browser-info` | Cra | `cef/libcef/browser/browser_info_manager.cc` |
-| `extension-popup-no-popout-wait` | Cra | `chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc` |
 | `extension-tab-activate` | Cra | `cef/libcef/browser/chrome/`, `chrome/browser/extensions/api/tabs/tabs_api.cc` |
 | `extension-tabs-create` | Cra | `cef/libcef/browser/chrome/`, `chrome/browser/extensions/api/tabs/tabs_api.cc` |
 | `extensions-normal-windows` | Cra | `chrome/browser/extensions/api/extension_action/`, `chrome/browser/extensions/browser_extension_window_controller.cc` |
+| `extensions-without-a-toolbar` | Koyo | `chrome/browser/ui/views/extensions/embedder_extensions_container.{h,cc}` (new) and `BUILD.gn`, `chrome/browser/ui/views/toolbar/toolbar_view.{h,cc}` and `BUILD.gn`, `cef/libcef/browser/chrome/` (`browser_delegate.h`, `chrome_browser_delegate.{h,cc}`, `chrome_browser_host_impl.cc`): a page the client marks for it (`koyo_extensions` in its `extra_info`, `HasEmbedderExtensions`), which has no toolbar of Chrome's (`ChromeToolbarType::NONE`), keeps its extensions' actions in a container of no views, held by the hidden toolbar Chrome gives a popup-type browser, so they run, their popups open and their shortcuts work; a popup nobody pressed for hangs from the top of the page. A popup's Browser has its popup's `extra_info`. A browser with no mark, a DevTools one, has no container. Carrying Chrome's whole toolbar hidden for its container laid it out on every frame (`docs/native-pages.md` 5) |
 | `koyo-extensions-protocol` | Koyo, parts after Cra | the `Extensions` DevTools domain (`Extensions.pdl`, `extensions_handler.{h,cc}`, `inspector_protocol_config.json`), `cef/libcef/browser/chrome/browser_delegate.h`, `chrome_browser_delegate.cc` |
 | `koyo-popup` | Koyo | the `Extensions` domain again (`koyoActionPointerDown`, the button `koyoTriggerAction` takes), `chrome/browser/ui/extensions/extension_popup_types.h`, `extension_action_delegate.h`, `chrome/browser/ui/views/extensions/extension_action_delegate_desktop.{h,cc}`, `extension_popup.{h,cc}`, `extension_view_views.{h,cc}`, `ui/views/bubble/bubble_dialog_delegate_view.{h,cc}` |
 | `page-asked-before-close` | Koyo | `cef/libcef/browser/chrome/` (`chrome_browser_host_impl.{h,cc}`, `chrome_browser_web_contents_delegate.{h,cc}`), `cef/include/cef_browser.h`, `cef_life_span_handler.h`: `CloseBrowser(true)` closes a Chrome style page without asking it, as CEF documents, and a page `TryCloseBrowser` asked that may be left is the client's to close or keep (`DoClose`, CEF issue 3294) (`docs/browser.md` 17) |
 | `request-outlives-its-page` | Koyo | `cef/libcef/browser/net_service/resource_request_handler_wrapper.cc`: a request the client wasn't offered outlives its browser, as Chrome's do; CEF aborted it, which ended a download as cancelled (`docs/browser.md` 16.2) |
 
-- **Order matters where two touch a file.** `koyo-extensions-protocol` goes over
-  `extension-tab-activate` and `extension-tabs-create` in CEF's browser delegate,
-  and `koyo-popup` over `koyo-extensions-protocol` in the `Extensions` domain's files; the
-  names sort that way.
+- **Order matters where two touch a file.** `extensions-without-a-toolbar` goes over
+  `extension-tab-activate` in CEF's browser delegate, `koyo-extensions-protocol` over
+  `extension-tab-activate` and `extension-tabs-create` there too, and `koyo-popup` over
+  `koyo-extensions-protocol` in the `Extensions` domain's files; the names sort that way.
 - **Made against** CEF 158.0.6 (`23f1736`) on Chromium 158.0.8127.89. On another version
   each has to apply again: `script/cef` stops with the name of one that doesn't.
 - **Cra's** are from `github.com/VictorKildahl/cra` (`scripts/cef-patches`), a macOS browser

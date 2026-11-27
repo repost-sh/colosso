@@ -328,7 +328,8 @@ wrap_life_span_handler! {
             let url = text(target_url);
             if extension_tab {
                 let front = target_disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB;
-                return c_int::from(!popups::take(self.pane, popup_id, &url, front, client));
+                let taken = popups::take(self.pane, popup_id, &url, front, client, extra_info);
+                return c_int::from(!taken);
             }
             if self.devtools {
                 if popups::web(&url) {
@@ -337,7 +338,24 @@ wrap_life_span_handler! {
                 return 1;
             }
             let opening = popups::opening(target_disposition, user_gesture != 0);
-            c_int::from(!popups::before_popup(self.pane, popup_id, url, opening, client))
+            let made = popups::before_popup(self.pane, popup_id, url, opening, client, extra_info);
+            c_int::from(!made)
+        }
+
+        /// A `DevTools` window CEF makes for the page, which would start with the page's
+        /// `extra_info`, has a `DevTools` one's (`native::extra_info`).
+        fn on_before_dev_tools_popup(
+            &self,
+            _browser: Option<&mut Browser>,
+            _window_info: Option<&mut WindowInfo>,
+            _client: Option<&mut Option<Client>>,
+            _settings: Option<&mut BrowserSettings>,
+            extra_info: Option<&mut Option<DictionaryValue>>,
+            _use_default_window: Option<&mut c_int>,
+        ) {
+            if let Some(extra_info) = extra_info {
+                *extra_info = crate::native::extra_info(true);
+            }
         }
 
         fn on_before_popup_aborted(&self, _browser: Option<&mut Browser>, popup_id: c_int) {

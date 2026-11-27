@@ -44,6 +44,7 @@ pub(crate) mod tests;
 pub(crate) use adopt::{abandoned, adopt};
 use adopt::{adopted, adopting};
 use holder::{closing, hold};
+pub(crate) use parts::extra_info;
 use parts::{HolderDelegate, PageViewDelegate};
 use settle::{park, settle};
 pub(crate) use strays::{client as stray_client, close_all as close_strays, count as strays};
@@ -174,16 +175,17 @@ fn make(pane: PaneId, url: &str, mut context: Option<RequestContext>) {
     }
     let devtools = context.is_none();
     let mut client = crate::pane::client(pane, devtools);
-    let mut delegate = PageViewDelegate::new(pane, !devtools && crate::extensions::on());
+    let mut delegate = PageViewDelegate::new(pane);
     let settings = BrowserSettings {
         background_color: 0xFFFF_FFFF,
         ..BrowserSettings::default()
     };
+    let mut info = extra_info(devtools);
     let made = cef::browser_view_create(
         Some(&mut client),
         Some(&url.into()),
         Some(&settings),
-        None,
+        info.as_mut(),
         context.as_mut(),
         Some(&mut delegate),
     )
@@ -202,7 +204,6 @@ fn window_created(pane: PaneId, window: &Window, view: &BrowserView) {
     WINDOWS.fetch_add(1, Ordering::AcqRel);
     let mut as_view = View::from(view);
     window.add_child_view(Some(&mut as_view));
-    parts::hide_toolbar(view);
     // SAFETY: on macOS a CEF window's handle is its content `NSView`, which lives with it.
     let content: Option<&NSView> = unsafe { window.window_handle().cast::<NSView>().as_ref() };
     if let Some(holder) = content.and_then(NSView::window) {

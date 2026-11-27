@@ -1,0 +1,536 @@
+--- a/chrome/browser/ui/views/extensions/BUILD.gn
++++ b/chrome/browser/ui/views/extensions/BUILD.gn
+@@ -941,5 +941,23 @@
+     "//chrome/browser/ui/views/toolbar",
+     "//chrome/browser/user_education",
+     "//ui/base/dragdrop/mojom",
++  ]
++}
++
++source_set("embedder_extensions_container") {
++  public = [ "embedder_extensions_container.h" ]
++  sources = [ "embedder_extensions_container.cc" ]
++  public_deps = [
++    ":extensions_container_views",
++    "//base",
++    "//chrome/browser/ui/extensions",
++    "//chrome/browser/ui/toolbar",
++    "//extensions/common",
++    "//ui/base",
++    "//ui/views",
+   ]
++  deps = [
++    ":extension_action_delegate_desktop",
++    "//chrome/browser/ui/browser_window",
++  ]
+ }
+--- /dev/null
++++ b/chrome/browser/ui/views/extensions/embedder_extensions_container.cc
+@@ -0,0 +1,234 @@
++// Koyo: the extensions container of a page whose extensions' buttons an
++// embedder draws.
++
++#include "chrome/browser/ui/views/extensions/embedder_extensions_container.h"
++
++#include <utility>
++
++#include "base/check.h"
++#include "base/location.h"
++#include "base/task/sequenced_task_runner.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/extensions/extension_action_view_model.h"
++#include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
++#include "chrome/browser/ui/views/extensions/extension_action_delegate_desktop.h"
++#include "ui/base/base_window.h"
++#include "ui/views/bubble/bubble_dialog_delegate_view.h"
++#include "ui/views/widget/widget.h"
++#include "ui/views/widget/widget_delegate.h"
++
++EmbedderExtensionsContainer::EmbedderExtensionsContainer(
++    BrowserWindowInterface* browser,
++    views::View* page_top)
++    : browser_(browser),
++      page_top_(page_top),
++      toolbar_model_(ToolbarActionsModel::Get(browser->GetProfile())),
++      scoped_user_data_(browser->GetUnownedUserDataHost(), *this) {
++  page_top_observation_.Observe(page_top_);
++  toolbar_model_observation_.Observe(toolbar_model_);
++  if (toolbar_model_->actions_initialized()) {
++    OnToolbarModelInitialized();
++  }
++}
++
++EmbedderExtensionsContainer::~EmbedderExtensionsContainer() {
++  RemoveActions();
++}
++
++ToolbarActionViewModel* EmbedderExtensionsContainer::GetActionForId(
++    const std::string& action_id) {
++  auto it = actions_.find(action_id);
++  return it != actions_.end() ? it->second.get() : nullptr;
++}
++
++void EmbedderExtensionsContainer::HideActivePopup() {
++  if (popup_owner_) {
++    popup_owner_->HidePopup();
++  }
++}
++
++void EmbedderExtensionsContainer::CloseExtensionsMenuIfOpen() {
++  // The page's extensions menu is the embedder's: none of Chrome's opens over
++  // it.
++}
++
++bool EmbedderExtensionsContainer::ShowToolbarActionPopupForAPICall(
++    const std::string& action_id,
++    ShowPopupCallback callback) {
++  // As ExtensionsToolbarViewModel and ExtensionsToolbarDesktop have it: a
++  // popup an extension asks for shows in the active window only. Nothing here
++  // is ever popped out.
++  if (!browser_->GetWindow()->IsActive()) {
++    return false;
++  }
++  ToolbarActionViewModel* action = GetActionForId(action_id);
++  CHECK(action, base::NotFatalUntil::M162);
++  action->TriggerPopupForAPI(std::move(callback));
++  return true;
++}
++
++void EmbedderExtensionsContainer::ToggleExtensionsMenu() {
++  // The embedder draws the extensions menu.
++}
++
++bool EmbedderExtensionsContainer::HasAnyExtensions() const {
++  return !actions_.empty();
++}
++
++bool EmbedderExtensionsContainer::IsVisible() const {
++  // The embedder shows the extensions' buttons.
++  return true;
++}
++
++std::optional<extensions::ExtensionId>
++EmbedderExtensionsContainer::GetPoppedOutActionId() const {
++  return std::nullopt;
++}
++
++bool EmbedderExtensionsContainer::IsActionVisibleOnToolbar(
++    const std::string& action_id) const {
++  return toolbar_model_ && toolbar_model_->IsActionPinned(action_id);
++}
++
++void EmbedderExtensionsContainer::UndoPopOut() {
++  // Nothing pops out: the embedder's buttons are where it draws them.
++}
++
++void EmbedderExtensionsContainer::SetPopupOwner(
++    ToolbarActionViewModel* popup_owner) {
++  popup_owner_ = popup_owner;
++}
++
++void EmbedderExtensionsContainer::PopOutAction(
++    const extensions::ExtensionId& action_id,
++    base::OnceClosure closure) {
++  // Nothing pops out, and there is no animation to wait for: the closure runs
++  // next, as AnimatingLayoutManager::PostOrQueueAction() runs one when its
++  // layout isn't animating.
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE,
++                                                           std::move(closure));
++}
++
++void EmbedderExtensionsContainer::ShowWidgetForExtension(
++    views::Widget* widget,
++    const std::string& extension_id) {
++  // As ExtensionsToolbarDesktop::AnchorAndShowWidgetImmediately() hangs it
++  // from the extension's button: a widget made with an anchor of its own, as a
++  // device chooser is, may have none here, with no location bar drawn.
++  widget->widget_delegate()->AsBubbleDialogDelegate()->SetAnchorView(
++      page_top_);
++  widget->Show();
++}
++
++void EmbedderExtensionsContainer::CollapseConfirmation() {
++  // There is no request access button to collapse.
++}
++
++void EmbedderExtensionsContainer::ShowContextMenuAsFallback(
++    const extensions::ExtensionId& action_id) {
++  // The button and its menu are the embedder's.
++}
++
++void EmbedderExtensionsContainer::OnPopupShown(
++    const extensions::ExtensionId& action_id,
++    bool by_user) {
++  // The embedder's button has no pressed state of Chrome's to show.
++}
++
++void EmbedderExtensionsContainer::OnPopupClosed(
++    const extensions::ExtensionId& action_id) {}
++
++views::FocusManager*
++EmbedderExtensionsContainer::GetFocusManagerForAccelerator() {
++  return page_top_->GetFocusManager();
++}
++
++views::BubbleAnchor EmbedderExtensionsContainer::GetReferenceButtonForPopup(
++    const extensions::ExtensionId& action_id) {
++  return GetExtensionsButtonAnchor();
++}
++
++views::BubbleAnchor EmbedderExtensionsContainer::GetExtensionsButtonAnchor() {
++  return views::BubbleAnchor(page_top_.get());
++}
++
++views::BubbleBorder::Arrow EmbedderExtensionsContainer::GetPopupArrow() const {
++  return views::BubbleBorder::TOP_RIGHT;
++}
++
++void EmbedderExtensionsContainer::OnToolbarModelInitialized() {
++  for (const auto& action_id : toolbar_model_->action_ids()) {
++    AddAction(action_id);
++  }
++}
++
++void EmbedderExtensionsContainer::OnToolbarActionAdded(
++    const ToolbarActionsModel::ActionId& action_id) {
++  AddAction(action_id);
++}
++
++void EmbedderExtensionsContainer::OnToolbarActionRemoved(
++    const ToolbarActionsModel::ActionId& action_id) {
++  auto it = actions_.find(action_id);
++  if (it == actions_.end()) {
++    return;
++  }
++  it->second->HidePopup();
++  it->second->UnregisterCommand();
++  actions_.erase(it);
++}
++
++void EmbedderExtensionsContainer::OnToolbarActionUpdated(
++    const ToolbarActionsModel::ActionId& action_id) {
++  // The embedder hears of it over the protocol (koyoActionUpdated).
++}
++
++void EmbedderExtensionsContainer::OnToolbarPinnedActionsChanged() {
++  // The embedder hears of it over the protocol (koyoInstalledChanged).
++}
++
++void EmbedderExtensionsContainer::OnToolbarActionsModelShutdown() {
++  RemoveActions();
++  toolbar_model_observation_.Reset();
++  toolbar_model_ = nullptr;
++}
++
++void EmbedderExtensionsContainer::OnViewAddedToWidget(
++    views::View* observed_view) {
++  for (const auto& [_, action] : actions_) {
++    action->RegisterCommand();
++  }
++}
++
++void EmbedderExtensionsContainer::OnViewRemovedFromWidget(
++    views::View* observed_view) {
++  // As ToolbarActionView::RemovedFromWidget() does: while the widget's focus
++  // manager is still there. A page that closes leaves its widget before its
++  // toolbar, which holds this, is destroyed.
++  for (const auto& [_, action] : actions_) {
++    action->UnregisterCommand();
++  }
++}
++
++void EmbedderExtensionsContainer::AddAction(
++    const ToolbarActionsModel::ActionId& action_id) {
++  auto it = actions_
++                .emplace(action_id,
++                         ExtensionActionViewModel::Create(
++                             action_id, browser_,
++                             std::make_unique<ExtensionActionDelegateDesktop>(
++                                 browser_.get(), this, this)))
++                .first;
++  // As a toolbar button does once it is in its widget
++  // (ToolbarActionView::AddedToWidget()). Out of one, there is no focus manager
++  // to register with, and OnViewAddedToWidget() does it.
++  it->second->RegisterCommand();
++}
++
++void EmbedderExtensionsContainer::RemoveActions() {
++  HideActivePopup();
++  for (const auto& [_, action] : actions_) {
++    action->UnregisterCommand();
++  }
++  actions_.clear();
++}
+--- /dev/null
++++ b/chrome/browser/ui/views/extensions/embedder_extensions_container.h
+@@ -0,0 +1,137 @@
++// Koyo: the extensions container of a page whose extensions' buttons an
++// embedder draws.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EMBEDDER_EXTENSIONS_CONTAINER_H_
++#define CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EMBEDDER_EXTENSIONS_CONTAINER_H_
++
++#include <memory>
++#include <optional>
++#include <string>
++
++#include "base/containers/flat_map.h"
++#include "base/functional/callback.h"
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "chrome/browser/ui/extensions/extension_popup_types.h"
++#include "chrome/browser/ui/extensions/extensions_container.h"
++#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
++#include "chrome/browser/ui/views/extensions/extensions_container_views.h"
++#include "extensions/common/extension_id.h"
++#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
++#include "ui/views/bubble/bubble_anchor.h"
++#include "ui/views/bubble/bubble_border.h"
++#include "ui/views/view.h"
++#include "ui/views/view_observer.h"
++
++class BrowserWindowInterface;
++class ExtensionActionViewModel;
++class ToolbarActionViewModel;
++
++namespace views {
++class FocusManager;
++class Widget;
++}  // namespace views
++
++// Koyo: the extensions container of a page of an embedder's, a browser that
++// shows no toolbar of Chrome's: the embedder draws the extensions' buttons in
++// its own window and presses them over the DevTools protocol
++// (Extensions.pdl). It holds an action for each extension of the profile, as
++// ExtensionsToolbarDesktop does, and no view, so nothing of it is laid out. A
++// popup a press on the embedder's button opens hangs from that button
++// (EmbedderActionButton). A popup an extension opens itself, and a dialog
++// about an extension, hang from `page_top`, the view along the top edge of
++// the page, by their top right corner, where Chrome's toolbar would end. An
++// extension's keyboard shortcut is the page's widget's while `page_top` is in
++// it, as a toolbar button's is while the button is.
++//
++// It keeps its actions itself, as Chrome's other containers with no toolbar
++// buttons of views do (WebUIToolbarExtensionsContainer,
++// contextual_tasks::ContextualTasksExtensionsContainer), rather than in an
++// ExtensionsToolbarViewModel: that model leaves an action's keyboard shortcut
++// to the action's button (ToolbarActionView::RemovedFromWidget()), and takes
++// an action out of its map before it tells its observers which one went, so a
++// container with no buttons couldn't reach a removed action to unregister its
++// shortcut from the widget's focus manager.
++class EmbedderExtensionsContainer : public ExtensionsContainer,
++                                    public ExtensionsContainerViews,
++                                    public ToolbarActionsModel::Observer,
++                                    public views::ViewObserver {
++ public:
++  EmbedderExtensionsContainer(BrowserWindowInterface* browser,
++                              views::View* page_top);
++  EmbedderExtensionsContainer(const EmbedderExtensionsContainer&) = delete;
++  EmbedderExtensionsContainer& operator=(const EmbedderExtensionsContainer&) =
++      delete;
++  ~EmbedderExtensionsContainer() override;
++
++  // ExtensionsContainer:
++  ToolbarActionViewModel* GetActionForId(const std::string& action_id) override;
++  void HideActivePopup() override;
++  void CloseExtensionsMenuIfOpen() override;
++  bool ShowToolbarActionPopupForAPICall(const std::string& action_id,
++                                        ShowPopupCallback callback) override;
++  void ToggleExtensionsMenu() override;
++  bool HasAnyExtensions() const override;
++
++  // ExtensionsContainerViews:
++  bool IsVisible() const override;
++  std::optional<extensions::ExtensionId> GetPoppedOutActionId() const override;
++  bool IsActionVisibleOnToolbar(const std::string& action_id) const override;
++  void UndoPopOut() override;
++  void SetPopupOwner(ToolbarActionViewModel* popup_owner) override;
++  void PopOutAction(const extensions::ExtensionId& action_id,
++                    base::OnceClosure closure) override;
++  void ShowWidgetForExtension(views::Widget* widget,
++                              const std::string& extension_id) override;
++  void CollapseConfirmation() override;
++  void ShowContextMenuAsFallback(
++      const extensions::ExtensionId& action_id) override;
++  void OnPopupShown(const extensions::ExtensionId& action_id,
++                    bool by_user) override;
++  void OnPopupClosed(const extensions::ExtensionId& action_id) override;
++  views::FocusManager* GetFocusManagerForAccelerator() override;
++  views::BubbleAnchor GetReferenceButtonForPopup(
++      const extensions::ExtensionId& action_id) override;
++  views::BubbleAnchor GetExtensionsButtonAnchor() override;
++  views::BubbleBorder::Arrow GetPopupArrow() const override;
++
++  // ToolbarActionsModel::Observer:
++  void OnToolbarModelInitialized() override;
++  void OnToolbarActionAdded(
++      const ToolbarActionsModel::ActionId& action_id) override;
++  void OnToolbarActionRemoved(
++      const ToolbarActionsModel::ActionId& action_id) override;
++  void OnToolbarActionUpdated(
++      const ToolbarActionsModel::ActionId& action_id) override;
++  void OnToolbarPinnedActionsChanged() override;
++  void OnToolbarActionsModelShutdown() override;
++
++  // views::ViewObserver:
++  void OnViewAddedToWidget(views::View* observed_view) override;
++  void OnViewRemovedFromWidget(views::View* observed_view) override;
++
++ private:
++  // Makes the action of `action_id`'s extension, with its keyboard shortcut.
++  void AddAction(const ToolbarActionsModel::ActionId& action_id);
++
++  // Closes the open popup and lets every action go, shortcuts first.
++  void RemoveActions();
++
++  const raw_ptr<BrowserWindowInterface> browser_;
++  const raw_ptr<views::View> page_top_;
++  base::ScopedObservation<views::View, views::ViewObserver> page_top_observation_{
++      this};
++  raw_ptr<ToolbarActionsModel> toolbar_model_;
++  base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
++      toolbar_model_observation_{this};
++  base::flat_map<ToolbarActionsModel::ActionId,
++                 std::unique_ptr<ExtensionActionViewModel>>
++      actions_;
++  raw_ptr<ToolbarActionViewModel> popup_owner_ = nullptr;
++
++  // Registers this as the browser's ExtensionsContainer, as
++  // ExtensionsToolbarDesktop registers its view model.
++  ui::ScopedUnownedUserData<ExtensionsContainer> scoped_user_data_;
++};
++
++#endif  // CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EMBEDDER_EXTENSIONS_CONTAINER_H_
+--- a/chrome/browser/ui/views/toolbar/BUILD.gn
++++ b/chrome/browser/ui/views/toolbar/BUILD.gn
+@@ -400,6 +400,9 @@
+     deps += [ "//chrome/browser/ui/ai_overlay_dialog" ]
+   }
+   deps += [ "//chrome/browser/ui/views/extensions:extensions_toolbar_desktop" ]
++  deps += [
++    "//chrome/browser/ui/views/extensions:embedder_extensions_container",
++  ]
+ }
+ 
+ if (!is_android) {
+--- a/chrome/browser/ui/views/toolbar/toolbar_view.cc
++++ b/chrome/browser/ui/views/toolbar/toolbar_view.cc
+@@ -76,6 +76,7 @@
+ #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_close_tab_button.h"
+ #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_ephemeral_button_controller.h"
+ #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_ephemeral_button_utils.h"
++#include "chrome/browser/ui/views/extensions/embedder_extensions_container.h"
+ #include "chrome/browser/ui/views/extensions/extension_popup.h"
+ #include "chrome/browser/ui/views/extensions/extensions_container_views.h"
+ #include "chrome/browser/ui/views/extensions/extensions_toolbar_button.h"
+@@ -403,6 +404,22 @@
+     pinned_toolbar_actions_container_ = AddChildView(
+         std::make_unique<PinnedToolbarActionsContainer>(browser_view_, this));
+     pinned_toolbar_actions_ = pinned_toolbar_actions_container_;
++#if BUILDFLAG(ENABLE_CEF)
++    // Koyo: a browser whose extensions' buttons its CEF client draws, which
++    // shows no toolbar of Chrome's, has this toolbar only as Chrome's popups
++    // have it, hidden. Its extensions' actions are in a container of no views,
++    // as the extensions container of a normal window would hold them, so that
++    // a press on the client's button, an extension's popup and its keyboard
++    // shortcut do what they do there. The client says which browsers
++    // (HasEmbedderExtensions): a DevTools window, say, has none.
++    if (browser_->cef_delegate() &&
++        browser_->cef_delegate()->HasEmbedderExtensions() &&
++        !browser_->GetProfile()->IsGuestSession()) {
++      embedder_extensions_container_ =
++          std::make_unique<EmbedderExtensionsContainer>(
++              browser_, browser_view_->top_container());
++    }
++#endif
+     SetBackground(views::CreateSolidBackground(kColorLocationBarBackground));
+     SetLayoutManager(std::make_unique<views::FlexLayout>())
+         ->SetOrientation(views::LayoutOrientation::kHorizontal)
+@@ -1941,6 +1958,9 @@
+ }
+ 
+ ExtensionsContainerViews* ToolbarView::GetExtensionsContainerViews() {
++  if (embedder_extensions_container_) {
++    return embedder_extensions_container_.get();
++  }
+   if (features::IsWebUIExtensionsContainerEnabled()) {
+     return toolbar_webview_->extensions_container_views();
+   }
+--- a/chrome/browser/ui/views/toolbar/toolbar_view.h
++++ b/chrome/browser/ui/views/toolbar/toolbar_view.h
+@@ -52,6 +52,7 @@
+ class BatterySaverButton;
+ class BrowserAppMenuButton;
+ class BrowserWindowInterface;
++class EmbedderExtensionsContainer;
+ class ExtensionsToolbarButton;
+ class ExtensionsToolbarDesktop;
+ class HomeButton;
+@@ -474,6 +475,10 @@
+ 
+   std::unique_ptr<ExtensionsToolbarCoordinator> extensions_toolbar_coordinator_;
+ 
++  // Koyo: the extensions container of a page of an embedder's, which shows no
++  // toolbar of Chrome's (Init()).
++  std::unique_ptr<EmbedderExtensionsContainer> embedder_extensions_container_;
++
+   BooleanPrefMember show_forward_button_;
+ 
+   // Controls whether or not a home button should be shown on the toolbar.
+--- a/cef/libcef/browser/chrome/browser_delegate.h
++++ b/cef/libcef/browser/chrome/browser_delegate.h
+@@ -202,6 +202,13 @@
+   // Returns true if this browser is Views-hosted.
+   virtual bool IsViewsHosted() const { return false; }
+ 
++  // Koyo: whether the client draws this browser's extensions' buttons itself,
++  // with no toolbar of Chrome's shown, and has their actions, popups and
++  // keyboard shortcuts work in it: it said so with "koyo_extensions" in the
++  // browser's |extra_info|. This should consistently return the same value
++  // for the lifespan of a Browser.
++  virtual bool HasEmbedderExtensions() const { return false; }
++
+   // Cra: an extension asked to bring this browser's tab to the front
+   // (chrome.tabs.update({active: true})). A Views-hosted browser has only that
+   // tab, so Chrome's own activation changes nothing the client can see.
+--- a/cef/libcef/browser/chrome/chrome_browser_delegate.h
++++ b/cef/libcef/browser/chrome/chrome_browser_delegate.h
+@@ -88,6 +88,7 @@
+   const std::optional<SkRegion> GetDraggableRegion() const override;
+   void WindowFullscreenStateChanged() override;
+   bool IsViewsHosted() const override;
++  bool HasEmbedderExtensions() const override;
+   bool HasViewsHostedOpener() const override;
+   void TabActivationRequested() override;
+ 
+--- a/cef/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -686,6 +686,14 @@
+ bool ChromeBrowserDelegate::IsViewsHosted() const {
+   return create_params_.browser_view != nullptr ||
+          create_params_.popup_with_views_hosted_opener;
++}
++
++// Koyo: the |extra_info| the client gave the browser, which no page can set
++// (CefBrowserView::CreateBrowserView, OnBeforePopup, OnBeforeDevToolsPopup);
++// a popup Browser has its popup's (ChromeBrowserHostImpl::AddNewContents).
++bool ChromeBrowserDelegate::HasEmbedderExtensions() const {
++  return create_params_.extra_info &&
++         create_params_.extra_info->GetBool("koyo_extensions");
+ }
+ 
+ // Cra: delivered as a "Koyo.activate" message from PID_BROWSER (no arguments);
+--- a/cef/libcef/browser/chrome/chrome_browser_host_impl.cc
++++ b/cef/libcef/browser/chrome/chrome_browser_host_impl.cc
+@@ -123,6 +123,11 @@
+   CefBrowserCreateParams params;
+   params.request_context = request_context();
+   params.browser_view = GetBrowserView();
++  // Koyo: the popup's |extra_info|, which its client may have answered in
++  // OnBeforePopup or OnBeforeDevToolsPopup, for the new Browser's delegate
++  // (ChromeBrowserDelegate::HasEmbedderExtensions), as the Browser of a
++  // browser the client creates has the client's.
++  params.extra_info = browser_info()->extra_info();
+ 
+   // Create the new Browser representation.
+   auto browser = CreateBrowser(params, std::move(browser_create_params));

@@ -26,9 +26,15 @@ use crate::host;
 mod pipe;
 
 /// Koyo's patches the engine's framework needs for extensions to have their icons and popups:
-/// the pipe on named descriptors, which doesn't make Koyo an automation client, and Chrome's
-/// own popup hanging from the icon the app draws.
-const NEEDED: [&str; 3] = ["devtools-pipe-descriptors", "devtools-pipe-embedder", "koyo-popup"];
+/// the pipe on named descriptors, which doesn't make Koyo an automation client, the actions of
+/// a page that has no toolbar of Chrome's, and Chrome's own popup hanging from the icon the app
+/// draws.
+const NEEDED: [&str; 4] = [
+    "devtools-pipe-descriptors",
+    "devtools-pipe-embedder",
+    "extensions-without-a-toolbar",
+    "koyo-popup",
+];
 
 /// What the host asked Chromium and waits to hear back about.
 enum Asked {

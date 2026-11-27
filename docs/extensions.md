@@ -77,9 +77,13 @@ the way Koyo does; the protocol patch is Koyo's.
   the app, and a release engine isn't packaged from a framework whose patches aren't the
   checkout's (`docs/browser.md` 11.3).
 - **On CEF's own framework** (a checkout where `script/cef` hasn't run) there are no
-  extension controls: no pipe is asked for, no page carries Chrome's toolbar, the row and
-  the icons aren't drawn, and Koyo is as it was. An "Add to Chrome" in the Web Store still
-  ends Koyo there, as above; that is the engine's, and the patched one is the cure.
+  extension controls: no pipe is asked for, the row and the icons aren't drawn, and Koyo is
+  as it was. An "Add to Chrome" in the Web Store still ends Koyo there, as above; that is
+  the engine's, and the patched one is the cure.
+- **When the pipe can't be made** on a patched framework, it's the same: the host logs "no
+  DevTools pipe to the engine", draws no icons, and marks no page for its extensions
+  (section 2.3), so Chrome keeps no actions in any page either: an action's shortcut does
+  nothing, as no icon of it is drawn.
 
 ### 2.3 Chrome's own UI, driven over the DevTools protocol [decided]
 
@@ -90,9 +94,33 @@ other way, a popup's page loaded in a pane of Koyo's, was probed and is a tab to
 extension, not a popup: `tabs.query({active: true, currentWindow: true})` answers with the
 popup itself (`.superpowers/research/run/03-popup-as-page.out`).
 
-- Each page carries Chrome's toolbar, hidden (`ChromeToolbarType::NORMAL`, the view not
-  visible): a popup anchors to its extensions container, and there is no action to trigger
-  without one.
+- **A page has no toolbar of Chrome's** (`ChromeToolbarType::NONE`, `native/parts.rs`), and
+  its extensions' actions are kept without one (`extensions-without-a-toolbar`). Chrome keeps
+  them in its toolbar's extensions container, and there is no action to run and no popup
+  without a container. A page is a browser of its own, which Chrome makes as it makes a
+  popup window: with a toolbar of its own kind for popups, hidden, that has no extensions
+  container. The patch gives such a toolbar a container of no views
+  (`EmbedderExtensionsContainer`) in a page the host marks for it: an action for each
+  extension, as a normal window's holds, its keyboard shortcut on the page's window, and its
+  popup hung from the button the app draws (section 6) or, when nobody pressed one, from the
+  top of the page by its top right corner. Dialogs about an extension that hang from its
+  button in Chrome hang there too. `[read]` in Chromium 158; not yet built.
+- **Which pages have their extensions is the host's to say**, page by page, in the
+  `extra_info` it makes each browser with (`native/parts.rs`): `koyo_extensions`, which no
+  page can set, on a page, and only while the pipe is open (`extensions::on`). Chrome reads
+  it as it makes the page's browser (`HasEmbedderExtensions`); a popup's browser has the
+  `extra_info` the host answers in `OnBeforePopup`, a tab an extension opens included. A
+  DevTools pane carries no mark, nor does a DevTools window CEF makes for a page, which would
+  start with its page's (`OnBeforeDevToolsPopup` answers one of its own). There, as with no
+  pipe, Chrome keeps no actions: an extension's action shortcut does nothing, rather than
+  run its action with the DevTools frontend for its tab, and `action.openPopup()` fails.
+  The extension's own commands (`chrome.commands.onCommand`) are Chrome's per window and
+  work there as they did. `[read]` in Chromium 158; not yet built.
+- Until 2026-11-27 each page carried Chrome's whole toolbar instead
+  (`ChromeToolbarType::NORMAL`, the view not visible), for its container alone. It cost the
+  main thread most of its time with pages open, shown or hidden: CEF sized it to its liking
+  on every layout, Chrome's layout sized it back to nothing, and its animations asked for a
+  frame each time (`docs/native-pages.md` 5). `[measured]` on 0.1.1, the cause `[read]`.
 - The host talks to Chrome over a **browser-level DevTools pipe** inside Koyo's own
   process, asked for by `--remote-debugging-io-pipes` alone, which names its two descriptors
   (patches: Chromium takes 3 and 4 on macOS, which Koyo has long given away by the time the
@@ -246,7 +274,7 @@ the poll moved it (`.artifacts/browser-perf/watch-live-1.txt`).
   `action.onClicked`. The app measures the icon as it's drawn and says where it is in
   `AppKit`'s points (`ScreenRect`); the host turns that once into Chromium's, counted down
   from the primary screen's top left, as it sends it.
-- Chrome hangs the bubble from that rectangle instead of its hidden toolbar, sizes it, hangs
+- Chrome hangs the bubble from that rectangle instead of the top of the page, sizes it, hangs
   it again as the popup's page resizes and keeps it on the screen. It frames it as its
   other bubbles: the extension's name in a title row with a close button, round corners.
 - The bubble shows at the popup page's first size, not after its page has loaded, so a slow
@@ -268,8 +296,9 @@ the poll moved it (`.artifacts/browser-perf/watch-live-1.txt`).
 - As before, the holder hands the bubble to Koyo's window the page is drawn in
   (`native/holder.rs`), so it opens over Koyo's window, not under it.
 - The popup is the extension's `popup` view: it sizes itself and takes the keyboard, as in
-  Chrome. Two patches take out a two-second wait before its
-  page loads and a quarter second's animation of the hidden toolbar.
+  Chrome. A patch takes out a two-second wait before its page loads
+  (`extension-popup-browser-info`). There is no animation to wait for before it opens: a
+  page has no toolbar whose icon pops out.
 - The popup is Chrome's bubble as Chrome draws it. Arc puts it in a small titled window
   that can be dragged away; that is its own, and isn't copied. `[decided]`
 
@@ -296,8 +325,10 @@ aren't carried: Koyo's menu rows have none.
 ## 9. What isn't there
 
 - **Popups nobody pressed for**: `action.openPopup()` and the `_execute_action` shortcut
-  open the popup where Chrome puts it, at the page's top right corner, not under an icon.
-  `[not built]`
+  open the popup where the page's extensions container hangs it, from the page's top right
+  corner, not under an icon. `[not built]` And Chrome opens one for `action.openPopup()`
+  only in the window that's active, which a page's holder never is
+  (`ShowToolbarActionPopupForAPICall`, as in Chrome). `[read]`, not tried.
 
 - **Side panels** (`chrome.sidePanel`): Chrome's side panel isn't shown in a page of
   Koyo's, and Arc has none either. Cra shows them in a split; its patch is not taken.
@@ -314,13 +345,14 @@ aren't carried: Koyo's menu rows have none.
 | Patch | From | What |
 | --- | --- | --- |
 | `extensions-normal-windows` | Cra | A page's window says `normal`, and `action.openPopup()` doesn't ask for a visible toolbar |
+| `extensions-without-a-toolbar` | Koyo | A page the client marks for it (`koyo_extensions` in its `extra_info`), which has no toolbar of Chrome's, keeps its extensions' actions in a container of no views: they run, their popups open and their keyboard shortcuts work as in a window with Chrome's toolbar. A popup nobody pressed for, and a dialog about an extension, hang from the top of the page. A browser with no mark, a DevTools one, has no container |
 | `extension-tabs-create` | Cra | `tabs.create` is offered to the page's client (`OnBeforePopup`, `koyo_extension_tab`) |
 | `extension-tab-activate` | Cra | `tabs.update({active: true})` tells the client (`Koyo.activate`) |
 | `extension-popup-browser-info` | Cra | A popup's page doesn't wait two seconds for a CEF browser it never gets |
-| `extension-popup-no-popout-wait` | Cra | No animation of the hidden toolbar before the popup |
 | `extension-install-ui-null-tab` | Cra | No "installed" bubble; an install with no active tab doesn't crash |
-| `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (from Cra); a page found by CEF's number for its browser |
+| `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (Chromium's own since 158); a page found by CEF's number for its browser |
 | `koyo-popup` | Koyo | A popup is Chrome's own from the press to its closing. It hangs from the icon Koyo draws, whose rectangle and corner `koyoTriggerAction` takes, and Chrome sizes it, keeps it there as its page resizes and keeps it on the screen. It has Chrome's title row with the extension's name and a close button. It shows as soon as its page has a size, not once the page has loaded. It closes on a press on its icon (`koyoActionPointerDown`, then the press), when another page becomes the active one, and when the keyboard leaves it for a window that isn't Chromium's |
+| `content-client-goes-with-its-delegate` | Koyo | Content's client is cleared with CEF's main delegate, which owns it, so an occlusion update put off past the engine's stop doesn't read the freed one and crash the app |
 | `devtools-pipe-descriptors` | Koyo | `--remote-debugging-io-pipes=<read>,<write>` on macOS and Linux |
 | `devtools-pipe-embedder` | Koyo | Those descriptors named, Chrome starts the pipe without `--remote-debugging-pipe`, so no page says it's under automation, and doesn't quit by itself when the client hangs up |
 | `dialog-without-parent-titlebar` | Koyo | A window-modal dialog whose parent isn't one of Chromium's windows, Chrome's install dialog over a page in Koyo's, has no title bar drawn over its heading |
@@ -343,8 +375,8 @@ change to a patch is the files it touches and the framework's link.
 | `koyo-browser-host/src/extensions/pipe.rs` | The browser-level DevTools pipe inside the process |
 | `koyo-browser-host/src/native/adopt.rs` | A tab an extension opens, taken in as a pane |
 | `koyo-browser-host/src/native/strays.rs` | Browsers Chrome makes on its own: a window that stays, a tabbed one whose page becomes a tab |
-| `koyo-browser-host/src/native/parts.rs` | A page's hidden Chrome toolbar; the browser view of a page an extension opens |
-| `koyo-browser-host/src/pane.rs` | An extension's tab offered as a popup; the engine's word that a tab is asked for in front |
+| `koyo-browser-host/src/native/parts.rs` | A page's browser view, with no toolbar of Chrome's; the browser view of a page an extension opens; the mark that keeps a page's extensions (`extra_info`) |
+| `koyo-browser-host/src/pane.rs` | An extension's tab offered as a popup; the engine's word that a tab is asked for in front; a DevTools window's `extra_info` |
 | `koyo-browser-host/tests/smoke/extensions.rs`, `tests/smoke/extension/` | The smoke test and the extension it loads |
 | `koyo/src/browser/extensions.rs` | What the app keeps: each profile's extensions and their actions, an icon resolved for a page |
 | `koyo/src/browser/extensions/icon.rs` | An icon drawn, with its badge |
@@ -375,7 +407,8 @@ sees and told what to do. Where a row says an extension did something, that is h
 | --- | --- |
 | On CEF's own framework the build runs as before, and says extensions' controls are off | checked 11-15: a page opened and drew; the log line; no row in the popover |
 | The patched framework starts in Koyo's process with the pipe on named descriptors | checked: the host heard the engine's list over it |
-| Chrome's toolbar, carried hidden, takes no room and isn't seen | checked: the page fills its pane, by eye |
+| A page has no toolbar of Chrome's, and its extensions' actions run, their popups open and their shortcuts work without one (`extensions-without-a-toolbar`) | not yet built; until 2026-11-27 the toolbar was carried hidden, and checked to take no room |
+| An extension's action shortcut does nothing in a DevTools pane, and in no page when the pipe can't be made | not yet built |
 | An install from the Chrome Web Store | checked, twice: "Add to Chrome", Chrome's dialog, "Add extension"; no crash; the icon in the row at once; Bitwarden's welcome page a Koyo tab; the store's button turned to "Remove from Chrome" |
 | The install dialog's look | checked: its heading clear, no band over it (`dialog-without-parent-titlebar`); over the page, near its top, above Koyo's window |
 | The store's "Switch to Chrome" banner | there, as section 4 says it would be |

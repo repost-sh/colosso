@@ -1,10 +1,11 @@
-//! A native page's delegates, which make it a Chrome-style browser in a frameless window.
+//! A native page's delegates, which make it a Chrome-style browser in a frameless window, and
+//! what its browser tells Chromium of it.
 
 use cef::{
-    BrowserSettings, BrowserView, BrowserViewDelegate, ChromeToolbarType, Client, ImplBrowser,
-    ImplBrowserHost, ImplBrowserView, ImplBrowserViewDelegate, ImplPanelDelegate,
-    ImplView, ImplViewDelegate, ImplWindowDelegate, Rect, RuntimeStyle, Window, WindowDelegate,
-    WrapBrowserViewDelegate, WrapWindowDelegate, rc::Rc, wrap_browser_view_delegate,
+    BrowserSettings, BrowserView, BrowserViewDelegate, ChromeToolbarType, Client, DictionaryValue,
+    ImplBrowser, ImplBrowserHost, ImplBrowserView, ImplBrowserViewDelegate, ImplDictionaryValue,
+    ImplPanelDelegate, ImplViewDelegate, ImplWindowDelegate, Rect, RuntimeStyle, Window,
+    WindowDelegate, WrapBrowserViewDelegate, WrapWindowDelegate, rc::Rc, wrap_browser_view_delegate,
     wrap_window_delegate,
 };
 use koyo_browser_ipc::PaneId;
@@ -12,29 +13,42 @@ use std::os::raw::c_int;
 
 use super::{adopted, adopting, window_created, window_destroyed};
 
-/// Hides Chrome's toolbar on `view`, where the page has one: it's there for extensions, whose
-/// popups anchor to it, and never seen.
-pub(super) fn hide_toolbar(view: &BrowserView) {
-    if let Some(toolbar) = view.chrome_toolbar() {
-        toolbar.set_visible(0);
+/// The `extra_info` of a browser the host makes for a pane or lets CEF make from one, a page's
+/// or a `DevTools` one's: its [`mark`], if it has one. Always a dictionary of the host's own,
+/// empty with no mark: a `DevTools` window CEF makes starts with its page's, and the cef crate
+/// keeps what CEF offered when the answer is none.
+pub(crate) fn extra_info(devtools: bool) -> Option<DictionaryValue> {
+    let info = cef::dictionary_value_create()?;
+    if let Some(mark) = mark(devtools, crate::extensions::on()) {
+        info.set_bool(Some(&mark.into()), 1);
     }
+    Some(info)
+}
+
+/// The mark in a browser's `extra_info` that has Chromium keep its extensions' actions with no
+/// toolbar of Chrome's (`extensions-without-a-toolbar.patch`), so that the app's icons press
+/// them, their popups open and their shortcuts work: a page's, not a `DevTools` one's, whose
+/// frontend an action would take for its tab, and only while the host talks to the engine
+/// about extensions (`extensions::on`), as with no pipe the app draws no icons. No page can
+/// set it: a page names its popup's frame, not its `extra_info`.
+pub(super) fn mark(devtools: bool, extensions: bool) -> Option<&'static str> {
+    (extensions && !devtools).then_some("koyo_extensions")
 }
 
 wrap_browser_view_delegate! {
     pub(super) struct PageViewDelegate {
         pane: PaneId,
-        toolbar: bool,
     }
 
     impl ViewDelegate {}
 
     impl BrowserViewDelegate {
+        /// No toolbar of Chrome's: the app draws the page's controls, its extensions' icons
+        /// among them, and Chrome keeps the extensions of a page marked for them without one
+        /// ([`mark`]). One carried hidden was laid out again on every frame of its holder,
+        /// shown or not (`docs/native-pages.md` 5).
         fn chrome_toolbar_type(&self, _browser_view: Option<&mut BrowserView>) -> ChromeToolbarType {
-            if self.toolbar {
-                ChromeToolbarType::NORMAL
-            } else {
-                ChromeToolbarType::NONE
-            }
+            ChromeToolbarType::NONE
         }
 
         fn browser_runtime_style(&self) -> RuntimeStyle {
@@ -51,7 +65,7 @@ wrap_browser_view_delegate! {
             if is_devtools != 0 {
                 return None;
             }
-            adopting(client?).map(|pane| PageViewDelegate::new(pane, self.toolbar))
+            adopting(client?).map(PageViewDelegate::new)
         }
 
         fn on_popup_browser_view_created(

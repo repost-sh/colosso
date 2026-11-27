@@ -20,7 +20,7 @@
 //! navigation with no gesture is left to Chrome, and a popup with no gesture that reaches the
 //! host all the same is refused, as Chrome's default refuses it.
 
-use cef::{Client, WindowOpenDisposition};
+use cef::{Client, DictionaryValue, WindowOpenDisposition};
 use koyo_browser_ipc::{HostEvent, PaneId};
 use std::os::raw::c_int;
 
@@ -60,23 +60,26 @@ pub(super) fn opening(disposition: WindowOpenDisposition, gesture: bool) -> Open
 }
 
 /// Takes the page `opener`'s page opens as Chrome's popup `popup` in as a pane of its own, with
-/// a tab beside the opener's, shown when `front`: Chrome makes its browser with the client
-/// answered here. Whether it was taken; with no page to take it, it opens nowhere.
+/// a tab beside the opener's, shown when `front`: Chrome makes its browser with the client and
+/// the `extra_info` answered here, a page's (`native::extra_info`). Whether it was taken; with
+/// no page to take it, it opens nowhere.
 pub(super) fn take(
     opener: PaneId,
     popup: c_int,
     url: &str,
     front: bool,
     client: Option<&mut Option<Client>>,
+    extra_info: Option<&mut Option<DictionaryValue>>,
 ) -> bool {
     let url = if url.is_empty() { "about:blank" } else { url };
-    let Some(client) = client else {
+    let (Some(client), Some(extra_info)) = (client, extra_info) else {
         return false;
     };
     let Some(tab) = crate::native::adopt(opener, popup, url, front) else {
         return false;
     };
     *client = Some(tab);
+    *extra_info = crate::native::extra_info(false);
     true
 }
 
@@ -88,9 +91,10 @@ pub(super) fn before_popup(
     url: String,
     opening: Opening,
     client: Option<&mut Option<Client>>,
+    extra_info: Option<&mut Option<DictionaryValue>>,
 ) -> bool {
     match opening {
-        Opening::Tab { front } => take(opener, popup, &url, front, client),
+        Opening::Tab { front } => take(opener, popup, &url, front, client, extra_info),
         Opening::Here => {
             if web(&url) {
                 host::navigate_later(opener, url);
