@@ -69,7 +69,11 @@ pub fn new_renderer(
     MetalRenderer::new(context, transparent, use_display_p3)
 }
 
-pub fn new_overlay_renderer(context: self::Context, base: &Renderer) -> Result<Renderer> {
+// Koyo: returns the layer the renderer draws on with it (`fast/composition.rs`).
+pub fn new_overlay_renderer(
+    context: self::Context,
+    base: &Renderer,
+) -> Result<(Renderer, Retained<CAMetalLayer>)> {
     crate::fast::composition::new_overlay_renderer(context, base)
 }
 
@@ -138,6 +142,21 @@ enum DisplayLinkMode {
     Attached {
         drawable: Option<Retained<ProtocolObject<dyn CAMetalDrawable>>>,
     },
+}
+
+/// Koyo: what became of a scene given to [`MetalRenderer::draw`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[must_use]
+pub enum Presented {
+    /// Drawn into a drawable this size, which is on its way to the layer.
+    Drawn(Size<DevicePixels>),
+    /// A display link hands the layer its drawables, and the renderer holds none: nothing is
+    /// drawn, and the layer is asked for no drawable, which `nextDrawable` waits for on the
+    /// calling thread for as long as Core Animation keeps the layer's. The scene is the
+    /// caller's to draw once the link has handed one over (`set_frame_drawable`).
+    AwaitingDrawable,
+    /// Not drawn, for a reason that's logged.
+    Failed,
 }
 
 pub struct MetalRenderer {
@@ -652,21 +671,22 @@ impl MetalRenderer {
         // nothing to do
     }
 
-    pub fn draw(&mut self, scene: &Scene) {
+    // Koyo: says what became of the scene ([`Presented`]). Upstream returns nothing, and logs a
+    // frame drawn while a link drives the layer and has handed out no drawable as skipped.
+    pub fn draw(&mut self, scene: &Scene) -> Presented {
         let layer = match &self.layer {
             Some(l) => l.clone(),
             None => {
                 log::error!(
                     "draw() called on headless renderer - use render_scene_to_image() instead"
                 );
-                return;
+                return Presented::Failed;
             }
         };
         let drawable = match &mut self.display_link_mode {
             DisplayLinkMode::Attached { drawable } => {
                 let Some(drawable) = drawable.take() else {
-                    log::error!("skipped a frame drawn outside its display link's update");
-                    return;
+                    return Presented::AwaitingDrawable;
                 };
                 drawable
             }
@@ -676,7 +696,7 @@ impl MetalRenderer {
                         "failed to retrieve next drawable, drawable size: {:?}",
                         layer.drawableSize()
                     );
-                    return;
+                    return Presented::Failed;
                 };
                 drawable
             }
@@ -693,7 +713,7 @@ impl MetalRenderer {
             Ok(command_buffer) => command_buffer,
             Err(error) => {
                 log::error!("failed to render: {error:#}");
-                return;
+                return Presented::Failed;
             }
         };
 
@@ -705,6 +725,7 @@ impl MetalRenderer {
             command_buffer.presentDrawable(ProtocolObject::from_ref(&*drawable));
             command_buffer.commit();
         }
+        Presented::Drawn(viewport_size)
     }
 
     pub(crate) fn render_frame(
@@ -2944,7 +2965,10 @@ mod tests {
             renderer.display_link_mode,
             DisplayLinkMode::Attached { drawable: Some(_) }
         ));
-        renderer.draw(&Scene::default());
+        assert_eq!(
+            renderer.draw(&Scene::default()),
+            Presented::Drawn(size(DevicePixels(64), DevicePixels(64)))
+        );
         assert!(matches!(
             renderer.display_link_mode,
             DisplayLinkMode::Attached { drawable: None }
@@ -2962,6 +2986,21 @@ mod tests {
         assert!(matches!(
             renderer.display_link_mode,
             DisplayLinkMode::Detached
+        ));
+        Ok(())
+    }
+
+    // Koyo: a renderer a display link drives never asks its layer for a drawable, which
+    // `nextDrawable` waits for on the calling thread while Core Animation keeps the layer's.
+    #[test]
+    fn an_attached_renderer_without_a_drawable_draws_nothing_and_says_so() -> Result<()> {
+        let mut renderer = MetalRenderer::new(Default::default(), false, false)?;
+        renderer.update_drawable_size(size(DevicePixels(64), DevicePixels(64)));
+        renderer.set_display_link_attached(true);
+        assert_eq!(renderer.draw(&Scene::default()), Presented::AwaitingDrawable);
+        assert!(matches!(
+            renderer.display_link_mode,
+            DisplayLinkMode::Attached { drawable: None }
         ));
         Ok(())
     }

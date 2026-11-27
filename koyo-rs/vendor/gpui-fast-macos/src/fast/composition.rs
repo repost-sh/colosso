@@ -29,19 +29,24 @@ use gpui::{
     PlatformCompositionSurface, PlatformCompositionSurfaceContent, PlatformSurfaceAttachment,
     Point, Scene, Size, px,
 };
+use gpui_apple::display_link::MetalFrameSource;
 use objc2::{
     class, msg_send,
-    runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel},
+    rc::Retained,
+    runtime::{AnyClass, AnyObject, Bool, ClassBuilder, ProtocolObject, Sel},
     sel,
 };
 use objc2_app_kit::{
-    NSAutoresizingMaskOptions, NSEventType, NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
+    NSAutoresizingMaskOptions, NSEventType, NSViewLayerContentsPlacement,
+    NSViewLayerContentsRedrawPolicy, NSWindowOrderingMode,
 };
 use objc2_foundation::{NSInteger, NSPoint, NSRect, NSSize};
+use objc2_quartz_core::{CAMetalDisplayLinkUpdate, CAMetalDrawable, CAMetalLayer};
 use parking_lot::Mutex;
 
 use crate::{
-    renderer,
+    FrameLink, MetalFrames,
+    renderer::{self, Presented},
     window::{
         MacWindowState, WINDOW_STATE_IVAR, drop_window_state, get_window_state, handle_view_event,
     },
@@ -68,8 +73,9 @@ pub(crate) struct MacComposition {
     base_surface: Option<CompositionSurfaceId>,
     /// Every GPUI surface but the base one.
     gpui_surfaces: FxHashMap<CompositionSurfaceId, MacGpuiSurface>,
-    // Koyo: what the base surface's layer last showed ([`Drawn`]).
-    base_drawn: Option<Drawn>,
+    // Koyo: what the window's own layer shows and is still to show ([`LayerState`]): the base
+    // surface's part of the scene, or all of it until the window composes.
+    base_layer: LayerState,
     /// What the window's renderer was created with, for the surfaces'.
     renderer_context: renderer::Context,
     /// Native identities, parents and sibling order, independent of geometry.
@@ -93,7 +99,7 @@ impl MacComposition {
         Self {
             base_surface: None,
             gpui_surfaces: FxHashMap::default(),
-            base_drawn: None,
+            base_layer: LayerState::default(),
             renderer_context,
             view_order: Vec::new(),
             native_views: Rc::new(Vec::new()),
@@ -119,8 +125,11 @@ enum InputLayer {
 struct MacGpuiSurface {
     view: NonNull<AnyObject>,
     renderer: renderer::Renderer,
-    // Koyo: what its layer last showed ([`Drawn`]).
-    drawn: Option<Drawn>,
+    // Koyo: the layer `renderer` draws on, which has a link of its own while the window's
+    // links run ([`link_layer`]).
+    metal_layer: Retained<CAMetalLayer>,
+    // Koyo: what its layer shows and is still to show ([`LayerState`]).
+    layer: LayerState,
     /// Prepared GPUI hitboxes, shared with the overlay view on the UI thread.
     input_regions: Rc<RefCell<Vec<gpui::Hitbox>>>,
 }
@@ -653,14 +662,31 @@ extern "C" fn dealloc_overlay_view(this: &AnyObject, _: Sel) {
     }
 }
 
-// Koyo: what a GPUI surface's layer last showed: the scene drawn into it, at the drawable size
-// it was drawn at. A layer whose scene draws like it (`Scene::draws_like`) at that size isn't
-// drawn again and shows that frame still: a frame that changed one layer, a spinner turning
-// under a browser page, draws that layer alone, and the layers over the page ask Core
-// Animation for no drawable, which a window on another Space can wait for without end.
+// Koyo: what a layer of the window shows, and what it's still to show.
+//
+// `shown` is the scene last drawn into the layer, at the drawable size it was drawn at. A
+// layer whose scene draws like it (`Scene::draws_like`) at that size isn't drawn again and
+// shows that frame still: a frame that changed one layer, a spinner turning under a browser
+// page, draws that layer alone.
+//
+// `wanted` is the latest scene the layer should show and doesn't yet, for want of a drawable
+// to draw it into. Where display links pace the window, each layer over a native view has its
+// drawables from its own link (`MetalFrames`), and no paced frame asks Core Animation for
+// one: `nextDrawable` waits on the main thread for as long as Core Animation keeps the
+// layer's, which is a second a frame for a layer it doesn't show, as after the display woke
+// or went. A layer with no drawable in hand is left out of the frame, and its link's next
+// update draws what it wants by then (`layer_frame`, and `end_frame` for the window's own
+// layer). A frame drawn at once, in Core Animation's transaction, stops the links and has
+// every layer ask for its drawable (`stop_links`).
+#[derive(Default)]
+struct LayerState {
+    shown: Option<Drawn>,
+    wanted: Option<Scene>,
+}
+
 struct Drawn {
     scene: Scene,
-    size: NSSize,
+    size: Size<DevicePixels>,
 }
 
 /// A layer's part of a frame: the frame's whole scene when the layer holds all of it, else
@@ -670,45 +696,157 @@ enum LayerScene<'a> {
     Replayed(Scene),
 }
 
-/// Draws `scene` with `renderer`, unless the layer shows it already ([`Drawn`]).
-fn draw_layer(renderer: &mut renderer::Renderer, drawn: &mut Option<Drawn>, scene: LayerScene<'_>) {
-    let size = renderer.layer().map(|layer| layer.drawableSize());
-    match scene {
-        LayerScene::Whole(scene) => {
-            renderer.draw(scene);
-            *drawn = None;
+// Koyo: a layer's part of a frame, to draw or to keep.
+impl LayerScene<'_> {
+    fn scene(&self) -> &Scene {
+        match self {
+            Self::Whole(scene) => scene,
+            Self::Replayed(scene) => scene,
         }
-        LayerScene::Replayed(scene) => {
-            let shown = drawn.as_ref().is_some_and(|drawn| {
-                Some(drawn.size) == size && scene.draws_like(&drawn.scene)
-            });
-            if shown {
-                return;
+    }
+
+    /// Koyo: the scene as one to keep. The whole scene, borrowed from the frame, is replayed
+    /// as `ComposedScene::layer_scene` replays the part of a layer that holds all of it.
+    fn into_owned(self) -> Result<Scene> {
+        match self {
+            Self::Whole(scene) => {
+                let mut owned = Scene::default();
+                owned.replay_balanced(0..scene.len(), scene)?;
+                owned.finish();
+                Ok(owned)
             }
-            renderer.draw(&scene);
-            *drawn = size.map(|size| Drawn { scene, size });
+            Self::Replayed(scene) => Ok(scene),
         }
     }
 }
 
-/// Koyo: forgets what each layer of the window last showed, so the next frame draws them all:
-/// macOS may let go of a window's layers' contents while it can't be seen.
-pub(crate) fn forget_drawn(state: &mut MacWindowState) {
-    state.fast_composition.base_drawn = None;
-    for surface in state.fast_composition.gpui_surfaces.values_mut() {
-        surface.drawn = None;
+/// Koyo: the size of the drawables `renderer`'s layer hands out.
+fn drawable_size(renderer: &renderer::Renderer) -> Option<Size<DevicePixels>> {
+    renderer.layer().map(|layer| {
+        let size = layer.drawableSize();
+        gpui::size(
+            DevicePixels(size.width as i32),
+            DevicePixels(size.height as i32),
+        )
+    })
+}
+
+impl LayerState {
+    /// Koyo: whether the layer shows `scene` at the drawable size `size` already.
+    fn shows(&self, scene: &Scene, size: Option<Size<DevicePixels>>) -> bool {
+        self.shown
+            .as_ref()
+            .is_some_and(|shown| Some(shown.size) == size && scene.draws_like(&shown.scene))
     }
+
+    /// Koyo: draws `scene` into the drawable `renderer` has or, where a link hands its layer
+    /// its drawables and it holds none, keeps the scene as the one the layer wants.
+    fn present(&mut self, renderer: &mut renderer::Renderer, scene: LayerScene<'_>) {
+        let size = drawable_size(renderer);
+        match renderer.draw(scene.scene()) {
+            Presented::Drawn(drawn) if Some(drawn) == size => {
+                self.shown = match scene {
+                    LayerScene::Replayed(scene) => Some(Drawn { scene, size: drawn }),
+                    LayerScene::Whole(_) => None,
+                };
+                self.wanted = None;
+            }
+            // A link's drawable is the size the layer had when the link handed it out, which
+            // can be before a resize: the layer shows the scene stretched, and still wants it.
+            Presented::Drawn(_) => {
+                self.shown = None;
+                self.want(scene);
+            }
+            Presented::AwaitingDrawable => self.want(scene),
+            Presented::Failed => {
+                self.shown = None;
+                self.wanted = None;
+            }
+        }
+    }
+
+    /// Koyo: keeps `scene` as the one the layer wants, in place of an earlier one, unless it
+    /// draws like the one wanted already.
+    fn want(&mut self, scene: LayerScene<'_>) {
+        if self
+            .wanted
+            .as_ref()
+            .is_some_and(|wanted| scene.scene().draws_like(wanted))
+        {
+            return;
+        }
+        self.wanted = match scene.into_owned() {
+            Ok(scene) => Some(scene),
+            Err(error) => {
+                log::error!("keeping an AppKit composition scene for its drawable: {error:#}");
+                None
+            }
+        };
+    }
+
+    /// Koyo: draws the scene the layer wants, if it wants one, into the drawable `renderer`
+    /// has by now.
+    fn show_wanted(&mut self, renderer: &mut renderer::Renderer) {
+        if let Some(scene) = self.wanted.take() {
+            self.present(renderer, LayerScene::Replayed(scene));
+        }
+    }
+
+    /// Koyo: the layer's link hands `renderer` `drawable`, in place of the last one if no
+    /// frame drew into that, and the scene the layer wants, if it wants one, is drawn into it.
+    /// A drawable not drawn into is the next paced frame's, so a layer that has one draws in
+    /// the same frame as the window's own.
+    fn drawable_handed(
+        &mut self,
+        renderer: &mut renderer::Renderer,
+        drawable: Retained<ProtocolObject<dyn CAMetalDrawable>>,
+    ) {
+        drop(renderer.set_frame_drawable(Some(drawable)));
+        self.show_wanted(renderer);
+    }
+}
+
+/// Draws `scene` with `renderer`, unless the layer shows it already ([`LayerState`]).
+fn draw_layer(renderer: &mut renderer::Renderer, layer: &mut LayerState, scene: LayerScene<'_>) {
+    if let LayerScene::Replayed(replayed) = &scene
+        && layer.shows(replayed, drawable_size(renderer))
+    {
+        layer.wanted = None;
+        return;
+    }
+    layer.present(renderer, scene);
+}
+
+/// Koyo: forgets what each layer of the window last showed, so the next frame draws them all:
+/// macOS may let go of a window's layers' contents while it can't be seen. What a layer still
+/// wants stays wanted.
+pub(crate) fn forget_drawn(state: &mut MacWindowState) {
+    state.fast_composition.base_layer.shown = None;
+    for surface in state.fast_composition.gpui_surfaces.values_mut() {
+        surface.layer.shown = None;
+    }
+}
+
+/// Koyo: `PlatformWindow::draw`: the whole scene on the window's own layer, as a window that
+/// doesn't compose, or holds no surface but its own, draws.
+pub(crate) fn draw_window(state: &mut MacWindowState, scene: &Scene) {
+    draw_layer(
+        &mut state.renderer,
+        &mut state.fast_composition.base_layer,
+        LayerScene::Whole(scene),
+    );
 }
 
 /// `PlatformWindow::draw_composed`: draws each GPUI surface's part of the
 /// scene with that surface's renderer, or the whole scene on the window's
 /// view until the window composes; a surface whose part is what its layer
-/// shows already isn't drawn again ([`Drawn`]).
+/// shows already isn't drawn again ([`LayerState`]). Koyo: one whose layer has
+/// no drawable is drawn when its link hands it one.
 pub(crate) fn draw_composed(window_state: &Rc<Mutex<MacWindowState>>, scene: ComposedScene<'_>) {
     let mut lock = window_state.lock();
     let state = &mut *lock;
     let Some(base_surface) = state.fast_composition.base_surface else {
-        state.renderer.draw(scene.scene());
+        draw_window(state, scene.scene());
         return;
     };
     let whole_scene = whole_scene_layer(scene.scene(), scene.layers());
@@ -726,20 +864,141 @@ pub(crate) fn draw_composed(window_state: &Rc<Mutex<MacWindowState>>, scene: Com
             },
         };
         if layer.surface == base_surface {
-            draw_layer(&mut state.renderer, &mut state.fast_composition.base_drawn, surface_scene);
+            draw_layer(&mut state.renderer, &mut state.fast_composition.base_layer, surface_scene);
         } else if let Some(surface) = state.fast_composition.gpui_surfaces.get_mut(&layer.surface) {
             {
                 let mut regions = surface.input_regions.borrow_mut();
                 regions.clear();
                 regions.extend(scene.layer_hitboxes(layer).iter().cloned());
             }
-            draw_layer(&mut surface.renderer, &mut surface.drawn, surface_scene);
+            draw_layer(&mut surface.renderer, &mut surface.layer, surface_scene);
         } else {
             log::error!(
                 "missing AppKit GPUI composition surface {:?}",
                 layer.surface
             );
         }
+    }
+}
+
+/// Koyo: an update of the link of the layer of `surface`, which hands the layer its next
+/// drawable ([`LayerState::drawable_handed`]).
+fn layer_frame(
+    window_state: &Rc<Mutex<MacWindowState>>,
+    surface: CompositionSurfaceId,
+    update: &CAMetalDisplayLinkUpdate,
+) {
+    window_state
+        .lock()
+        .fast_composition
+        .drawable_handed(surface, update.drawable());
+}
+
+impl MacComposition {
+    // Koyo: the link of the layer of `surface` hands it `drawable`.
+    fn drawable_handed(
+        &mut self,
+        surface: CompositionSurfaceId,
+        drawable: Retained<ProtocolObject<dyn CAMetalDrawable>>,
+    ) {
+        if let Some(surface) = self.gpui_surfaces.get_mut(&surface) {
+            surface.layer.drawable_handed(&mut surface.renderer, drawable);
+        }
+    }
+}
+
+/// Koyo: ends an update of the window's own link (`metal_frame`), whose drawable `base`, the
+/// window's renderer, still has if the frame drew nothing into it: the scene the window's
+/// layer wants is drawn into that. The links then pause, unless GPUI drew or asked for
+/// another frame, or a layer of the window still waits for a drawable from its link
+/// (`MetalFrames::end_frame`); as they pause, each layer over a native view lets go of the
+/// drawable its link handed it and nothing was drawn into, so an idle window holds none.
+pub(crate) fn end_frame<Link: FrameLink>(
+    base: &mut renderer::Renderer,
+    composition: &mut MacComposition,
+    frames: &MetalFrames<Link>,
+) {
+    composition.base_layer.show_wanted(base);
+    let awaiting_drawable = composition.base_layer.wanted.is_some()
+        || composition
+            .gpui_surfaces
+            .values()
+            .any(|surface| surface.layer.wanted.is_some());
+    // A frame with nothing to draw leaves its drawable unused; releasing it
+    // lets the link hand it out again.
+    let used_drawable = base.set_frame_drawable(None).is_none();
+    if frames.end_frame(used_drawable, awaiting_drawable) {
+        for surface in composition.gpui_surfaces.values_mut() {
+            drop(surface.renderer.set_frame_drawable(None));
+        }
+    }
+}
+
+/// Koyo: the window's own link has started as `window_link` (`start_display_link`): `base`,
+/// the window's renderer, draws only into the drawables it hands out, and each layer over a
+/// native view gets a link of its own beside it ([`link_layer`]), which `make_link` makes.
+pub(crate) fn start_links<Link: FrameLink>(
+    base: &mut renderer::Renderer,
+    composition: &mut MacComposition,
+    frames: &MetalFrames<Link>,
+    window_link: Link,
+    make_link: impl Fn(CompositionSurfaceId, &CAMetalLayer) -> Option<Link>,
+) {
+    frames.replace(Some(window_link));
+    base.set_display_link_attached(true);
+    for (id, surface) in &mut composition.gpui_surfaces {
+        link_layer(Some(frames), *id, surface, &make_link);
+    }
+}
+
+/// Koyo: stops every link of the window, its own and each of its layers' (`stop_display_link`):
+/// each renderer, `base` and the surfaces', lets go of the drawable a link handed it and asks
+/// its layer for its drawables again, as a frame drawn at once in Core Animation's transaction
+/// does (`display_layer`). Upstream stopped the window's own alone.
+pub(crate) fn stop_links<Link: FrameLink>(
+    base: &mut renderer::Renderer,
+    composition: &mut MacComposition,
+    frames: &MetalFrames<Link>,
+) {
+    frames.replace(None);
+    base.set_display_link_attached(false);
+    for surface in composition.gpui_surfaces.values_mut() {
+        surface.renderer.set_display_link_attached(false);
+    }
+}
+
+/// Koyo: gives the layer of `surface`, the GPUI surface `id`, a link of its own while the
+/// window's links run, paused or running as the window's own is ([`MetalFrames::link_layer`]),
+/// and has its renderer draw only into the drawables that link hands it. A layer the window
+/// makes no link for, as its links don't run or it has none (`frames`, which a window paced
+/// by the `CVDisplayLink` hasn't), asks for its drawables itself. The renderer's way and the
+/// link are set together, here for each surface as it joins the window and in
+/// [`stop_links`], so a renderer never waits for a link it hasn't got.
+fn link_layer<Link: FrameLink>(
+    frames: Option<&MetalFrames<Link>>,
+    id: CompositionSurfaceId,
+    surface: &mut MacGpuiSurface,
+    make_link: &impl Fn(CompositionSurfaceId, &CAMetalLayer) -> Option<Link>,
+) {
+    let linked =
+        frames.is_some_and(|frames| frames.link_layer(id, || make_link(id, &surface.metal_layer)));
+    surface.renderer.set_display_link_attached(linked);
+}
+
+/// Koyo: makes the link of the layer of a GPUI surface of the window in `window_state`, whose
+/// updates hand the layer its drawables ([`layer_frame`]).
+pub(crate) fn layer_links(
+    window_state: &Rc<Mutex<MacWindowState>>,
+) -> impl Fn(CompositionSurfaceId, &CAMetalLayer) -> Option<MetalFrameSource> + use<> {
+    let main_thread = crate::main_thread_marker().expect("macOS windows require the main thread");
+    let window_state = Rc::downgrade(window_state);
+    move |surface, layer| {
+        let window_state = window_state.clone();
+        MetalFrameSource::new(layer, main_thread, move |update| {
+            if let Some(window_state) = window_state.upgrade() {
+                layer_frame(&window_state, surface, update);
+            }
+        })
     }
 }
 
@@ -842,6 +1101,43 @@ pub(crate) fn set_composition_order(
         | PlatformCompositionSurfaceContent::ExternalGpu(_) => None,
     });
     let base_surface = base_surface.context("composition has no GPUI base surface")?;
+
+    // Koyo: what can fail comes before the window's surfaces change: the native views'
+    // handles, and the views and renderers of the GPUI surfaces new to the window. An order
+    // that fails leaves the window's surfaces as they were, and none half made; upstream kept
+    // what it had made, and a surface made without the rest of its order. Each surface made
+    // here joins the window below, and its layer gets its link once its view is in the window.
+    let native_views = surfaces
+        .iter()
+        .filter_map(|surface| match &surface.content {
+            PlatformCompositionSurfaceContent::Gpui => None,
+            PlatformCompositionSurfaceContent::Native(platform_surface)
+            | PlatformCompositionSurfaceContent::ExternalGpu(platform_surface) => {
+                Some(platform_surface.platform_handle().and_then(|handle| {
+                    handle
+                        .downcast::<usize>()
+                        .map(|view| (surface.id, *view as Id))
+                        .map_err(|_| anyhow!("native surface is not backed by an AppKit view"))
+                }))
+            }
+        })
+        .collect::<Result<FxHashMap<_, _>>>()?;
+    let mut made_surfaces = FxHashMap::default();
+    for surface in surfaces {
+        if !matches!(surface.content, PlatformCompositionSurfaceContent::Gpui) {
+            continue;
+        }
+        if surface.id == base_surface
+            || lock
+                .fast_composition
+                .gpui_surfaces
+                .contains_key(&surface.id)
+        {
+            continue;
+        }
+        let made_surface = unsafe { create_gpui_surface(window_state, &mut lock)? };
+        made_surfaces.insert(surface.id, made_surface);
+    }
     lock.fast_composition.base_surface = Some(base_surface);
 
     let active_gpui_surfaces = surfaces
@@ -861,30 +1157,18 @@ pub(crate) fn set_composition_order(
         .copied()
         .collect::<Vec<_>>();
     for id in removed_surfaces {
+        // Koyo: a layer that leaves the window has no link.
+        if let Some(frames) = lock.metal_frames() {
+            frames.unlink_layer(id);
+        }
         if let Some(surface) = lock.fast_composition.gpui_surfaces.remove(&id) {
             unsafe {
                 let _: () = msg_send![surface.view.as_ptr(), removeFromSuperview];
             }
         }
     }
-
-    for surface in surfaces {
-        if !matches!(surface.content, PlatformCompositionSurfaceContent::Gpui) {
-            continue;
-        }
-        if surface.id == base_surface
-            || lock
-                .fast_composition
-                .gpui_surfaces
-                .contains_key(&surface.id)
-        {
-            continue;
-        }
-        let created_surface = unsafe { create_gpui_surface(window_state, &mut lock)? };
-        lock.fast_composition
-            .gpui_surfaces
-            .insert(surface.id, created_surface);
-    }
+    let made = made_surfaces.keys().copied().collect::<FxHashSet<_>>();
+    lock.fast_composition.gpui_surfaces.extend(made_surfaces);
 
     let views = surfaces
         .iter()
@@ -893,18 +1177,13 @@ pub(crate) fn set_composition_order(
                 .fast_composition
                 .gpui_surfaces
                 .get(&surface.id)
-                .map(|gpui_surface| Ok((surface.id, gpui_surface.view.as_ptr()))),
-            PlatformCompositionSurfaceContent::Native(platform_surface)
-            | PlatformCompositionSurfaceContent::ExternalGpu(platform_surface) => {
-                Some(platform_surface.platform_handle().and_then(|handle| {
-                    handle
-                        .downcast::<usize>()
-                        .map(|view| (surface.id, *view as Id))
-                        .map_err(|_| anyhow!("native surface is not backed by an AppKit view"))
-                }))
-            }
+                .map(|gpui_surface| (surface.id, gpui_surface.view.as_ptr())),
+            PlatformCompositionSurfaceContent::Native(_)
+            | PlatformCompositionSurfaceContent::ExternalGpu(_) => native_views
+                .get(&surface.id)
+                .map(|view| (surface.id, *view)),
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Vec<_>>();
 
     let views_by_id = views.iter().copied().collect::<FxHashMap<_, _>>();
 
@@ -996,7 +1275,33 @@ pub(crate) fn set_composition_order(
             let _: () = msg_send![view, setFrame: frame];
         }
     }
+    // Koyo: the surfaces made above have their views in the window by now, and their layers
+    // get links while the window's run.
+    let (frames, make_link) = (lock.metal_frames(), layer_links(window_state));
+    let new_surfaces = lock
+        .fast_composition
+        .gpui_surfaces
+        .iter_mut()
+        .filter(|(id, _)| made.contains(*id));
+    for (id, surface) in new_surfaces {
+        link_layer(frames.as_deref(), *id, surface, &make_link);
+    }
     Ok(())
+}
+
+/// Koyo: the renderer of a GPUI surface over `base`'s, sized for a window whose drawables are
+/// `drawable_size` at `scale_factor`, and the layer it draws on. It asks its layer for its
+/// drawables until the layer has a link ([`link_layer`]).
+fn surface_renderer(
+    context: renderer::Context,
+    base: &renderer::Renderer,
+    drawable_size: Size<DevicePixels>,
+    scale_factor: f32,
+) -> Result<(renderer::Renderer, Retained<CAMetalLayer>)> {
+    let (mut renderer, layer) = renderer::new_overlay_renderer(context, base)?;
+    renderer.update_drawable_size(drawable_size);
+    set_contents_scale(&renderer, scale_factor);
+    Ok((renderer, layer))
 }
 
 /// Creates the overlay view and renderer of a GPUI surface, the size of the
@@ -1007,9 +1312,12 @@ unsafe fn create_gpui_surface(
 ) -> Result<MacGpuiSurface> {
     // Made before the view, so that a renderer that fails to build leaves no
     // view holding the window state behind.
-    let mut renderer = renderer::new_overlay_renderer(
+    let scale_factor = state.scale_factor();
+    let (renderer, metal_layer) = surface_renderer(
         state.fast_composition.renderer_context.clone(),
         &state.renderer,
+        state.content_size().to_device_pixels(scale_factor),
+        scale_factor,
     )?;
     let input_regions = Rc::new(RefCell::new(Vec::<gpui::Hitbox>::new()));
     let native_view = state.native_view.as_ptr();
@@ -1030,9 +1338,6 @@ unsafe fn create_gpui_surface(
             .write(Rc::into_raw(input_regions.clone()).cast_mut().cast());
     }
 
-    let scale_factor = state.scale_factor();
-    renderer.update_drawable_size(state.content_size().to_device_pixels(scale_factor));
-    set_contents_scale(&renderer, scale_factor);
     unsafe {
         let _: () = msg_send![
             view,
@@ -1040,27 +1345,56 @@ unsafe fn create_gpui_surface(
                 | NSAutoresizingMaskOptions::ViewHeightSizable
         ];
         let _: () = msg_send![view, setWantsLayer: Bool::YES];
-        let _: () = msg_send![view, setLayer: renderer.layer_ptr().cast::<AnyObject>()];
+        let _: () = msg_send![view, setLayer: Retained::as_ptr(&metal_layer).cast::<AnyObject>()];
         let _: () = msg_send![
             view,
             setLayerContentsRedrawPolicy: NSViewLayerContentsRedrawPolicy::DuringViewResize
+        ];
+        // Koyo: kept at the top left as the window's own layer is (`MacWindow::open`).
+        let _: () = msg_send![
+            view,
+            setLayerContentsPlacement: NSViewLayerContentsPlacement::TopLeft
         ];
         let _: Id = msg_send![view, autorelease];
     }
     Ok(MacGpuiSurface {
         view: NonNull::new(view).context("GPUI composition view is null")?,
         renderer,
-        drawn: None,
+        metal_layer,
+        layer: LayerState::default(),
         input_regions,
     })
 }
 
+/// Koyo: whether a frame `AppKit` asks the window's view for (`display_layer`) is drawn at
+/// once, in Core Animation's transaction: only while a person resizes the window
+/// (`live_resize`), so GPUI's layers land with each size the window's edge is dragged to. Any
+/// other ask, as the view's size changing when macOS fits the window to a display that just
+/// came back, wakes the window's links (`frames`), and their next update draws it: no layer
+/// asks Core Animation for a drawable on the main thread, which waits for as long as Core
+/// Animation holds the layer's. A window paced by the `CVDisplayLink`, which has no `frames`,
+/// draws at its next tick.
+pub(crate) fn draws_in_transaction<Link: FrameLink>(
+    frames: Option<&MetalFrames<Link>>,
+    live_resize: bool,
+) -> bool {
+    if !live_resize && let Some(frames) = frames {
+        frames.wake();
+    }
+    live_resize
+}
+
 /// Sets whether the window's renderer and every surface's present their
 /// drawables in a Core Animation transaction, as they do while AppKit waits
-/// for the window to draw.
-pub(crate) fn set_presents_with_transaction(state: &mut MacWindowState, enabled: bool) {
-    state.renderer.set_presents_with_transaction(enabled);
-    for surface in state.fast_composition.gpui_surfaces.values_mut() {
+/// for the window to draw. Koyo: given the window's renderer, `base`, and its
+/// composition, where upstream takes the window's state.
+pub(crate) fn set_presents_with_transaction(
+    base: &mut renderer::Renderer,
+    composition: &mut MacComposition,
+    enabled: bool,
+) {
+    base.set_presents_with_transaction(enabled);
+    for surface in composition.gpui_surfaces.values_mut() {
         surface.renderer.set_presents_with_transaction(enabled);
     }
 }

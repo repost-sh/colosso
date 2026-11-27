@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 use parking_lot::Mutex;
 
@@ -18,28 +19,38 @@ use crate::metal_renderer::{Context, InstanceBufferPool, MetalRenderer, Renderer
 
 /// A renderer for an overlay surface above `base`: transparent, on its own
 /// layer, sharing `base`'s device and sprite atlas.
-pub(crate) fn new_overlay_renderer(context: Context, base: &Renderer) -> Result<Renderer> {
-    let mut renderer = new_sharing_atlas(base, context, true)?;
+///
+/// Koyo: returned with the layer it draws on, which the window gives a display
+/// link of its own. Upstream returns the renderer alone.
+pub(crate) fn new_overlay_renderer(
+    context: Context,
+    base: &Renderer,
+) -> Result<(Renderer, Retained<CAMetalLayer>)> {
+    let (mut renderer, layer) = new_sharing_atlas(base, context, true)?;
     // Koyo: what it draws is over `base`'s in a picture of the window too.
     renderer.draws_over(base);
-    Ok(renderer)
+    Ok((renderer, layer))
 }
 
 /// A renderer on a new `CAMetalLayer` that draws with `base`'s device and
-/// sprite atlas.
+/// sprite atlas. Koyo: returned with that layer.
 fn new_sharing_atlas(
     base: &MetalRenderer,
     instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>,
     transparent: bool,
-) -> Result<MetalRenderer> {
+) -> Result<(MetalRenderer, Retained<CAMetalLayer>)> {
     let device = base.device.clone();
     let layer = CAMetalLayer::new();
     MetalRenderer::configure_layer(&layer, &device, transparent, false);
     copy_colorspace(base, &layer);
-    let mut renderer =
-        MetalRenderer::new_internal(device, Some(layer), !transparent, instance_buffer_pool)?;
+    let mut renderer = MetalRenderer::new_internal(
+        device,
+        Some(layer.clone()),
+        !transparent,
+        instance_buffer_pool,
+    )?;
     renderer.sprite_atlas = base.sprite_atlas().clone();
-    Ok(renderer)
+    Ok((renderer, layer))
 }
 
 /// Gives `layer` the colorspace of `base`'s layer, so that overlays above a

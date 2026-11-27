@@ -56,11 +56,12 @@
 
 use crate::main_thread_marker;
 use anyhow::Result;
+use collections::FxHashMap;
 use core_graphics::display::CGDirectDisplayID;
 use dispatch2::{
     _dispatch_source_type_data_add, DispatchObject, DispatchQueue, DispatchRetained, DispatchSource,
 };
-use gpui::{FrameRequestSource, PlatformFrameSignal};
+use gpui::{CompositionSurfaceId, FrameRequestSource, PlatformFrameSignal};
 use gpui_apple::display_link::MetalFrameSource;
 use gpui_util::ResultExt;
 use scheduler::Instant;
@@ -294,6 +295,74 @@ fn unsubscribe(display_id: CGDirectDisplayID, subscriber_id: SubscriberId) {
     }
 }
 
+/// Koyo: what [`MetalFrames`] asks of a display link, so that a test, which has no main
+/// thread to make a `CAMetalDisplayLink` on, can stand links of its own in.
+pub trait FrameLink {
+    fn set_paused(&self, paused: bool);
+    fn is_paused(&self) -> bool;
+}
+
+// Koyo: a window's links are `CAMetalDisplayLink`s.
+impl FrameLink for MetalFrameSource {
+    fn set_paused(&self, paused: bool) {
+        MetalFrameSource::set_paused(self, paused);
+    }
+
+    fn is_paused(&self) -> bool {
+        MetalFrameSource::is_paused(self)
+    }
+}
+
+/// Koyo: a link a test makes off the main thread. The test keeps its [`TestLinkState`], which
+/// says whether the link is paused and whether it's been dropped, as a `CAMetalDisplayLink`
+/// is invalidated when it is.
+#[cfg(test)]
+pub(crate) struct TestLink(std::rc::Rc<TestLinkState>);
+
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct TestLinkState {
+    paused: Cell<bool>,
+    dropped: Cell<bool>,
+}
+
+#[cfg(test)]
+impl TestLink {
+    pub(crate) fn new() -> (Self, std::rc::Rc<TestLinkState>) {
+        let state = std::rc::Rc::<TestLinkState>::default();
+        (Self(state.clone()), state)
+    }
+}
+
+#[cfg(test)]
+impl TestLinkState {
+    pub(crate) fn is_paused(&self) -> bool {
+        self.paused.get()
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
+        !self.dropped.get()
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestLink {
+    fn drop(&mut self) {
+        self.0.dropped.set(true);
+    }
+}
+
+#[cfg(test)]
+impl FrameLink for TestLink {
+    fn set_paused(&self, paused: bool) {
+        self.0.paused.set(paused);
+    }
+
+    fn is_paused(&self) -> bool {
+        self.0.paused.get()
+    }
+}
+
 /// A window's `CAMetalDisplayLink`, shared with GPUI's frame waker so that a
 /// wake reaches the current link without taking the window's lock.
 ///
@@ -301,29 +370,104 @@ fn unsubscribe(display_id: CGDirectDisplayID, subscriber_id: SubscriberId) {
 /// nor asked for another frame, so an idle window acquires no drawables. GPUI
 /// decides when frames are needed (including presenting after high-rate
 /// input); this only stops the link between those decisions.
-#[derive(Default)]
-pub struct MetalFrames {
-    source: RefCell<Option<MetalFrameSource>>,
+///
+/// Koyo: a window that composes native views has a layer over them for each of its other
+/// GPUI surfaces, and each of those layers has a link of its own here ([`WindowLinks`]),
+/// which hands it its drawables as the window's hands the window's layer its own. Upstream
+/// gave only the window's layer a link, and a layer over a native view asked Core Animation
+/// for a drawable in the frame, on the main thread, which waits for as long as Core
+/// Animation keeps the layer's: a second a frame after the display woke.
+pub struct MetalFrames<Link = MetalFrameSource> {
+    // Koyo: the window's links, its own layer's and its other layers', there together or not
+    // at all. Upstream held the window's own alone.
+    links: RefCell<Option<WindowLinks<Link>>>,
     /// Whether GPUI asked for a frame since the current update began.
     woken: Cell<bool>,
 }
 
-impl MetalFrames {
-    pub fn replace(&self, source: Option<MetalFrameSource>) {
-        *self.source.borrow_mut() = source;
+/// Koyo: the links of a window while they're live: its own layer's, and one for each layer
+/// over a native view, by the layer's surface. They run and pause together, so a layer's
+/// link is made paused or running as the window's own is then ([`MetalFrames::link_layer`]);
+/// no layer has a link while the window's own has none.
+struct WindowLinks<Link> {
+    window: Link,
+    layers: FxHashMap<CompositionSurfaceId, Link>,
+}
+
+impl<Link: FrameLink> WindowLinks<Link> {
+    fn set_paused(&self, paused: bool) {
+        self.window.set_paused(paused);
+        for link in self.layers.values() {
+            link.set_paused(paused);
+        }
+    }
+}
+
+// Koyo: `Default` by hand, as a derived one would ask it of `Link`.
+impl<Link> Default for MetalFrames<Link> {
+    fn default() -> Self {
+        Self {
+            links: RefCell::new(None),
+            woken: Cell::new(false),
+        }
+    }
+}
+
+impl<Link: FrameLink> MetalFrames<Link> {
+    /// Koyo: the window's own link, made anew, starts with no layer linked; `None` drops the
+    /// links of every layer with the window's own.
+    pub fn replace(&self, source: Option<Link>) {
+        let links = source.map(|window| WindowLinks {
+            window,
+            layers: FxHashMap::default(),
+        });
+        let replaced = self.links.replace(links);
+        drop(replaced);
     }
 
     pub fn is_attached(&self) -> bool {
-        self.source.borrow().is_some()
+        self.links.borrow().is_some()
+    }
+
+    /// Koyo: gives the layer of `surface` the link `make` makes, paused or running as the
+    /// window's own is, while the window has its own. Returns whether the layer has its link:
+    /// a window whose links don't run makes none for its layers, which get theirs with the
+    /// window's own.
+    pub fn link_layer(
+        &self,
+        surface: CompositionSurfaceId,
+        make: impl FnOnce() -> Option<Link>,
+    ) -> bool {
+        let mut links = self.links.borrow_mut();
+        let Some(links) = links.as_mut() else {
+            return false;
+        };
+        let Some(link) = make() else {
+            return false;
+        };
+        link.set_paused(links.window.is_paused());
+        drop(links.layers.insert(surface, link));
+        true
+    }
+
+    /// Koyo: takes the link of the layer of `surface` away, as the layer leaves the window.
+    pub fn unlink_layer(&self, surface: CompositionSurfaceId) {
+        let unlinked = self
+            .links
+            .borrow_mut()
+            .as_mut()
+            .and_then(|links| links.layers.remove(&surface));
+        drop(unlinked);
     }
 
     pub fn wake(&self) {
         self.woken.set(true);
         // A source being replaced starts unpaused, so skipping it is safe.
-        if let Ok(source) = self.source.try_borrow()
-            && let Some(source) = source.as_ref()
+        // Koyo: every link of the window starts.
+        if let Ok(links) = self.links.try_borrow()
+            && let Some(links) = links.as_ref()
         {
-            source.set_paused(false);
+            links.set_paused(false);
         }
     }
 
@@ -332,25 +476,29 @@ impl MetalFrames {
     }
 
     pub fn debug_state(&self) -> serde_json::Value {
-        let paused = self
-            .source
-            .try_borrow()
-            .ok()
-            .and_then(|source| source.as_ref().map(MetalFrameSource::is_paused));
+        let links = self.links.try_borrow().ok();
+        let links = links.as_ref().and_then(|links| links.as_ref());
         serde_json::json!({
             "kind": "CAMetalDisplayLink",
             "attached": self.is_attached(),
-            "paused": paused,
+            "paused": links.map(|links| links.window.is_paused()),
+            // Koyo: each layer's over a native view.
+            "layers_paused": links.map(|links| {
+                links.layers.values().map(Link::is_paused).collect::<Vec<_>>()
+            }),
             "woken": self.woken.get(),
         })
     }
 
     /// Ends an update, pausing the link if GPUI neither used its drawable nor
     /// asked for another frame while it ran. Returns whether it paused.
-    pub fn end_frame(&self, used_drawable: bool) -> bool {
-        let pause = !used_drawable && !self.woken.get();
-        if pause && let Some(source) = self.source.borrow().as_ref() {
-            source.set_paused(true);
+    ///
+    /// Koyo: the layers' links pause with the window's, and none pauses while a layer still
+    /// waits for a drawable (`awaiting_drawable`): its link is what hands it one.
+    pub fn end_frame(&self, used_drawable: bool, awaiting_drawable: bool) -> bool {
+        let pause = !used_drawable && !awaiting_drawable && !self.woken.get();
+        if pause && let Some(links) = self.links.borrow().as_ref() {
+            links.set_paused(true);
         }
         pause
     }
@@ -612,33 +760,119 @@ mod tests {
     use super::*;
     use objc2::AnyThread;
     use objc2_quartz_core::CAMetalDisplayLink;
+    use std::rc::Rc;
 
     #[test]
     fn metal_frames_pause_only_when_gpui_neither_draws_nor_asks_again() {
-        let frames = MetalFrames::default();
+        let frames = MetalFrames::<MetalFrameSource>::default();
 
         frames.begin_frame();
         assert!(
-            !frames.end_frame(true),
+            !frames.end_frame(true, false),
             "a frame that drew keeps the link running"
         );
 
         frames.begin_frame();
         frames.wake();
         assert!(
-            !frames.end_frame(false),
+            !frames.end_frame(false, false),
             "a wake during the update, like a throttled frame's retry, keeps it running"
         );
 
         frames.wake();
         frames.begin_frame();
         assert!(
-            frames.end_frame(false),
+            frames.end_frame(false, false),
             "a wake before the update was served by it"
         );
 
         frames.begin_frame();
-        assert!(frames.end_frame(false), "an idle update pauses the link");
+        assert!(
+            frames.end_frame(false, false),
+            "an idle update pauses the link"
+        );
+    }
+
+    // Koyo: a window with its own link and one layer linked, and what each link does.
+    fn linked_window() -> (MetalFrames<TestLink>, Rc<TestLinkState>, Rc<TestLinkState>) {
+        let frames = MetalFrames::<TestLink>::default();
+        let ((window, window_seen), (above, above_seen)) = (TestLink::new(), TestLink::new());
+        frames.replace(Some(window));
+        assert!(frames.link_layer(CompositionSurfaceId::default(), || Some(above)));
+        (frames, window_seen, above_seen)
+    }
+
+    #[test]
+    fn every_link_of_a_window_pauses_and_wakes_with_its_own() {
+        let (frames, window, above) = linked_window();
+        let paused = || [window.is_paused(), above.is_paused()];
+
+        frames.begin_frame();
+        assert!(frames.end_frame(false, false));
+        assert_eq!(paused(), [true; 2], "an idle update pauses every link");
+
+        frames.wake();
+        assert_eq!(paused(), [false; 2], "a wake starts every link");
+
+        frames.begin_frame();
+        assert!(frames.end_frame(false, false));
+        frames.unlink_layer(CompositionSurfaceId::default());
+        assert!(!above.is_live(), "a layer's link taken away is invalidated");
+        frames.wake();
+        assert!(!window.is_paused(), "and the window's own wakes alone");
+    }
+
+    #[test]
+    fn a_layer_linked_later_runs_or_pauses_as_the_window_does_then() {
+        for idle in [true, false] {
+            let frames = MetalFrames::<TestLink>::default();
+            frames.replace(Some(TestLink::new().0));
+            frames.begin_frame();
+            if !idle {
+                frames.wake();
+            }
+            assert_eq!(frames.end_frame(false, false), idle);
+            let (link, seen) = TestLink::new();
+            assert!(frames.link_layer(CompositionSurfaceId::default(), || Some(link)));
+            assert_eq!(
+                seen.is_paused(),
+                idle,
+                "a layer linked while the window's link is paused={idle} is paused={idle}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_layer_has_a_link_while_the_window_has_none() {
+        let (frames, window, above) = linked_window();
+        frames.replace(None);
+        assert!(
+            !window.is_live() && !above.is_live(),
+            "the window's link goes, and every layer's with it"
+        );
+        let made = Cell::new(false);
+        assert!(!frames.link_layer(CompositionSurfaceId::default(), || {
+            made.set(true);
+            Some(TestLink::new().0)
+        }));
+        assert!(!made.get(), "a window without its link makes none for a layer");
+    }
+
+    #[test]
+    fn links_keep_running_while_a_layer_waits_for_a_drawable() {
+        let (frames, window, above) = linked_window();
+        let paused = || [window.is_paused(), above.is_paused()];
+
+        frames.begin_frame();
+        assert!(
+            !frames.end_frame(false, true),
+            "a frame that drew nothing, with a layer still waiting, pauses nothing"
+        );
+        assert_eq!(paused(), [false; 2]);
+
+        frames.begin_frame();
+        assert!(frames.end_frame(false, false));
+        assert_eq!(paused(), [true; 2], "a layer that has its drawable lets them pause");
     }
 
     #[test]
@@ -654,11 +888,21 @@ mod tests {
         // the state under test.
         let link = CAMetalDisplayLink::initWithMetalLayer(CAMetalDisplayLink::alloc(), layer);
         renderer.set_display_link_attached(true);
-        renderer.draw(&gpui::Scene::default());
+        // Koyo: with no drawable handed out, the renderer draws nothing and asks for none.
+        assert_eq!(
+            renderer.draw(&gpui::Scene::default()),
+            crate::renderer::Presented::AwaitingDrawable
+        );
 
         link.invalidate();
         renderer.set_display_link_attached(false);
-        renderer.draw(&gpui::Scene::default());
+        assert_eq!(
+            renderer.draw(&gpui::Scene::default()),
+            crate::renderer::Presented::Drawn(gpui::size(
+                gpui::DevicePixels(64),
+                gpui::DevicePixels(64)
+            ))
+        );
     }
 
     #[test]

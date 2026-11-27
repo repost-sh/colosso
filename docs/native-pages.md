@@ -318,10 +318,25 @@ The off-screen path wasn't needed for pages out of sight, and is gone (2026-11-1
 The risk: the pane's edge is GPUI's and lands in GPUI's frame; the page is Chromium's and
 lands when its next frame is ready.
 
-- **Window resizes** already have the treatment: when `AppKit` asks the window to draw, GPUI
-  presents inside Core Animation's transaction on every surface
-  (gpui-fast-macos 0.1.12 `window.rs` `display_layer`, `fast/composition.rs`
-  `set_presents_with_transaction`). `[read]`
+- **Window resizes** already have the treatment: when `AppKit` asks the window to draw during
+  a live resize, GPUI presents inside Core Animation's transaction on every surface
+  (gpui-fast-macos 0.1.12 `window.rs` `display_layer`, which did so for every ask;
+  `fast/composition.rs` `set_presents_with_transaction`). `[read]` Such a frame first stops
+  the window's display links, its own layer's and the one each layer over a page has
+  (2026-11-27, `koyo-rs/vendor/README.md`, gpui-fast-macos), so every layer asks Core
+  Animation for a drawable of its size and presents it in the transaction; a layer over a
+  page doesn't present one its link handed it before the resize, stretched. Such a frame
+  comes only while a person drives the window's geometry: a live resize (`AppKit`'s
+  `inLiveResize`), and Koyo's drags along a page and fitted pop-ups
+  (`native::window::draw_in_transaction` and `fit`, through gpui-fast-macos's
+  `FrameAtOnce`). That is the one place left where the main thread asks Core Animation for a
+  drawable, which waits while Core Animation holds the layer's, as after the display woke; it
+  comes while the window is on screen, when Core Animation hands drawables back at once. Any
+  other time `AppKit` asks the window to draw, as when macOS resizes it to fit a display that
+  just came back, the window's links wake and their next
+  update draws it, with no wait on the main thread; until then the window shows its last
+  frame kept at its top left, where GPUI lays it out from, not stretched. `[built]`, run in
+  unit tests (`fast/composition_tests.rs`), not seen on screen.
 - **Split and panel resizes** don't. Measured by stepping a split's ratio and reading the
   page's layer after each commit (the spike's `sync.rs`, since removed;
   `.superpowers/native/probe/sync-software.out`):

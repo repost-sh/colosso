@@ -14,16 +14,20 @@ use crate::popup::Corner;
 /// `NSWindow`, as a test's window hasn't. The frame changes once the app is free of the update
 /// asking for it: `AppKit` tells GPUI of a resize as it happens, which can't be heard mid-update.
 ///
-/// The frame GPUI drew last is the old size. Left to itself, Core Animation stretches it to the
-/// new one until GPUI's next frame, which comes late while the app is busy: a launcher whose rows
-/// come and go showed its field squashed or stretched. So the frame is pinned to the kept corner
-/// rather than stretched, which a view laid out from that corner shows right, and drawn again at
-/// the new size before the resize reaches the screen, in the same Core Animation transaction.
+/// The frame GPUI drew last is the old size. GPUI keeps it at the view's top left until its
+/// next frame, which comes late while the app is busy; stretched to the new size, as Core
+/// Animation would have it, a launcher whose rows come and go showed its field squashed. So the
+/// frame is pinned to the kept corner, which a view laid out from that corner shows right, and
+/// drawn again at the new size before the resize reaches the screen, in the same Core Animation
+/// transaction (`gpui_macos::FrameAtOnce`).
 pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) -> bool {
     let Some(view) = gpui_view(window) else {
         return false;
     };
     let Some(ns_window) = view.window() else {
+        return false;
+    };
+    let Some(at_once) = gpui_macos::FrameAtOnce::of(window) else {
         return false;
     };
     view.setLayerContentsPlacement(match (corner.top, corner.left) {
@@ -49,9 +53,7 @@ pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) 
             fitted.origin.x = frame.origin.x + frame.size.width - fitted.size.width;
         }
         ns_window.setFrame_display(fitted, true);
-        if let Some(layer) = view.layer() {
-            layer.display();
-        }
+        at_once.draw();
     })
     .detach();
     true
@@ -59,10 +61,10 @@ pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) 
 
 /// Has GPUI draw `window` once the app is free of the update asking for it, rather than at the
 /// screen's next refresh, presenting the frame in the Core Animation transaction a native
-/// view's move commits in: what GPUI draws and the view land on screen together. For a frame
-/// that moves a native view against GPUI's own content, as a pane's edge dragged along a
-/// native page; a window drawn at the screen's refresh presents by itself, a refresh or two
-/// apart from the view.
+/// view's move commits in (`gpui_macos::FrameAtOnce`): what GPUI draws and the view land on
+/// screen together. For a frame that moves a native view against GPUI's own content, as a
+/// pane's edge dragged along a native page, which a person drives; a window drawn at the
+/// screen's refresh presents by itself, a refresh or two apart from the view.
 #[cfg(not(test))]
 pub fn draw_in_transaction(window: &Window, cx: &mut App) {
     thread_local! {
@@ -73,13 +75,13 @@ pub fn draw_in_transaction(window: &Window, cx: &mut App) {
     if ASKED.get() {
         return;
     }
-    let Some(layer) = gpui_view(window).and_then(|view| view.layer()) else {
+    let Some(at_once) = gpui_macos::FrameAtOnce::of(window) else {
         return;
     };
     ASKED.set(true);
     cx.spawn(async move |_: &mut AsyncApp| {
         ASKED.set(false);
-        layer.display();
+        at_once.draw();
     })
     .detach();
 }

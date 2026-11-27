@@ -47,6 +47,8 @@ pub(crate) use platform::*;
 pub(crate) use window::*;
 
 pub use platform::MacPlatform;
+// Koyo: the app's say over when a window is drawn at once, in Core Animation's transaction.
+pub use window::FrameAtOnce;
 
 trait BoolExt {
     fn to_objc(self) -> Bool;

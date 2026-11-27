@@ -44,10 +44,10 @@ use objc2_app_kit::{
     NSButton, NSColor, NSDragOperation, NSDraggingContext, NSDraggingImageComponent,
     NSDraggingImageComponentIconKey, NSDraggingItem, NSEventModifierFlags, NSEventType,
     NSPasteboardWriting, NSRequestUserAttentionType, NSScreen, NSTrackingArea,
-    NSTrackingAreaOptions, NSView, NSViewLayerContentsRedrawPolicy, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSWindow, NSWindowAnimationBehavior,
-    NSWindowButton, NSWindowCollectionBehavior, NSWindowOcclusionState, NSWindowOrderingMode,
-    NSWindowStyleMask, NSWindowTitleVisibility, NSWorkspace,
+    NSTrackingAreaOptions, NSView, NSViewLayerContentsPlacement, NSViewLayerContentsRedrawPolicy,
+    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSWindow,
+    NSWindowAnimationBehavior, NSWindowButton, NSWindowCollectionBehavior, NSWindowOcclusionState,
+    NSWindowOrderingMode, NSWindowStyleMask, NSWindowTitleVisibility, NSWorkspace,
 };
 use objc2_core_graphics::CGColor;
 use objc2_foundation::{
@@ -753,7 +753,6 @@ pub(crate) struct MacWindowState {
     select_next_tab_callback: Option<Box<dyn FnMut()>>,
     select_previous_tab_callback: Option<Box<dyn FnMut()>>,
     toggle_tab_bar_callback: Option<Box<dyn FnMut()>>,
-    activated_least_once: bool,
     closed: Arc<AtomicBool>,
     accesskit_adapter: Option<accesskit_macos::SubclassingAdapter>,
     // The parent window if this window is a sheet (Dialog kind)
@@ -940,6 +939,8 @@ impl MacWindowState {
                 };
                 let main_thread =
                     crate::main_thread_marker().expect("macOS windows require the main thread");
+                // Koyo: the window's layers over its native views get their links with its own.
+                let layer_links = crate::fast::composition::layer_links(window_state);
                 let window_state = Rc::downgrade(window_state);
                 let source = MetalFrameSource::new(layer, main_thread, move |update| {
                     if let Some(window_state) = window_state.upgrade() {
@@ -947,8 +948,13 @@ impl MacWindowState {
                     }
                 });
                 if let Some(source) = source {
-                    metal_frames.replace(Some(source));
-                    self.renderer.set_display_link_attached(true);
+                    crate::fast::composition::start_links(
+                        &mut self.renderer,
+                        &mut self.fast_composition,
+                        metal_frames,
+                        source,
+                        layer_links,
+                    );
                 }
             }
             FrameSource::DisplayLink(frame_source) => {
@@ -966,14 +972,27 @@ impl MacWindowState {
         }
     }
 
+    // Koyo: the window's display links, where they pace it (macOS 14 and later).
+    pub(crate) fn metal_frames(&self) -> Option<Rc<MetalFrames>> {
+        match &self.frame_source {
+            FrameSource::Metal(metal_frames) => Some(metal_frames.clone()),
+            FrameSource::DisplayLink(_) => None,
+        }
+    }
+
     fn stop_display_link(&mut self) {
         match &mut self.frame_source {
             FrameSource::Metal(metal_frames) => {
                 if metal_frames.is_attached() {
                     // Detach the link rather than pause it, so that a synchronous
                     // draw can use the layer's `nextDrawable`.
-                    metal_frames.replace(None);
-                    self.renderer.set_display_link_attached(false);
+                    // Koyo: the links of the window's layers over its native views stop with
+                    // its own, and each of those layers asks for its drawables too.
+                    crate::fast::composition::stop_links(
+                        &mut self.renderer,
+                        &mut self.fast_composition,
+                        metal_frames,
+                    );
                 }
             }
             FrameSource::DisplayLink(Some(frame_source)) => frame_source.stop(),
@@ -1266,7 +1285,6 @@ impl MacWindow {
                 select_next_tab_callback: None,
                 select_previous_tab_callback: None,
                 toggle_tab_bar_callback: None,
-                activated_least_once: false,
                 closed: Arc::new(AtomicBool::new(false)),
                 accesskit_adapter: None,
                 sheet_parent: None,
@@ -1322,6 +1340,13 @@ impl MacWindow {
             let _: () = msg_send![
             native_view,
             setLayerContentsRedrawPolicy: NSViewLayerContentsRedrawPolicy::DuringViewResize
+            ];
+            // Koyo: the frame drawn last stays at the view's top left, where GPUI lays the
+            // window out from, while the view's new size waits for the next frame, as when
+            // macOS fits the window to a display. Upstream left `AppKit` stretching it.
+            let _: () = msg_send![
+                native_view,
+                setLayerContentsPlacement: NSViewLayerContentsPlacement::TopLeft
             ];
 
             let native_view: *mut AnyObject = msg_send![native_view, autorelease];
@@ -2254,9 +2279,11 @@ impl PlatformWindow for MacWindow {
         self.0.as_ref().lock().toggle_tab_bar_callback = Some(callback);
     }
 
+    // Koyo: drawn as a layer of a window that composes is, so a frame its layer has no
+    // drawable for is kept for the next one, where upstream skipped it.
     fn draw(&self, scene: &gpui::Scene) {
         let mut this = self.0.lock();
-        this.renderer.draw(scene);
+        crate::fast::composition::draw_window(&mut this, scene);
     }
 
     fn draw_composed(&self, scene: gpui::ComposedScene<'_>) {
@@ -2345,7 +2372,6 @@ impl PlatformWindow for MacWindow {
             "last_reported_visibility": state
                 .last_visibility
                 .map(|visibility| format!("{visibility:?}")),
-            "activated_at_least_once": state.activated_least_once,
             "cursor": {
                 "cached_style": state.cursor_style,
                 "cached_visible": state.cursor_visible.load(Ordering::Relaxed),
@@ -3524,7 +3550,6 @@ fn report_display_change(window_state: &Rc<Mutex<MacWindowState>>) {
 }
 
 extern "C" fn window_did_change_key_status(this: &AnyObject, selector: Sel, _: *mut AnyObject) {
-    let signal_at = PlatformFrameSignal::capture(scheduler::Instant::now);
     let window_state = unsafe { get_window_state(this) };
     let lock = window_state.lock();
     let is_active = lock.native_window().isKeyWindow();
@@ -3564,36 +3589,12 @@ extern "C" fn window_did_change_key_status(this: &AnyObject, selector: Sel, _: *
         events.raise();
     }
 
-    // When a window becomes active, trigger an immediate synchronous frame request to prevent
-    // tab flicker when switching between windows in native tabs mode.
-    //
-    // This is only done on subsequent activations (not the first) to ensure the initial focus
-    // path is properly established. Without this guard, the focus state would remain unset until
-    // the first mouse click, causing keybindings to be non-functional.
-    if selector == sel!(windowDidBecomeKey:) && is_active {
-        let window_state = unsafe { get_window_state(this) };
-        let mut lock = window_state.lock();
-
-        if lock.activated_least_once {
-            if let Some(mut callback) = lock.request_frame_callback.take() {
-                crate::fast::composition::set_presents_with_transaction(&mut lock, true);
-                lock.stop_display_link();
-                drop(lock);
-                callback(RequestFrameOptions {
-                    signal_at,
-                    signal_source: FrameRequestSource::NativeCallback,
-                    ..Default::default()
-                });
-
-                let mut lock = window_state.lock();
-                lock.request_frame_callback = Some(callback);
-                crate::fast::composition::set_presents_with_transaction(&mut lock, false);
-                lock.start_display_link(&window_state);
-            }
-        } else {
-            lock.activated_least_once = true;
-        }
-    }
+    // Koyo: a window becoming key draws at its link's next update, as any change does.
+    // Upstream drew it at once there, in Core Animation's transaction, against tabs flickering
+    // as native tabs are switched; Koyo's windows are never tabbed (they're opened with no
+    // tabbing identifier, so `allowsAutomaticWindowTabbing` is off), and that frame, the
+    // window becoming key as the Mac woke or its lid opened, asked each of the window's layers
+    // for a drawable on the main thread just as Core Animation held them.
 
     executor
         .spawn(async move {
@@ -3698,13 +3699,68 @@ extern "C" fn set_frame_size(this: &AnyObject, _: Sel, size: NSSize) {
     };
 }
 
+// Koyo: AppKit asks the window to draw as its view changes size or is to be drawn again. Only
+// a live resize, a person dragging the window's edge, is drawn at once in Core Animation's
+// transaction; any other ask, as macOS fitting the window to a display that just came back,
+// wakes the window's links, and their next update draws it. Upstream drew every one at once.
 extern "C" fn display_layer(this: &AnyObject, _: Sel, _: *mut AnyObject) {
-    let signal_at = PlatformFrameSignal::capture(scheduler::Instant::now);
     let window_state = unsafe { get_window_state(this) };
+    let live_resize: Bool = unsafe { msg_send![this, inLiveResize] };
+    let frames = window_state.lock().metal_frames();
+    if crate::fast::composition::draws_in_transaction(frames.as_deref(), live_resize.as_bool()) {
+        draw_in_transaction(&window_state);
+    }
+}
+
+/// Koyo: the app's way to have one of GPUI's windows drawn at once, in Core Animation's
+/// transaction, as `AppKit` has it drawn while a person resizes it: what GPUI draws lands on
+/// screen with what else the app changes in the window in that transaction, a native view
+/// moved against GPUI's content or the window resized. For a frame a person drives, as a
+/// pane's edge dragged along a page: every layer of the window asks Core Animation for a
+/// drawable on the main thread then, which waits for as long as Core Animation holds the
+/// layer's, as it does while the window isn't seen.
+pub struct FrameAtOnce(Weak<Mutex<MacWindowState>>);
+
+impl FrameAtOnce {
+    /// `window`'s; none for a window `AppKit` doesn't draw, as a test's.
+    pub fn of(window: &gpui::Window) -> Option<Self> {
+        let handle = rwh::HasWindowHandle::window_handle(window).ok()?;
+        let rwh::RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
+            return None;
+        };
+        // SAFETY: the `AppKit` handle of a GPUI window is its `MacWindow`'s view, which holds
+        // the window's state while it's open, and the window is open while it's being drawn.
+        let view = unsafe { appkit.ns_view.cast::<AnyObject>().as_ref() };
+        let window_state = unsafe { get_window_state(view) };
+        Some(Self(Rc::downgrade(&window_state)))
+    }
+
+    /// Draws the window now, unless it has closed. Called once the app is free of the update
+    /// that asked for it: GPUI draws the window in an update of its own.
+    pub fn draw(&self) {
+        if let Some(window_state) = self.0.upgrade() {
+            draw_in_transaction(&window_state);
+        }
+    }
+}
+
+/// Koyo: a frame of the window drawn at once, presented in Core Animation's transaction, as a
+/// live resize has it (`display_layer`) and the app (`FrameAtOnce`). Upstream's
+/// `display_layer`, which drew one for every ask of `AppKit`'s.
+fn draw_in_transaction(window_state: &Rc<Mutex<MacWindowState>>) {
+    let signal_at = PlatformFrameSignal::capture(scheduler::Instant::now);
     let mut lock = window_state.lock();
     if let Some(mut callback) = lock.request_frame_callback.take() {
-        crate::fast::composition::set_presents_with_transaction(&mut lock, true);
+        // Koyo: every link of the window stops before its layers present in the transaction,
+        // so no layer presents a drawable a link handed it there. Upstream set the window's
+        // own layer presenting in the transaction before its link stopped.
         lock.stop_display_link();
+        let state = &mut *lock;
+        crate::fast::composition::set_presents_with_transaction(
+            &mut state.renderer,
+            &mut state.fast_composition,
+            true,
+        );
         drop(lock);
         callback(RequestFrameOptions {
             signal_at,
@@ -3714,8 +3770,13 @@ extern "C" fn display_layer(this: &AnyObject, _: Sel, _: *mut AnyObject) {
 
         let mut lock = window_state.lock();
         lock.request_frame_callback = Some(callback);
-        crate::fast::composition::set_presents_with_transaction(&mut lock, false);
-        lock.start_display_link(&window_state);
+        let state = &mut *lock;
+        crate::fast::composition::set_presents_with_transaction(
+            &mut state.renderer,
+            &mut state.fast_composition,
+            false,
+        );
+        lock.start_display_link(window_state);
     }
 }
 
@@ -3766,10 +3827,14 @@ fn metal_frame(
     });
     let mut lock = window_state.lock();
     lock.request_frame_callback = Some(callback);
-    // A frame with nothing to draw leaves its drawable unused; releasing it
-    // lets the link hand it out again.
-    let used_drawable = lock.renderer.set_frame_drawable(None).is_none();
-    metal_frames.end_frame(used_drawable);
+    // Koyo: a scene the window's layer still wants is drawn into the drawable the frame left,
+    // and the links run on while a layer waits for one of its own.
+    let state = &mut *lock;
+    crate::fast::composition::end_frame(
+        &mut state.renderer,
+        &mut state.fast_composition,
+        &metal_frames,
+    );
 }
 
 extern "C" fn valid_attributes_for_marked_text(_: &AnyObject, _: Sel) -> *mut AnyObject {
