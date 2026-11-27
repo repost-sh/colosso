@@ -174,10 +174,12 @@ if [ -n "$identity" ]; then
 else
   script/desk-host --release --out "$PWD/$app/Contents/Frameworks"
 fi
-# Koyo opens web pages, and says so: the http and https addresses, which is what makes macOS
-# offer it among the web browsers and hand it a link (koyo's links.rs opens it as an unpinned
-# page), and what Apple asks of a browser before it grants one its passkeys
-# (docs/browser.md 9.4).
+# Koyo opens web pages, and says so: the http and https addresses, which is what has macOS
+# hand it a link (koyo's links.rs opens it as an unpinned page) and what Apple asks of a
+# browser before it grants one its passkeys (docs/browser.md 9.4), and HTML and XHTML
+# documents, which it opens the same way. Launch Services counts an app that opens both
+# addresses a web browser, and System Settings offers it as the default one, only if it opens
+# HTML documents too.
 #
 # What pages in its browser may reach, said why: macOS holds the app that launched the browser
 # engine responsible for it, so ends Koyo's engine for using Bluetooth (Google's sign-in looks
@@ -233,6 +235,29 @@ cat > "$app/Contents/Info.plist" <<PLIST
       <array>
         <string>http</string>
         <string>https</string>
+      </array>
+    </dict>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>HTML document</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.html</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>XHTML document</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.xhtml</string>
       </array>
     </dict>
   </array>

@@ -424,8 +424,8 @@ What the person who owns Koyo's Apple developer account does, once:
    | Apple asks | Koyo |
    |---|---|
    | The account is an organization's, and its Account Holder asks | The account is an individual's (team `U228HB4SSR`). The owner's to change. |
-   | The app's `Info.plist` declares the `http` and `https` schemes | `script/bundle` declares both (`CFBundleURLTypes`), so macOS lists Koyo among the web browsers. |
-   | An address opened in it loads that page, with no detour and nothing added | A link macOS hands Koyo opens as an unpinned page and is shown (`links.rs`): on a start, while it runs, and with its window closed, which opens again. Run with the debug bundle on the agent desktop (`.superpowers/v/evidence/*links-from-macos`). |
+   | The app's `Info.plist` declares the `http` and `https` schemes | `script/bundle` declares both (`CFBundleURLTypes`), and HTML and XHTML documents (`CFBundleDocumentTypes`). The schemes alone have macOS hand Koyo a link; System Settings offers an app as the default web browser only if it opens HTML documents too, which is Launch Services' `isWebBrowser`. **[checked 2026-11-27, macOS 27.2]** Of three apps alike but for what they declare, the one with the schemes alone isn't a web browser to Launch Services, and each of the two that also open `public.html` is. |
+   | An address opened in it loads that page, with no detour and nothing added | A link macOS hands Koyo opens as an unpinned page and is shown (`links.rs`): on a start, while it runs, and with its window closed, which opens again. A document it hands Koyo opens the same way, at its `file` address. Run with the debug bundle on the agent desktop (`.superpowers/v/evidence/*links-from-macos`). |
    | On launch it offers a field for an address, search tools, or bookmarks | With no tab open the address bar reads "Search or enter address", and a click on it or ⌘L opens a new page with its address ready to type in, which also searches (`docs/new-tab.md`). The + and ⌘T open the launcher, and the pinned pages stand where bookmarks do. |
 
    The App ID `codes.koyo.desktop` is registered. The request has not been sent.

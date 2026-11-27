@@ -54,7 +54,7 @@ Keep the Developer ID for the life of the app. A Koyo signed by one team refuses
 
 Pages can use this Mac's passkeys only in a browser that Apple has granted its browser passkey entitlement. Until then, pages reach a security key or a phone. What the entitlement does in Koyo is in [Browser](browser.md), section 9.
 
-Apple grants it only to a web browser, by criteria that [Browser](browser.md) section 9.4 lists against Koyo. Koyo's bundle declares the `http` and `https` schemes and opens a link that macOS hands it, which the criteria ask for. One criterion is not met and is yours to change: the Apple Developer account must be an organization's, and you its Account Holder. An individual membership does not qualify by Apple's wording.
+Apple grants it only to a web browser, by criteria that [Browser](browser.md) section 9.4 lists against Koyo. Koyo's bundle declares the `http` and `https` schemes and HTML documents, and opens a link or a page's file that macOS hands it, which the criteria ask for. One criterion is not met and is yours to change: the Apple Developer account must be an organization's, and you its Account Holder. An individual membership does not qualify by Apple's wording.
 
 To ask:
 

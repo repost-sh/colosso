@@ -126,7 +126,7 @@ pub fn reopen_main_window(
     shell::reopen(shell::KeptWindow::path(), open, opened, cx);
 }
 
-/// Opens `pages`, web pages macOS handed Koyo (`links.rs`), each as an unpinned page, the
+/// Opens `pages`, the pages macOS handed Koyo (`links.rs`), each as an unpinned page, the
 /// last one shown, as a page opened from the launcher with no project is: a link from outside
 /// belongs to no project. The window is opened again first if it was closed.
 fn open_handed_pages(pages: Vec<String>, cx: &mut App) {
@@ -340,5 +340,17 @@ mod tests {
             "each page handed over is an unpinned page of its own"
         );
         assert_eq!(shown(&shell, cx), (Some("https://example.com/c".into()), true));
+    }
+
+    #[gpui_kit::test]
+    fn a_document_macos_hands_over_opens_as_a_page_at_its_file_address(cx: &mut TestAppContext) {
+        cx.update(crate::test_support::init);
+        let (_window, shell) = shell_window(cx);
+
+        let document = "file:///Users/me/Sites/a%20page.html";
+        cx.update(|cx| open_handed_pages(vec![document.into()], cx));
+        cx.run_until_parked();
+        assert_eq!(loose(&shell, cx), [document]);
+        assert_eq!(shown(&shell, cx), (Some(document.into()), true));
     }
 }

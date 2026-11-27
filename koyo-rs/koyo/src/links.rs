@@ -1,16 +1,18 @@
 //! Links macOS hands Koyo to open (`docs/browser.md` 9.4). Koyo's bundle says it opens `http`
-//! and `https` addresses, as a web browser's does (`script/bundle`), so macOS hands it a link
-//! clicked in another app while Koyo is the person's browser, or one it's asked to open by
-//! name. They come on the platform's say, before the app runs for the one Koyo is started
-//! for, so they're kept in order until the app takes them. How a page is opened is the
-//! caller's: the crate root opens each as an unpinned page (`main.rs`).
+//! and `https` addresses and HTML documents, as a web browser's does (`script/bundle`), so
+//! macOS hands it a link clicked in another app or a page's file opened in the Finder while
+//! Koyo is the person's browser, or one it's asked to open by name. A file comes as its
+//! `file` address. They come on the platform's say, before the app runs for the one Koyo is
+//! started for, so they're kept in order until the app takes them. How a page is opened is
+//! the caller's: the crate root opens each as an unpinned page (`main.rs`).
 
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use gpui_kit::App;
 
-/// Schemes of a web page's address: the ones the bundle says Koyo opens.
-const WEB_SCHEMES: [&str; 2] = ["http://", "https://"];
+/// Schemes of a page's address: a web page's, and that of a file, which is how macOS hands
+/// over a document. The bundle says Koyo opens these and no other.
+const PAGE_SCHEMES: [&str; 3] = ["http://", "https://", "file://"];
 
 /// Where macOS's links are put as they come.
 pub struct Handed(UnboundedSender<Vec<String>>);
@@ -32,9 +34,8 @@ impl Handed {
     }
 }
 
-/// Has `open` open the web pages among the links, batch by batch as they come, those that
-/// came before now first. What isn't a web page's address is left out: the bundle asks for
-/// no other.
+/// Has `open` open the pages among the links, batch by batch as they come, those that came
+/// before now first. What isn't a page's address is left out: the bundle asks for no other.
 pub fn open_as_they_come(
     links: Links,
     open: impl Fn(Vec<String>, &mut App) + 'static,
@@ -43,7 +44,7 @@ pub fn open_as_they_come(
     cx.spawn(async move |cx| {
         let mut links = links.0;
         while let Some(handed) = links.next().await {
-            let pages: Vec<String> = handed.into_iter().filter(|link| web(link)).collect();
+            let pages: Vec<String> = handed.into_iter().filter(|link| page(link)).collect();
             if !pages.is_empty() {
                 cx.update(|cx| open(pages, cx));
             }
@@ -52,10 +53,10 @@ pub fn open_as_they_come(
     .detach();
 }
 
-/// Whether `link` is a web page's address, whatever its letters' case.
-fn web(link: &str) -> bool {
+/// Whether `link` is a page's address, whatever its letters' case.
+fn page(link: &str) -> bool {
     let lower = link.to_ascii_lowercase();
-    WEB_SCHEMES.iter().any(|scheme| lower.starts_with(scheme))
+    PAGE_SCHEMES.iter().any(|scheme| lower.starts_with(scheme))
 }
 
 #[cfg(test)]
@@ -65,21 +66,21 @@ mod tests {
 
     use gpui_kit::TestAppContext;
 
-    use super::{handed, open_as_they_come, web};
+    use super::{handed, open_as_they_come, page};
 
     #[test]
-    fn only_a_web_page_s_address_is_one() {
-        assert!(web("https://example.com/") && web("http://localhost:3000/a?b=c"));
-        assert!(web("HTTPS://Example.com/"));
+    fn only_a_page_s_address_is_one() {
+        assert!(page("https://example.com/") && page("http://localhost:3000/a?b=c"));
+        assert!(page("HTTPS://Example.com/"));
+        assert!(page("file:///Users/me/Sites/a%20page.html"));
         for other in [
             "",
-            "file:///etc/passwd",
             "mailto:someone@example.com",
             "koyo://x",
             "chrome://settings/",
             "example.com",
         ] {
-            assert!(!web(other), "{other}");
+            assert!(!page(other), "{other}");
         }
     }
 
@@ -100,17 +101,17 @@ mod tests {
 
         said.take(vec![
             "https://example.com/b".into(),
-            "file:///etc/passwd".into(),
-            "http://example.com/c".into(),
+            "koyo://x".into(),
+            "file:///Users/me/page.html".into(),
         ]);
         cx.run_until_parked();
         assert_eq!(
             *opened.borrow(),
             [
                 vec!["https://example.com/first"],
-                vec!["https://example.com/b", "http://example.com/c"]
+                vec!["https://example.com/b", "file:///Users/me/page.html"]
             ],
-            "what isn't a web page's address was opened, or a batch of none was"
+            "what isn't a page's address was opened, or a batch of none was"
         );
     }
 }
