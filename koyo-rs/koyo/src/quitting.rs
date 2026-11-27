@@ -3,6 +3,11 @@
 //! they keep running or stop, or has said so for good in Settings → General. Unsaved edits are
 //! asked about first. Quitting from the Dock or by logging out can't be held up to ask, and leaves
 //! them running.
+//!
+//! A restart into an update (`updates::RestartToUpdate`) is not a quit of what runs: it asks
+//! about unsaved edits and pages as a quit does, and then ends the app. Terminals and chats
+//! aren't asked about and aren't stopped, whatever Settings → General says a quit does: they
+//! live in their daemons, and the Koyo that opens picks them up.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,7 +30,7 @@ use crate::model::PaneKind;
 use crate::navigation::OpenSettings;
 use crate::settings::{self, checked_menu};
 use crate::terminals::{close_all, daemon_client};
-use crate::theme;
+use crate::{theme, updates};
 
 actions!(app, [Quit]);
 
@@ -65,6 +70,7 @@ impl OnQuit {
 pub fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
     cx.on_action(|_: &Quit, cx| cx.defer(quit));
+    cx.on_action(|_: &updates::RestartToUpdate, cx| cx.defer(restart));
     cx.on_action(|SetOnQuit(choice): &SetOnQuit, cx| {
         settings::update(cx, |settings| settings.on_quit = *choice);
     });
@@ -115,6 +121,31 @@ fn quit(cx: &mut App) {
         shell.update(cx, |shell, cx| shell.ask_all_then(deal_with_what_runs, window, cx));
     }))
     .ok();
+}
+
+/// Restarts Koyo into the release staged beside it: asks about unsaved edits and pages as a
+/// quit does, then hands the release over and ends the app.
+fn restart(cx: &mut App) {
+    let Some((window, shell)) = crate::control::main_shell(cx) else {
+        return end_into_update(cx);
+    };
+    (window.update(cx, |_, window, cx| {
+        shell.update(cx, |shell, cx| shell.ask_all_then(end_into_update, window, cx));
+    }))
+    .ok();
+}
+
+/// Hands the staged release to its installer, which opens Koyo again once it's in place, and
+/// quits only if the installer started: with none, the app stays open and says the update
+/// failed.
+fn end_into_update(cx: &mut App) {
+    let handed = updates::hand_over_to_reopen(cx);
+    cx.spawn(async move |cx| {
+        if handed.await {
+            cx.update(|cx| cx.quit());
+        }
+    })
+    .detach();
 }
 
 /// What stopping everything ends, where it runs: the daemon's terminals, and the agent host

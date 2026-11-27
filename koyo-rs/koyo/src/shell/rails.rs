@@ -22,6 +22,7 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
+use super::update_button::UpdateButton;
 use super::{Shell, ToggleSidebar, action_button, drag_area, sidebar_menu, with_menu};
 use crate::browser::DownloadsButton;
 use crate::settings;
@@ -227,12 +228,14 @@ impl Shell {
                     .child(lights_area(hover))
                     .child(toggle)
                     .children(DownloadsButton::in_bar(&self.downloads, cx))
+                    .children(UpdateButton::in_bar(&self.update, cx))
                     .child(drag_area("sidebar-lights-title").flex_1())
                     .children(controls)
             } else {
                 row.child(lights_area(hover))
                     .child(toggle)
                     .children(DownloadsButton::in_bar(&self.downloads, cx))
+                    .children(UpdateButton::in_bar(&self.update, cx))
                     .children(controls)
                     .child(super::top_rail::pages(self, cx))
                     .child(super::top_rail::tabs(self, cx))

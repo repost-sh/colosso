@@ -1,11 +1,15 @@
-use gpui_kit::TestAppContext;
+use gpui_kit::{AnyWindowHandle, TestAppContext};
 use koyo_agent::protocol::ids::{ThreadId, Time};
 use koyo_agent::protocol::model::{Beside, Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
 use super::{HEIGHT, Next, OnQuit, QuitDialog, WIDTH, next, works};
-use crate::test_support::{repo, shell_with};
-use crate::{modal, settings};
+use crate::files::At;
+use crate::files::tests::{checkout, editing, shell_showing, typed};
+use crate::test_support::{press, repo, shell_with};
+use crate::updates::testing::koyo;
+use crate::updates::{self, Shown};
+use crate::{files, modal, settings};
 
 #[test]
 fn nothing_running_quits_and_a_choice_made_is_kept_to() {
@@ -96,7 +100,7 @@ fn a_chat_at_work_runs_a_turn_waits_for_the_person_or_runs_tasks_in_the_backgrou
     );
 }
 
-fn opened(remember: bool, cx: &mut TestAppContext) -> gpui_kit::AnyWindowHandle {
+fn opened(remember: bool, cx: &mut TestAppContext) -> AnyWindowHandle {
     let root = repo(&format!("quit-{remember}"), &[("README.md", "hi\n")]);
     let (window, _shell) = shell_with(&[&root], cx);
     window
@@ -142,4 +146,53 @@ fn the_settings_menu_changes_the_choice(cx: &mut TestAppContext) {
     cx.update(|cx| settings::update(cx, |settings| settings.on_quit = OnQuit::End));
     cx.dispatch_action(window, super::SetOnQuit(OnQuit::Ask));
     cx.update(|cx| assert_eq!(settings::get(cx).on_quit, OnQuit::Ask));
+}
+
+/// What the update's one click is labelled, or none where it offers no click.
+fn offers(cx: &mut TestAppContext) -> Option<&'static str> {
+    cx.read(|cx| match updates::shown(cx) {
+        Shown::Offer { act, .. } => Some(act),
+        Shown::Quiet(_) | Shown::Working { .. } => None,
+    })
+}
+
+#[gpui_kit::test]
+fn a_restart_into_an_update_asks_about_unsaved_edits_and_called_off_hands_nothing_over(cx: &mut TestAppContext) {
+    let root = checkout("quit-restart-unsaved");
+    let (window, shell, _) = shell_showing(&root, cx);
+    let (_, editor, _) = editing(window, &shell, "src/lib.rs", At::Bytes(0..0), cx);
+    typed(window, &editor, "// lib\n", cx);
+    let koyo = koyo("quit-restart-unsaved-koyo", true, cx);
+
+    koyo.stage(cx);
+
+    assert!(cx.read(files::asking), "a restart with an unsaved edit didn't ask about it");
+    assert_eq!(koyo.restarts.get(), 1);
+    press(cx.read(modal::window).expect("the question's window"), "escape", cx);
+
+    assert!(!cx.read(files::asking));
+    assert_eq!(offers(cx), Some("Restart to Update"), "a restart called off isn't staged any more");
+    assert!(!koyo.told.exists(), "a restart called off handed the release over");
+
+    cx.update(updates::act);
+    cx.run_until_parked();
+    assert!(cx.read(files::asking), "a second restart didn't ask again");
+    assert_eq!(offers(cx), Some("Restart to Update"));
+}
+
+#[gpui_kit::test]
+fn a_restart_into_an_update_with_nothing_unsaved_hands_the_release_over_to_reopen(cx: &mut TestAppContext) {
+    let root = checkout("quit-restart-saved");
+    let _shown = shell_showing(&root, cx);
+    let koyo = koyo("quit-restart-saved-koyo", true, cx);
+    koyo.publish(cx);
+
+    cx.update(updates::act);
+    let told = koyo.handed_over(cx);
+
+    assert!(!cx.read(files::asking));
+    assert!(told.starts_with("install-update\n--attempt\n"), "{told}");
+    assert!(told.ends_with("\n--reopen\n"), "the installer wasn't told to open Koyo again: {told}");
+    assert_eq!(offers(cx), None, "a release handed over still offers a click");
+    assert_eq!(cx.read(updates::shown).said().line.as_ref(), "Restarting into Koyo 9.0.0.");
 }

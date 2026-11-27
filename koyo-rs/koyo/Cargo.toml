@@ -206,6 +206,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   # Which picture of a dynamic wallpaper the system shows (chat_backdrop/dynamic.rs).
   "NSUserDefaults",
   "NSDistributedNotificationCenter",
+  # This Mac's macOS, which a release must run on to be offered (updates/version.rs).
+  "NSProcessInfo",
 ] }
 block2 = "0.6"
 # The window's view, to reach its traffic lights (native/traffic_lights.rs), and the `NSWindow`
@@ -295,8 +297,18 @@ objc2-authentication-services = { version = "0.3", default-features = false, fea
   "ASPublicKeyCredentialClientData",
 ] }
 # Whether the app is signed with Apple's browser-passkey entitlement, read off its own task
-# (browser/passkeys/), which it asks for passkeys only once it is.
-objc2-security = { version = "0.3", default-features = false, features = ["std", "SecTask"] }
+# (browser/passkeys/), which it asks for passkeys only once it is; and the app's own designated
+# requirement, which a release's disk image and the copy taken out of it must satisfy before
+# Koyo replaces itself with it (updates/signature.rs).
+objc2-security = { version = "0.3", default-features = false, features = [
+  "std",
+  "SecTask",
+  "CSCommon",
+  "SecBase",
+  "SecCode",
+  "SecRequirement",
+  "SecStaticCode",
+] }
 # Pictures and PDFs shown in a file's tab (viewer/): drawn into bitmaps of their own, a PDF's
 # pages by Quartz, the renderer Preview uses.
 objc2-core-graphics = { version = "0.3", default-features = false, features = [

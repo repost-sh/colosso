@@ -59,6 +59,7 @@ mod tab_list;
 mod tile_grid;
 mod top_rail;
 mod unmade;
+mod update_button;
 mod visits;
 
 pub use actions::{
@@ -128,6 +129,8 @@ pub struct Shell {
     pub(crate) sidebar_top: sidebar::Top,
     /// The top bar's downloads button, beside the sidebar's toggle.
     downloads: Entity<crate::browser::DownloadsButton>,
+    /// The top bar's update pill, beside the downloads button.
+    update: Entity<update_button::UpdateButton>,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
     /// The row being dragged along its list in the sidebar: a worktree among its project's, or a
@@ -142,7 +145,7 @@ pub struct Shell {
     pub locations: Option<Entity<Locations>>,
     /// What the walks that let go of what's gone went by when they last ran (`gone`).
     let_go_at: gone::Keys,
-    _subscriptions: [Subscription; 13],
+    _subscriptions: [Subscription; 14],
 }
 
 impl Shell {
@@ -154,6 +157,7 @@ impl Shell {
         Self::keep_on_the_way_out(cx);
         let status_bar = StatusBar::new(cx);
         let downloads = cx.new(crate::browser::DownloadsButton::new);
+        let update = cx.new(update_button::UpdateButton::new);
         let _subscriptions = [
             settings::observe(cx),
             cx.observe_window_bounds(window, |_, window, cx| {
@@ -202,6 +206,7 @@ impl Shell {
                 cx.notify();
             }),
             cx.subscribe(&downloads, |_, _, _: &crate::browser::CameOrWent, cx| cx.notify()),
+            cx.subscribe(&update, |_, _, _: &update_button::CameOrWent, cx| cx.notify()),
         ];
         Self::guard_closing(window, cx);
         let mut shell = Shell {
@@ -224,6 +229,7 @@ impl Shell {
             sidebar_hover: sidebar::Hover::default(),
             sidebar_top: sidebar::Top::new(cx),
             downloads,
+            update,
             tab_hand: Rc::default(),
             row_hand: Rc::default(),
             mark_hand: Rc::default(),

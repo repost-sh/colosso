@@ -62,6 +62,7 @@ mod terminals;
 mod test_support;
 mod theme;
 mod toggle;
+mod updates;
 mod viewer;
 #[cfg(feature = "visual-check")]
 mod visual;
@@ -82,6 +83,7 @@ use blocking::Blocking;
 fn init(cx: &mut App, may: Blocking<'_>) {
     gpui_kit::init(cx);
     settings::init(cx, may);
+    updates::init(cx, may);
     settings_view::init(cx);
     key_repeat::init(cx);
     theme::init(cx);
@@ -167,6 +169,12 @@ fn main() -> ExitCode {
         Some("mcp") => {
             blocking::at_launch("the data folder's move", former_name::move_data);
             return koyo_term_mcp::main(args, terminals::daemon_command());
+        }
+        Some(updates::INSTALL_UPDATE) => {
+            return blocking::at_launch("the update's installer", |may| {
+                logs::init();
+                updates::main(args, may)
+            });
         }
         _ => {}
     }
