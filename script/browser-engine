@@ -101,6 +101,18 @@ else
   script/cef-framework check "$cef/$FRAMEWORK"
 fi
 
+# The oldest macOS the engine starts on, which its Info.plists say: the newer of what the host
+# and the framework were each built for, read from their load commands. The framework's is
+# Chromium's own floor, which rises with Chromium and not when anyone here decides it does.
+macos=$({
+  vtool -show-build "$binary"
+  vtool -show-build "$cef/$FRAMEWORK/Chromium Embedded Framework"
+} | awk '$1 == "minos" { print $2 }' | sort -V | tail -n 1)
+if [ -z "$macos" ]; then
+  echo "script/browser-engine: neither the host nor the framework says which macOS it needs" >&2
+  exit 1
+fi
+
 # The host's Info.plist, and the helpers': background-only agents, no dock icon or menu bar
 # for any of them, the app composing the panes. An ad-hoc build keeps cookies under a fixed
 # key rather than asking for Keychain access after every rebuild; the signature seals this.
@@ -134,7 +146,7 @@ plist() { # executable identifier helper(yes|no)
   <key>CFBundleVersion</key>
   <string>$version</string>
   <key>LSMinimumSystemVersion</key>
-  <string>12.0</string>
+  <string>$macos</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -205,14 +217,23 @@ for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
 done
 
 # Inside out: framework, helpers, then the host.
+#
+# A release identity signs with the hardened runtime, under which a process makes memory it
+# can run only with this entitlement, and V8 compiles a page's JavaScript into just that.
+# Without it a page's process ends as it starts and every page stays blank. Each helper gets
+# it: they are one binary, and Chromium starts its page, GPU and service processes alike
+# from the plain helper it was pointed at (docs/browser.md 9.4).
+helper_entitlements=""
 if [ -n "$sign" ]; then
   set -- --force --timestamp --options runtime --sign "$sign"
+  helper_entitlements=script/entitlements/allow-jit.plist
 else
   set -- --force --timestamp=none --sign -
 fi
 codesign "$@" "$frameworks/$FRAMEWORK"
 for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
-  codesign "$@" "$frameworks/$HOST_NAME Helper$suffix.app"
+  codesign "$@" ${helper_entitlements:+--entitlements "$helper_entitlements"} \
+    "$frameworks/$HOST_NAME Helper$suffix.app"
 done
 codesign "$@" "$dir/$HOST_NAME.app"
 

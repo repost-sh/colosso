@@ -1,0 +1,68 @@
+#!/bin/sh
+# Writes a release's changelog from its commits, as Markdown (docs/updates.md 5.3):
+#
+#   script/changelog v0.2.0             # what v0.2.0 has that the release before it hasn't
+#   script/changelog <to> <from>        # the commits in <to> that aren't in <from>
+#
+# The release before a tag is the nearest version tag among its ancestors. A tag with none is
+# the first release, which has nothing to be compared with and says so.
+#
+# The commits are read as the repository writes them, `type(scope)!: what it does`, and
+# listed under their type, newest first, each with its short hash. One marked `!` is listed
+# under breaking changes instead. Every commit is listed, a merge left out: one of a type this
+# doesn't name, or with no type, goes under other changes.
+set -eu
+cd "$(dirname "$0")/.."
+
+case $# in
+  1) to=$1; from=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$to^" 2> /dev/null || :) ;;
+  2) to=$1; from=$2 ;;
+  *) echo "script/changelog: it takes a tag, or the two ends of a range" >&2; exit 2 ;;
+esac
+git rev-parse --quiet --verify "$to^{commit}" > /dev/null || {
+  echo "script/changelog: there's no $to" >&2
+  exit 1
+}
+
+if [ -z "$from" ]; then
+  echo "The first release."
+  exit 0
+fi
+
+git log --no-merges --format='%h%x09%s' "$from..$to" | awk -F '\t' '
+  BEGIN {
+    order = "breaking feat fix perf refactor docs test build ci chore style revert other"
+    title["breaking"] = "Breaking changes"; title["feat"] = "Features"; title["fix"] = "Fixes"
+    title["perf"] = "Performance"; title["refactor"] = "Refactoring"; title["docs"] = "Documentation"
+    title["test"] = "Tests"; title["build"] = "Build"; title["ci"] = "CI"; title["chore"] = "Chores"
+    title["style"] = "Style"; title["revert"] = "Reverts"; title["other"] = "Other changes"
+  }
+  {
+    hash = $1
+    subject = substr($0, length(hash) + 2)
+    type = "other"; scope = ""; said = subject
+    if (match(subject, /^[a-z]+(\([^)]*\))?!?: /)) {
+      head = substr(subject, 1, RLENGTH - 2)
+      said = substr(subject, RLENGTH + 1)
+      breaking = sub(/!$/, "", head)
+      if (match(head, /\(.*\)$/)) {
+        scope = substr(head, RSTART + 1, RLENGTH - 2)
+        head = substr(head, 1, RSTART - 1)
+      }
+      if (breaking) type = "breaking"
+      else if (head in title) type = head
+      else said = subject
+    }
+    line = (scope == "" ? "- " : "- **" scope ":** ") said " (" hash ")"
+    listed[type] = listed[type] line "\n"
+  }
+  END {
+    count = split(order, types, " ")
+    first = 1
+    for (i = 1; i <= count; i++) {
+      if (!(types[i] in listed)) continue
+      printf "%s### %s\n\n%s", (first ? "" : "\n"), title[types[i]], listed[types[i]]
+      first = 0
+    }
+    if (first) print "No changes."
+  }'

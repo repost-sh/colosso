@@ -1,0 +1,209 @@
+# Releases Koyo (docs/updates.md 5). A release starts in one of two ways and no other:
+#
+#   a person pushes a version tag    git tag v0.2.0 <commit> && git push origin v0.2.0
+#   the CEF workflow calls this      for the newest release, moved to a newer CEF (cef.yml)
+#
+# Either way the release is built from its tag and takes its version from it. It's built with
+# the CEF framework script/cef makes, the repository's checks run on it, the disk image is
+# signed and notarized, the image and then the feed every Koyo reads are published, and the
+# tag gets a GitHub release whose notes are its changelog, written from the commits since the
+# release before and whose files are the image and the feed (script/publish).
+#
+# It runs on a Mac of the project's own, registered as a runner with the labels below:
+# Chromium takes 90 GB and hours to build, which GitHub's own macOS runners haven't got.
+# That Mac keeps the Chromium sources and the build between runs (~/.cache/cef-build), and
+# stays signed in to its desktop, as the engine's tests start real pages.
+#
+# What it reads (docs/updates.md 5.5):
+#
+#   vars     KOYO_RELEASE_BASE            https://<host>/<path>, where releases are read
+#            KOYO_BUCKET_URL              the same place as the bucket takes writes
+#            KOYO_BUCKET_REGION           the region to sign for; left out, `auto`
+#   secrets  APPLE_CERTIFICATE_P12        the Developer ID certificate and key, base64
+#            APPLE_CERTIFICATE_PASSWORD   that file's password
+#            APPLE_SIGNING_IDENTITY       "Developer ID Application: <Org> (<TEAMID>)"
+#            APPLE_API_KEY                an App Store Connect key's .p8, for notarizing
+#            APPLE_API_KEY_ID, APPLE_API_ISSUER
+#            APPLE_PROVISIONING_PROFILE   the Developer ID profile that carries Apple's browser
+#                                         passkey entitlement, base64; empty until Apple
+#                                         has granted it (docs/browser.md 9.4)
+#            KOYO_BUCKET_ACCESS_KEY_ID, KOYO_BUCKET_SECRET_ACCESS_KEY
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_call:
+    inputs:
+      cef-from:
+        description: The release to make again on the newest CEF, by its tag
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+# One release at a time: each is published after the one before it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, notarize and publish
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 720
+    env:
+      KOYO_RELEASE_BASE: ${{ vars.KOYO_RELEASE_BASE }}
+      CEF_FROM: ${{ inputs.cef-from }}
+      GIT_AUTHOR_NAME: github-actions[bot]
+      GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      GIT_COMMITTER_NAME: github-actions[bot]
+      GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+    steps:
+      # The tag that was pushed, or the release the CEF job starts from. Not cleaned: the
+      # tools, the CEF distribution and the build output are the checkout's own (.tools,
+      # koyo-rs/target) and are kept from one release to the next. Files the last run changed
+      # are put back by the checkout itself.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.cef-from || github.ref }}
+          fetch-depth: 0
+          clean: false
+
+      # A person's release is the tag as it was pushed. The CEF job's is made here: the
+      # release it starts from with the pin moved, committed and tagged with the version
+      # after it. Nothing of it leaves this Mac until the release is published. The version
+      # is then written into the checkout for the build, and committed nowhere.
+      - name: Name the release
+        id: name
+        run: |
+          set -eu
+          # Tags a run that failed left here, and never pushed, go.
+          git fetch --quiet --prune --prune-tags --tags origin
+          if [ -n "$CEF_FROM" ]; then
+            moved=$(script/cef-update)
+            [ -n "$moved" ] || { echo "$CEF_FROM is on the newest CEF already" >&2; exit 1; }
+            tag="v$(script/release-version --next "${CEF_FROM#v}")"
+            git add koyo-rs/Cargo.lock koyo-rs/koyo-browser-host/Cargo.toml
+            git commit -m "build(cef): CEF ${moved#* }, from ${moved% *}"
+            git tag -a "$tag" -m "Koyo ${tag#v}"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          script/release-version "${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # A keychain for this run alone, holding the Developer ID identity and the notary's
+      # credentials, searched first while the run lasts and removed at its end.
+      - name: Make the signing keychain
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -eu
+          KEYCHAIN="$RUNNER_TEMP/koyo-release.keychain-db"
+          KEYCHAINS_BEFORE="$RUNNER_TEMP/keychains-before"
+          {
+            echo "KEYCHAIN=$KEYCHAIN"
+            echo "KEYCHAINS_BEFORE=$KEYCHAINS_BEFORE"
+          } >> "$GITHUB_ENV"
+          password=$(openssl rand -hex 24)
+          security list-keychains -d user > "$KEYCHAINS_BEFORE"
+          security create-keychain -p "$password" "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$password" "$KEYCHAIN"
+          printf '%s' "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$KEYCHAIN" > /dev/null
+          xargs security list-keychains -d user -s "$KEYCHAIN" < "$KEYCHAINS_BEFORE"
+          printf '%s' "$APPLE_API_KEY" > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool store-credentials koyo-notary --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --keychain "$KEYCHAIN"
+          rm "$RUNNER_TEMP/notary.p8"
+
+      # The distribution the pin names is fetched by the host's build; the framework is then
+      # built at its commit, from source, which is the hours after a move and seconds otherwise.
+      - name: Build the CEF framework
+        run: |
+          script/cargo build --release -p koyo-browser-host
+          script/cef
+
+      - name: Check
+        run: script/check
+
+      # With the profile Apple grants a browser, the app claims the passkey entitlement and
+      # its pages use this Mac's passkeys (docs/browser.md 9). Until Apple has granted it
+      # there is no profile, and the release is made without: pages then reach a security key
+      # or a phone, as they do today.
+      - name: Make the release
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          set -eu
+          set -- --feed "$KOYO_RELEASE_BASE/aarch64-apple-darwin/feed.json" \
+            --sign "$APPLE_SIGNING_IDENTITY" --notary koyo-notary --keychain "$KEYCHAIN"
+          if [ -n "$APPLE_PROVISIONING_PROFILE" ]; then
+            printf '%s' "$APPLE_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/Koyo.provisionprofile"
+            set -- "$@" --profile "$RUNNER_TEMP/Koyo.provisionprofile"
+          fi
+          script/release "$@"
+
+      - name: Publish to the bucket
+        env:
+          KOYO_BUCKET_URL: ${{ vars.KOYO_BUCKET_URL }}
+          KOYO_BUCKET_REGION: ${{ vars.KOYO_BUCKET_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.KOYO_BUCKET_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.KOYO_BUCKET_SECRET_ACCESS_KEY }}
+        run: script/publish bucket
+
+      # Published, the release is out whatever happens from here. The CEF job's tag is
+      # pushed now: a person's is on GitHub already.
+      - name: Push the CEF release's tag
+        if: inputs.cef-from
+        env:
+          TAG: ${{ steps.name.outputs.tag }}
+        run: git push origin "$TAG"
+
+      # The tag's release on GitHub: its notes the changelog since the release before, its
+      # files the image and the feed, which is what moves a Koyo that still reads its feed
+      # from GitHub on to the bucket (docs/updates.md 5.6).
+      - name: Publish on GitHub
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: script/publish github
+
+      # Main gets the pin a release was made on, moved there as it was moved here: main may
+      # have gone on since the release this one was made from. The version written for the
+      # build is taken back first: it was the build's alone.
+      - name: Move main to the released CEF
+        if: inputs.cef-from
+        run: |
+          set -eu
+          git checkout -- koyo-rs/koyo/Cargo.toml koyo-rs/Cargo.lock
+          git fetch origin main
+          git checkout --quiet --detach origin/main
+          moved=$(script/cef-update)
+          if [ -n "$moved" ]; then
+            git add koyo-rs/Cargo.lock koyo-rs/koyo-browser-host/Cargo.toml
+            git commit -m "build(cef): CEF ${moved#* }, from ${moved% *}"
+            git push origin HEAD:main
+          fi
+
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -f "$KEYCHAINS_BEFORE" ]; then
+            xargs security list-keychains -d user -s < "$KEYCHAINS_BEFORE"
+            rm "$KEYCHAINS_BEFORE"
+          fi
+          if [ -f "$KEYCHAIN" ]; then
+            security delete-keychain "$KEYCHAIN"
+          fi

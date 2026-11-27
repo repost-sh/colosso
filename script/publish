@@ -1,0 +1,199 @@
+#!/bin/sh
+# Publishes the release script/release made, to one of the two places a Koyo reads its feed
+# from (docs/updates.md 2 and 5):
+#
+#   script/publish bucket
+#   script/publish github
+#
+# Either way a release is published once, under a version that comes after the published
+# one, and its image is there before its feed says so: an image of that version published
+# already stops this before anything is written, as does a published feed that names this
+# version or a later one. A release that failed half way is made again under a new tag, never
+# over the first.
+#
+# bucket: the bucket is spoken to as S3 is, which Cloudflare R2, Google Cloud Storage and
+# Amazon S3 all answer, by the system's curl, which signs each request. The image goes up
+# first and the feed last.
+#
+#   KOYO_BUCKET_URL          where the files are written: the bucket's S3 address and the
+#                            path in it that the feed's address serves, as
+#                            https://<account>.r2.cloudflarestorage.com/<bucket>/<path>
+#   KOYO_BUCKET_REGION       the region requests are signed for; `auto` unless set, as R2 and
+#                            Google's take it
+#   AWS_ACCESS_KEY_ID        a key that may read and write there
+#   AWS_SECRET_ACCESS_KEY
+#
+# github: a GitHub release on the version's tag, the image and the feed its files and its
+# changelog its notes (script/changelog). A Koyo whose feed is
+# https://github.com/<repository>/releases/latest/download/feed.json reads the newest
+# release's feed there and finds the image beside it. The release is made as a draft, which
+# nobody is shown, given both files, and only then published. The tag, v<version>, has to be
+# on GitHub already: this never tags a commit. A draft a run that failed left for the tag is
+# removed and made again.
+#
+#   GITHUB_REPOSITORY        the repository, as repost-sh/koyo
+#   GITHUB_TOKEN             a token that may write its releases
+set -eu
+cd "$(dirname "$0")/.."
+
+fail() {
+  echo "script/publish: $*" >&2
+  exit 1
+}
+
+case "${1:-}" in
+  bucket | github) where=$1 ;;
+  *) echo "script/publish: it takes where to publish, bucket or github" >&2; exit 2 ;;
+esac
+[ $# -eq 1 ] || { echo "script/publish: it takes where to publish and nothing else" >&2; exit 2; }
+
+case "$(uname -m)" in
+  arm64) target=aarch64-apple-darwin ;;
+  *) target=x86_64-apple-darwin ;;
+esac
+out="koyo-rs/target/release-out/$target"
+feed="$out/feed.json"
+[ -f "$feed" ] || fail "no release at $out: script/release makes one"
+version=$(plutil -extract version raw -o - "$feed")
+image="$out/Koyo-$version.dmg"
+[ -f "$image" ] || fail "the feed at $feed names Koyo $version, and $image isn't there"
+[ "$(stat -f %z "$image")" = "$(plutil -extract bytes raw -o - "$feed")" ] ||
+  fail "$image isn't the size the feed says: script/release makes both again"
+
+# What answers at an address: 200, or 404 for what isn't there. Anything else is a refusal,
+# or no answer at all, and nothing is written on a guess.
+status() {
+  request --output /dev/null --write-out '%{http_code}' "$@" || :
+}
+
+# Each place says three things of its own: `request`, one request to it with its credentials,
+# which go to curl on its stdin so they never show in the process list; `published`, the
+# version its feed names, nothing with no feed yet; and `deliver`, which puts the release
+# there. `this_release` is the address that answers once this version is published.
+case "$where" in
+  bucket)
+    : "${KOYO_BUCKET_URL:?script/publish: KOYO_BUCKET_URL says where the bucket is}"
+    : "${AWS_ACCESS_KEY_ID:?script/publish: AWS_ACCESS_KEY_ID is the key that writes to the bucket}"
+    : "${AWS_SECRET_ACCESS_KEY:?script/publish: AWS_SECRET_ACCESS_KEY is the key that writes to the bucket}"
+    region="${KOYO_BUCKET_REGION:-auto}"
+    there="${KOYO_BUCKET_URL%/}/$target"
+    this_release="$there/Koyo-$version.dmg"
+
+    request() {
+      printf 'user = "%s:%s"\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" |
+        curl --disable --config - --silent --show-error --proto =https \
+          --aws-sigv4 "aws:amz:$region:s3" "$@"
+    }
+
+    published() {
+      case "$(status "$there/feed.json")" in
+        404) ;;
+        200) request --fail "$there/feed.json" | plutil -extract version raw -o - - ;;
+        *) return 1 ;;
+      esac
+    }
+
+    # Writes a file, with the type and the caching a browser and a Koyo are to be told. The
+    # signature covers what's sent, by its hash.
+    put() { # file address type caching
+      hash=$(shasum -a 256 < "$1" | cut -d' ' -f1)
+      request --fail --upload-file "$1" \
+        --header "x-amz-content-sha256: $hash" \
+        --header "Content-Type: $3" \
+        --header "Cache-Control: $4" \
+        "$2" > /dev/null
+    }
+
+    deliver() {
+      put "$image" "$this_release" application/x-apple-diskimage "public, max-age=31536000, immutable"
+      put "$feed" "$there/feed.json" application/json "no-cache"
+    }
+    ;;
+  github)
+    : "${GITHUB_REPOSITORY:?script/publish: GITHUB_REPOSITORY names the repository}"
+    : "${GITHUB_TOKEN:?script/publish: GITHUB_TOKEN is a token that may write its releases}"
+    tag="v$version"
+    api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+    this_release="$api/releases/tags/$tag"
+
+    request() {
+      printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" |
+        curl --disable --config - --silent --show-error --proto =https \
+          --header "Accept: application/vnd.github+json" "$@"
+    }
+
+    git rev-parse --quiet --verify "refs/tags/$tag" > /dev/null || fail "there's no tag $tag here"
+    case "$(status "$api/git/ref/tags/$tag")" in
+      200) ;;
+      404) fail "the tag $tag isn't on GitHub: push it first" ;;
+      *) fail "GitHub didn't say whether the tag $tag is there" ;;
+    esac
+
+    # The feed as every Koyo reads it: the newest release's, which GitHub redirects to.
+    published() {
+      answered=$(curl --disable --silent --show-error --location --proto =https \
+        --proto-redir =https --max-time 60 --write-out '\n%{http_code}' \
+        "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/feed.json") || return 1
+      case "$(printf '%s\n' "$answered" | tail -n 1)" in
+        404) ;;
+        200) printf '%s\n' "$answered" | sed '$d' | plutil -extract version raw -o - - ;;
+        *) return 1 ;;
+      esac
+    }
+
+    attach() { # release file name type
+      request --fail --header "Content-Type: $4" --data-binary "@$2" \
+        "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$1/assets?name=$3" > /dev/null
+    }
+
+    deliver() {
+      work="$out/github"
+      rm -rf "$work"
+      mkdir -p "$work"
+      # A draft for this tag is what a run that failed left: it goes. Drafts are listed only
+      # among all the releases.
+      request --fail "$api/releases?per_page=100" > "$work/releases.json"
+      at=0
+      while listed=$(plutil -extract "$at.tag_name" raw -o - "$work/releases.json" 2> /dev/null); do
+        if [ "$listed" = "$tag" ]; then
+          request --fail --request DELETE \
+            "$api/releases/$(plutil -extract "$at.id" raw -o - "$work/releases.json")" > /dev/null
+        fi
+        at=$((at + 1))
+      done
+      # What's sent is written as a property list and turned into JSON, which escapes the
+      # notes.
+      plutil -create xml1 "$work/draft.plist"
+      plutil -insert tag_name -string "$tag" "$work/draft.plist"
+      plutil -insert name -string "Koyo $version" "$work/draft.plist"
+      plutil -insert body -string "$(script/changelog "$tag")" "$work/draft.plist"
+      plutil -insert draft -bool true "$work/draft.plist"
+      plutil -convert json -o "$work/draft.json" "$work/draft.plist"
+      id=$(request --fail --data "@$work/draft.json" "$api/releases" | plutil -extract id raw -o - -)
+      [ -n "$id" ] || fail "GitHub made no draft for $tag"
+      attach "$id" "$image" "Koyo-$version.dmg" application/x-apple-diskimage
+      attach "$id" "$feed" feed.json application/json
+      plutil -create xml1 "$work/publish.plist"
+      plutil -insert draft -bool false "$work/publish.plist"
+      plutil -insert make_latest -string true "$work/publish.plist"
+      plutil -convert json -o "$work/publish.json" "$work/publish.plist"
+      request --fail --request PATCH --data "@$work/publish.json" "$api/releases/$id" > /dev/null
+      rm -rf "$work"
+    }
+    ;;
+esac
+
+case "$(status "$this_release")" in
+  404) ;;
+  200) fail "Koyo $version is published already: a release is made under a new version" ;;
+  *) fail "it couldn't be told whether Koyo $version is published already" ;;
+esac
+before=$(published) || fail "the published feed couldn't be read"
+if [ -n "$before" ]; then
+  newest=$(printf '%s\n%s\n' "$before" "$version" | sort -V | tail -n 1)
+  if [ "$before" = "$version" ] || [ "$newest" != "$version" ]; then
+    fail "the published feed names Koyo $before, which $version doesn't come after"
+  fi
+fi
+deliver
+echo "Published Koyo $version for $target ($where)"

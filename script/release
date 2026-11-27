@@ -1,0 +1,125 @@
+#!/bin/sh
+# Makes a release of this checkout's Koyo: the two files a Koyo updates itself from, as
+# docs/updates.md 2 says them, in koyo-rs/target/release-out/<target>/:
+#
+#   script/release --feed https://<host>/<path>/feed.json
+#                  [--sign "Developer ID Application: <Org> (<TEAMID>)" [--profile <file>]]
+#                  [--notary <profile> [--keychain <keychain>]]
+#
+#   Koyo-<version>.dmg   Koyo.app and a link to Applications, signed as the app is
+#   feed.json            that release's version, the macOS it needs and the image's size
+#
+# --feed is the address the feed is published at, wherever that is: the bundle is built
+# naming it as its feed (script/bundle --feed), so the Koyo in the image goes on updating
+# itself from where it came, and the image is published beside it (script/publish).
+#
+# The image is signed by the identity that signed the app, under the app's identifier: a Koyo
+# takes an image only if it satisfies its own designated requirement, checked before anything
+# in the image is read, which is checked here too, before anything is published. Without
+# --sign that identity is this Mac's own (script/signing-identity), and the release is one
+# only Koyos built here take: what the proof of the updater runs on (docs/updates.md 7).
+#
+# --notary has Apple notarize the image and staples its ticket, for the people who download
+# it in a browser; the updater doesn't look at it. <profile> is one `xcrun notarytool
+# store-credentials` made, in the login keychain or in <keychain>.
+#
+# The framework is the one script/cef built: script/bundle packages no other.
+set -eu
+cd "$(dirname "$0")/.."
+
+BUNDLE_ID=codes.koyo.desktop
+
+fail() {
+  echo "script/release: $*" >&2
+  exit 1
+}
+
+feed=""
+identity=""
+profile=""
+notary=""
+keychain=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --feed) feed="$2"; shift ;;
+    --sign) identity="$2"; shift ;;
+    --profile) profile="$2"; shift ;;
+    --notary) notary="$2"; shift ;;
+    --keychain) keychain="$2"; shift ;;
+    *) echo "script/release: unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+[ -n "$feed" ] || { echo "script/release: --feed says where the release's feed is published" >&2; exit 2; }
+if [ -n "$notary" ] && [ -z "$identity" ]; then
+  echo "script/release: --notary needs --sign: Apple notarizes a Developer ID signature" >&2
+  exit 2
+fi
+if [ -n "$keychain" ] && [ -z "$notary" ]; then
+  echo "script/release: --keychain says where --notary's profile is" >&2
+  exit 2
+fi
+
+case "$(uname -m)" in
+  arm64) target=aarch64-apple-darwin ;;
+  *) target=x86_64-apple-darwin ;;
+esac
+
+# What signs the image: the identity the app is signed with. Ad hoc there is none, and an app
+# signed ad hoc is its own hash to macOS, which no image satisfies.
+signer="$identity"
+if [ -z "$signer" ]; then
+  signer=$(script/signing-identity --hash) ||
+    fail "nothing to sign with: --sign names a Developer ID, or script/signing-identity makes this Mac's own"
+fi
+
+script/bundle --feed "$feed" ${identity:+--sign "$identity"} ${profile:+--profile "$profile"}
+
+app=koyo-rs/target/bundle/Koyo.app
+read_plist() { plutil -extract "$1" raw -o - "$app/Contents/Info.plist"; }
+version=$(read_plist CFBundleShortVersionString)
+needs=$(read_plist LSMinimumSystemVersion)
+
+out="koyo-rs/target/release-out/$target"
+name="Koyo-$version.dmg"
+image="$out/$name"
+rm -rf "$out"
+mkdir -p "$out/image"
+# -R keeps the framework's symlinks, which its signature covers; -c clones rather than copies.
+cp -cR "$app" "$out/image/Koyo.app"
+ln -s /Applications "$out/image/Applications"
+# LZMA: a fifth smaller than LZFSE on this bundle, for four minutes here once and five
+# seconds more at each install (docs/updates.md 2.3).
+hdiutil create -quiet -fs APFS -format ULMO -volname Koyo -srcfolder "$out/image" "$image"
+rm -rf "$out/image"
+
+if [ -n "$identity" ]; then
+  codesign --force --timestamp --sign "$signer" -i "$BUNDLE_ID" "$image"
+else
+  script/signing-identity --ready || fail "codesign can't sign with this Mac's identity unasked"
+  codesign --force --timestamp=none --sign "$signer" -i "$BUNDLE_ID" "$image"
+fi
+
+if [ -n "$notary" ]; then
+  xcrun notarytool submit "$image" --keychain-profile "$notary" \
+    ${keychain:+--keychain "$keychain"} --wait
+  xcrun stapler staple "$image"
+  # As Gatekeeper judges a download: a Developer ID, notarized.
+  spctl --assess --type open --context context:primary-signature "$image" ||
+    fail "Gatekeeper doesn't take $image"
+fi
+
+# What every Koyo that's offered this release checks first, checked before it's offered.
+requirement=$(codesign -d -r- "$app" 2> /dev/null | sed -n 's/^designated => //p')
+[ -n "$requirement" ] || fail "$app has no designated requirement"
+codesign --verify --strict -R="$requirement" "$image" ||
+  fail "$image doesn't satisfy the app's own requirement: $requirement"
+
+# The feed, each value read off what was built and none typed (docs/updates.md 2.2). It names
+# no file: the image is Koyo-<version>.dmg beside it, to both ends.
+size=$(stat -f %z "$image")
+printf '{\n  "version": "%s",\n  "minimum_macos": "%s",\n  "bytes": %s\n}\n' \
+  "$version" "$needs" "$size" > "$out/feed.json"
+
+echo "Koyo $version for $target, for macOS $needs and later: $image ($size bytes)"
+echo "Publish it: script/publish bucket, or script/publish github"

@@ -20,6 +20,12 @@
 # pages can use passkeys (docs/browser.md 9). The profile is checked before anything is built.
 # A build without --sign never claims an entitlement: macOS won't start an app that claims a
 # managed one without its profile.
+#
+#   script/bundle --feed https://<host>/<path>/<target>/feed.json
+#
+# names the feed the app updates itself from, in its Info.plist as KoyoUpdateFeed, which the
+# signature seals (docs/updates.md 2). A bundle without one never looks for an update: every
+# build but a release's (script/release).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -32,10 +38,12 @@ BUNDLE_ID=codes.koyo.desktop
 
 identity=""
 profile=""
+feed=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --sign) identity="$2"; shift ;;
     --profile) profile="$2"; shift ;;
+    --feed) feed="$2"; shift ;;
     *) echo "script/bundle: unknown option $1" >&2; exit 2 ;;
   esac
   shift
@@ -45,6 +53,12 @@ if [ -n "$profile" ] && [ -z "$identity" ]; then
   exit 2
 fi
 
+# The feed is read over HTTPS alone (koyo's updates/feed.rs).
+case "$feed" in
+  "" | https://?*) ;;
+  *) echo "script/bundle: --feed takes the https address of a feed.json, not $feed" >&2; exit 2 ;;
+esac
+
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' koyo-rs/koyo/Cargo.toml | head -1)
 out=koyo-rs/target/bundle
 app="$out/Koyo.app"
@@ -52,8 +66,8 @@ engine="$out/engine"
 mkdir -p "$out"
 
 # The profile, read and checked: it names the team, is for this app, and carries the passkey
-# entitlement. What the app claims is written from it, so the two can't disagree.
-entitlements=""
+# entitlement. What the app claims of it is written from it, so the two can't disagree.
+granted_by_profile=""
 if [ -n "$profile" ]; then
   decoded="$out/profile.plist"
   if ! security cms -D -i "$profile" > "$decoded" 2>/dev/null; then
@@ -73,24 +87,38 @@ if [ -n "$profile" ]; then
     echo "(docs/browser.md 9.4)" >&2
     exit 1
   fi
+  granted_by_profile="  <key>com.apple.application-identifier</key>
+  <string>$team.$BUNDLE_ID</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>$team</string>
+  <key>$PASSKEYS</key>
+  <true/>"
+fi
+# What a release identity's signature claims. It signs with the hardened runtime, which
+# withholds some things from a process until its signature asks for them. The app asks for
+# the camera, the microphone and the location, which pages reach through it and macOS still
+# asks the person about, and for what the profile grants. The agent host asks to make memory
+# it can run: it's JavaScript compiled as it runs, and without that it ends at its start
+# (docs/browser.md 9.4).
+entitlements=""
+if [ -n "$identity" ]; then
   entitlements="$out/Koyo.entitlements"
   cat > "$entitlements" <<ENTITLEMENTS
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>com.apple.application-identifier</key>
-  <string>$team.$BUNDLE_ID</string>
-  <key>com.apple.developer.team-identifier</key>
-  <string>$team</string>
-  <key>$PASSKEYS</key>
+  <key>com.apple.security.device.camera</key>
   <true/>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <key>com.apple.security.personal-information.location</key>
+  <true/>
+$granted_by_profile
 </dict>
 </plist>
 ENTITLEMENTS
   plutil -lint -s "$entitlements"
-fi
-if [ -n "$identity" ]; then
   if ! security find-identity -v -p codesigning | grep -qF "\"$identity\""; then
     echo "script/bundle: no signing identity \"$identity\" in the keychain" >&2
     exit 1
@@ -146,6 +174,11 @@ if [ -n "$identity" ]; then
 else
   script/desk-host --release --out "$PWD/$app/Contents/Frameworks"
 fi
+# Koyo opens web pages, and says so: the http and https addresses, which is what makes macOS
+# offer it among the web browsers and hand it a link (koyo's links.rs opens it as an unpinned
+# page), and what Apple asks of a browser before it grants one its passkeys
+# (docs/browser.md 9.4).
+#
 # What pages in its browser may reach, said why: macOS holds the app that launched the browser
 # engine responsible for it, so ends Koyo's engine for using Bluetooth (Google's sign-in looks
 # for a phone's passkey), the camera or the microphone unless Koyo's own Info.plist says why.
@@ -156,6 +189,14 @@ location=$(reason NSLocationUsageDescription)
 bluetooth=$(reason NSBluetoothAlwaysUsageDescription)
 camera=$(reason NSCameraUsageDescription)
 microphone=$(reason NSMicrophoneUsageDescription)
+# The oldest macOS Koyo starts on: the newer of what its own executable was built for and
+# what its engine says it needs, which is Chromium's (script/browser-engine). Read, not
+# written here, so it's true whenever Chromium raises it, and an update isn't offered to a
+# Mac it wouldn't start on (docs/updates.md 4).
+macos=$({
+  vtool -show-build "$app/Contents/MacOS/koyo" | awk '$1 == "minos" { print $2 }'
+  reason LSMinimumSystemVersion
+} | sort -V | tail -n 1)
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -181,10 +222,24 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <string>$version</string>
   <key>CFBundleVersion</key>
   <string>$version</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>Web page</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>http</string>
+        <string>https</string>
+      </array>
+    </dict>
+  </array>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.developer-tools</string>
   <key>LSMinimumSystemVersion</key>
-  <string>12.0</string>
+  <string>$macos</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key>
@@ -202,17 +257,18 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+if [ -n "$feed" ]; then
+  plutil -insert KoyoUpdateFeed -string "$feed" "$app/Contents/Info.plist"
+fi
 # The engine is signed already, inside out; this seals the app round it, the agent host first.
 if [ -n "$identity" ]; then
   set -- --force --timestamp --options runtime --sign "$identity"
-  codesign "$@" "$app/Contents/MacOS/koyo-agent-host"
+  codesign "$@" --entitlements script/entitlements/allow-jit.plist "$app/Contents/MacOS/koyo-agent-host"
   codesign "$@" "$app/Contents/MacOS/koyo-device-host"
-  if [ -n "$entitlements" ]; then
+  if [ -n "$profile" ]; then
     cp "$profile" "$app/Contents/embedded.provisionprofile"
-    codesign "$@" --entitlements "$entitlements" "$app"
-  else
-    codesign "$@" "$app"
   fi
+  codesign "$@" --entitlements "$entitlements" "$app"
 else
   # The app's own signature is what macOS keeps its grants by: the engine's helpers and the
   # agent host run as Koyo's, so theirs stay ad hoc.
@@ -220,17 +276,16 @@ else
   codesign --force --timestamp=none --sign "${local_identity:--}" "$app"
 fi
 codesign --verify --strict "$app"
-# What the app claims, said back: the passkey entitlement only with its profile, and nothing
-# at all without --sign.
+# What the app claims, said back: what Apple grants a browser only with its profile, since
+# macOS won't start an app that claims that without one, and nothing at all without --sign.
 claimed=$(codesign -d --entitlements - --xml "$app" 2>/dev/null || true)
-if [ -n "$entitlements" ]; then
+if [ -n "$profile" ]; then
   case "$claimed" in
     *"$PASSKEYS"*) echo "Signed for passkeys ($team.$BUNDLE_ID)" ;;
     *) echo "script/bundle: the signature doesn't carry $PASSKEYS" >&2; exit 1 ;;
   esac
-  echo "Notarize before handing it out: docs/browser.md 9.4"
-elif [ -n "$claimed" ]; then
-  echo "script/bundle: the app claims entitlements without a profile:" >&2
+elif [ -z "$identity" ] && [ -n "$claimed" ]; then
+  echo "script/bundle: the app claims entitlements without --sign:" >&2
   echo "$claimed" >&2
   exit 1
 fi

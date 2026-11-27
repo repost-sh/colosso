@@ -22,9 +22,10 @@
 # Everything this makes is under one folder, ~/.cache/cef-build unless --dir names another,
 # shared by every checkout and worktree so the 45 GB are fetched and built once: depot_tools,
 # Chromium's sources and the build, and the home and temporary folders its tools write to.
-# Run again, it carries on where it stopped and builds nothing twice. For a later CEF version
-# the folder is emptied first: fetched without Chromium's history, the sources can't be moved
-# on to another Chromium, and CEF's tools refuse to.
+# Run again, it carries on where it stopped and builds nothing twice. For another CEF version
+# than the one the folder holds, it starts clean: fetched without Chromium's history, the
+# sources can't be moved on to another Chromium, so CEF's tool is told to remove them, and
+# the build with them, and fetch again.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -94,6 +95,17 @@ export GN_OUT_CONFIGS="Release_GN_$cpu"
 # Chromium at its tag, without history. It isn't left to build, as its build begins with
 # CEF's hook, which patches Chromium with CEF's own patches: Koyo's go on top of those, so
 # the hook runs here, once, then Koyo's patches, then the build.
+# Sources of another CEF than this one, which a move of the pin leaves in the folder
+# (script/cef-update): CEF's tool refuses them unless it's told to start clean, and then
+# removes them, CEF's own checkout and the build. It's the commit that's compared, not
+# Chromium's version alone: the patches CEF's hook applied to Chromium are that commit's.
+clean=""
+held=$(git -C "$dir/chromium/src/cef" rev-parse HEAD 2> /dev/null || :)
+if [ -n "$held" ] && [ "$held" != "$commit" ]; then
+  echo "The sources in $dir are CEF's at $held: starting clean for $commit"
+  clean=--force-clean
+fi
+
 echo "Building CEF $full with H.264, AAC and Koyo's patches in $dir"
 curl -fsSL -o "$dir/automate-git.py.part" \
   "https://raw.githubusercontent.com/chromiumembedded/cef/$commit/tools/automate/automate-git.py"
@@ -109,7 +121,8 @@ python3 "$dir/automate-git.py" \
   --with-pgo-profiles \
   --no-debug-build \
   --no-build \
-  --no-distrib
+  --no-distrib \
+  ${clean:+"$clean"}
 
 src="$dir/chromium/src"
 out="out/Release_GN_$cpu"

@@ -1,0 +1,65 @@
+#!/bin/sh
+# Moves this checkout to the newest Chromium the `cef` crate carries, when that's a newer one
+# than the checkout's (docs/updates.md 6):
+#
+#   script/cef-update            # moves the pin and the lockfile, and says "156.0.14 156.0.31"
+#   script/cef-update --check    # only says it
+#
+# It says the CEF the checkout is on and the one it moves to, and says nothing and changes
+# nothing when the checkout is on the newest already.
+#
+# The browser host pins the crate to one version (koyo-rs/koyo-browser-host/Cargo.toml): its
+# bindings are for one CEF, the distribution cef-dll-sys fetches and the commit script/cef
+# builds the framework at. A version of the crate says which after its `+`
+# (156.7.0+156.0.31), and a release of the crate that carries the CEF the checkout is on
+# already moves nothing: a release of Koyo is for a Chromium, not for the bindings. The
+# versions are read from crates.io's index, as cargo reads them, yanked ones and
+# pre-releases left out.
+set -eu
+cd "$(dirname "$0")/.."
+
+MANIFEST=koyo-rs/koyo-browser-host/Cargo.toml
+LOCK=koyo-rs/Cargo.lock
+INDEX=https://index.crates.io/3/c/cef
+
+fail() {
+  echo "script/cef-update: $*" >&2
+  exit 1
+}
+
+check=no
+case "${1:-}" in
+  --check) check=yes ;;
+  "") ;;
+  *) echo "script/cef-update: unknown option $1" >&2; exit 2 ;;
+esac
+
+# A package's version in the lockfile: the line after its name.
+locked() {
+  awk -v name="name = \"$1\"" '$0 == name { getline; sub(/^version = "/, ""); sub(/"$/, ""); print }' "$LOCK"
+}
+
+pinned=$(sed -n 's/^cef = { version = "=\([^"]*\)".*/\1/p' "$MANIFEST")
+[ -n "$pinned" ] || fail "$MANIFEST pins no exact version of cef"
+from=$(locked cef)
+[ "${from%%+*}" = "$pinned" ] || fail "$LOCK has cef $from where $MANIFEST pins $pinned"
+
+index=$(curl --disable --fail --silent --show-error --proto =https "$INDEX") ||
+  fail "crates.io's index didn't answer for cef"
+newest=$(printf '%s\n' "$index" | grep -v '"yanked":true' |
+  sed -n 's/^{"name":"cef","vers":"\([^"]*\)".*/\1/p' | grep -v '^[^+]*-' | sort -V | tail -n 1)
+case "$newest" in
+  *+*) ;;
+  *) fail "crates.io's index lists no release of cef that names its CEF" ;;
+esac
+
+[ "${newest#*+}" = "${from#*+}" ] && exit 0
+echo "${from#*+} ${newest#*+}"
+[ "$check" = yes ] && exit 0
+
+sed "s/^cef = { version = \"=$pinned\"/cef = { version = \"=${newest%%+*}\"/" "$MANIFEST" > "$MANIFEST.part"
+mv "$MANIFEST.part" "$MANIFEST"
+script/cargo update --quiet -p cef --precise "$newest"
+# script/cef and script/browser-engine read the CEF from cef-dll-sys, which the crate pins.
+sys=$(locked cef-dll-sys)
+[ "${sys#*+}" = "${newest#*+}" ] || fail "cef $newest left cef-dll-sys at $sys"

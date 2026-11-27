@@ -1,0 +1,54 @@
+# Keeps the released Koyo on the newest Chromium: four times a day it asks whether the `cef`
+# crate carries a newer CEF than the newest release's pin (script/cef-update), and when it
+# does, has that release made again on it, under the version after it (release.yml), with
+# nobody in between (docs/updates.md 6).
+#
+# It's the newest release that moves, not main: what a person hasn't tagged yet stays
+# unreleased. The pin is moved on main too once the release is out, so main only ever gets a
+# pin a release was made on.
+#
+# The asking runs on GitHub's own runner and costs seconds. The release runs on the
+# project's Mac. A CEF that Koyo's patches don't apply to, or that fails the checks, fails
+# that run, and main and the published Koyo stay as they were until someone has looked.
+# Before the first release there is nothing to keep up to date, and nothing happens.
+name: CEF
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  watch:
+    name: Is there a newer CEF?
+    runs-on: ubuntu-latest
+    outputs:
+      from: ${{ steps.check.outputs.from }}
+      moved: ${{ steps.check.outputs.moved }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: check
+        run: |
+          set -eu
+          from=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n 1)
+          if [ -n "$from" ]; then
+            git checkout --quiet "$from"
+            {
+              echo "from=$from"
+              echo "moved=$(script/cef-update --check)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Release on it
+    needs: watch
+    if: needs.watch.outputs.moved != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      cef-from: ${{ needs.watch.outputs.from }}
+    secrets: inherit

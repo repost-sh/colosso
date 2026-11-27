@@ -1,0 +1,47 @@
+#!/bin/sh
+# A release's version is its tag's (docs/updates.md 5.2):
+#
+#   script/release-version 0.2.0          # builds from here on are Koyo 0.2.0
+#   script/release-version --next 0.2.0   # prints the version after it: 0.2.1
+#
+# The first writes the version into koyo-rs/koyo/Cargo.toml and the lockfile, where the app
+# and script/bundle read it. The release workflow does that in its own checkout, from the tag
+# it was started for, and commits nothing: the version in the repository is the development
+# build's, and a release's is said once, by its tag.
+#
+# The second is how a release nobody numbered gets its version: the one the CEF job makes
+# counts the last number of the release it's made from up by one.
+set -eu
+cd "$(dirname "$0")/.."
+
+MANIFEST=koyo-rs/koyo/Cargo.toml
+
+plain() {
+  case "$1" in
+    *[!0-9.]* | *..* | .* | *. | "") return 1 ;;
+  esac
+  [ "$(echo "$1" | awk -F. '{ print NF }')" = 3 ]
+}
+
+usage() {
+  echo "script/release-version: it takes a version of three numbers, as 0.2.0, or --next and one" >&2
+  exit 2
+}
+
+case "${1:-}" in
+  --next)
+    plain "${2:-}" || usage
+    echo "$2" | awk -F. -v OFS=. '{ $NF = $NF + 1; print }'
+    exit 0
+    ;;
+esac
+[ $# -eq 1 ] && plain "$1" || usage
+
+ours=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$MANIFEST" | head -n 1)
+[ -n "$ours" ] || { echo "script/release-version: $MANIFEST has no version" >&2; exit 1; }
+[ "$ours" = "$1" ] && exit 0
+awk -v from="version = \"$ours\"" -v to="version = \"$1\"" \
+  '!done && $0 == from { print to; done = 1; next } { print }' "$MANIFEST" > "$MANIFEST.part"
+mv "$MANIFEST.part" "$MANIFEST"
+# The lockfile names the app's version too: cargo writes it as it resolves.
+script/cargo update --quiet --offline --package koyo
