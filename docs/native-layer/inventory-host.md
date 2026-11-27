@@ -1,6 +1,6 @@
 # Inventory: the browser host's side of the native seam
 
-Read-only inventory for `docs/native-layer.md`, taken 2026-11-16 at `ce2f3c7fc` on
+Read-only inventory for `docs/native-layer.md`, taken 2026-11-16 at `69581c0a3` on
 `schulzfel/browser-ui-fixes`. Scope: `koyo-rs/koyo-browser-host`, the seam facts in
 `koyo-rs/koyo-browser-ipc`, the agents' input paths (`koyo-desk-host`, `koyo-desk-wire`,
 `koyo-app-control`, `koyo/src/control`), the probe (`koyo/src/browser/native/probe.rs`) and the
@@ -316,7 +316,7 @@ sees no event, no window and no input source here.
 1. `control.agent()` is some agent → `Refusal::Agent`. A CDP click claims the page for its agent
    first (`koyo/src/browser/agent.rs:276-281`), so an agent's `browser_click` right always lands
    here. The person's press reaches `pressed_at` (`input.rs:23-38`, from the capture listener at
-   `page.rs:230-237`) before the page asks for its menu, and takes the page back (`d33840cad`).
+   `page.rs:230-237`) before the page asks for its menu, and takes the page back (`ff17d464e`).
 2. Else `menus::may_show(window, ...)` (`koyo/src/native/menus/appkit.rs:78-83`) → `verdict`
    (`:87-111`): the GPUI window's `NSWindow`, its `windowNumber`, `isOnActiveSpace && isVisible`,
    then `judge` (`menus.rs:168-192`), which reads that window number's last noted press or key and

@@ -1005,7 +1005,7 @@ macOS's privacy service (`log show --predicate 'process == "tccd"'`) that day:
   12:06).
 - **Why Koyo wasn't listed.** macOS keeps an app's grants by its bundle id and its designated
   requirement. Two things stood in the way, both of this Mac:
-  - The bundle id had moved from `dev.koyo.desktop` that morning (`2e193a503`). The agent
+  - The bundle id had moved from `dev.koyo.desktop` that morning (`e98c069fe`). The agent
     that shows macOS's alert and puts the app in the list, `universalAccessAuthWarn`, had run
     since days before and still named `/Applications/Koyo.app` by the old id, where the
     signature, the Info.plist and Launch Services gave the new one. So it listed the app as
@@ -1220,7 +1220,7 @@ macOS draws a popped-up menu at menu level on the Space the person is looking at
 window or Space it was opened for. A menu for a window on the agent desktop (a Space of its
 own, `docs/agent-desktop.md`), or one an agent's click asked for in a window of the person's,
 showed on the person's screen. Popping a menu up with a press stamped with its window's
-number (f38a22c3a) didn't change where it showed, and is gone: gpui-component's menu is
+number (4a6448053) didn't change where it showed, and is gone: gpui-component's menu is
 upstream's again.
 
 ### 14.2 The gate [decided]

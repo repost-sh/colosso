@@ -55,7 +55,7 @@ made key (SKILL.md, Keyboard focus) before any probe click.
   `$B probe 'click <x> <y>' 'wait 200' state 'type abc' 'wait 300'`. `state` prints
   `first responder RenderWidgetHostViewCocoa`, and
   `$B probe 'eval <hostPane> JSON.stringify(window.keys)'` answers `["a","b","c"]`, one
-  each. A key typed twice is the bug fixed in cdcebcf5a. Use the probe's `eval` here, because
+  each. A key typed twice is the bug fixed in f9568dbe1. Use the probe's `eval` here, because
   `browser_eval` right after probe input answers `person_has_control`. For the on-screen
   picture, call `desktop_screenshot {"window":<id>}` and run `$B keep <png> page-typed`.
 - **Back to Koyo with ⌘L.** ⌘L opens the address panel, a `GPUIPanel` window of its own that
@@ -69,7 +69,7 @@ made key (SKILL.md, Keyboard focus) before any probe click.
   `browser_eval` of `innerWidth` is smaller than before. `key 29 0 cmd` restores it.
 - **Native menu.** `$B probe 'rdown <x> <y>' 'wait 300' escape 'wait 300' 'hover <x> <y>' state`.
   The menu closes, and a later click still reaches the page. This is the "window left dead"
-  bug fixed in cdcebcf5a. The menu itself shows on the owner's desktop, so keep it brief and
+  bug fixed in f9568dbe1. The menu itself shows on the owner's desktop, so keep it brief and
   don't shoot it.
 - **Pinned page.** Use `$B prepare --tabs Sidebar --pin "file://$PWD/.superpowers/v/fixture/focus.html"`.
   After launch, `$B shot pinned` shows its tile in the sidebar (without `--tabs Sidebar`, its

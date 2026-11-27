@@ -1,7 +1,7 @@
 # The app crate's side of the native seam: an inventory
 
 Read-only inventory of `koyo-rs/koyo/src` for `docs/native-layer.md`, taken 2026-11-16 at
-`ce2f3c7fc` on `schulzfel/browser-ui-fixes`. Paths are relative to `koyo-rs/koyo/` unless they
+`69581c0a3` on `schulzfel/browser-ui-fixes`. Paths are relative to `koyo-rs/koyo/` unless they
 start with `vendor/` or `koyo-browser-host/` (relative to `koyo-rs/`). Nothing was built or run.
 Every fact is `[read]` from source unless it carries `[inferred]`.
 
@@ -546,11 +546,11 @@ Test counts are `grep -cE '#\[(gpui_kit::)?test\]' <file>`.
 | keyboard/tests/reconciler.rs | 10 | `reconcile.rs`. | `Fake` `AppKit` (tests/fake.rs): a map of first responders and page windows. |
 | keyboard/tests/told.rs | 23 | `hooks.rs`, `state.rs`, `rate.rs`, `lines.rs`, `mod.rs`. | `Fake` `AppKit`; `Fake::moved` stands in for the vendored window's report of each change; `Turns` stands in for the run loop; tests call `hooks::pressed`, `at_key`, `page_leaving` and `page_arrived` by hand where the window or host would. |
 | keyboard/tests/inactive.rs | 2 | A real shell in a GPUI test window, `follow_focus` and `key_state` through frames. | `Fake` `AppKit`; `hooks::page_arrived` by hand. |
-| keyboard/tests/keys.rs (ce2f3c7fc) | 5 | Vendored `responders::Offers`, `hooks::gpui_first`, `reserved`, the real keymap (`crate::init`). | `offered()` re-implements the window's glue at vendor/gpui-fast-macos/src/window.rs:2754-2765 (`again`, else `first(gpui_first)`). The order of offers (AppKit's pass, the router, the page's hand-back) is scripted; the routing in `fast/composition.rs` doesn't run. `Fake` `AppKit` for "a page holds". |
-| keyboard/tests/marks.rs (ce2f3c7fc) | 1 | `crate::marks` through a real shell drawn in a GPUI test window. | None. |
+| keyboard/tests/keys.rs (69581c0a3) | 5 | Vendored `responders::Offers`, `hooks::gpui_first`, `reserved`, the real keymap (`crate::init`). | `offered()` re-implements the window's glue at vendor/gpui-fast-macos/src/window.rs:2754-2765 (`again`, else `first(gpui_first)`). The order of offers (AppKit's pass, the router, the page's hand-back) is scripted; the routing in `fast/composition.rs` doesn't run. `Fake` `AppKit` for "a page holds". |
+| keyboard/tests/marks.rs (69581c0a3) | 1 | `crate::marks` through a real shell drawn in a GPUI test window. | None. |
 | shell/keys/tests.rs | 12 | Shell keyboard flows; `keyboard::holder` asserts. | No `AppKit` installed: holders only. |
 | browser/view/tests.rs:207-237 | 1 | ⌥⌘I out of DevTools moves the holder. | Holders only. |
-| browser/view/tests.rs:239-277 (d33840cad) | 1 | `agent_claims`, `pressed_at` with a GPUI `MouseDownEvent`, `menu_gate`. | `may_show` returns `Ok` for a test window, so only `Refusal::Agent` is really tested. |
+| browser/view/tests.rs:239-277 (ff17d464e) | 1 | `agent_claims`, `pressed_at` with a GPUI `MouseDownEvent`, `menu_gate`. | `may_show` returns `Ok` for a test window, so only `Refusal::Agent` is really tested. |
 | native/menus/tests.rs | 10 | `classify`, `decide`, `note`, `judge`, `latest_window`. | Fake pids; `WATCHING` set by hand. Nothing of menus/appkit.rs runs: no swizzle, monitor, `isOnActiveSpace`. |
 | native/surface.rs tests | 1 | `on_whole_points`. | None. |
 | popup/tests.rs | 9 | Floating windows in GPUI test windows. | No `NSWindow`, so `float_on_its_space`, `show` and `fit` return early. |

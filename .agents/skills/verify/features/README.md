@@ -64,5 +64,5 @@ labelled bullet pairs an act with its command and the result you observe), and `
 
 | Journey | Last proven | Run |
 | --- | --- | --- |
-| `page-open`, `page-agent` (`browser_list`), `page-shot` (engine and on-screen), `page-input` (click into the page, `abc` arrived once each), ⌘L opening the address panel | 2026-11-16 at cdcebcf5a | `.superpowers/v/evidence/20261116-123959-proof-browser-pages/` |
+| `page-open`, `page-agent` (`browser_list`), `page-shot` (engine and on-screen), `page-input` (click into the page, `abc` arrived once each), ⌘L opening the address panel | 2026-11-16 at f9568dbe1 | `.superpowers/v/evidence/20261116-123959-proof-browser-pages/` |
 | `focus-pinned-page-composer`, the pinned tile | not yet: the window lost key to the address panel and couldn't get it back | same run, transcript's last notes |

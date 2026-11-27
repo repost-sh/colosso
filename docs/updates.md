@@ -195,15 +195,15 @@ Commits are read as the repository writes them, `type(scope)!: what it does`. Th
 ```markdown
 ### Breaking changes
 
-- **layout:** one layout, arranged by Tabs, Address bar and Changes and Files (c7dc00066)
+- **layout:** one layout, arranged by Tabs, Address bar and Changes and Files (6d2cb0f15)
 
 ### Features
 
-- **sidebar:** the scrolling rows fade at the top and the bottom (4930569e3)
+- **sidebar:** the scrolling rows fade at the top and the bottom (f43593ec6)
 
 ### Fixes
 
-- **browser:** a page opened again shows its site's icon at once, not a placeholder (e6fe0259f)
+- **browser:** a page opened again shows its site's icon at once, not a placeholder (9f905b644)
 ```
 
 A commit marked `!` is listed under breaking changes and not under its type. The types that have a heading are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`, `chore`, `style`, and `revert`. Every commit is listed: one of another type, or with no type, goes under other changes. Merge commits are left out.

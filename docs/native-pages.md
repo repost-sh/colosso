@@ -440,7 +440,7 @@ where a native view is, and whether it's there, it asks the composition at each 
 events, as at the end of a prepaint (`vendor/gpui-fast`, `fast/composition.rs`, `hit_test`).
 
 Before these, a hit region over the whole window was put up on a seam's press, drawn at once
-(commit 455480ba2). It raced the pointer's first move and treated neither cause; it's gone.
+(commit bd27e8e41). It raced the pointer's first move and treated neither cause; it's gone.
 
 **Placing a page in prepaint costs nothing at rest, and on a resize only what Chromium's own
 resize costs.** Measured 2026-11-20 on the agent desktop, a debug build at a load of 17 to 50,
@@ -478,7 +478,7 @@ After a right click in a page or in its tools, no tab could be picked and no div
 until Koyo was started again, or until the page's tab had been left, which takes its surface
 and the press with it (the owner, 2026-11-15: "once, switching back to the page with ⌃⇥ and
 dragging the divider unlocked it"). The first answer, the menu telling GPUI of the releases it
-took (commit cdcebcf5a), covered Koyo's menu only and is gone. Now GPUI's view keeps the
+took (commit f9568dbe1), covered Koyo's menu only and is gone. Now GPUI's view keeps the
 presses it passed on, and lets go of them, telling GPUI first, once it's plain they're over: a
 move with no button down, or a press while the button the hand pressed for one is up
 (`vendor/gpui-fast-macos`, `window.rs`, `lost_releases`). `[read]`, not run on screen.

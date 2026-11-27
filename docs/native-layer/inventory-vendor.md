@@ -5,7 +5,7 @@ seam were patched one symptom at a time. One native layer is to own the seam (`d
 This file is the read-only inventory of the vendored crates under `koyo-rs/vendor/` that the design
 starts from. Nothing in the checkout was edited, built or committed to make it.
 
-Line numbers are of the working tree at `ce2f3c7fc` (branch `schulzfel/browser-ui-fixes`). Paths are
+Line numbers are of the working tree at `69581c0a3` (branch `schulzfel/browser-ui-fixes`). Paths are
 relative to `koyo-rs/vendor/` unless they start with `koyo-rs/`, `docs/` or `~/.cargo`. The unvendored
 gpui-fast core is read from `~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/gpui-fast-0.1.12/src/`,
 written `core:` below. `[read]` means read in code. `[inferred]` means concluded from code, not run.
@@ -14,18 +14,18 @@ written `core:` below. `[read]` means read in code. `[inferred]` means concluded
 
 The baseline is each pristine `.crate` from `~/.cargo/registry/cache/`, unpacked into the gitignored
 `.superpowers/native-layer/upstream/`. Each `.crate`'s SHA-256 equals the checksum the lockfile held
-the commit before it was vendored (`b0bc02a78^`, `2624acac1^`, `b40c99b03^`): all four MATCH.
+the commit before it was vendored (`2858d3871^`, `ff76c7d97^`, `fbbf54287^`): all four MATCH.
 
 `git diff <first vendoring commit>..HEAD` misses patches for two crates, because their vendoring
 commits were already patched.
 
-- `gpui-fast-macos` was vendored in `b0bc02a78` with the press-ownership patch already in
-  `src/fast/composition.rs` (`native_presses`). `git diff b0bc02a78 HEAD` reports +390 -5, and the
+- `gpui-fast-macos` was vendored in `2858d3871` with the press-ownership patch already in
+  `src/fast/composition.rs` (`native_presses`). `git diff 2858d3871 HEAD` reports +390 -5, and the
   pristine baseline reports +433 -38.
-- `gpui-fast-apple` was vendored in `2624acac1` with a `Colosso:` present-in-transaction switch in
-  `metal_renderer.rs`. `e7d119aa7` removed it, and no `Colosso` mark is left in `vendor/`.
-- `gpui-component/src/native_menu/macos.rs` was patched in `cdcebcf5a` and `f38a22c3a`, then reverted
-  to upstream in `c8b92637c`. It is byte-identical to upstream now. The menu gate lives in
+- `gpui-fast-apple` was vendored in `ff76c7d97` with a `Colosso:` present-in-transaction switch in
+  `metal_renderer.rs`. `fd32439df` removed it, and no `Colosso` mark is left in `vendor/`.
+- `gpui-component/src/native_menu/macos.rs` was patched in `f9568dbe1` and `4a6448053`, then reverted
+  to upstream in `6922a6da8`. It is byte-identical to upstream now. The menu gate lives in
   `koyo-rs/koyo/src/native/menus/`, outside this slice.
 
 ## 1. Patch sites
@@ -130,7 +130,7 @@ renderers.
 | B03 | gpui-base/src/input/base/kind.rs:380 | `TextareaExtras` | unrelated | yes | n/a | Styles laid over multi-line text. |
 | B04 | gpui-base/src/input/editor/decorations.rs:475 | `set_decorations` | unrelated | yes | n/a | Editor decorations. |
 | B05 | gpui-base/src/input/editor/decorations.rs:486 | `decorations` | unrelated | yes | n/a | Getter. |
-| B06 | gpui-component/src/input/input.rs:133 | field `ink` | unrelated | yes | n/a | Text, caret and placeholder colours instead of the theme's (glass over a page, `985117942`). |
+| B06 | gpui-component/src/input/input.rs:133 | field `ink` | unrelated | yes | n/a | Text, caret and placeholder colours instead of the theme's (glass over a page, `83ff71cf9`). |
 | B07 | gpui-component/src/input/input.rs:305 | `fn ink` | unrelated | yes | n/a | Setter. |
 | B08 | gpui-component/src/message_scroller.rs:25 | field `hand_scrolls` | unrelated | yes | n/a | Chat list. |
 | B09 | gpui-component/src/message_scroller.rs:82 | `bounds_for_item` | unrelated | yes | n/a | Chat list. |
@@ -146,14 +146,14 @@ finds only editor focus handling, `NSWorkspace` (B02) and B14.
 
 | file | +/- | commits | concern |
 | --- | --- | --- | --- |
-| gpui-base/Cargo.toml, Cargo.toml.orig, src/reduce_motion.rs | +51 -7 | e7d119aa7 | unrelated (Reduce Motion) |
-| gpui-base/src/async_util.rs, input/base/layout.rs, token_presentation.rs, editor/display_map/* (6 files), highlighting.rs, search.rs, test_support.rs | +2062 -563 | 638f1bb41 (+e0f2fc400) | unrelated (editor perf) |
-| gpui-base/src/input/base/edits.rs, element.rs, state.rs, rope_ext.rs, tab_stops.rs, kind.rs, editor/decorations.rs, diagnostics.rs, indent.rs, lsp/* (8 files), editor/mod.rs, input/mod.rs | +2539 -598 | 6f83a40ce c7cfe4de9 edabe57e3 f5be25c87 e0f2fc400 c429d9861 c3dbd6d09 0b65d44ec 1a3d5d3a0 | unrelated (editor, LSP) |
-| gpui-base/src/scrollable_mask.rs, selectable_text.rs, text/* (3 files) | +96 -17 | fe50f2854 21d6700c6 | unrelated (markdown, selection) |
-| gpui-component/src/highlighter/* (5 files) | +996 -248 | 638f1bb41 6f83a40ce c7cfe4de9 | unrelated (highlighting perf) |
-| gpui-component/src/input/mod.rs, overlay.rs, popovers/* (6 changed, 2 removed) | +1064 -545 | f5be25c87 c7cfe4de9 c429d9861 e0f2fc400 638f1bb41 | unrelated, except B14 |
-| gpui-component/src/input/input.rs | +22 -3 | 985117942 | unrelated (B06, B07) |
-| gpui-component/src/message_scroller.rs, shimmer.rs, text/compat.rs | +67 -5 | 1a3d5d3a0 345a89d28 fe50f2854 | unrelated |
+| gpui-base/Cargo.toml, Cargo.toml.orig, src/reduce_motion.rs | +51 -7 | fd32439df | unrelated (Reduce Motion) |
+| gpui-base/src/async_util.rs, input/base/layout.rs, token_presentation.rs, editor/display_map/* (6 files), highlighting.rs, search.rs, test_support.rs | +2062 -563 | ffbf40c24 (+d3447f7fc) | unrelated (editor perf) |
+| gpui-base/src/input/base/edits.rs, element.rs, state.rs, rope_ext.rs, tab_stops.rs, kind.rs, editor/decorations.rs, diagnostics.rs, indent.rs, lsp/* (8 files), editor/mod.rs, input/mod.rs | +2539 -598 | 73b53f652 771540d08 3be1d68a9 45b08633d d3447f7fc d6a940da9 26acff9a4 4af7795b4 224a9ea26 | unrelated (editor, LSP) |
+| gpui-base/src/scrollable_mask.rs, selectable_text.rs, text/* (3 files) | +96 -17 | 1acf57015 2e368affd | unrelated (markdown, selection) |
+| gpui-component/src/highlighter/* (5 files) | +996 -248 | ffbf40c24 73b53f652 771540d08 | unrelated (highlighting perf) |
+| gpui-component/src/input/mod.rs, overlay.rs, popovers/* (6 changed, 2 removed) | +1064 -545 | 45b08633d 771540d08 d6a940da9 d3447f7fc ffbf40c24 | unrelated, except B14 |
+| gpui-component/src/input/input.rs | +22 -3 | 83ff71cf9 | unrelated (B06, B07) |
+| gpui-component/src/message_scroller.rs, shimmer.rs, text/compat.rs | +67 -5 | 224a9ea26 8db5934ca 1acf57015 | unrelated |
 
 ## 2. Counts, and the commands that reproduce them
 
@@ -176,7 +176,7 @@ grep -E '^\| [MCAB][0-9]{2} ' $F | awk -F'|' '{gsub(/ /,"",$2); gsub(/ /,"",$5);
 grep -E '^\| [MC][0-9]{2} ' $F | awk -F'|' '{gsub(/^ +| +$/,"",$7); print $7}' | sort | uniq -c
 ```
 
-Output at `ce2f3c7fc`.
+Output at `69581c0a3`.
 
 | crate | `Koyo:` marks | files changed vs pristine | +/- vs pristine |
 | --- | --- | --- | --- |

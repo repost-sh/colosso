@@ -1,6 +1,6 @@
 # The native layer: one owner for the seam between GPUI and Chromium
 
-Written 2026-11-16 on branch `schulzfel/browser-ui-fixes` at `ce2f3c7fc`. Drafted with Claude.
+Written 2026-11-16 on branch `schulzfel/browser-ui-fixes` at `69581c0a3`. Drafted with Claude.
 This is a design for review. Nothing in it is built. It replaces fixing seam bugs where their
 symptoms show with one layer that owns the seam, and it says how to get there in steps that
 each end in a check.
@@ -36,12 +36,12 @@ because each has one owner and one test that fails when it returns. What the nex
 inherits: one crate to read for any question about focus, presses, menus, panels, frames or a
 page's views, and a bench that says whether a change broke the seam.
 
-`ce2f3c7fc` is undone by a forward commit first, and its behaviour comes back inside the layer
+`69581c0a3` is undone by a forward commit first, and its behaviour comes back inside the layer
 (section 8).
 
 ## 2. The inventory
 
-Three inventories were taken at `ce2f3c7fc`, read-only, each with the shell commands that
+Three inventories were taken at `69581c0a3`, read-only, each with the shell commands that
 reproduce its counts. They are beside this file.
 
 | File | Covers |
@@ -101,7 +101,7 @@ Each finding is `[read]` unless marked.
 3. **The agent desktop's host posts the person's relayed input and the agent's acts through
    one private event source with no tag** (`koyo-desk-host/src/input.rs:97-100`). Nothing in
    the receiving process can tell the two apart.
-4. **`ce2f3c7fc`'s `Offers` cannot tell `AppKit`'s pass from a page's hand-back.** Both arrive
+4. **`69581c0a3`'s `Offers` cannot tell `AppKit`'s pass from a page's hand-back.** Both arrive
    as `performKeyEquivalent:` on GPUI's view (`koyo-browser-host/src/native.rs:424`). A key
    with no ⌘ or ⌃ that a page hands back is offered there for the first time, the app says the
    page comes first, and the key goes nowhere. This is the review's second bug, found again
@@ -129,7 +129,7 @@ Each finding is `[read]` unless marked.
    was found. The candidates are in `inventory-host.md` section 3, all inferred.
 10. **No test runs the seam's real code.** `keyboard/appkit.rs`, `browser/native/`,
     `place_native` and `draw_in_transaction` are compiled out of tests. The menu tests cover
-    the pure verdict only. `ce2f3c7fc`'s key tests re-implement `window.rs:2754-2765` and
+    the pure verdict only. `69581c0a3`'s key tests re-implement `window.rs:2754-2765` and
     script the order of offers. Upstream's only real-window harness calls `dispatch_event`
     directly and skips `sendEvent:`.
 
@@ -317,10 +317,10 @@ policy as one predicate, and two fit it.
 | Policy | Koyo keeps | For | Against |
 | --- | --- | --- | --- |
 | A. As the owner's build behaves today with Koyo in front | Every ⌘ or ⌃ key GPUI has a binding for | No change for the owner. ⌘R and ⌥⌘I work when a renderer hangs. No shortcut of Koyo's waits for a trip to the renderer. A ⌘ key Koyo doesn't bind goes on to the page | A web app's own shortcut never reaches it where Koyo binds the same key (⌘F), as today |
-| B. Chrome's split, as `ce2f3c7fc` made it | The eight tab and window keys of `reserved.rs` | Web apps get their own ⌘ shortcuts | ⌘F, ⌘R, ⌘G, ⌘=, ⌘-, ⌘0, ⌘[, ⌘], ⌥⌘I, ⌥⌘R and ⌘C/X/V/A/Z wait for the renderer. A page can block them. A hung renderer never hands them back |
+| B. Chrome's split, as `69581c0a3` made it | The eight tab and window keys of `reserved.rs` | Web apps get their own ⌘ shortcuts | ⌘F, ⌘R, ⌘G, ⌘=, ⌘-, ⌘0, ⌘[, ⌘], ⌥⌘I, ⌥⌘R and ⌘C/X/V/A/Z wait for the renderer. A page can block them. A hung renderer never hands them back |
 
 A makes the behaviour with Koyo behind the same as with Koyo in front, which is the bug
-`ce2f3c7fc` set out to fix, and changes nothing else. B stays possible later by changing the
+`69581c0a3` set out to fix, and changes nothing else. B stays possible later by changing the
 predicate. Under A, "GPUI has a binding" is
 found by offering: `GpuiFirst` hands the key on when GPUI has no use for it, so ⌘`, ⌘H, ⌘M and
 the menu's keys go on working.
@@ -330,7 +330,7 @@ What this fixes, by construction:
 - **⌘L reaching both.** With Koyo behind, the window entry offers it to GPUI first, and GPUI
   takes it. This is what `AppKit`'s pass does with Koyo in front.
 - **A page handing a key back late.** Each hand-back is judged alone, against who has the
-  keyboard then. This was the first bug in `ce2f3c7fc`'s review.
+  keyboard then. This was the first bug in `69581c0a3`'s review.
 - **F12 and bindings without ⌘ or ⌃ while Koyo is not in front.** They go to the page, and
   the hand-back gives GPUI whatever the page leaves, with no "first offer" to misjudge. This
   was the second bug.
@@ -639,7 +639,7 @@ views in the wrong place. The fork reorders a window's native views in place, ne
 one out, so a change of composition leaves the keyboard where it was (finding 6). Hosted controls and glass are
 registered as natives that take no keys, with `refusesFirstResponder` set (K5).
 
-## 8. What happens to `ce2f3c7fc`
+## 8. What happens to `69581c0a3`
 
 It is undone by a forward commit, and what it set out to do is rebuilt in the layer.
 
@@ -649,7 +649,7 @@ makes the memory bigger (a ring of 64 events, a flag the host sets during a hand
 treats the symptom. Section 4.1 removes the guess.
 
 It also changed more than it said. Before it, with Koyo in front, GPUI took every ⌘ key Koyo
-binds in `AppKit`'s pass, and that is how the owner's build behaves. `ce2f3c7fc` made every
+binds in `AppKit`'s pass, and that is how the owner's build behaves. `69581c0a3` made every
 key but eight the page's first. That is policy B of section 4.1, a product change the owner
 didn't ask for. He has since picked policy A.
 
@@ -669,7 +669,7 @@ didn't ask for. He has since picked policy A.
 - the probe's `keyboard`, `bounds` and bare `key` commands, and `marks.rs` with its test;
 - `docs/keyboard.md` 11 on panels and Spaces.
 
-**What the tip is after step 1.** `d33840cad`'s behaviour for keys, which is the owner's
+**What the tip is after step 1.** `ff17d464e`'s behaviour for keys, which is the owner's
 build's. With Koyo in front, `AppKit`'s pass gives GPUI its ⌘ keys first, and nothing is
 handled twice. With Koyo behind, which happens on the agent desktop and not at the owner's
 desk, ⌘L in a page reaches both Koyo and the page again. The tip is shippable from step 1.
@@ -706,7 +706,7 @@ and leaves its window while it has the keyboard.
 - **In `koyo`**, an app mode `--seam-check` behind a feature, built as the visual checks are.
   It opens a real `GPUIWindow`, puts the stand-in page in a real `native::Surface`, and sends
   `NSEvent`s through `seam::inject`, so the fork's `send_window_event`, `handle_key_event` and
-  the hooks all run. This is the tier that would have caught both bugs in `ce2f3c7fc`.
+  the hooks all run. This is the tier that would have caught both bugs in `69581c0a3`.
 
 `[open]`, settled in step 4: whether the app-mode rig can run with its windows ordered out. If
 it needs them on a screen, it runs on the agent desktop through `desktop_open`, as the test
@@ -788,8 +788,8 @@ and the bench sequences named, with evidence under `.superpowers/v/evidence/`.
 
 | Step | Change | Ends verified by | Estimate | A build for the owner |
 | --- | --- | --- | --- | --- |
-| 0 | The menu gate proof on the agent desktop, as planned. No code. Done 2026-11-16: all three refused, no menu window (section 5.2) | The three right-clicks' window lists and log lines. Decides whether `d33840cad` goes into the owner's next build | an hour, once the owner is idle |  |
-| 1 | `ce2f3c7fc`'s key mechanism undone by a forward commit (section 8) | The fork's diff has no `Offers`. `script/lint`, with no dead code left. The app's and the fork's tests. `key-once` on the agent desktop. The tip is shippable | half a day |  |
+| 0 | The menu gate proof on the agent desktop, as planned. No code. Done 2026-11-16: all three refused, no menu window (section 5.2) | The three right-clicks' window lists and log lines. Decides whether `ff17d464e` goes into the owner's next build | an hour, once the owner is idle |  |
+| 1 | `69581c0a3`'s key mechanism undone by a forward commit (section 8) | The fork's diff has no `Offers`. `script/lint`, with no dead code left. The app's and the fork's tests. `key-once` on the agent desktop. The tip is shippable | half a day |  |
 | 2 | The crate `koyo-seam`, empty of rules: the input label and journal, `NSApp`'s `sendEvent:` telling the layer of each press and key (the patch itself stays installed by the host until step 9), `seam::inject` for the probe, `seam::engine_input` for the protocol, `probe seam`, `script/seam-fence` in report mode, `script/seam-bench`. The desk host's tag is put off: it needs a change in the desk host and a rebuilt host, and no rule waits on it. No behaviour changes | Tier 0 for the label. The engine's smoke suite while the owner is idle, for the moved `NSApp` patch. A bench sequence `labels`: a probe click, a `desktop_click` and a `browser_click` each show their label in `probe seam` | 2 days |  |
 | 3 | Menus read the label (done 2026-11-17: the gate's rule is `koyo-seam`'s and reads the journal; its monitor is gone; the desk host is known by its bundle). Still to do: The gate moves in, its monitor goes, the share picker is checked. The Edit menu, for `AppKit`'s own items (built 2026-11-17, section 7; its items on screen are the owner's check) | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
 | 4 | The keyboard moves in: `keyboard/*` to `koyo-seam`, with the registry of pages (which page a view is, and a page's keys' view, registered by the host as it makes and closes them), which the keyboard is the first to read, in place of the host's `key_view` and `page_of`. `press_routed` in place of the one-second window. Controls refuse the first responder. Key and active state still come from GPUI's observer, until step 9 | The 48 tests moved. The rig's first version. `composer-after-pinned`, `ctrl-tab-from-page`, and `docs/keyboard.md` 9's journeys 1 to 5, 7, 8 and 11 as sequences | 3 days |  |
@@ -822,7 +822,7 @@ this branch. Extensions edits the host's `native.rs` and the shell's close path.
 `native.rs`'s placement code. It lands as a pure move and then a change, and the coordinator
 is told a day ahead so extensions can rebase between the two.
 
-**The owner's build.** He runs `f8e31e468`. Every step from 1 on leaves a tip he could run,
+**The owner's build.** He runs `fd4ad641a`. Every step from 1 on leaves a tip he could run,
 but he gets a build only where the table says: after step 3 (menus, if step 0 passed), after
 step 5 (keys), after step 8 (presses, lifecycle and geometry together) and after step 9
 (panels). Under policy A he should notice no change at step 5 at his desk.

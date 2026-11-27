@@ -247,7 +247,7 @@ and `AppKit` makes no pass of key equivalents of its own. With Koyo in front, as
 it, `AppKit`'s pass gives GPUI's view every ⌘ and ⌃ key Koyo binds before the page hears it, and
 no key is handled twice.
 
-A first answer (`ce2f3c7fc`) had GPUI's view remember each key offered to it, to tell `AppKit`'s
+A first answer (`69581c0a3`) had GPUI's view remember each key offered to it, to tell `AppKit`'s
 pass from the window's own offer and from a page's hand-back. It lost a key a page handed back
 late, and F12 and other keys without ⌘ or ⌃ while Koyo wasn't in front; and it made every key
 but Koyo's tab and window keys the page's first, which the person's Koyo never did. It's
